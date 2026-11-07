@@ -293,7 +293,10 @@ Codex also requires an explicit `WebFetch` denial: only search-only launches
 qualify until independent native page-reading behavior is verified. On other operating
 systems the managed route is withheld pending qualification.
 Claude keeps approval-required search behind its normal permission prompt and
-uses the selected `CLAUDE_CONFIG_DIR`. Managed search uses the CLI tool denial
+uses the selected `CLAUDE_CONFIG_DIR`. Timon checks the CLI's working directory
+and its parent directories for project choices. In a linked worktree, a saved
+project search rule or connector can belong to the main checkout, so Timon
+leaves the selection to Claude. Managed search uses the CLI tool denial
 for native search. Dreaming preserves original domain-limited fetch grants.
 Other profiles keep native behavior; explicitly requiring Parallel on them
 is an error for jobs that need search. Tool-free jobs retain their existing

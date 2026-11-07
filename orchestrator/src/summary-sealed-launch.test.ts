@@ -292,8 +292,10 @@ test('one-shot search preserves the original agent denial and fetch domain rule'
 
 test('one-shot callers cannot broaden a scoped search preapproval', async () => {
   await withFakeCli([], async (spawned) => {
-    await assert.rejects(oneShotPrompt('scoped', { ...claudeCfg, allowed_tools: ['WebSearch(domain:example.com)'] },
-      'Research.', 'Cite sources.', ['WebSearch']), /scoped search grant/);
+    for (const rules of ['WebSearch(domain:example.com)', 'Read WebSearch(domain:example.com)']) {
+      await assert.rejects(oneShotPrompt('scoped', { ...claudeCfg, allowed_tools: [rules] },
+        'Research.', 'Cite sources.', ['WebSearch']), /scoped search grant/);
+    }
     assert.equal(spawned.length, 0);
   });
 });
@@ -306,7 +308,7 @@ test('Dreaming never broadens an original WebFetch domain grant, with managed or
       process.env.TIMON_WEB_SEARCH_PROVIDER = mode;
       invalidateSettingsCache();
       await withFakeCli(CLAUDE_ANSWER, async (spawned) => {
-        await oneShotPrompt('acme.dreamer', { ...claudeCfg, allowed_tools: ['WebFetch(domain:example.com)'] },
+        await oneShotPrompt('acme.dreamer', { ...claudeCfg, allowed_tools: ['Bash(git status),WebFetch(domain:example.com)'] },
           'Research.', 'Cite sources.', ['WebSearch', 'WebFetch']);
         const args = spawned[0]!.args;
         const grants = args[args.indexOf('--allowedTools') + 1]!.split(',');

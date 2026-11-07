@@ -2,7 +2,7 @@ import './test-home.js';
 import { linuxSearch } from '../tests/helpers/search-cli-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mountOfficialProviders, buildUnderSeal, stubCodexSignIn } from '../tests/helpers/official-providers.js';
 import { searchPolicy, PARALLEL_SEARCH_KEY } from './web-search.js';
@@ -211,4 +211,61 @@ test('official account profiles inspect their own directory and never substitute
       } finally { deleteBackendAccount(account.id); }
     }
   } finally { delete process.env.CLAUDE_CONFIG_DIR; rmSync(shared, { recursive: true }); setting(); }
+});
+
+test('Claude project policy follows the actual child directory and its repository', linuxSearch, async () => {
+  const dir = join(process.env.TIMON_HOME!, 'search-projects');
+  const repo = join(dir, 'repo');
+  const nested = join(repo, 'packages', 'agent');
+  const linked = join(dir, 'linked');
+  const alias = join(dir, 'alias');
+  const cli = join(dir, 'client');
+  const previous = process.cwd();
+  mkdirSync(nested, { recursive: true });
+  mkdirSync(linked);
+  mkdirSync(cli);
+  symlinkSync(nested, alias, 'dir');
+  // A gitfile can select a main worktree outside the child's ancestor chain.
+  writeFileSync(join(linked, '.git'), 'gitdir: ../repo/.git/worktrees/linked\n');
+  process.env.CLAUDE_CONFIG_DIR = cli;
+  const choice = { mcpServers: { privateSearch: { command: 'fixture' } } };
+  const file = join(cli, '.claude.json');
+  try {
+    setting();
+    writeFileSync(file, JSON.stringify({ projects: { [repo]: choice } }));
+    for (const child of [nested, alias, linked]) {
+      const s = spawn({ cwd: child });
+      assert.equal(mcp(await buildUnderSeal('claude', s))[PARALLEL_SEARCH_KEY], undefined, child);
+    }
+    process.chdir(nested);
+    assert.equal(searchPolicy(spawn({}), 'claude', []).mode, 'native', 'inherited daemon cwd');
+    process.chdir(previous);
+    writeFileSync(file, JSON.stringify({ projects: { [repo]: { hasTrustDialogAccepted: true } } }));
+    assert.equal(searchPolicy(spawn({ cwd: linked }), 'claude', []).mode, 'parallel', 'metadata is harmless');
+    process.env.CLAUDE_CONFIG_DIR = 'relative-cli';
+    mkdirSync(join(nested, 'relative-cli'));
+    writeFileSync(join(nested, 'relative-cli', 'settings.json'), JSON.stringify({ permissions: { deny: ['WebSearch'] } }));
+    assert.equal(searchPolicy(spawn({ cwd: nested }), 'claude', []).mode, 'native', 'config relative to the CLI');
+  } finally {
+    process.chdir(previous);
+    delete process.env.CLAUDE_CONFIG_DIR;
+    rmSync(dir, { recursive: true });
+    setting();
+  }
+});
+
+test('the CLI permission list and default permission mode cannot bypass a search decision', linuxSearch, async () => {
+  for (const denied of ['Bash WebSearch', 'Bash(git status),WebSearch']) {
+    assert.equal(searchPolicy(spawn({ cwd, disallowed_tools: [denied] }), 'claude', []).mode, 'off', denied);
+  }
+  const dir = join(process.env.TIMON_HOME!, 'search-permission-mode');
+  mkdirSync(dir);
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  try {
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({ permissions: { defaultMode: 'bypassPermissions' } }));
+    assert.equal(searchPolicy(spawn({ cwd }), 'claude', []).mode, 'native');
+  } finally {
+    delete process.env.CLAUDE_CONFIG_DIR;
+    rmSync(dir, { recursive: true });
+  }
 });

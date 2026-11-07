@@ -22,6 +22,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { splitToolList } from './skills.js';
 import { dbApi, type EventRow } from './db.js';
 import { asBackendName, backendNames, catalogBackend, defaultBackendName, getBackend, type Backend } from './backends/index.js';
 import { loadConfig, spawnAgent, stderrExcerpt, type AgentConfig } from './agent.js';
@@ -253,7 +254,7 @@ export async function oneShotPrompt(
   extraAllowedTools?: string[],
   timeoutMs?: number,
 ): Promise<string> {
-  if (extraAllowedTools?.includes('WebSearch') && agentCfg.allowed_tools?.some((tool) => /^WebSearch\(/.test(tool))) {
+  if (extraAllowedTools?.includes('WebSearch') && agentCfg.allowed_tools?.flatMap(splitToolList).some((tool) => /^WebSearch\(/.test(tool))) {
     throw new Error('One-shot web search is unavailable: the original agent has a scoped search grant');
   }
   const target = oneShotTarget(agentCfg.backend, agentCfg.model);
@@ -297,7 +298,7 @@ async function runOneShot(
   timeoutMs: number | undefined,
 ): Promise<string> {
   // Dreaming's broad fetch request cannot widen the agent's domain grant.
-  const fetchGrants = agentCfg.allowed_tools?.filter((tool) => tool === 'WebFetch' || tool.startsWith('WebFetch('));
+  const fetchGrants = agentCfg.allowed_tools?.flatMap(splitToolList).filter((tool) => tool === 'WebFetch' || tool.startsWith('WebFetch('));
   const allowedTools = extraAllowedTools?.flatMap((tool) =>
     tool === 'WebFetch' && fetchGrants?.length ? fetchGrants : [tool]);
   const minimalCfg: AgentConfig = {

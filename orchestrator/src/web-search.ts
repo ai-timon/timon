@@ -1,8 +1,9 @@
 /** Search routing is a launch decision, never a fallback after a failed request. */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { resolve } from './settings.js';
+import { splitToolList } from './skills.js';
 import type { BuildSpawnOpts } from './backends/types.js';
 import type { ProviderMcpServer } from './backends/provider-services.js';
 import { backendTakesAccounts, isProductBackend } from './backends/registry.js';
@@ -34,11 +35,13 @@ const nonempty = (value: unknown): boolean => value != null &&
  * Account/onboarding metadata, unrelated settings and other projects are not
  * search choices. Unknown or unreadable configuration withholds the route.
  */
-function claudeSearchChoices(value: unknown, cwd: string | undefined): boolean {
+function claudeSearchChoices(value: unknown, projects?: ReadonlySet<string> | 'all'): boolean {
   const config = record(value);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return true;
   const permissions = record(config.permissions);
   if (config.permissions != null && (typeof config.permissions !== 'object' || Array.isArray(config.permissions))) return true;
+  // With a CLI-selected bypass there may be no approval prompt for a new MCP tool.
+  if (permissions.defaultMode === 'bypassPermissions' || permissions.defaultMode === 'dontAsk') return true;
   for (const rules of [permissions.allow, permissions.deny, permissions.ask, config.allowedTools]) {
     if (rules == null) continue;
     if (!Array.isArray(rules) || rules.some((rule: unknown) => typeof rule !== 'string' || searchRule(rule) || rule.trim().startsWith('mcp__'))) return true;
@@ -59,8 +62,8 @@ function claudeSearchChoices(value: unknown, cwd: string | undefined): boolean {
       catch { return true; }
     }
   }
-  const project = cwd && record(config.projects)[resolvePath(cwd)];
-  return !!project && claudeSearchChoices(project, undefined);
+  return !!projects && Object.entries(record(config.projects)).some(([dir, project]) =>
+    (projects === 'all' || projects.has(dir)) && claudeSearchChoices(project));
 }
 
 /** Inspect TOML keys, including quoted/dotted keys and tables, without interpreting
@@ -125,27 +128,33 @@ function cliSearchChoices(backend: string, cwd: string | undefined, accountDir?:
   // Other platforms keep their existing native launch until their configuration is qualified.
   if (process.platform !== 'linux') return { custom: true, nativeRestricted: false };
   const home = homedir();
-  const claudeDir = accountDir || process.env.CLAUDE_CONFIG_DIR || join(home, '.claude');
+  const unknown = { custom: true, nativeRestricted: backend === 'codex' };
+  let workDir: string;
+  try { workDir = realpathSync(cwd ?? process.cwd()); } catch { return unknown; }
+  const customDir = accountDir || process.env.CLAUDE_CONFIG_DIR;
+  const claudeDir = customDir ? resolvePath(workDir, customDir) : join(home, '.claude');
   const files = backend === 'codex'
     ? [join(accountDir || process.env.CODEX_HOME || join(home, '.codex'), 'config.toml'),
        ...(!accountDir && process.env.CODEX_AUTH_DIR ? [join(process.env.CODEX_AUTH_DIR, 'config.toml')] : []),
        join('/etc', 'codex', 'config.toml'), join('/etc', 'codex', 'requirements.toml'),
        join('/etc', 'codex', 'managed_config.toml')]
     : [join(claudeDir, 'settings.json'),
-       join(accountDir || process.env.CLAUDE_CONFIG_DIR || home, '.claude.json'),
+       join(customDir ? claudeDir : home, '.claude.json'),
        join(claudeDir, 'remote-settings.json'),
        join('/etc', 'claude-code', 'managed-settings.json')]; // portability: Claude's Linux managed configuration location
-  if (cwd) {
-    let dir = resolvePath(cwd);
-    for (;;) {
-      if (backend === 'claude') files.push(join(dir, '.mcp.json'), join(dir, '.claude', 'settings.json'), join(dir, '.claude', 'settings.local.json'));
-      else files.push(join(dir, '.codex', 'config.toml'));
-      const parent = dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
+  const ancestors = new Set<string>();
+  let linkedCheckout = false;
+  for (let dir = workDir; ; dir = dirname(dir)) {
+    if (backend === 'claude') {
+      ancestors.add(dir);
+      files.push(join(dir, '.mcp.json'), join(dir, '.claude', 'settings.json'), join(dir, '.claude', 'settings.local.json'));
+      // A linked worktree shares the main checkout's project key. If a choice
+      // could apply there, let the CLI resolve it instead of guessing its root.
+      try { linkedCheckout ||= statSync(join(dir, '.git'), { throwIfNoEntry: false })?.isFile() === true; }
+      catch { return unknown; }
+    } else files.push(join(dir, '.codex', 'config.toml'));
+    if (dirname(dir) === dir) break;
   }
-  const unknown = { custom: true, nativeRestricted: backend === 'codex' };
   if (backend === 'claude') {
     const managedDir = join('/etc', 'claude-code', 'managed-settings.d');
     try { files.push(...readdirSync(managedDir).filter((name) => name.endsWith('.json') && !name.startsWith('.')).map((name) => join(managedDir, name))); }
@@ -162,7 +171,7 @@ function cliSearchChoices(backend: string, cwd: string | undefined, accountDir?:
       if (!stat.isFile() || stat.size > 2 * 1024 * 1024) return unknown;
       const text = readFileSync(file, 'utf8');
       const choices = backend === 'codex' ? codexSearchChoices(text)
-        : { custom: claudeSearchChoices(JSON.parse(text), cwd), nativeRestricted: false };
+        : { custom: claudeSearchChoices(JSON.parse(text), linkedCheckout ? 'all' : ancestors), nativeRestricted: false };
       custom ||= choices.custom;
       nativeRestricted ||= choices.nativeRestricted;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return unknown; }
@@ -171,7 +180,7 @@ function cliSearchChoices(backend: string, cwd: string | undefined, accountDir?:
 }
 export function searchUnavailableReason(cfg: BuildSpawnOpts['cfg']): string | null {
   if (resolve('TIMON_WEB_SEARCH_PROVIDER')?.value === 'off') return 'web search is off';
-  if (cfg.disallowed_tools?.some(searchRule) || cfg.excluded_mcp_servers?.some(searchRule)) return 'web search is excluded';
+  if (cfg.disallowed_tools?.flatMap(splitToolList).some(searchRule) || cfg.excluded_mcp_servers?.some(searchRule)) return 'web search is excluded';
   return null;
 }
 export function searchPolicy(spawn: BuildSpawnOpts, backend: string | undefined, servers: readonly ProviderMcpServer[]) {
@@ -199,7 +208,7 @@ export function searchPolicy(spawn: BuildSpawnOpts, backend: string | undefined,
     || (spawn.searchServerOverride === 'nonempty' && !preApproved)) return fallback;
   const ambiguous = spawn.searchConfiguredConnectors || servers.some((s) => s.role === 'user') || (cfg.mcp_servers?.length ?? 0) > 0
     || (cfg.excluded_mcp_servers?.length ?? 0) > 0
-    || cfg.allowed_tools?.some((t) => searchRule(t) && t !== 'WebSearch')
+    || cfg.allowed_tools?.some((entry) => entry !== 'WebSearch' && splitToolList(entry).some(searchRule))
     || cli.custom
     // Independent native page reading is unqualified on Codex. Only a
     // search-only launch can replace its native tool without risking URL reads.
