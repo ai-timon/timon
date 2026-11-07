@@ -58,6 +58,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 - Missions: the Success rate card keeps a clear edge in light mode, and table rows alternate visibly in dark mode.
 - Dialogs no longer have a thin outline; their shadow sets them apart.
 - Kanban: the last card of a long column fades out at its foot instead of being cut through.
+- On a phone, the chat's panel buttons above the composer sit on a light fill, like the other controls.
 
 ### Known issues
 

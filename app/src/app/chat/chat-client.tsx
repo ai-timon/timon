@@ -7898,6 +7898,8 @@ function DeclencheurPanneau({ cible, label, ouvert, onClick, children }: {
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  // A faint chip fill, like the composer's controls: bare icons floating
+  // over the thread's last line looked stray rather than like buttons.
   return (
     <button
       type="button"
@@ -7906,7 +7908,7 @@ function DeclencheurPanneau({ cible, label, ouvert, onClick, children }: {
       aria-expanded={ouvert}
       aria-controls={cible}
       onClick={onClick}
-      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
+      className="grid size-7 shrink-0 place-items-center rounded-md bg-foreground/[0.05] text-muted-foreground/70 transition-colors hover:bg-foreground/[0.08] hover:text-foreground"
     >
       {children}
     </button>
