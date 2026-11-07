@@ -6357,7 +6357,7 @@ export function ChatClient({
           /* code-font: inline code */
           font-family: var(--font-mono), monospace; font-size: 12px;
           /* A fill, no rim (globals.css says why). */
-          background: hsl(var(--muted)); border: 1px solid transparent;
+          background: hsl(var(--foreground) / 0.07); border: 1px solid transparent;
           padding: 1px 5px; border-radius: calc(var(--radius) * 0.4);
         }
         .chat-bubble pre {
