@@ -54,6 +54,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 - In light mode, the Kanban filters and search no longer fade into the page.
 - In light mode, a switch that is off no longer fades into the dialog behind it.
 - On the Agents page, "Import agents" and "Export" have icons and the same size as the other actions in the bar.
+- The project filter of the Home Tasks widget looks like the other filters instead of a plain form field.
 
 ### Known issues
 
