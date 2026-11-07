@@ -123,7 +123,7 @@ export function kindLabel(kind: string): string {
 }
 
 function bundledCopy(plugin: PluginPublic, field: 'label' | 'description'): string | null {
-  const key = `pluginsPage.modules.${plugin.id}.${field}`;
+  const key = `pluginsPage.${plugin.source === 'bundled' ? 'modules' : 'packages'}.${plugin.id}.${field}`;
   const value = t(key);
   if (value !== key) return value;
   if (field === 'label') return plugin.label ?? plugin.id;
@@ -138,7 +138,7 @@ export function pluginGalleryLabel(plugin: {
   builtin?: boolean;
 }): string {
   if (plugin.builtin || plugin.source === 'bundled' || plugin.id.startsWith('@timon/')) {
-    const key = `pluginsPage.modules.${plugin.id}.label`;
+    const key = `pluginsPage.${plugin.id.startsWith('@timon/') || plugin.source === 'bundled' ? 'modules' : 'packages'}.${plugin.id}.label`;
     const value = t(key);
     if (value !== key) return value;
   }
