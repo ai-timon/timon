@@ -137,6 +137,10 @@ export type BuildSpawnOpts = {
    *  daemon sets it only on a dialect the product declares able to honour it;
    *  absent = the agent's own tools. */
   readOnlyTools?: boolean;
+  /** Preserve a mission server replacement after its list has been flattened. */
+  searchServerOverride?: 'empty' | 'nonempty';
+  /** A minimal one-shot config must not erase an operator's connector choice. */
+  searchConfiguredConnectors?: boolean;
   /** The message of this turn is a command of the agent itself, not text for
    *  the model (native compaction, `ProviderDefinition.session.compact`): a
    *  dialect that escapes a leading `/` by default lets this one through.

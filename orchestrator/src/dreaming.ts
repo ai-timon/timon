@@ -30,6 +30,7 @@ import { dbApi, type ProjectRow } from './db.js';
 import { resolveAnchor } from './notifications.js';
 import { loadConfig, type AgentConfig } from './agent.js';
 import { mainAgentName } from './main-agent.js';
+import { searchUnavailableReason } from './web-search.js';
 import { oneShotPrompt } from './summary.js';
 import { GLOBAL_MEMORY_DIR } from './paths.js';
 import { settingBool, settingNum, settingStr } from './settings.js';
@@ -167,7 +168,7 @@ Answer ONLY with a JSON array, nothing else:
 
 const OPP_SYSTEM = `You are the user's strategic advisor (their ultimate goal is described in their objectives grid). This is your nightly EXPLORATION "dreaming" phase: you hunt for NEW opportunities aligned with their objectives.
 
-You are given: their objectives, their vault ideas folder, and the opportunities ALREADY proposed (do NOT repeat them). You can and MUST use the web (WebSearch/WebFetch) to rely on real signals (trends, niches, tools, market demand) — not just introspection. Cite your sources.
+You are given: their objectives, their vault ideas folder, and the opportunities ALREADY proposed (do NOT repeat them). You can and MUST search the web and read sources to rely on real signals (trends, niches, tools, market demand) — not just introspection. Cite your sources.
 
 Propose up to ${settingNum('TIMON_DREAM_OPP_MAX')} opportunities. Each one: a precise and plausible vein, aligned with the ultimate goal, with a realistic first step. Stay DISCIPLINED (you are the anti-dispersion agent): prefer 2 solid tracks to ${settingNum('TIMON_DREAM_OPP_MAX')} hazy ones. If nothing new, answer "[]".
 
@@ -289,6 +290,8 @@ async function dreamOpportunity(runId: string): Promise<number> {
     knownBlock(dbApi.recentDreamTitles('opportunity', settingNum('TIMON_DREAM_DEDUP_DAYS')));
   const { name, cfg } = baseCfg();
   let out: string;
+  const searchReason = searchUnavailableReason(cfg);
+  if (searchReason) { console.log(`[dream] opportunity: skipped (${searchReason})`); return 0; }
   try { out = await oneShotPrompt(name, cfg, userMsg, withCustom(OPP_SYSTEM, 'opportunity'), ['WebSearch', 'WebFetch'], settingNum('TIMON_DREAM_OPP_TIMEOUT_MS')); }
   catch (err) { console.warn(`[dream] opportunity: ${(err as Error).message}`); return 0; }
   let inserted = 0;

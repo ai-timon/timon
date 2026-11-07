@@ -22,6 +22,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { splitToolList } from './skills.js';
 import { dbApi, type EventRow } from './db.js';
 import { asBackendName, backendNames, catalogBackend, defaultBackendName, getBackend, type Backend } from './backends/index.js';
 import { loadConfig, spawnAgent, stderrExcerpt, type AgentConfig } from './agent.js';
@@ -253,6 +254,9 @@ export async function oneShotPrompt(
   extraAllowedTools?: string[],
   timeoutMs?: number,
 ): Promise<string> {
+  if (extraAllowedTools?.includes('WebSearch') && agentCfg.allowed_tools?.flatMap(splitToolList).some((tool) => /^WebSearch\(/.test(tool))) {
+    throw new Error('One-shot web search is unavailable: the original agent has a scoped search grant');
+  }
   const target = oneShotTarget(agentCfg.backend, agentCfg.model);
   if (target.movedFrom) {
     console.warn(`[summary] ${agentName}: ${target.movedFrom} is remote, one-shot prompt runs on ${target.backend.name}`);
@@ -293,6 +297,10 @@ async function runOneShot(
   extraAllowedTools: string[] | undefined,
   timeoutMs: number | undefined,
 ): Promise<string> {
+  // Dreaming's broad fetch request cannot widen the agent's domain grant.
+  const fetchGrants = agentCfg.allowed_tools?.flatMap(splitToolList).filter((tool) => tool === 'WebFetch' || tool.startsWith('WebFetch('));
+  const allowedTools = extraAllowedTools?.flatMap((tool) =>
+    tool === 'WebFetch' && fetchGrants?.length ? fetchGrants : [tool]);
   const minimalCfg: AgentConfig = {
     backend: backend.name as AgentConfig['backend'],
     model,
@@ -307,7 +315,9 @@ async function runOneShot(
     // WebSearch/WebFetch for Dreaming). Without it, an unlisted tool is
     // deferred to a permission card nobody validates at night.
     // plan mode stays active → no workspace write possible.
-    ...(extraAllowedTools && extraAllowedTools.length ? { allowed_tools: extraAllowedTools } : {}),
+    ...(allowedTools?.length ? { allowed_tools: allowedTools } : {}),
+    disallowed_tools: agentCfg.disallowed_tools,
+    excluded_mcp_servers: agentCfg.excluded_mcp_servers,
   };
   const missionId = 'summary-' + randomUUID().slice(0, 8);
   const spawnOpts: BuildSpawnOpts = {
@@ -324,6 +334,7 @@ async function runOneShot(
     // The transcript it summarises may carry a prompt injection: an agent that decides its tool
     // uses alone is confined by its provider (`AcpAgentSpec.oneShotEnv`), never asked.
     oneShot: true,
+    searchConfiguredConnectors: !!agentCfg.mcp_servers?.length,
     // Nothing to run, read or write when the whole input is in the prompt: on a
     // dialect that can honour it, no built-in tool at all. A caller that asked
     // for a tool (the Dreaming's WebSearch) keeps the restricted plan mode.

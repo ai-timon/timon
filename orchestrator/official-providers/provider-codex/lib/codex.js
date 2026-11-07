@@ -377,7 +377,7 @@ export function createCodexProvider(services, log) {
         const generated = scratch.resolve('generated_images');
         mkdirSync(generated, { recursive: true });
         services.media.allowShow(opts.missionId, generated);
-        return scratch;
+        return { scratch, webSearch: plan.webSearch };
     }
 
     return {
@@ -431,11 +431,12 @@ export function createCodexProvider(services, log) {
                 if (auth.source === 'environment')
                     apiKey = codexApiKey(env);
             }
-            const scratch = await ensureCodexHome(opts, profile, { useAuthFile: !apiKey && !profile.providerConfig, accountAuth });
+            const { scratch, webSearch } = await ensureCodexHome(opts, profile, { useAuthFile: !apiKey && !profile.providerConfig, accountAuth });
             const imagePaths = writeTurnImages(scratch, opts.images);
             remember(opts.missionId, { home: scratch.path, since: Date.now() });
             await assertCliVersion(profile.cmd, profile.minCliVersion);
             const args = ['exec', '--json', '--skip-git-repo-check'];
+            if (webSearch && webSearch.mode !== 'native') args.push('-c', 'web_search=disabled');
             // exec-level options: they must come before the `resume` subcommand.
             if (opts.readOnlyTools) {
                 // No shell, no write and no file read, whatever the agent's mode: the read-only sandbox

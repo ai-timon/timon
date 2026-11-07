@@ -2184,6 +2184,8 @@
         "memoryDir?": "string | undefined",
         "timonMcp?": "boolean | undefined",
         "readOnlyTools?": "boolean | undefined",
+        "searchServerOverride?": "\"empty\" | \"nonempty\" | undefined",
+        "searchConfiguredConnectors?": "boolean | undefined",
         "agentCommand?": "boolean | undefined",
         "oneShot?": "boolean | undefined"
       }
@@ -3499,6 +3501,7 @@
       "signature": "ProviderMcpPlan",
       "members": {
         "servers": "readonly ProviderMcpServer[]",
+        "webSearch?": "{ readonly mode: \"native\" | \"parallel\" | \"off\"; readonly preApproved: boolean; } | undefined",
         "identityEnv": "Readonly<Record<string, string>>",
         "daemonUrl": "string",
         "scripts": "{ readonly timon: string; readonly forms: string; }",

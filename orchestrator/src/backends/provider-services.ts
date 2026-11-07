@@ -16,7 +16,7 @@ import type { McpLaunchServer } from './mcp-serialize.js';
 import type { ProviderScratchDir } from './scratch-dir.js';
 
 /** Which of Timon's servers, or whose, a server of the plan is. */
-export type ProviderMcpRole = 'timon' | 'forms' | 'grepai' | 'browser' | 'user';
+export type ProviderMcpRole = 'timon' | 'forms' | 'grepai' | 'browser' | 'user' | 'search';
 
 export type ProviderMcpServer = McpLaunchServer & { readonly role: ProviderMcpRole };
 
@@ -37,6 +37,8 @@ export type ProviderMcpOptions = {
 export type ProviderMcpPlan = {
   /** `timon`, `timon_ask`, the project's `grepai` and browser, then the agent's own servers. */
   readonly servers: readonly ProviderMcpServer[];
+  /** Optional for older SDK fixtures. Native search suppression is independent of other tools. */
+  readonly webSearch?: { readonly mode: 'native' | 'parallel' | 'off'; readonly preApproved: boolean };
   /**
    * The environment that identifies the mission to the servers above: the daemon's
    * address, the mission and the agent — and `TIMON_API_TOKEN` as a REFERENCE the

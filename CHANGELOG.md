@@ -40,6 +40,10 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Changed
+
+- Eligible headless Claude and Codex agents can search through Parallel without a search key, with native/off controls and existing search permissions preserved.
+
 ### Known issues
 
 - Onboarding form details are still in English outside English and French; the step titles are translated.

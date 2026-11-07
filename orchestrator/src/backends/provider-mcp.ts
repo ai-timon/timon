@@ -16,6 +16,7 @@
 import { apiBaseUrl } from '../api-url.js';
 import { TIMON_HOME } from '../paths.js';
 import { config } from '../config/load.js';
+import { searchPolicy, PARALLEL_SEARCH_SERVER } from '../web-search.js';
 import { settingStr } from '../settings.js';
 import { nodeRuntime, type NodeRuntime } from '../host/node-runtime.js';
 import { ASK_MCP_FORMS_ONLY_ENV, ASK_MCP_SERVER, CLAUDE_PERMISSION_PROMPT_TOOL, claudeAskToolNames } from '../ask-mcp.js';
@@ -108,7 +109,6 @@ export async function providerMcpPlan(input: {
     });
     // The one moment we know an agent just hooked onto the project's browser for
     // this mission. A probe asks for the plan without launching anything.
-    if (seal) noteBrowserSessionSpawned(cfg);
   }
   const ids = seal ? userServerIds(spawn) : [];
   if (seal && ids.length) {
@@ -121,7 +121,23 @@ export async function providerMcpPlan(input: {
     }
   }
 
+  const webSearch = searchPolicy(spawn, seal?.backend, servers);
+  seal?.injectedMcpServers.delete(PARALLEL_SEARCH_SERVER.name);
+  if (webSearch.mode === 'parallel') {
+    // Only the managed search one-shot needs this isolation; preserve other
+    // providers' and native one-shots' existing server composition.
+    if (spawn.oneShot) {
+      for (let i = servers.length - 1; i >= 0; i--) {
+        if (servers[i]!.role === 'grepai' || servers[i]!.role === 'browser') servers.splice(i, 1);
+      }
+    }
+    servers.push(PARALLEL_SEARCH_SERVER);
+    seal?.injectedMcpServers.add(PARALLEL_SEARCH_SERVER.name);
+  }
+  if (seal && servers.some((server) => server.role === 'browser')) noteBrowserSessionSpawned(cfg);
+
   return Object.freeze({
+    webSearch,
     servers: Object.freeze(servers),
     identityEnv: Object.freeze(identityEnv),
     daemonUrl,

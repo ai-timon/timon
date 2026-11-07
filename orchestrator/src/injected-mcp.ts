@@ -42,6 +42,22 @@ export function isInjectedMcpServer(key: string): boolean {
   return INJECTED.has(normalise(key));
 }
 
+/** Stamp init events before persistence, replacing any claim made by the CLI.
+ * Replay can then distinguish our server from a user's same-name connector. */
+export function markInjectedMcpServers(payload: unknown, servers: Iterable<string>): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  return { ...payload, timon_injected_mcp_servers: [...servers] };
+}
+
+export function injectedMcpServersFromInit(payload: Record<string, unknown>): Set<string> {
+  const names = payload.timon_injected_mcp_servers;
+  return new Set(Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string').map(normalise) : []);
+}
+
+export function isLaunchInjectedMcpServer(key: string, names: ReadonlySet<string>): boolean {
+  return names.has(normalise(key));
+}
+
 /** Id prefix of the stub entries `refreshToolsCacheFromInit` writes. */
 export const EXTERNAL_STUB_PREFIX = 'ext-';
 
