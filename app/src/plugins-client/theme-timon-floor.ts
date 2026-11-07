@@ -17,7 +17,7 @@
  * frame at 6.9% and the islands at 8.8% nothing stood apart. A near-black
  * frame (4.5%) around ivory text then proved tiring over a day, so the steps
  * were lifted and the saturations eased (11/2026): frame 7%, islands 12%, cards
- * 14.5%, menus 19.5%, hover 22.5%, text a softer ivory. The light canvas leans
+ * 15.5%, menus 20.5%, hover 23%, text a softer ivory. The light canvas leans
  * beige, never neutral grey, a little less saturated than the kit. In light the
  * peach cannot carry text, so the primary turns to a copper apricot.
  *
@@ -37,10 +37,10 @@ export const TIMON_THEME_TOKENS_CSS = `
     --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
     --surface-0: 266 14% 12%;
-    --surface-1: 267 12% 14.5%;
-    --surface-2: 268 11% 17%;
-    --surface-3: 269 10% 19.5%;
-    --surface-4: 270 10% 22.5%;
+    --surface-1: 267 12% 15.5%;
+    --surface-2: 268 11% 18%;
+    --surface-3: 269 10% 20.5%;
+    --surface-4: 270 10% 23%;
     --surface-sunken: 266 15% 9%;
     --chrome: 266 16% 7%;
     --surface-chip: var(--surface-3);
@@ -63,8 +63,8 @@ export const TIMON_THEME_TOKENS_CSS = `
     --muted-foreground: 22 12% 68%;
     --accent: var(--primary);
     --accent-foreground: 266 14% 12%;
-    --border: 268 10% 26%;
-    --input: 268 10% 26%;
+    --border: 268 10% 26.5%;
+    --input: 268 10% 26.5%;
     --ring: var(--primary);
     --radius: 0.75rem;
 
