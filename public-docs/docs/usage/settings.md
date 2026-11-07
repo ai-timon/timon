@@ -287,8 +287,8 @@ rules, and ambiguous exclusions keep their existing policy under the implicit
 default. An explicit `parallel` selection reports unavailable in these cases
 rather than using another service. Codex requires an unconditional
 `WebSearch` grant because its unattended MCP client cannot prompt for approval.
-Launches explicitly requiring native `WebFetch` remain outside the Codex managed
-route until independent page-reading behavior is qualified. On other operating
+Codex also requires an explicit `WebFetch` denial: only search-only launches
+qualify until independent native page-reading behavior is verified. On other operating
 systems the managed route is withheld pending qualification.
 Claude keeps approval-required search behind its normal permission prompt.
 Other profiles keep native behavior; explicitly requiring Parallel on them

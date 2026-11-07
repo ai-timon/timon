@@ -15,7 +15,12 @@ export const PARALLEL_SEARCH_SERVER: ProviderMcpServer = Object.freeze({
   headers: Object.freeze({ 'User-Agent': 'Timon/parallel-agent-search' }),
 });
 const normalise = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '_');
-const searchRule = (rule: string): boolean => /web.?search|timon[-_]parallel[-_]search/i.test(rule) || rule.includes('*');
+const searchRule = (rule: string): boolean => {
+  const name = rule.split('(')[0] ?? '';
+  const pattern = new RegExp('^' + name.split('*').map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
+  return ['WebSearch', 'web_search', PARALLEL_SEARCH_KEY, 'timon_parallel_search',
+    PARALLEL_SEARCH_TOOL, 'mcp__timon_parallel_search__web_search'].some((tool) => pattern.test(tool));
+};
 
 /** Existing CLI settings may contain restrictions we cannot translate. Check only
  * their presence, never credentials, and withhold the implicit route if unsure.
@@ -75,7 +80,9 @@ export function searchPolicy(spawn: BuildSpawnOpts, backend: string | undefined,
     || (cfg.excluded_mcp_servers?.length ?? 0) > 0
     || cfg.allowed_tools?.some((t) => searchRule(t) && t !== 'WebSearch')
     || hasOpaqueConfig(backend, cfg.cwd)
-    || (backend === 'codex' && (!preApproved || cfg.allowed_tools?.some((t) => t.startsWith('WebFetch'))))
+    // Independent native page reading is unqualified on Codex. Only a
+    // search-only launch can replace its native tool without risking URL reads.
+    || (backend === 'codex' && (!preApproved || !cfg.disallowed_tools?.includes('WebFetch')))
     || (backend === 'claude' && !preApproved && (spawn.timonMcp === false || cfg.permission_mode === 'bypassPermissions'));
   const collision = servers.some((s) => normalise(s.name) === normalise(PARALLEL_SEARCH_KEY));
   if (ambiguous || collision) {

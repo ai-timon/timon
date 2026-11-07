@@ -30,6 +30,7 @@ test('search routing preserves explicit boundaries and never silently substitute
   setting();
   const s = spawn();
   assert.equal(searchPolicy(s, 'claude', []).mode, 'parallel');
+  assert.equal(searchPolicy(spawn({ cfg: { cwd, disallowed_tools: ['Bash(*)'] } }), 'claude', []).mode, 'parallel');
   assert.equal(searchPolicy(s, undefined, []).mode, 'native');
   assert.equal(searchPolicy(s, 'kimi', []).mode, 'native');
   assert.equal(searchPolicy(spawn({ searchConfiguredConnectors: true }), 'claude', []).mode, 'native');
@@ -39,13 +40,14 @@ test('search routing preserves explicit boundaries and never silently substitute
   }
   for (const p of [{ readOnlyTools: true }, { searchServerOverride: 'empty' as const },
     { oneShot: true, cfg: { cwd } }, { searchServerOverride: 'nonempty' as const, cfg: { cwd } },
-    { cfg: { cwd, disallowed_tools: ['WebSearch'] } }, { cfg: { cwd, excluded_mcp_servers: [PARALLEL_SEARCH_KEY] } }]) {
+    { cfg: { cwd, disallowed_tools: ['WebSearch'] } }, { cfg: { cwd, disallowed_tools: ['Web*'] } }, { cfg: { cwd, excluded_mcp_servers: [PARALLEL_SEARCH_KEY] } }]) {
     assert.equal(searchPolicy(spawn(p), 'claude', []).mode, 'off', JSON.stringify(p));
   }
   for (const cfg of [{ cwd, allowed_tools: ['WebSearch(domain:example.com)'] },
     { cwd, mcp_servers: ['custom'] }, { cwd, excluded_mcp_servers: ['external'] },
     { cwd, allowed_tools: ['mcp__*'] }]) assert.equal(searchPolicy(spawn({ cfg }), 'claude', []).mode, 'native');
   assert.equal(searchPolicy(spawn({ cfg: { cwd } }), 'codex', []).mode, 'native', 'no unattended promotion');
+  assert.equal(searchPolicy(spawn({ cfg: { cwd, allowed_tools: ['WebSearch'] } }), 'codex', []).mode, 'native', 'no implicit loss of URL reads');
   assert.equal(searchPolicy(spawn({ cfg: { cwd } }), 'claude', []).preApproved, false);
   setting('parallel');
   assert.throws(() => searchPolicy(s, 'kimi', []), /unavailable/);
@@ -77,7 +79,7 @@ test('real Claude launch serializes anonymous search, denies native search and m
 
 test('real Codex resume disables native search before resume and rewrites the scratch config on a mode change', async () => {
   setting();
-  const s = spawn({ resumeSession: 'thread-search', cfg: { cwd, allowed_tools: ['WebSearch'] } });
+  const s = spawn({ resumeSession: 'thread-search', cfg: { cwd, allowed_tools: ['WebSearch'], disallowed_tools: ['WebFetch'] } });
   const spec = await buildUnderSeal('codex', s);
   const flag = spec.args.indexOf('web_search=disabled');
   assert.ok(flag > 0 && flag < spec.args.indexOf('resume'));
@@ -106,8 +108,9 @@ test('an existing native CLI configuration with disabled search is never bypasse
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'config.toml'), 'web_search = "disabled"\n');
   setting();
-  assert.equal(searchPolicy(spawn(), 'codex', []).mode, 'native');
+  const searchOnly = spawn({ cfg: { cwd, allowed_tools: ['WebSearch'], disallowed_tools: ['WebFetch'] } });
+  assert.equal(searchPolicy(searchOnly, 'codex', []).mode, 'native');
   setting('parallel');
-  assert.throws(() => searchPolicy(spawn(), 'codex', []), /cannot be translated/);
+  assert.throws(() => searchPolicy(searchOnly, 'codex', []), /cannot be translated/);
   setting();
 });
