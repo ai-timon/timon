@@ -565,7 +565,9 @@ export function MissionsClient() {
                 onClick={() => select(m)}
                 className={cn(
                   'cursor-pointer transition-colors',
-                  i % 2 === 1 && 'bg-foreground/[0.015]',
+                  // The stripe that guides the eye across a wide row; at 1.5%
+                  // it vanished on the dark card, so dark takes twice that.
+                  i % 2 === 1 && 'bg-foreground/[0.015] dark:bg-foreground/[0.03]',
                   'hover:bg-muted/40',
                   selected?.fullId === m.fullId &&
                     'bg-primary/10 shadow-[inset_2px_0_0_hsl(var(--primary))]',
@@ -786,9 +788,10 @@ function Stat({
     <div
       className={cn(
         // Surface contrast instead of an outline; the accented figure keeps
-        // its warm gradient.
+        // its warm gradient. Lighter in light mode, where the copper wash at
+        // 8% met the beige island and the card's top edge melted into it.
         'rounded-xl bg-card px-4 py-3.5',
-        accent && 'bg-gradient-to-b from-primary/[0.08] to-transparent',
+        accent && 'bg-gradient-to-b from-primary/[0.04] to-transparent dark:from-primary/[0.08]',
       )}
     >
       <div className="text-[12.5px] font-medium text-muted-foreground">
