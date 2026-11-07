@@ -1,5 +1,6 @@
 import { toast } from 'sonner';
 import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
+import { announceAgentsChanged } from '@/lib/agents-changed';
 import { t } from '@/lib/i18n';
 import { settingsPath } from '@/lib/settings-path';
 
@@ -20,6 +21,9 @@ export async function deleteAgentAfterConfirm(name: string, opts: { onRestored?:
       method: 'DELETE',
     });
     if (!r.ok) throw new Error(await r.text());
+    // The graph does not poll its agents, it reloads them on this event:
+    // without it, the deleted node stays on screen until the page reloads.
+    announceAgentsChanged();
     const { trash_id: trashId } = await r.json().catch(() => ({})) as { trash_id?: string | null };
     if (trashId) {
       toast.success(t('agentTrash.deletedToast', { name }), {
@@ -30,6 +34,7 @@ export async function deleteAgentAfterConfirm(name: string, opts: { onRestored?:
               .then(async (res) => {
                 if (!res.ok) throw new Error(await res.text());
                 toast.success(t('agentTrash.restored', { name }));
+                announceAgentsChanged();
                 await opts.onRestored?.();
               })
               .catch((e: Error) => toast.error(t('agentTrash.actionError', { error: e.message.slice(0, 80) })));

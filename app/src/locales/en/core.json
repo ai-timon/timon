@@ -1673,6 +1673,7 @@
     "menuChangeAvatar": "Change avatar",
     "menuDuplicate": "Duplicate agent…",
     "menuReportsTo": "Reports to…",
+    "menuDelete": "Delete agent…",
     "menuMovePole": "Move project to pole…",
     "menuDefault": "Default (project lead or main agent)",
     "menuNoPole": "No pole",

@@ -40,6 +40,10 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Added
+
+- Agents graph: right-click an agent and choose **Delete agent** to delete it without opening its editor; it goes to the trash, as from the editor.
+
 ### Known issues
 
 - Onboarding form details are still in English outside English and French; the step titles are translated.
