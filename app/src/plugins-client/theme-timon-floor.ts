@@ -80,13 +80,13 @@ export const TIMON_THEME_TOKENS_CSS = `
 }
 
 :root.light {
-    --surface-0: 32 42% 93.9%;
-    --surface-1: 34 47% 97.1%;
-    --surface-2: 32 35% 90.4%;
-    --surface-3: 34 50% 98.6%;
-    --surface-4: 31 32% 87.3%;
-    --surface-sunken: 32 35% 90.4%;
-    --chrome: 31 33% 85.3%;
+    --surface-0: 33 32% 93.2%;
+    --surface-1: 35 38% 97.6%;
+    --surface-2: 33 30% 91.4%;
+    --surface-3: 35 40% 98.8%;
+    --surface-4: 32 30% 88.4%;
+    --surface-sunken: 33 30% 91.4%;
+    --chrome: 32 24% 87.8%;
     --surface-chip: var(--surface-2);
 
     --shadow-1: 0 1px 2px hsl(15 30% 20% / 0.08);
@@ -94,21 +94,21 @@ export const TIMON_THEME_TOKENS_CSS = `
     --shadow-3: 0 18px 44px -12px hsl(15 30% 20% / 0.2), 0 6px 14px -6px hsl(15 30% 20% / 0.12);
 
     --background: var(--surface-0);
-    --foreground: 345 15% 10.2%;
+    --foreground: 345 12% 13%;
     --card: var(--surface-1);
-    --card-foreground: 345 15% 10.2%;
+    --card-foreground: 345 12% 13%;
     --popover: var(--surface-3);
-    --popover-foreground: 345 15% 10.2%;
+    --popover-foreground: 345 12% 13%;
     --primary: 21 48% 47.8%;
     --primary-foreground: 30 60% 97.5%;
     --secondary: var(--surface-4);
-    --secondary-foreground: 345 15% 10.2%;
+    --secondary-foreground: 345 12% 13%;
     --muted: var(--surface-2);
-    --muted-foreground: 16 12% 37.5%;
+    --muted-foreground: 18 10% 34%;
     --accent: var(--primary);
     --accent-foreground: 30 60% 97.5%;
-    --border: 29 32% 79.8%;
-    --input: 29 32% 79.8%;
+    --border: 30 24% 81.5%;
+    --input: 30 24% 81.5%;
     --ring: var(--primary);
 
     --salmon: var(--primary);
@@ -116,8 +116,8 @@ export const TIMON_THEME_TOKENS_CSS = `
     --salmon-3: var(--primary);
     --salmon-soft: var(--primary) / 0.12;
 
-    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--card)));
-    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 28%, hsl(var(--card)));
+    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 3%, hsl(var(--surface-2)));
+    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--surface-2)));
 
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.28);
     --timon-scrollbar-thumb-hover: hsl(var(--primary) / 0.48);
