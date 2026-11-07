@@ -8,7 +8,7 @@
  * Timon's servers, which would otherwise fall back to the daemon-token.
  */
 import './test-home.js';
-import '../tests/helpers/search-cli-home.js';
+import { linuxSearch } from '../tests/helpers/search-cli-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -240,7 +240,7 @@ test('plugin: a one-shot past its timeout is killed and released', async () => {
 });
 
 
-test('Dreaming opportunity pass uses the sealed search-only launch and persists fixture sources', async () => {
+test('Dreaming opportunity pass uses the sealed search-only launch and persists fixture sources', linuxSearch, async () => {
   const { invalidateSettingsCache } = await import('./settings.js');
   const { runDreamPass } = await import('./dreaming.js');
   const { dbApi } = await import('./db.js');
@@ -302,7 +302,7 @@ test('one-shot callers cannot broaden a scoped search preapproval', async () => 
 test('Dreaming never broadens an original WebFetch domain grant, with managed or native search', async () => {
   const { invalidateSettingsCache } = await import('./settings.js');
   try {
-    for (const mode of ['parallel', 'native']) {
+    for (const mode of process.platform === 'linux' ? ['parallel', 'native'] : ['native']) {
       process.env.TIMON_WEB_SEARCH_PROVIDER = mode;
       invalidateSettingsCache();
       await withFakeCli(CLAUDE_ANSWER, async (spawned) => {

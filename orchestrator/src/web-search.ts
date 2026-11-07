@@ -76,7 +76,7 @@ function codexSearchChoices(text: string): { custom: boolean; nativeRestricted: 
   let start = true;
   let table = false;
   const inspect = () => {
-    if (path.some((key) => ['web_search', 'web_search_request', 'web_search_cached', 'permissions', 'allowed_tools', 'disallowed_tools'].includes(key))) {
+    if (path.some((key) => ['web_search', 'web_search_request', 'web_search_cached', 'allowed_web_search_modes', 'permissions', 'allowed_tools', 'disallowed_tools'].includes(key))) {
       custom = nativeRestricted = true;
     }
     if (path.some((key) => ['mcp_servers', 'allowed_mcp_servers', 'denied_mcp_servers'].includes(key))) custom = true;
@@ -122,12 +122,15 @@ function codexSearchChoices(text: string): { custom: boolean; nativeRestricted: 
 }
 
 function cliSearchChoices(backend: string, cwd: string | undefined, accountDir?: string) {
+  // Other platforms keep their existing native launch until their configuration is qualified.
+  if (process.platform !== 'linux') return { custom: true, nativeRestricted: false };
   const home = homedir();
   const claudeDir = accountDir || process.env.CLAUDE_CONFIG_DIR || join(home, '.claude');
   const files = backend === 'codex'
     ? [join(accountDir || process.env.CODEX_HOME || join(home, '.codex'), 'config.toml'),
        ...(!accountDir && process.env.CODEX_AUTH_DIR ? [join(process.env.CODEX_AUTH_DIR, 'config.toml')] : []),
-       join('/etc', 'codex', 'config.toml'), join('/etc', 'codex', 'requirements.toml')]
+       join('/etc', 'codex', 'config.toml'), join('/etc', 'codex', 'requirements.toml'),
+       join('/etc', 'codex', 'managed_config.toml')]
     : [join(claudeDir, 'settings.json'),
        join(accountDir || process.env.CLAUDE_CONFIG_DIR || home, '.claude.json'),
        join(claudeDir, 'remote-settings.json'),
@@ -143,7 +146,6 @@ function cliSearchChoices(backend: string, cwd: string | undefined, accountDir?:
     }
   }
   const unknown = { custom: true, nativeRestricted: backend === 'codex' };
-  if (process.platform !== 'linux') return unknown;
   if (backend === 'claude') {
     const managedDir = join('/etc', 'claude-code', 'managed-settings.d');
     try { files.push(...readdirSync(managedDir).filter((name) => name.endsWith('.json') && !name.startsWith('.')).map((name) => join(managedDir, name))); }

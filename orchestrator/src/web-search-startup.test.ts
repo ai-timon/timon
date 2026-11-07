@@ -1,7 +1,7 @@
 /** Normal mission startup, including init persistence/discovery, with realistic
  * client metadata. The child emits fixture protocol events; no inference runs. */
 import './test-home.js';
-import '../tests/helpers/search-cli-home.js';
+import { linuxSearch } from '../tests/helpers/search-cli-home.js';
 import '../tests/helpers/paid-license.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -32,7 +32,7 @@ async function until(check: () => boolean): Promise<void> {
   }
 }
 
-test('ordinary Claude startup routes with metadata, persists host provenance and preserves same-name custom exclusions', async () => {
+test('ordinary Claude startup routes with metadata, persists host provenance and preserves same-name custom exclusions', linuxSearch, async () => {
   const host = getHost();
   const original = host.spawn;
   const launches: string[][] = [];

@@ -13,3 +13,5 @@ writeFileSync(join(process.env.HOME, '.claude.json'), JSON.stringify({
   hasResetAutoModeOptInForDefaultOffer: true, migrationVersion: 1,
   oauthAccount: { accountUuid: 'fixture-account', organizationUuid: 'fixture-organization' }, projects: {},
 }));
+
+export const linuxSearch = { skip: process.platform !== 'linux' && 'managed search is qualified on Linux' };

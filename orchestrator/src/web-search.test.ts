@@ -1,5 +1,5 @@
 import './test-home.js';
-import '../tests/helpers/search-cli-home.js';
+import { linuxSearch } from '../tests/helpers/search-cli-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -26,7 +26,7 @@ function setting(value?: string) {
   invalidateSettingsCache();
 }
 
-test('search routing preserves explicit boundaries and never silently substitutes for a required route', () => {
+test('search routing preserves explicit boundaries and never silently substitutes for a required route', linuxSearch, () => {
   setting();
   const s = spawn();
   assert.equal(searchPolicy(s, 'claude', []).mode, 'parallel');
@@ -67,7 +67,7 @@ test('search routing preserves explicit boundaries and never silently substitute
   setting();
 });
 
-test('real Claude launch serializes anonymous search, denies native search and maps only the exact grant', async () => {
+test('real Claude launch serializes anonymous search, denies native search and maps only the exact grant', linuxSearch, async () => {
   setting();
   const spec = await buildUnderSeal('claude', spawn());
   const args = spec.args;
@@ -83,7 +83,7 @@ test('real Claude launch serializes anonymous search, denies native search and m
   assert.ok(gated.args.includes('--permission-prompt-tool'));
 });
 
-test('real Codex resume disables native search before resume and rewrites the scratch config on a mode change', async () => {
+test('real Codex resume disables native search before resume and rewrites the scratch config on a mode change', linuxSearch, async () => {
   setting();
   const s = spawn({ resumeSession: 'thread-search', cfg: { cwd, allowed_tools: ['WebSearch'], disallowed_tools: ['WebFetch'] } });
   const spec = await buildUnderSeal('codex', s);
@@ -109,7 +109,7 @@ test('search server names are not globally reserved under either CLI spelling', 
   }
 });
 
-test('an existing native CLI configuration with disabled search is never bypassed', async () => {
+test('an existing native CLI configuration with disabled search is never bypassed', linuxSearch, async () => {
   const dir = process.env.CODEX_HOME!;
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'config.toml'), 'web_search = "disabled"\n');

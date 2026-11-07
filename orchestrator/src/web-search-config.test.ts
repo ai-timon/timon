@@ -1,5 +1,5 @@
 import './test-home.js';
-import '../tests/helpers/search-cli-home.js';
+import { linuxSearch } from '../tests/helpers/search-cli-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,7 +25,7 @@ function mcp(spec: Awaited<ReturnType<typeof buildUnderSeal>>) {
   return JSON.parse(spec.args[spec.args.indexOf('--mcp-config') + 1]!).mcpServers;
 }
 
-test('normal client/account metadata and unrelated settings allow default and explicit managed launches', async () => {
+test('normal client/account metadata and unrelated settings allow default and explicit managed launches', linuxSearch, async () => {
   const dir = join(process.env.HOME!, '.claude');
   mkdirSync(dir, { recursive: true });
   const file = join(dir, 'settings.json');
@@ -42,7 +42,7 @@ test('normal client/account metadata and unrelated settings allow default and ex
   } finally { rmSync(file); setting(); }
 });
 
-test('active account configuration, project choices and remote managed denies retain authority', async () => {
+test('active account configuration, project choices and remote managed denies retain authority', linuxSearch, async () => {
   const dir = join(process.env.TIMON_HOME!, 'account-config');
   mkdirSync(dir, { recursive: true });
   process.env.CLAUDE_CONFIG_DIR = dir;
@@ -94,7 +94,7 @@ test('MCP-only task overrides preserve native search; actual tool-free launches 
   assert.equal(mcp(spec)[PARALLEL_SEARCH_KEY], undefined);
 });
 
-test('managed discovery has launch provenance; a same-name user connector stays discoverable and excludable', async () => {
+test('managed discovery has launch provenance; a same-name user connector stays discoverable and excludable', linuxSearch, async () => {
   const { listMcp, refreshToolsCacheFromInit, getMcp, deleteMcp } = await import('./mcp.js');
   const { providerMcpPlan } = await import('./backends/provider-mcp.js');
   const { openLaunchSeal, closeLaunchSeal } = await import('./backends/launch-seal.js');
@@ -125,7 +125,25 @@ test('managed discovery has launch provenance; a same-name user connector stays 
   } finally { closeLaunchSeal(seal); }
 });
 
-test('Codex allows unrelated preferences, but search controls cannot be lost in its isolated config', async () => {
+test('unqualified operating systems keep native Codex search unless Timon explicitly disables it', () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  const searchOnly = spawn({ cwd, allowed_tools: ['WebSearch'], disallowed_tools: ['WebFetch'] });
+  try {
+    for (const value of ['darwin', 'win32']) {
+      Object.defineProperty(process, 'platform', { value });
+      for (const mode of [undefined, 'native']) {
+        setting(mode);
+        assert.equal(searchPolicy(searchOnly, 'codex', []).mode, 'native', value);
+      }
+      setting('off');
+      assert.equal(searchPolicy(searchOnly, 'codex', []).mode, 'off');
+      setting('parallel');
+      assert.throws(() => searchPolicy(searchOnly, 'codex', []), /unavailable/);
+    }
+  } finally { Object.defineProperty(process, 'platform', platform); setting(); }
+});
+
+test('Codex allows unrelated preferences, but search controls cannot be lost in its isolated config', linuxSearch, async () => {
   const dir = join(process.env.HOME!, '.codex');
   mkdirSync(dir, { recursive: true });
   const file = join(dir, 'config.toml');
@@ -135,7 +153,7 @@ test('Codex allows unrelated preferences, but search controls cannot be lost in 
     writeFileSync(file, `model = "gpt-5" # web_search = "disabled"\n[projects."/fixture"]\ntrust_level = "trusted"\n`); // portability: simulated project
     assert.equal(searchPolicy(s, 'codex', []).mode, 'parallel');
     for (const text of ['web_search = "disabled"', '"web_search" = "cached"', '"\\u0077eb_search" = "disabled"',
-      '[features]\nweb_search_request = false', 'features = { web_search_request = false }']) {
+      'allowed_web_search_modes = ["disabled"]', '[features]\nweb_search_request = false', 'features = { web_search_request = false }']) {
       writeFileSync(file, text + '\n');
       for (const mode of [undefined, 'native']) {
         setting(mode);
@@ -154,7 +172,7 @@ test('Codex allows unrelated preferences, but search controls cannot be lost in 
 });
 
 
-test('official account profiles inspect their own directory and never substitute the daemon configuration', async () => {
+test('official account profiles inspect their own directory and never substitute the daemon configuration', linuxSearch, async () => {
   const { createBackendAccount, accountConfigDir, deleteBackendAccount } = await import('./backends/accounts.js');
   const shared = join(process.env.TIMON_HOME!, 'shared-config');
   mkdirSync(shared, { recursive: true });
