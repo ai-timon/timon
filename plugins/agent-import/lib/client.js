@@ -515,7 +515,7 @@ function ExportDialog({ api, open, onOpenChange }) {
 }
 function ExportEntry({ api }) {
   const [open, setOpen] = React2.useState(false);
-  return /* @__PURE__ */ React2.createElement(React2.Fragment, null, /* @__PURE__ */ React2.createElement(Button2, { size: "sm", variant: "outline", className: "h-7 shrink-0 px-2.5 text-xs font-medium", onClick: () => setOpen(true) }, t("export.open")), /* @__PURE__ */ React2.createElement(ExportDialog, { api, open, onOpenChange: setOpen }));
+  return /* @__PURE__ */ React2.createElement(React2.Fragment, null, /* @__PURE__ */ React2.createElement(Button2, { size: "sm", variant: "outline", className: "h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium", onClick: () => setOpen(true) }, /* @__PURE__ */ React2.createElement("svg", { viewBox: "0 0 24 24", className: "size-3.5", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true }, /* @__PURE__ */ React2.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }), /* @__PURE__ */ React2.createElement("path", { d: "m17 8-5-5-5 5" }), /* @__PURE__ */ React2.createElement("path", { d: "M12 3v12" })), t("export.open")), /* @__PURE__ */ React2.createElement(ExportDialog, { api, open, onOpenChange: setOpen }));
 }
 var MenuItem = ui.DropdownMenuItem;
 async function exportOne(api, name) {
@@ -1101,7 +1101,7 @@ function ImportDialog({ api, open, onOpenChange }) {
 }
 function ToolbarEntry({ api }) {
   const [open, setOpen] = React5.useState(false);
-  return /* @__PURE__ */ React5.createElement(React5.Fragment, null, /* @__PURE__ */ React5.createElement(Button6, { size: "sm", variant: "outline", className: "h-7 shrink-0 px-2.5 text-xs font-medium", onClick: () => setOpen(true) }, t3("open")), /* @__PURE__ */ React5.createElement(ImportDialog, { api, open, onOpenChange: setOpen }));
+  return /* @__PURE__ */ React5.createElement(React5.Fragment, null, /* @__PURE__ */ React5.createElement(Button6, { size: "sm", variant: "outline", className: "h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium", onClick: () => setOpen(true) }, /* @__PURE__ */ React5.createElement("svg", { viewBox: "0 0 24 24", className: "size-3.5", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true }, /* @__PURE__ */ React5.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }), /* @__PURE__ */ React5.createElement("path", { d: "m7 10 5 5 5-5" }), /* @__PURE__ */ React5.createElement("path", { d: "M12 15V3" })), t3("open")), /* @__PURE__ */ React5.createElement(ImportDialog, { api, open, onOpenChange: setOpen }));
 }
 function RailEntry({ api }) {
   const [open, setOpen] = React5.useState(false);

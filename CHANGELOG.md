@@ -52,6 +52,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 - Notification previews no longer show raw markdown markers such as `**` and backticks.
 - In light mode, the Kanban filters and search no longer fade into the page.
 - In light mode, a switch that is off no longer fades into the dialog behind it.
+- On the Agents page, "Import agents" and "Export" have icons and the same size as the other actions in the bar.
 
 ### Known issues
 
