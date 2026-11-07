@@ -12,13 +12,18 @@ import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import { mountOfficialProviders } from '../../../tests/helpers/official-providers.js';
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-notify-lifecycle-'));
 await import('../../../tests/helpers/paid-license.js');
 
+// This test intentionally loads daemon modules only after selecting its temporary home.
+const { backendBinaryAnchor, backendBinaryNotice, checkBackendBinaries } = await import('../../backends/binary-check.js');
 const { createDaemonAuthMiddleware } = await import('../http/auth.js');
 const { registerRoutes } = await import('./routes.js');
 const { dbApi } = await import('../../db.js');
+// Keep notification creation behind the same temporary-home module boundary.
+const { createNotification } = await import('../../notifications.js');
 
 const TOKEN = 'witness-daemon-token';
 const app = express();
@@ -76,4 +81,45 @@ test('a malformed lifecycle is a 400 and stores nothing', async () => {
     assert.equal(r.status, 400, JSON.stringify(body));
   }
   assert.equal(dbApi.listActiveNotifications().length, before);
+});
+
+test('the notification API enriches canonical backend warnings but leaves same-anchor user content untouched', async () => {
+  await mountOfficialProviders();
+  const status = checkBackendBinaries()[0];
+  assert.ok(status, 'an official backend is available to identify');
+  const notice = backendBinaryNotice(status);
+  const admin = dbApi.createUser({
+    email: 'backend-warning-admin@example.test', name: 'Backend warning admin', passwordHash: 'test-only-hash',
+    isSuperadmin: true, source: 'test',
+  });
+  const customId = randomUUID();
+  const created = createNotification({ type: 'alert', ...notice, anchor: backendBinaryAnchor(status.cmd) });
+  assert.ok(created);
+  const systemId = created.id;
+  // First-run attribution can make a daemon warning owned without changing
+  // its provenance. Exercise the real creation and attribution APIs together.
+  dbApi.assignUnownedOwnedTo(admin.id);
+  assert.equal(dbApi.getNotification(systemId)?.owner_user_id, admin.id);
+  dbApi.createNotification({
+    id: customId, type: 'alert', title: 'My provider note', body: '**Preserve my text**',
+    anchor: backendBinaryAnchor(status.cmd), ownerUserId: admin.id,
+  });
+  try {
+    const response = await fetch(`${base}/api/notifications`, { headers: { authorization: `Bearer ${TOKEN}` } });
+    assert.equal(response.status, 200);
+    const json = await response.json() as {
+      notifications: { id: string; title: string; body: string | null; presentation?: { kind: string; cmd: string } }[];
+    };
+    const system = json.notifications.find((n) => n.id === systemId);
+    assert.equal(system?.presentation?.kind, 'backend-binary');
+    assert.equal(system?.presentation?.cmd, status.cmd);
+    assert.equal(system?.title, notice.title, 'stored diagnostic stays English');
+    assert.equal(system?.body, notice.body);
+    const custom = json.notifications.find((n) => n.id === customId);
+    assert.equal(custom?.presentation, undefined);
+    assert.equal(custom?.body, '**Preserve my text**');
+  } finally {
+    dbApi.dismissNotification(systemId);
+    dbApi.dismissNotification(customId);
+  }
 });
