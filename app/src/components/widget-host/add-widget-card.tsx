@@ -18,12 +18,13 @@ export function AddWidgetCard({ className }: WidgetProps) {
         onClick={() => setPaletteOpen(true)}
         className={cn(
           // A quiet invitation, not a hole in the page: a faint plate with no
-          // outline, which only takes the accent under the pointer.
-          'group flex min-h-[132px] flex-1 flex-col items-center justify-center gap-2 rounded-xl bg-foreground/[0.025] px-4 text-muted-foreground/80 transition-colors',
+          // outline, capped in height so an empty column is not one tall
+          // slab, which only takes the accent under the pointer.
+          'group flex max-h-48 min-h-[132px] flex-1 flex-col items-center justify-center gap-2 rounded-xl bg-foreground/[0.018] px-4 text-muted-foreground/60 transition-colors',
           'hover:bg-primary/[0.06] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         )}
       >
-        <span className="grid size-9 place-items-center rounded-full bg-muted transition-colors group-hover:bg-primary/15 group-hover:text-primary">
+        <span className="grid size-8 place-items-center rounded-full bg-foreground/[0.05] transition-colors group-hover:bg-primary/15 group-hover:text-primary">
           <Plus className="size-4" aria-hidden />
         </span>
         <span className="text-[13px] font-medium">{t('widgets.placeholder.title')}</span>

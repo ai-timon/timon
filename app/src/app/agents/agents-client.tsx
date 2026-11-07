@@ -1685,12 +1685,12 @@ export function AgentsClient() {
             <clipPath id="clip-node-main"><circle r={30} /></clipPath>
             <clipPath id="clip-node-sub"><circle r={20} /></clipPath>
             <radialGradient id="g-main" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#1f1410" />
-              <stop offset="100%" stopColor="#120a08" />
+              <stop offset="0%" stopColor="hsl(var(--surface-3))" />
+              <stop offset="100%" stopColor="hsl(var(--primary) / 0.12)" />
             </radialGradient>
             <radialGradient id="g-sub" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stopColor="#181818" />
-              <stop offset="100%" stopColor="#0e0e0e" />
+              <stop offset="0%" stopColor="hsl(var(--surface-3))" />
+              <stop offset="100%" stopColor="hsl(var(--surface-1))" />
             </radialGradient>
             <radialGradient id="g-halo" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="rgba(125,210,138,.55)" />
@@ -1754,7 +1754,7 @@ export function AgentsClient() {
               onClick={() => setPoleDialog({ pole: null })}
               title={i18n('agentsPage.newPole')}
               aria-label={i18n('agentsPage.newPole')}
-              className="flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+              className="flex items-center gap-1 rounded-md bg-foreground/[0.05] px-2 py-0.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
             >
               <Plus className="size-3" />
               {i18n('agentsPage.newPole')}
@@ -1985,16 +1985,12 @@ export function AgentsClient() {
         /* No rim: links stop short of captions instead (cf. trimmed()). */
         .node-sub { font: 500 10.5px var(--font-sans), system-ui, sans-serif; fill: hsl(var(--foreground) / 0.82); pointer-events: none; user-select: none; letter-spacing: .02em; }
         .node-sub.main { font-size: 12px; font-weight: 700; fill: hsl(var(--foreground)); }
-        /* Light theme: discs from the theme's own raised surfaces. Charcoal
-           discs read as a dark-theme asset pasted on a beige page; on a light
-           disc the initials take the text colour and the ring alone carries
-           the agent's colour. */
-        :root:not(.dark) #g-sub stop:first-child { stop-color: hsl(var(--surface-3)); }
-        :root:not(.dark) #g-sub stop:last-child { stop-color: hsl(var(--surface-2)); }
-        :root:not(.dark) #g-main stop:first-child { stop-color: hsl(var(--surface-3)); }
-        :root:not(.dark) #g-main stop:last-child { stop-color: hsl(var(--primary) / 0.14); }
-        :root:not(.dark) .node-label { fill: hsl(var(--foreground) / 0.8) !important; }
-        :root:not(.dark) .node-label.main { fill: hsl(var(--foreground)) !important; }
+        /* Discs come from the theme's raised surfaces (the gradients above),
+           in both schemes: near-black discs read as holes in a dark island and
+           as a pasted dark asset on a beige one. On them the initials take the
+           text colour, and the ring alone carries the agent's colour. */
+        .node-label { fill: hsl(var(--foreground) / 0.85) !important; }
+        .node-label.main { fill: hsl(var(--foreground)) !important; }
         /* The identity ring is a hint, not a frame: thinner and a little
            transparent, so a saturated project colour does not glow. */
         .node-core { stroke-opacity: 0.7; }

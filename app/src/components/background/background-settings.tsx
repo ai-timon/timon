@@ -61,7 +61,7 @@ export function BackgroundSettings() {
     <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
       <div className="min-w-0 space-y-5">
         <div className="flex flex-wrap gap-2">
-          {(['pattern', 'photo'] as const).map(mode => <button key={mode} type="button" aria-pressed={background.mode === mode} className={cn(button, background.mode === mode && 'border-primary text-primary')} onClick={() => {
+          {(['pattern', 'photo'] as const).map(mode => <button key={mode} type="button" aria-pressed={background.mode === mode} className={cn(button, background.mode === mode && 'border-transparent bg-primary/10 text-primary hover:bg-primary/15')} onClick={() => {
             if (mode === 'photo' && !background.photo) fileInput.current?.click();
             else void update({ mode });
           }}>{t(`appearance.background.${mode}`)}</button>)}

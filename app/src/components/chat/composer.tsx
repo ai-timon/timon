@@ -377,6 +377,9 @@ function ChatComposer() {
           ? "bg-transparent"
           : cn(
               "rounded-2xl bg-card p-1.5 pl-2 md:p-2 md:pl-3",
+              // On a phone the card stood flush with the screen edges, its
+              // rounded corners and border cut off: a small inset frames it.
+              "max-sm:mx-2 max-sm:mb-[max(8px,env(safe-area-inset-bottom))]",
               // As wide as the thread's scroller (column + its 24px gutters):
               // its scrollbar then sits INSIDE the composer's edges, not out in
               // the margin beside it.

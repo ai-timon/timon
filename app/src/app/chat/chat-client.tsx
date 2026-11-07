@@ -7885,7 +7885,7 @@ function DeclencheurPanneau({ cible, label, ouvert, onClick, children }: {
       aria-expanded={ouvert}
       aria-controls={cible}
       onClick={onClick}
-      className="grid size-7 shrink-0 place-items-center rounded-md border border-border/40 bg-background text-muted-foreground/70 transition-colors hover:border-muted-foreground/40 hover:bg-background hover:text-foreground"
+      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground/60 transition-colors hover:bg-foreground/[0.06] hover:text-foreground"
     >
       {children}
     </button>

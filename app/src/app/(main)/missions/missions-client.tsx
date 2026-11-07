@@ -94,7 +94,7 @@ const STATUS_TONE: Record<Row['status'], { label: string; chip: string; dot: str
   },
   done: {
     label: 'done',
-    chip: 'bg-[hsl(var(--success)/0.08)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]',
+    chip: 'bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]',
     dot: 'bg-[hsl(var(--success))]',
   },
   terminated: {
@@ -890,7 +890,8 @@ function StatusBadge({ status }: { status: Row['status'] }) {
   return (
     <Badge
       variant="outline"
-      className={cn('gap-1.5 border font-normal', tone.chip)}
+      // Tint-only like every other badge: the status colour fills, no rim.
+      className={cn('gap-1.5 border font-normal', tone.chip, 'border-transparent')}
     >
       <span className={cn('size-1.5 rounded-full', tone.dot)} />
       {tone.label}
