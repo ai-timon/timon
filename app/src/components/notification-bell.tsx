@@ -60,7 +60,7 @@ export function NotificationBell({ placement = 'below' }: { placement?: PopoverP
         {badge && (
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute right-0.5 top-0.5 min-w-4 rounded-full bg-primary px-1 text-center text-[9px] font-bold tabular-nums leading-4 text-primary-foreground"
+            className="pointer-events-none absolute right-0.5 top-0.5 min-w-4 rounded-full bg-destructive px-1 text-center text-[9px] font-bold tabular-nums leading-4 text-white"
           >
             {badge}
           </span>

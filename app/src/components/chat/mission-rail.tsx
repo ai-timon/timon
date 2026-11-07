@@ -304,7 +304,7 @@ export function MissionRail({
             'hover:bg-muted/60',
             // Selected is a fill, not a frame: an outline here was the
             // loudest edge of the whole rail.
-            on && 'bg-foreground/[0.07]',
+            on && 'bg-primary/[0.08]',
             needsAction && !on
               && 'border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--warning)/0.07)]',
           )}

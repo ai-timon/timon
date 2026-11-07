@@ -785,10 +785,10 @@ function Stat({
   return (
     <div
       className={cn(
-        // Surface contrast instead of an outline. The accented figure carries
-        // the accent; its card stays neutral (a tinted plate turned brown on
-        // the violet night).
+        // Surface contrast instead of an outline; the accented figure keeps
+        // its warm gradient.
         'rounded-xl bg-card px-4 py-3.5',
+        accent && 'bg-gradient-to-b from-primary/[0.08] to-transparent',
       )}
     >
       <div className="text-[12.5px] font-medium text-muted-foreground">

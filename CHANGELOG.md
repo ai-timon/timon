@@ -42,7 +42,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ### Changed
 
-- The interface is easier on the eyes: softer dark and light colours, the same Inter typeface on every system, and calmer cards, badges and empty states.
+- The interface is easier on the eyes: the same Inter typeface on every system, a calmer light mode, and cards, badges and controls drawn with fills instead of outlines.
 
 ### Fixed
 

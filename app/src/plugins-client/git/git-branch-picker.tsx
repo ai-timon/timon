@@ -167,7 +167,7 @@ function BranchRow({ b, busy, onPick }: { b: PickerBranch; busy: boolean; onPick
             : t('gitWidget.branches.checkout', { branch: b.name })}
       className={cn(
         'items-start gap-1.5 px-1.5 py-1 text-[11.5px]',
-        b.here && 'bg-foreground/[0.07]',
+        b.here && 'bg-primary/10',
         // The current branch is not switchable, yet it is the row to read:
         // it keeps its full contrast.
         b.blocked === 'current' && 'data-[disabled]:opacity-100',
@@ -204,7 +204,7 @@ function BranchRow({ b, busy, onPick }: { b: PickerBranch; busy: boolean; onPick
 function WorktreeRow({ w }: { w: PickerWorktree }) {
   return (
     <div
-      className={cn('flex items-start gap-1.5 rounded-sm px-1.5 py-1 text-[11.5px]', w.here && 'bg-foreground/[0.07]')}
+      className={cn('flex items-start gap-1.5 rounded-sm px-1.5 py-1 text-[11.5px]', w.here && 'bg-primary/10')}
       title={w.path}
     >
       <FolderGit2 className={cn('mt-0.5 size-3 shrink-0', w.here ? 'text-primary' : 'text-muted-foreground/40')} />

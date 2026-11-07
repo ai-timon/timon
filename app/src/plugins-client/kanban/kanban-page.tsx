@@ -57,11 +57,9 @@ const COLUMNS: ColumnDef[] = [
   { key: 'BLOCKED', labelKey: 'kanbanPage.columns.blocked', emptyKey: 'kanbanPage.columns.blockedEmpty', dot: 'bg-destructive', tint: '--destructive' },
 ];
 
-/** A faint wash of the column's colour from its top-left corner, laid over the
- *  island's own fill. Kept to a hint: at 13% the four hues smeared brown and
- *  red in dark and pastel in light, louder than the cards on top of them. */
+/** A faint wash of the column's colour from its top-left corner, laid over the island's own fill. */
 function columnWash(token: string): CSSProperties {
-  return { backgroundImage: `radial-gradient(110% 28% at 0% 0%, hsl(var(${token}) / 0.04), transparent 70%)` };
+  return { backgroundImage: `radial-gradient(120% 70% at 0% 0%, hsl(var(${token}) / 0.13), transparent 70%)` };
 }
 
 // ── Main kanban ────────────────────────────────────────────────────────────────

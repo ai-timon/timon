@@ -242,8 +242,8 @@ export function PluginsClient(): React.ReactElement {
             aria-checked={type === 'all'}
             onClick={() => setFilter({ t: 'all' })}
             className={cn(
-              'rounded-md border border-transparent px-2 py-0.5 text-[11.5px] font-medium transition-colors',
-              type === 'all' ? 'bg-foreground/[0.1] text-foreground' : 'bg-foreground/[0.04] text-muted-foreground hover:text-foreground',
+              'rounded-md border border-transparent bg-muted/30 px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground transition-all',
+              type === 'all' ? 'ring-1 ring-current' : 'opacity-60 hover:opacity-100',
             )}
           >
             {t('pluginsPage.typesAll')}
@@ -258,10 +258,9 @@ export function PluginsClient(): React.ReactElement {
                 aria-checked={on}
                 onClick={() => setFilter({ t: kind })}
                 className={cn(
-                  // Neutral until picked: only the chosen kind wears its colour,
-                  // so the row is a quiet list rather than eleven hues at once.
-                  'rounded-md border border-transparent px-2 py-0.5 text-[11.5px] font-medium transition-colors',
-                  on ? (KIND_TONE[kind] ?? 'bg-foreground/[0.1] text-foreground') : 'bg-foreground/[0.04] text-muted-foreground hover:text-foreground',
+                  'rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-all',
+                  KIND_TONE[kind] ?? 'text-muted-foreground',
+                  on ? 'ring-1 ring-current' : 'opacity-60 hover:opacity-100',
                 )}
               >
                 {kindLabel(kind)}
