@@ -39,7 +39,7 @@ test('Multichat rail: the picked head, then the historical order', () => {
   assert.match(railHead(FULL), /<img[^>]+nova\.png/);
   assert.match(railHead({ look: LOOK, emoji: '🦊' }, { slug: 'acme', icon: '/api/uploads/acme.png' }), /<img[^>]+acme\.png/);
   assert.match(railHead({ look: LOOK, emoji: '🦊' }), /data-agent-mascot/);
-  assert.match(railHead({}), /class="uppercase"[^>]*>n</);
+  assert.match(railHead({}), /class="uppercase"[^>]*>N</);
 });
 
 test('Agents graph: a node shows the picked head, its own initials when it has nothing', () => {

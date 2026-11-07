@@ -110,9 +110,12 @@ export function agentIdentity(
 /**
  * The letter a head without a picture shows: the first letter or digit of the
  * name. `_main`, the main agent every install has, showed a bare underscore.
+ * Upper case, like the canvas's two-letter initials, the user's own avatar
+ * and the multichat's fallback: a lone lower-case letter read as a typo
+ * beside them.
  */
 export function glyphOf(name: string): string {
-  return (name.match(/[\p{L}\p{N}]/u)?.[0] ?? name.charAt(0)).toLowerCase() || '?';
+  return (name.match(/[\p{L}\p{N}]/u)?.[0] ?? name.charAt(0)).toUpperCase() || '?';
 }
 
 /** True when the identity's head is its mascot: no picture, and a look. */
