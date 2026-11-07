@@ -10,10 +10,10 @@ import React from 'react'
  * reloads hot: editing this file takes effect without rebuilding the app.
  *
  * Dark: the website's violet-tinted night (266°), on the product's steps so
- * the frame, the islands and the cards read apart: frame 4.5%, islands
- * 10.5%, cards 13.5%, menus 18.5%, hover 22%, borders 25.5% (the site's
- * `#16131a`, 8.8%, sits between the frame and the islands). Peach champagne
- * `#F9BB91` as the primary, warm ivory text.
+ * the frame, the islands and the cards read apart: frame 7%, islands 12%,
+ * cards 14.5%, menus 19.5%, hover 22.5%, borders 26%. A near-black frame
+ * around bright ivory text was tiring over a working day, hence these steps
+ * and a softer ivory (90.5%). Peach champagne `#F9BB91` as the primary.
  * Light: a beige canvas instead of neutral grey, a copper apricot primary
  * (the peach cannot carry text on light), obsidian text.
  *
@@ -27,13 +27,13 @@ const TOKENS = `
 :root {
     --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-    --surface-0: 266 15% 10.5%;
-    --surface-1: 268 13% 13.5%;
-    --surface-2: 270 12% 16%;
-    --surface-3: 271 11% 18.5%;
-    --surface-4: 272 10% 22%;
-    --surface-sunken: 266 18% 7.5%;
-    --chrome: 266 22% 4.5%;
+    --surface-0: 266 14% 12%;
+    --surface-1: 267 12% 14.5%;
+    --surface-2: 268 11% 17%;
+    --surface-3: 269 10% 19.5%;
+    --surface-4: 270 10% 22.5%;
+    --surface-sunken: 266 15% 9%;
+    --chrome: 266 16% 7%;
     --surface-chip: var(--surface-3);
 
     --shadow-1: 0 1px 2px hsl(266 40% 2% / 0.5);
@@ -41,21 +41,21 @@ const TOKENS = `
     --shadow-3: 0 18px 44px -12px hsl(266 40% 2% / 0.78), 0 6px 14px -6px hsl(266 40% 2% / 0.5);
 
     --background: var(--surface-0);
-    --foreground: 30 50% 93.7%;
+    --foreground: 30 32% 90.5%;
     --card: var(--surface-1);
-    --card-foreground: 30 50% 93.7%;
+    --card-foreground: 30 32% 90.5%;
     --popover: var(--surface-3);
-    --popover-foreground: 30 50% 93.7%;
+    --popover-foreground: 30 32% 90.5%;
     --primary: 24 90% 77.3%;
-    --primary-foreground: 266 15% 10.5%;
+    --primary-foreground: 266 14% 12%;
     --secondary: var(--surface-4);
-    --secondary-foreground: 30 50% 93.7%;
+    --secondary-foreground: 30 32% 90.5%;
     --muted: var(--surface-2);
-    --muted-foreground: 20 15% 69%;
+    --muted-foreground: 22 12% 68%;
     --accent: var(--primary);
-    --accent-foreground: 266 15% 10.5%;
-    --border: 268 10% 25.5%;
-    --input: 268 10% 25.5%;
+    --accent-foreground: 266 14% 12%;
+    --border: 268 10% 26%;
+    --input: 268 10% 26%;
     --ring: var(--primary);
     --radius: 0.75rem;
 
@@ -70,17 +70,17 @@ const TOKENS = `
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.26);
     --timon-scrollbar-thumb-hover: hsl(var(--primary) / 0.45);
 
-    --hl-bg: #110e15;
+    --hl-bg: #141118;
 }
 
 :root.light {
-    --surface-0: 32 42% 93.9%;
-    --surface-1: 34 47% 97.1%;
-    --surface-2: 32 35% 90.4%;
-    --surface-3: 34 50% 98.6%;
-    --surface-4: 31 32% 87.3%;
-    --surface-sunken: 32 35% 90.4%;
-    --chrome: 31 33% 85.3%;
+    --surface-0: 33 34% 94.5%;
+    --surface-1: 35 38% 97.6%;
+    --surface-2: 33 30% 91.4%;
+    --surface-3: 35 40% 98.8%;
+    --surface-4: 32 30% 88.4%;
+    --surface-sunken: 33 30% 91.4%;
+    --chrome: 32 26% 88.6%;
     --surface-chip: var(--surface-2);
 
     --shadow-1: 0 1px 2px hsl(15 30% 20% / 0.08);
@@ -88,21 +88,21 @@ const TOKENS = `
     --shadow-3: 0 18px 44px -12px hsl(15 30% 20% / 0.2), 0 6px 14px -6px hsl(15 30% 20% / 0.12);
 
     --background: var(--surface-0);
-    --foreground: 345 15% 10.2%;
+    --foreground: 345 12% 13%;
     --card: var(--surface-1);
-    --card-foreground: 345 15% 10.2%;
+    --card-foreground: 345 12% 13%;
     --popover: var(--surface-3);
-    --popover-foreground: 345 15% 10.2%;
+    --popover-foreground: 345 12% 13%;
     --primary: 21 48% 47.8%;
     --primary-foreground: 30 60% 97.5%;
     --secondary: var(--surface-4);
-    --secondary-foreground: 345 15% 10.2%;
+    --secondary-foreground: 345 12% 13%;
     --muted: var(--surface-2);
-    --muted-foreground: 16 12% 37.5%;
+    --muted-foreground: 18 10% 37%;
     --accent: var(--primary);
     --accent-foreground: 30 60% 97.5%;
-    --border: 29 32% 79.8%;
-    --input: 29 32% 79.8%;
+    --border: 30 24% 81.5%;
+    --input: 30 24% 81.5%;
     --ring: var(--primary);
 
     --salmon: var(--primary);

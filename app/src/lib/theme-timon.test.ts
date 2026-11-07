@@ -63,7 +63,7 @@ test('the package registers its palette and its glows in the theme slot', async 
   mod.apply({ slots: { register: (options: { slot: string }, C: React.ComponentType) => { slot = options.slot; Component = C; return () => undefined; } } });
   assert.equal(slot, 'theme');
   const html = renderToStaticMarkup(React.createElement(Component!));
-  assert.ok(html.includes('id="timon-theme-timon"') && html.includes('--surface-0: 266 15% 10.5%') && html.includes('radial-gradient'));
+  assert.ok(html.includes('id="timon-theme-timon"') && html.includes('--surface-0: 266 14% 12%') && html.includes('radial-gradient'));
 });
 
 test('the floor copy is the package\'s tokens, word for word', () => {
@@ -75,15 +75,15 @@ test('the floor copy is the package\'s tokens, word for word', () => {
 test('the palette: the website\'s violet-black in dark, beige in light, peach and copper', () => {
   const [dark, light] = template('TOKENS').split(':root.light');
   assert.ok(dark && light);
-  assert.match(dark, /--surface-0: 266 15% 10\.5%;/);
+  assert.match(dark, /--surface-0: 266 14% 12%;/);
   // The frame, the islands and the cards read apart: steps of at least 2.5 points, the frame well below.
   const lightness = (name: string) => Number(new RegExp(`--${name}: \\d+ \\d+% ([\\d.]+)%`).exec(dark)?.[1]);
   assert.ok(lightness('surface-0') - lightness('chrome') >= 5, 'islands stand off the frame');
   assert.ok(lightness('surface-1') - lightness('surface-0') >= 2.5, 'cards stand off the islands');
   assert.ok(lightness('border') > lightness('surface-4'), 'borders above the highest surface');
   assert.match(dark, /--primary: 24 90% 77\.3%;/);
-  assert.match(dark, /--foreground: 30 50% 93\.7%;/);
-  assert.match(light, /--surface-0: 32 42% 93\.9%;/);
+  assert.match(dark, /--foreground: 30 32% 90\.5%;/);
+  assert.match(light, /--surface-0: 33 34% 94\.5%;/);
   assert.match(light, /--primary: 21 48% 47\.8%;/);
   const surfaces = (block: string) => [...block.matchAll(/--surface-\d: (\d+) (\d+)%/g)].map((m) => ({ h: Number(m[1]), s: Number(m[2]) }));
   assert.ok(surfaces(dark).length >= 5 && surfaces(light).length >= 5);
@@ -101,7 +101,7 @@ test('the glows stay very light, and never reach the floor', () => {
 test('the floor paints Timon\'s tokens before hydration for an account that wears it, after the product\'s', () => {
   const worn = renderToStaticMarkup(React.createElement(Floor, { theme: TIMON_THEME_PLUGIN }));
   assert.ok(worn.includes('@layer timon-floor'));
-  assert.ok(worn.lastIndexOf('--surface-0: 266 15% 10.5%') > worn.indexOf('--surface-0: 220 12% 11%'), 'after the product\'s, so it wins in the layer');
+  assert.ok(worn.lastIndexOf('--surface-0: 266 14% 12%') > worn.indexOf('--surface-0: 220 12% 11%'), 'after the product\'s, so it wins in the layer');
   const product = renderToStaticMarkup(React.createElement(Floor, { theme: '@timon/ui-theme' }));
-  assert.ok(!product.includes('266 15% 10.5%'), 'an account on the product theme gets the product floor only');
+  assert.ok(!product.includes('266 14% 12%'), 'an account on the product theme gets the product floor only');
 });

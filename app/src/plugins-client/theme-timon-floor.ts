@@ -14,8 +14,11 @@
  * The dark surfaces are the website's night, not the kit's browns: the maintainer found
  * the kit's cacao "a touch too chocolate" next to timon-ai.com (05/11/2026),
  * so they take its hue (266°, `#16131a`), on the product's steps: with the
- * frame at 6.9% and the islands at 8.8% nothing stood apart, so the frame is
- * 4.5%, the islands 10.5%, the cards 13.5%, the menus 18.5%, the hover 22%. The light canvas leans beige, never neutral grey. In light the
+ * frame at 6.9% and the islands at 8.8% nothing stood apart. A near-black
+ * frame (4.5%) around ivory text then proved tiring over a day, so the steps
+ * were lifted and the saturations eased (11/2026): frame 7%, islands 12%, cards
+ * 14.5%, menus 19.5%, hover 22.5%, text a softer ivory. The light canvas leans
+ * beige, never neutral grey, a little less saturated than the kit. In light the
  * peach cannot carry text, so the primary turns to a copper apricot.
  *
  * A COPY of the tokens of the built-in theme plugin
@@ -33,13 +36,13 @@ export const TIMON_THEME_TOKENS_CSS = `
 :root {
     --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-    --surface-0: 266 15% 10.5%;
-    --surface-1: 268 13% 13.5%;
-    --surface-2: 270 12% 16%;
-    --surface-3: 271 11% 18.5%;
-    --surface-4: 272 10% 22%;
-    --surface-sunken: 266 18% 7.5%;
-    --chrome: 266 22% 4.5%;
+    --surface-0: 266 14% 12%;
+    --surface-1: 267 12% 14.5%;
+    --surface-2: 268 11% 17%;
+    --surface-3: 269 10% 19.5%;
+    --surface-4: 270 10% 22.5%;
+    --surface-sunken: 266 15% 9%;
+    --chrome: 266 16% 7%;
     --surface-chip: var(--surface-3);
 
     --shadow-1: 0 1px 2px hsl(266 40% 2% / 0.5);
@@ -47,21 +50,21 @@ export const TIMON_THEME_TOKENS_CSS = `
     --shadow-3: 0 18px 44px -12px hsl(266 40% 2% / 0.78), 0 6px 14px -6px hsl(266 40% 2% / 0.5);
 
     --background: var(--surface-0);
-    --foreground: 30 50% 93.7%;
+    --foreground: 30 32% 90.5%;
     --card: var(--surface-1);
-    --card-foreground: 30 50% 93.7%;
+    --card-foreground: 30 32% 90.5%;
     --popover: var(--surface-3);
-    --popover-foreground: 30 50% 93.7%;
+    --popover-foreground: 30 32% 90.5%;
     --primary: 24 90% 77.3%;
-    --primary-foreground: 266 15% 10.5%;
+    --primary-foreground: 266 14% 12%;
     --secondary: var(--surface-4);
-    --secondary-foreground: 30 50% 93.7%;
+    --secondary-foreground: 30 32% 90.5%;
     --muted: var(--surface-2);
-    --muted-foreground: 20 15% 69%;
+    --muted-foreground: 22 12% 68%;
     --accent: var(--primary);
-    --accent-foreground: 266 15% 10.5%;
-    --border: 268 10% 25.5%;
-    --input: 268 10% 25.5%;
+    --accent-foreground: 266 14% 12%;
+    --border: 268 10% 26%;
+    --input: 268 10% 26%;
     --ring: var(--primary);
     --radius: 0.75rem;
 
@@ -76,17 +79,17 @@ export const TIMON_THEME_TOKENS_CSS = `
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.26);
     --timon-scrollbar-thumb-hover: hsl(var(--primary) / 0.45);
 
-    --hl-bg: #110e15;
+    --hl-bg: #141118;
 }
 
 :root.light {
-    --surface-0: 32 42% 93.9%;
-    --surface-1: 34 47% 97.1%;
-    --surface-2: 32 35% 90.4%;
-    --surface-3: 34 50% 98.6%;
-    --surface-4: 31 32% 87.3%;
-    --surface-sunken: 32 35% 90.4%;
-    --chrome: 31 33% 85.3%;
+    --surface-0: 33 34% 94.5%;
+    --surface-1: 35 38% 97.6%;
+    --surface-2: 33 30% 91.4%;
+    --surface-3: 35 40% 98.8%;
+    --surface-4: 32 30% 88.4%;
+    --surface-sunken: 33 30% 91.4%;
+    --chrome: 32 26% 88.6%;
     --surface-chip: var(--surface-2);
 
     --shadow-1: 0 1px 2px hsl(15 30% 20% / 0.08);
@@ -94,21 +97,21 @@ export const TIMON_THEME_TOKENS_CSS = `
     --shadow-3: 0 18px 44px -12px hsl(15 30% 20% / 0.2), 0 6px 14px -6px hsl(15 30% 20% / 0.12);
 
     --background: var(--surface-0);
-    --foreground: 345 15% 10.2%;
+    --foreground: 345 12% 13%;
     --card: var(--surface-1);
-    --card-foreground: 345 15% 10.2%;
+    --card-foreground: 345 12% 13%;
     --popover: var(--surface-3);
-    --popover-foreground: 345 15% 10.2%;
+    --popover-foreground: 345 12% 13%;
     --primary: 21 48% 47.8%;
     --primary-foreground: 30 60% 97.5%;
     --secondary: var(--surface-4);
-    --secondary-foreground: 345 15% 10.2%;
+    --secondary-foreground: 345 12% 13%;
     --muted: var(--surface-2);
-    --muted-foreground: 16 12% 37.5%;
+    --muted-foreground: 18 10% 37%;
     --accent: var(--primary);
     --accent-foreground: 30 60% 97.5%;
-    --border: 29 32% 79.8%;
-    --input: 29 32% 79.8%;
+    --border: 30 24% 81.5%;
+    --input: 30 24% 81.5%;
     --ring: var(--primary);
 
     --salmon: var(--primary);
