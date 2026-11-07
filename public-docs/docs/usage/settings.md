@@ -9,6 +9,8 @@ Open **Settings** from the navigation rail: it opens as a dialog over the page y
 
 The search field under the title looks through every setting at once: names, descriptions, setting keys and a few hidden keywords (searching `dark` finds Appearance, `concurrency` finds the live missions limit). Accents and case do not matter, and every word you type has to match. Results come in two groups: **Sections**, which open the tab that holds the setting (a setting painted by a special pane, such as the fallback cooldowns, leads to that pane), and **Settings**, which you can edit right in the list, with the category and tab above each one. Clear the field with its **×**, or pick a category, to go back to the tabs.
 
+In Simplified Chinese, built-in setting names and descriptions can be searched in Chinese or in English. Setting keys such as `TIMON_MAX_LIVE_MISSIONS` and plugin IDs are unchanged.
+
 Every setting is always listed: nothing hides behind a "show advanced" button, and the search covers all of them (an installation configured with the lite preset still leaves its advanced settings out). A setting that belongs to a disabled plugin is not listed, and neither is it found.
 
 **Environment → configuration file → saved UI value → default** is the precedence order. If an environment or file value controls a setting, changing the saved value does not override it. See [Configuration](../installation/configuration.md).
