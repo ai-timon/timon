@@ -60,8 +60,11 @@ export function BackgroundSettings() {
     <p className="mt-1 max-w-[65ch] text-xs leading-relaxed text-muted-foreground">{t('appearance.background.hint')}</p>
     <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
       <div className="min-w-0 space-y-5">
-        <div className="flex flex-wrap gap-2">
-          {(['pattern', 'photo'] as const).map(mode => <button key={mode} type="button" aria-pressed={background.mode === mode} className={cn(button, background.mode === mode && 'border-transparent bg-primary/10 text-primary hover:bg-primary/15')} onClick={() => {
+        {/* A segmented control, like the tabs above it: one plate, the chosen
+            side raised. A filled button beside an outlined one read as two
+            unrelated controls. */}
+        <div className="inline-flex gap-1 rounded-lg bg-foreground/[0.05] p-1">
+          {(['pattern', 'photo'] as const).map(mode => <button key={mode} type="button" aria-pressed={background.mode === mode} className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50', background.mode === mode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')} onClick={() => {
             if (mode === 'photo' && !background.photo) fileInput.current?.click();
             else void update({ mode });
           }}>{t(`appearance.background.${mode}`)}</button>)}

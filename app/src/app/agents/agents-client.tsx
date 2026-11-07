@@ -1842,17 +1842,19 @@ export function AgentsClient() {
        *  to avoid overflowing the viewport. We keep the creation actions +
        *  the _main chat; the Kanban / Missions nav links live in the main
        *  menu, not here. */}
-      <div className="fixed bottom-4 left-1/2 z-[5] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-xl border border-border bg-card/80 px-2 py-1.5 shadow-lg backdrop-blur scrollbar-none">
+      {/* Ghost buttons in one bar: outlined buttons inside an outlined bar
+          were a box in a box. The plugins' own controls get the same look. */}
+      <div className="fixed bottom-4 left-1/2 z-[5] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-xl border border-border bg-card/80 px-2 py-1.5 shadow-lg backdrop-blur scrollbar-none [&_[data-slot-region]_button]:border-transparent [&_[data-slot-region]_button]:bg-transparent [&_[data-slot-region]_button]:shadow-none">
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium"
           onClick={() => setShowNewTask(true)}
         >
           <ListTodo className="size-3.5" />
           New task
         </Button>
-        <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
+        <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
           <Link
             href="/edit?new=1"
             onClick={(e) => {
@@ -1868,7 +1870,7 @@ export function AgentsClient() {
         <SlotRegion name="agents.toolbar" className="flex shrink-0 items-center gap-2" />
         <Button
           size="sm"
-          variant={orgOpen ? 'default' : 'outline'}
+          variant={orgOpen ? 'default' : 'ghost'}
           className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium"
           onClick={() => setOrgOpen((v) => !v)}
           aria-pressed={orgOpen}
@@ -1876,7 +1878,7 @@ export function AgentsClient() {
           <ListTree className="size-3.5" />
           {i18n('agentsPage.orgTitle')}
         </Button>
-        <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
+        <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
           <Link href="/chat">
             <MessageSquare className="size-3.5" />
             {i18n('chatEntry.openMain')}
@@ -2033,6 +2035,10 @@ export function AgentsClient() {
         /* A mascot is its own frame: no disc, halo or static ring behind it. The
            pulse ring and the needs-action halo stay, they say the agent works. */
         g.node[data-head='mascot'] :is(.halo, .ring, .ring2) { display: none; }
+        /* One ring at rest: the main node stacked its core rim, a ring and a
+           dashed ring. The two outer ones come back under the pointer. */
+        g.node :is(.ring, .ring2) { opacity: 0; transition: opacity .2s ease; }
+        g.node:hover :is(.ring, .ring2) { opacity: 1; }
         g.node[data-head='mascot'] .node-core { fill: transparent !important; }
         /* Still outlined as a drop target: that ring answers a drag, it is not a frame. */
         g.node[data-head='mascot']:not(.drop-target) .node-core { stroke: none !important; }

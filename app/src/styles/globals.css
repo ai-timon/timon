@@ -297,11 +297,11 @@
   .chat-bubble :not(pre) > code {
     padding: 0.1em 0.38em;
     border-radius: calc(var(--radius) * 0.4);
+    /* A fill, no rim: a sentence with three framed spans read like a form. */
     background: hsl(var(--surface-chip));
-    border: 1px solid hsl(var(--border));
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
       'Liberation Mono', 'Courier New', monospace;
-    font-size: 0.88em;
+    font-size: 0.86em;
   }
 
   .chat-bubble pre {
@@ -309,8 +309,9 @@
     margin: 0.7em 0;
     padding: 0.85em 0.95em 0.85em;
     border-radius: calc(var(--radius) * 0.8);
+    /* Set apart by its own background, like inline code: no frame. */
     background: var(--hl-bg);
-    border: 1px solid hsl(var(--border));
+    border: 1px solid transparent;
     overflow-x: auto;
     font-size: 0.85em;
     line-height: 1.55;

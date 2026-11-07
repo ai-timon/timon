@@ -27,9 +27,11 @@ export function KanbanTodoCard({ card }: { card: KanbanTodoCardValue }): ReactEl
     <BoardCard
       data-todo-card={item.id}
       identity={lead && (
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-[12px] font-medium text-muted-foreground">{lead}</span>
-          {sub && <span className="truncate text-[12px] text-muted-foreground/80">{sub}</span>}
+        // One quiet line ("You · acme-web"): on two lines the metadata made
+        // every card open with a header taller than its title.
+        <span className="flex min-w-0 items-baseline gap-1.5 text-[12px] text-muted-foreground">
+          <span className="truncate font-medium">{lead}</span>
+          {sub && <><span aria-hidden>·</span><span className="truncate">{sub}</span></>}
         </span>
       )}
       // The id is how agents and the orchestrator name an idea ("#209"):

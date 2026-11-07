@@ -18,16 +18,19 @@ export function effectiveProgress(progress: TodoProgress | null | undefined): To
 }
 
 /** Chip colours, one set per tag: border + text + soft background. */
+// Tint-only, like every other badge: a coloured rim on each tag made the
+// to-do lists the busiest pixels of the page. The light scheme takes the
+// 700 shade, which still reads on beige; the dark one keeps a lighter tone.
 export const URGENCY_CLASS: Record<TodoUrgency, string> = {
-  critical: 'border-red-500/40 bg-red-500/10 text-red-500',
-  bug: 'border-orange-500/40 bg-orange-500/10 text-orange-500',
-  minor: 'border-amber-500/40 bg-amber-500/10 text-amber-500',
-  idea: 'border-violet-500/40 bg-violet-500/10 text-violet-400',
+  critical: 'border-transparent bg-red-500/[0.12] text-red-700 dark:text-red-400',
+  bug: 'border-transparent bg-orange-500/[0.12] text-orange-700 dark:text-orange-400',
+  minor: 'border-transparent bg-amber-500/[0.14] text-amber-800 dark:text-amber-400',
+  idea: 'border-transparent bg-violet-500/[0.12] text-violet-700 dark:text-violet-300',
 };
 export const PROGRESS_CLASS: Record<TodoProgress, string> = {
-  todo: 'border-border bg-muted/40 text-muted-foreground',
-  analyzed: 'border-sky-500/40 bg-sky-500/10 text-sky-500',
-  partial: 'border-blue-500/40 bg-blue-500/10 text-blue-400',
-  to_test: 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-400',
-  done: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500',
+  todo: 'border-transparent bg-foreground/[0.06] text-muted-foreground',
+  analyzed: 'border-transparent bg-sky-500/[0.12] text-sky-700 dark:text-sky-400',
+  partial: 'border-transparent bg-blue-500/[0.12] text-blue-700 dark:text-blue-300',
+  to_test: 'border-transparent bg-fuchsia-500/[0.12] text-fuchsia-700 dark:text-fuchsia-300',
+  done: 'border-transparent bg-emerald-500/[0.12] text-emerald-700 dark:text-emerald-400',
 };

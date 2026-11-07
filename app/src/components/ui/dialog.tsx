@@ -22,7 +22,9 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      "fixed inset-0 z-50 bg-black/80  data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      // A warm, lighter scrim in light: black at 80% turned the beige page a
+      // dirty grey. Dark keeps a deep one, a little lighter than before.
+      "fixed inset-0 z-50 bg-[hsl(30_20%_12%/0.38)] dark:bg-black/70 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className
     )}
     {...props}

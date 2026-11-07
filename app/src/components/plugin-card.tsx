@@ -128,7 +128,7 @@ export function PluginCard({ plugin, catalog, onToggle, busyId }: PluginCardProp
           {/* `w-full`: Chromium 130 (Electron 33, the packaged app) does not stretch
               the children of a flex `<button>`, so the box shrank to the icon and
               sat at the left edge on every installed client. */}
-          <div className="flex h-28 w-full items-center justify-center bg-foreground/[0.025]">
+          <div className="flex h-20 w-full items-center justify-center">
             {plugin.coverUrl
               // Plain <img>: the source is a plugin-supplied file served by the
               // daemon, which next/image would try to optimise through its own
@@ -191,7 +191,7 @@ export function PluginCard({ plugin, catalog, onToggle, busyId }: PluginCardProp
           </div>
         </button>
         {onToggle && plugin.enabled !== null && (
-          <div className="absolute right-3.5 top-[calc(7rem+14px)]">
+          <div className="absolute right-3.5 top-[calc(5rem+14px)]">
             <Switch
               checked={plugin.enabled}
               disabled={blocked || locked || busy}

@@ -508,7 +508,7 @@ export function MissionsClient() {
             </SelectContent>
           </Select>
         </FilterField>
-        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-[12.5px]">
+        <div className="flex items-center gap-1.5 rounded-lg border border-transparent bg-foreground/[0.05] px-2.5 py-1.5 text-[12.5px] focus-within:border-ring/60">
           <Search className="size-3.5 text-muted-foreground" />
           <input
             value={filters.search}
@@ -827,7 +827,7 @@ function FilterField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-0.5">
+    <div className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.05] px-2 py-0.5">
       <span className="text-[11px] text-muted-foreground">{label}</span>
       {children}
     </div>
