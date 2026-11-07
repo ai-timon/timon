@@ -73,8 +73,8 @@ export const TIMON_THEME_TOKENS_CSS = `
     --salmon-3: var(--primary);
     --salmon-soft: var(--primary) / 0.12;
 
-    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 6%, hsl(var(--surface-3)));
-    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--surface-3)));
+    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 3%, hsl(var(--surface-4)));
+    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 6%, hsl(var(--surface-4)));
 
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.26);
     --timon-scrollbar-thumb-hover: hsl(var(--primary) / 0.45);
@@ -107,7 +107,7 @@ export const TIMON_THEME_TOKENS_CSS = `
     --secondary: var(--surface-4);
     --secondary-foreground: 345 12% 13%;
     --muted: var(--surface-2);
-    --muted-foreground: 18 10% 37%;
+    --muted-foreground: 18 10% 34%;
     --accent: var(--primary);
     --accent-foreground: 30 60% 97.5%;
     --border: 30 24% 81.5%;
