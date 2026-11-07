@@ -1831,10 +1831,11 @@ export function AgentsClient() {
         <Maximize2 className="size-4" />
       </button>
 
-      {/* readout */}
+      {/* readout: 16px above the action bar, not 8, so it reads as a caption
+          of the canvas rather than a part of the bar. */}
       <div
         ref={readoutRef}
-        className="pointer-events-none fixed bottom-16 left-1/2 -translate-x-1/2 z-[4] rounded-md bg-card/70 px-2.5 py-1 tabular-nums text-[10.5px] text-muted-foreground backdrop-blur"
+        className="pointer-events-none fixed bottom-[4.5rem] left-1/2 -translate-x-1/2 z-[4] rounded-md bg-card/70 px-2.5 py-1 tabular-nums text-[10.5px] text-muted-foreground backdrop-blur"
       >
         node graph
       </div>
