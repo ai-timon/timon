@@ -85,7 +85,9 @@ export function KanbanTodoColumn({ realtime }: { realtime: ClientRealtime }) {
         dotClass="bg-muted-foreground/60"
       />
 
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2">
+      {/* Same foot fade as the board's other columns: the last card fades out
+          instead of being sliced, and the bottom padding lets it scroll clear. */}
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-6 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]">
         {items.length === 0 ? (
           <KanbanColumnEmpty>
             {chargement ? t('kanbanPage.columns.todoLoading') : t('kanbanPage.columns.todoEmpty')}

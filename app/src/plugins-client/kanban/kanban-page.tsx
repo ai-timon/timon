@@ -437,7 +437,10 @@ export function KanbanClient({ defaultAgent }: { defaultAgent?: string }) {
                 dotClass={col.dot}
                 pulse={col.key === 'IN_PROGRESS' && cards.length > 0}
               />
-              <div className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2">
+              {/* The last card fades out at the column's foot rather than being
+                  sliced through its actions, as in the to-do tile; the extra
+                  bottom padding lets the final card scroll clear of the fade. */}
+              <div className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-6 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]">
                 {allCards.length === 0 ? (
                   <KanbanColumnEmpty>{i18n(col.emptyKey)}</KanbanColumnEmpty>
                 ) : (
