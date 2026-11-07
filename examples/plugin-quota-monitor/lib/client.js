@@ -100,10 +100,7 @@ function riskColor(value, warning, critical) {
   if (value === null || value === undefined) return 'hsl(var(--muted-foreground))'
   if (value >= critical) return 'hsl(var(--destructive))'
   if (value >= warning) return 'hsl(var(--warning, 38 92% 50%))'
-  // Neutral below the warning threshold, as the settings hint promises: a
-  // healthy quota is not news, and a green ring was the loudest thing in the
-  // top bar.
-  return 'hsl(var(--muted-foreground))'
+  return 'hsl(var(--success, 142 71% 45%))'
 }
 
 function clamp(value) {
