@@ -121,7 +121,7 @@ async function renderChatAt(width: number): Promise<Rendered> {
       text: document.body.textContent ?? '',
       avatarGrids: all.filter((el) => cls(el).includes('sm:grid-cols-[34px')).length,
       chatPad: desktopPad(cls(column)),
-      scrollerPad: Boolean(scroller?.classList.contains('px-[max(6px,var(--chat-pad))]')),
+      scrollerPad: Boolean(scroller?.classList.contains('sm:px-[max(6px,var(--chat-pad))]')),
       composerPad: cls(composer).includes('px-[var(--chat-pad'),
     };
   } finally {

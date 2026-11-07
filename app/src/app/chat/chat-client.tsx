@@ -6077,8 +6077,10 @@ export function ChatClient({
             // `margin` on ::-webkit-scrollbar-track is ignored, this is not.
             !dense && "border-t-[10px] border-t-transparent",
             // Never under 6px for the text itself: with no margin left, the
-            // bubbles would touch the scrollbar and the island's edge.
-            dense ? "px-0" : "px-[max(6px,var(--chat-pad))]",
+            // bubbles would touch the scrollbar and the island's edge. On a
+            // phone 6px put the text against the glass; 14px lines it up with
+            // the inset composer below.
+            dense ? "px-0" : "px-[max(14px,var(--chat-pad))] sm:px-[max(6px,var(--chat-pad))]",
             // pb-12: past the 40px bottom fade, so the last message (and its
             // copy / read-aloud row) can be scrolled up out of the gradient.
             dense ? "pt-2 pb-2" : "pt-3 pb-12 md:pt-6",
