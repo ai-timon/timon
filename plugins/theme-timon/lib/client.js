@@ -64,8 +64,8 @@ const TOKENS = `
     --salmon-3: var(--primary);
     --salmon-soft: var(--primary) / 0.12;
 
-    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--card)));
-    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 30%, hsl(var(--card)));
+    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 6%, hsl(var(--surface-3)));
+    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--surface-3)));
 
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.26);
     --timon-scrollbar-thumb-hover: hsl(var(--primary) / 0.45);
@@ -110,8 +110,8 @@ const TOKENS = `
     --salmon-3: var(--primary);
     --salmon-soft: var(--primary) / 0.12;
 
-    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 12%, hsl(var(--card)));
-    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 28%, hsl(var(--card)));
+    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 5%, hsl(var(--surface-2)));
+    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--surface-2)));
 
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.28);
     --timon-scrollbar-thumb-hover: hsl(var(--primary) / 0.48);
