@@ -14,10 +14,10 @@ export function Kpi({ label, value, unit, delta, bad, accent, className }: KpiPr
   return (
     <div
       className={cn(
-        // Surface contrast, not an outline, like the other cards; the accented
-        // figure is told apart by a faint tint of the accent.
+        // Surface contrast, not an outline, like the other cards. The accented
+        // figure carries the accent; its card stays neutral like its
+        // neighbours (a tinted plate turned brown on the violet night).
         'relative flex flex-col justify-between gap-2 overflow-hidden rounded-xl bg-card p-4',
-        accent && 'bg-primary/[0.07]',
         className,
       )}
     >

@@ -388,7 +388,9 @@ function ChatComposer() {
               // dropping the 1px would move the whole input by one pixel
               // the moment the option is ticked.
               appearance.showInputBorder
-                ? "border border-border focus-within:border-primary/50"
+                // A neutral rim that firms up on focus: the accent rim made a
+                // composer that holds the focus at load look permanently armed.
+                ? "border border-border/60 focus-within:border-foreground/25"
                 : "border border-transparent",
             ),
       )}>

@@ -40,7 +40,9 @@ export function KanbanTodoCard({ card }: { card: KanbanTodoCardValue }): ReactEl
       title={item.text}
       badges={hasBadges ? <TodoBadges item={item} /> : undefined}
       meta={<TodoMeta item={item} />}
-      actions={todoHasActions(card) ? <TodoActions card={card} /> : undefined}
+      // Revealed under the pointer or the keyboard, dimmed on touch: three icons
+      // on every card of a column competed with the titles.
+      actions={todoHasActions(card) ? <TodoActions card={card} className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-60" /> : undefined}
       muted={item.status === 'done'}
       onOpen={card.open}
     />

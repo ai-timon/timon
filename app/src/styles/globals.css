@@ -302,7 +302,7 @@
      * surface sat within a few points of the light island. */
     background: hsl(var(--foreground) / 0.07);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      'Liberation Mono', 'Courier New', monospace;
+      'Cascadia Code', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
     font-size: 0.86em;
   }
 
@@ -323,7 +323,7 @@
     border: 0;
     padding: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      'Liberation Mono', 'Courier New', monospace;
+      'Cascadia Code', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
     color: var(--hl-fg);
   }
   /* The label adds a line: the top of the block tightens by as much. */
@@ -359,7 +359,7 @@
     background: var(--hl-bg);
     color: var(--hl-fg);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      'Liberation Mono', 'Courier New', monospace;
+      'Cascadia Code', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
     font-size: 12px;
     line-height: 1.6;
     tab-size: 2;

@@ -73,7 +73,7 @@ export function BackgroundSettings() {
         </div>
         {background.mode === 'pattern' && <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label={t('appearance.background.pattern')}>
-            {BACKGROUND_PATTERNS.map(pattern => <label key={pattern} className={cn('relative cursor-pointer overflow-hidden rounded-lg border bg-card', pattern === background.pattern ? 'border-primary ring-1 ring-primary' : 'border-border')}>
+            {BACKGROUND_PATTERNS.map(pattern => <label key={pattern} className={cn('relative cursor-pointer overflow-hidden rounded-lg border bg-card', pattern === background.pattern ? 'border-primary ring-1 ring-primary' : 'border-transparent')}>
               <div className="relative h-16 overflow-hidden" style={{ backgroundColor: background.colors[scheme] ?? 'hsl(var(--background))' }}><BackgroundPattern pattern={pattern} intensity={0.65} /></div>
               <span className="flex items-center gap-1.5 bg-muted/30 px-2 py-2 text-[11px]"><input type="radio" name="background-pattern" value={pattern} checked={background.pattern === pattern} onChange={() => void update({ pattern })} className="accent-primary" />{t(`appearance.background.patterns.${pattern}`)}</span>
             </label>)}
@@ -100,9 +100,9 @@ export function BackgroundSettings() {
         </div>
       </div>
       <div className="min-w-0">
-        <div className="relative h-48 overflow-hidden rounded-xl border border-border" aria-label={t('appearance.background.preview')}>
+        <div className="relative h-48 overflow-hidden rounded-xl bg-foreground/[0.03]" aria-label={t('appearance.background.preview')}>
           <BackgroundSurface background={background} />
-          <div className="absolute inset-x-5 bottom-5 rounded-lg border border-border bg-card p-3"><span className="text-xs font-medium text-card-foreground">{t('appearance.background.preview')}</span><p className="mt-1 text-[11px] text-muted-foreground">{t('appearance.background.previewHint')}</p></div>
+          <div className="absolute inset-x-5 bottom-5 rounded-lg bg-card p-3 shadow-elev-1"><span className="text-xs font-medium text-card-foreground">{t('appearance.background.preview')}</span><p className="mt-1 text-[11px] text-muted-foreground">{t('appearance.background.previewHint')}</p></div>
         </div>
       </div>
     </div>

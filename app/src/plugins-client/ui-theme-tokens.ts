@@ -19,7 +19,7 @@ export const THEME_TOKENS_CSS = `
      * replace them. System stack: no next/font, no hosted files.
      * code-font: the face of code blocks, editors and terminals. */
     --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Cascadia Code", "JetBrains Mono", "DejaVu Sans Mono", "Liberation Mono", monospace;
 
     /* Opaque neutral surfaces: canvas, panels, fields, menus, controls. */
     --surface-0: 220 12% 11%;

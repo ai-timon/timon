@@ -1818,13 +1818,15 @@ export function AgentsClient() {
         <MainSeatNotice candidates={seatCandidates} className="fixed bottom-16 left-4 z-[5] w-[min(18rem,calc(100%-6rem))]" />
       )}
 
-      {/* Auto-fit: reframes the whole constellation into view. */}
+      {/* Auto-fit: reframes the whole constellation into view. Top right, the
+          one corner no widget slot claims: at the bottom it sat on top of
+          the right-hand placeholder. */}
       <button
         type="button"
         onClick={() => fitRef.current?.()}
         title={i18n('agentsPage.autoFitView')}
         aria-label={i18n('agentsPage.autoFitView')}
-        className="fixed bottom-16 right-4 z-[5] flex size-9 items-center justify-center rounded-lg border border-border bg-card/80 text-muted-foreground shadow-lg backdrop-blur transition-colors hover:bg-card hover:text-foreground"
+        className="fixed right-4 top-[calc(var(--timon-topbar-h)+14px)] z-[5] flex size-9 items-center justify-center rounded-lg bg-card/90 text-muted-foreground shadow-elev-1 backdrop-blur transition-colors hover:bg-card hover:text-foreground"
       >
         <Maximize2 className="size-4" />
       </button>
@@ -1844,7 +1846,7 @@ export function AgentsClient() {
        *  menu, not here. */}
       {/* Ghost buttons in one bar: outlined buttons inside an outlined bar
           were a box in a box. The plugins' own controls get the same look. */}
-      <div className="fixed bottom-4 left-1/2 z-[5] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-xl border border-border bg-card/80 px-2 py-1.5 shadow-lg backdrop-blur scrollbar-none [&_[data-slot-region]_button]:border-transparent [&_[data-slot-region]_button]:bg-transparent [&_[data-slot-region]_button]:shadow-none">
+      <div className="fixed bottom-4 left-1/2 z-[5] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-xl bg-card/90 px-2 py-1.5 shadow-elev-2 backdrop-blur scrollbar-none [&_[data-slot-region]_button]:border-transparent [&_[data-slot-region]_button]:bg-transparent [&_[data-slot-region]_button]:shadow-none">
         <Button
           size="sm"
           variant="ghost"
@@ -1963,7 +1965,7 @@ export function AgentsClient() {
         .fold-badge rect { fill: hsl(var(--primary)); stroke: hsl(var(--background)); stroke-width: 1.5; }
         .fold-badge text { font: 600 9.5px var(--font-sans), system-ui, sans-serif; font-variant-numeric: tabular-nums; fill: hsl(var(--primary-foreground)); pointer-events: none; user-select: none; }
         .fold-badge:hover rect { filter: brightness(1.1); }
-        .fold-badge.open rect { fill: hsl(var(--background)); stroke: hsl(var(--primary) / 0.7); }
+        .fold-badge.open rect { fill: hsl(var(--surface-3)); stroke: hsl(var(--background)); }
         .fold-badge.open text { fill: hsl(var(--primary)); }
         g.node.pole .node-sub { fill: hsl(var(--foreground) / 0.8); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
         /* Nothing blurs what lies over the graph: a backdrop-filter above a

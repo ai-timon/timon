@@ -565,13 +565,13 @@ export function MissionsClient() {
                 onClick={() => select(m)}
                 className={cn(
                   'cursor-pointer transition-colors',
-                  i % 2 === 1 && 'bg-foreground/[0.025]',
+                  i % 2 === 1 && 'bg-foreground/[0.015]',
                   'hover:bg-muted/40',
                   selected?.fullId === m.fullId &&
                     'bg-primary/10 shadow-[inset_2px_0_0_hsl(var(--primary))]',
                 )}
               >
-                <Td className="tabular-nums text-[11.5px] text-muted-foreground">{m.id}</Td>
+                <Td className="text-[11.5px] text-muted-foreground">{m.id}</Td>
                 <Td className="max-w-[380px] truncate font-medium text-foreground">
                   {m.origin && <MissionOriginIcon origin={m.origin} className="mr-1.5 align-[-1px]" />}
                   {m.title}
@@ -785,10 +785,10 @@ function Stat({
   return (
     <div
       className={cn(
-        // Surface contrast instead of an outline; the accented figure keeps a
-        // faint tint of the accent rather than a framed gradient.
+        // Surface contrast instead of an outline. The accented figure carries
+        // the accent; its card stays neutral (a tinted plate turned brown on
+        // the violet night).
         'rounded-xl bg-card px-4 py-3.5',
-        accent && 'bg-primary/[0.07]',
       )}
     >
       <div className="text-[12.5px] font-medium text-muted-foreground">
