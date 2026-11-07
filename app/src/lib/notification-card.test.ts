@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { plainPreview } from './plain-preview';
 
 /**
  * TIM-0025: the Notification center cut a long alert to one title line and a
@@ -58,9 +59,10 @@ async function render(n: typeof LONG, run: (root: HTMLElement, react: typeof imp
 
 test('a long card is clamped, and its toggle expands it in place', async () => {
   await render(LONG, async (host, React) => {
-    const body = Array.from(host.querySelectorAll('p')).find((p) => p.textContent === LONG.body)!;
+    const body = Array.from(host.querySelectorAll('p')).find((p) => p.textContent === plainPreview(LONG.body))!;
     assert.ok(body.className.includes('line-clamp-2'));
-    assert.equal(body.getAttribute('title'), LONG.body);
+    assert.equal(body.getAttribute('title'), plainPreview(LONG.body));
+    assert.ok(!(body.textContent ?? '').includes('`'), 'inline markdown markers are not shown raw');
     const toggle = host.querySelector('button[aria-expanded]') as HTMLButtonElement;
     assert.ok(toggle);
     await React.act(async () => { toggle.click(); });
