@@ -143,15 +143,14 @@ export type ProjectMeta = {
 
 /** Hex colour derived from a text (slug or name). HSL → hex, stable hue
  *  by hash 31, fixed saturation/lightness to stay readable on dark
- *  as on light. 45% saturation: at 65% a cyan or a lime project glowed
- *  louder than everything else on the page. Serves as the default when `meta.color` is absent.
- *  Mirrored by `autoColorFor` in `app/src/app/multichat/types.ts` so that the derivation
+ *  as on light. Serves as the default when `meta.color` is absent.
+ *  Algorithm identical to the UI's `ProjectBadge` `hueFor` so that the derivation
  *  stays consistent even when the DB has no value. */
 export function autoColorFor(input: string): string {
   let h = 0;
   for (const ch of input) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const hue = h % 360;
-  return hslToHex(hue, 45, 55);
+  return hslToHex(hue, 65, 55);
 }
 
 function hslToHex(h: number, s: number, l: number): string {
