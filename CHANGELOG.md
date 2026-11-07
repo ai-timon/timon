@@ -63,6 +63,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 - Agents canvas: the node and edge count sits a little higher above the action bar.
 - The Plugins page lines up with the Missions and Kanban pages instead of sitting 4px further right.
 - A switch you cannot change, such as a core module's on the Plugins page, is dimmed less and still reads as on.
+- Settings: content that scrolls fades out at the foot of the dialog instead of being cut through.
 
 ### Known issues
 

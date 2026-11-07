@@ -384,11 +384,14 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
           </div>
         )}
 
+        {/* The body fades out at the dialog's foot, like the Kanban columns,
+            instead of slicing a thumbnail or a card through the middle; the
+            deeper bottom padding lets the last section scroll clear of it. */}
         <div
           id="settings-tabpanel"
           role={searching ? undefined : 'tabpanel'}
           aria-labelledby={!searching && resolved && !inPlugins && resolved.category.tabs.length > 1 ? `settings-tab-${resolved.tab.id}` : undefined}
-          className="min-h-0 flex-1 overflow-y-auto px-5 py-5 md:px-8 md:py-6"
+          className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-5 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)] md:px-8 md:pb-9 md:pt-6"
         >
           {loading || !resolved ? (
             <RowsSkeleton />
