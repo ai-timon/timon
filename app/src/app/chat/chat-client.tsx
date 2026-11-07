@@ -6356,12 +6356,13 @@ export function ChatClient({
         .chat-bubble code {
           /* code-font: inline code */
           font-family: var(--font-mono), monospace; font-size: 12px;
-          background: hsl(var(--muted) / 0.6); border: 1px solid hsl(var(--border));
+          /* A fill, no rim (globals.css says why). */
+          background: hsl(var(--muted) / 0.6); border: 1px solid transparent;
           padding: 1px 5px; border-radius: calc(var(--radius) * 0.4);
         }
         .chat-bubble pre {
           margin: 8px 0 4px; background: hsl(var(--muted) / 0.5);
-          border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) * 0.8);
+          border: 1px solid transparent; border-radius: calc(var(--radius) * 0.8);
           padding: 10px 12px; overflow: auto;
           /* code-font: code block */
           font: 500 12px var(--font-mono), monospace; line-height: 1.5;
