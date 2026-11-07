@@ -119,7 +119,7 @@ export const TIMON_THEME_TOKENS_CSS = `
     --salmon-3: var(--primary);
     --salmon-soft: var(--primary) / 0.12;
 
-    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 5%, hsl(var(--surface-2)));
+    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 3%, hsl(var(--surface-2)));
     --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--surface-2)));
 
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.28);
