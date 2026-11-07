@@ -56,3 +56,9 @@ test('Agents graph: a node shows the picked head, its own initials when it has n
   assert.deepEqual(graphNodeFace({ name: 'nova' }, { icon: '🚀' }), { iconUrl: null, look: null, glyph: '🚀' });
   assert.deepEqual(graphNodeFace({ name: 'nova' }, null), { iconUrl: null, look: null, glyph: null }, 'the node writes its initials');
 });
+
+test('a name with a leading underscore still gets the canvas\'s own initials', () => {
+  // `_main` falls back on "m" in a round avatar; the graph must recognise that
+  // automatic letter and write its two-letter initials ("MA") instead.
+  assert.equal(graphNodeFace({ name: '_main' }, null).glyph, null);
+});
