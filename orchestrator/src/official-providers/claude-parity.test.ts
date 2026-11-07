@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+// Keep the pre-extraction golden as a witness for the explicit native opt-out.
+// Managed search deliberately changes this launch; web-search.test.ts covers it.
+process.env.TIMON_WEB_SEARCH_PROVIDER = 'native';
 const { mountOfficialProviders, buildUnderSeal } = await import('../../tests/helpers/official-providers.js');
 await mountOfficialProviders();
 const { TIMON_HOME } = await import('../paths.js');
@@ -16,7 +19,7 @@ const cases = [
   { name: 'no-timon', cfg: {}, timonMcp: false },
 ] as const;
 // Captured from the compiled-in dialect before extraction; never refresh to absorb a regression.
-test('Claude launch preserves arguments, stdin and the system prompt of the old dialect', async () => {
+test('Claude native opt-out preserves arguments, stdin and the system prompt of the old dialect', async () => {
   const actual: Record<string, unknown> = {};
   for (const c of cases) {
     const spawn = await buildUnderSeal('claude', {
