@@ -1,0 +1,167 @@
+{
+  "islands": {
+    "missionEgress": {
+      "title": "网络",
+      "titleOf": "网络 · {mission}"
+    },
+    "widgetZone": {
+      "title": "小组件"
+    },
+    "widgetCard": {
+      "title": "小组件",
+      "missing": "此处无法使用小组件 {widget}。"
+    },
+    "page": "页面",
+    "arrangementPage": {
+      "loading": "正在加载布局…",
+      "missing": "此布局已不存在，对应的菜单项也将移除。",
+      "hint": "此页面按该布局打开。在这里所做的更改只影响当前页面，不会修改已保存的布局。",
+      "restore": "恢复布局",
+      "restoreFailed": "无法恢复布局。"
+    },
+    "tabs": "面板标签页",
+    "close": "关闭",
+    "closeTab": "关闭 {title}",
+    "detach": "在独立窗口中打开",
+    "resize": "调整大小",
+    "unavailable": "内容不可用 — {plugin}",
+    "refused": {
+      "maxIslands": "最多 8 个面板",
+      "maxDepth": "最多拆分 3 层",
+      "maxTabsPerIsland": "每个面板最多 12 个标签页",
+      "maxTabs": "最多 32 个标签页",
+      "routeTab": "无法关闭此视图所属的页面",
+      "self": "已在此处",
+      "unknownType": "此内容无法在工作区中打开",
+      "maxFloats": "最多 4 个浮窗",
+      "floatEdge": "只能将标签页拖到浮窗中央"
+    },
+    "announce": {
+      "right": "已在 {target} 右侧打开 {title}",
+      "left": "已在 {target} 左侧打开 {title}",
+      "top": "已在 {target} 上方打开 {title}",
+      "bottom": "已在 {target} 下方打开 {title}",
+      "tab": "已将 {title} 添加为 {target} 的标签页",
+      "root": "已在工作区边缘打开 {title}",
+      "closed": "已关闭 {title}",
+      "float": "已在浮窗中打开 {title}",
+      "minimized": "已最小化 {title}"
+    },
+    "openIn": {
+      "menu": "拆分打开",
+      "right": "右侧",
+      "left": "左侧",
+      "bottom": "下方",
+      "top": "上方",
+      "center": "标签页",
+      "narrow": "在工作区中打开",
+      "split": {
+        "right": "在右侧打开",
+        "left": "在左侧打开",
+        "bottom": "在下方打开",
+        "top": "在上方打开",
+        "center": "在标签页中打开",
+        "float": "在浮窗中打开"
+      },
+      "float": "浮窗"
+    },
+    "drop": {
+      "right": "在 {target} 右侧打开",
+      "left": "在 {target} 左侧打开",
+      "top": "放在 {target} 上方",
+      "bottom": "放在 {target} 下方",
+      "center": "向 {target} 添加标签页",
+      "root": {
+        "left": "在左侧新建一列",
+        "right": "在右侧新建一列",
+        "top": "在顶部新建一行",
+        "bottom": "在底部新建一行"
+      },
+      "float": "在浮窗中打开（Alt）"
+    },
+    "drag": {
+      "island": "拖动以移动此面板"
+    },
+    "chat": {
+      "title": "聊天",
+      "titleOf": "{agent}"
+    },
+    "proposal": {
+      "open": {
+        "right": "将在右侧的新面板中打开 {title}",
+        "left": "将在左侧的新面板中打开 {title}",
+        "top": "将在上方的新面板中打开 {title}",
+        "bottom": "将在下方的新面板中打开 {title}"
+      },
+      "openTab": "将在标签页中打开 {title}",
+      "cannotApply": "此布局已无法应用到工作区：目标面板已关闭，或已达到布局上限。",
+      "dropped": "以下内容不接受所提供的设置，已跳过：{titles}",
+      "unreadable": "无法读取当前布局，请稍后重试",
+      "noFit": "目标面板已关闭，或已达到布局上限",
+      "refusedParams": "{titles} 不接受所提供的设置",
+      "closes": "应用后将关闭：{titles}",
+      "closesIn": "在 {project} 中应用后将关闭：{titles}",
+      "tabKept": "有一个需要关闭的标签页仍处于打开状态，未进行任何更改"
+    },
+    "arrangementProposal": {
+      "title": "{agent} 建议应用你保存的一个面板布局",
+      "titleFrom": "{agent} 建议应用你保存的一个面板布局（{project}）",
+      "name": "布局：{name}",
+      "gone": "布局「{name}」已删除，未进行任何更改",
+      "stale": "此布局在提议后已被删除，未进行任何更改。"
+    },
+    "menu": "面板操作",
+    "move": {
+      "keys": "M：移动此标签页 · Shift+M：移动面板",
+      "start": "正在移动 {title}。按方向键选择面板，按 Tab 选择位置，按 Enter 放置，按 Escape 取消。",
+      "hint": "方向键：选面板 · Tab：选位置 · Enter：放置 · Esc：取消",
+      "cancelled": "已取消移动"
+    },
+    "file": {
+      "title": "文件"
+    },
+    "popup": {
+      "open": "在浮窗中打开 {title}",
+      "dock": "停靠到工作区",
+      "pin": "在所有页面上保留",
+      "unpin": "仅在当前页面保留",
+      "close": "关闭此浮窗",
+      "minimize": "最小化",
+      "restore": "重新显示 {title}",
+      "minimized": "已最小化的浮窗"
+    },
+    "glass": {
+      "menu": "玻璃效果",
+      "follow": "跟随外观设置",
+      "island": "整个面板",
+      "widgets": "小组件",
+      "both": "两者都应用"
+    },
+    "newTab": "新建标签页",
+    "skill": {
+      "title": "技能"
+    },
+    "paramsRefused": "无法将此更改应用到标签页。",
+    "closeGuardFailed": "无法确认 {title} 是否可以关闭，已保持打开。",
+    "unsaved": {
+      "title": "保存对 {name} 的更改？",
+      "description": "如果不保存就关闭，你的更改将丢失。",
+      "save": "保存",
+      "saving": "正在保存…",
+      "discard": "不保存",
+      "cancel": "取消"
+    },
+    "stack": {
+      "earlier": "向左移动 {title}",
+      "later": "向右移动 {title}",
+      "moved": "已移动 {title}"
+    }
+  },
+  "terminal": {
+    "island": {
+      "marker": "在工作区中打开",
+      "openedThere": "此会话已在工作区中打开。",
+      "show": "查看会话"
+    }
+  }
+}

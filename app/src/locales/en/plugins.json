@@ -48,6 +48,10 @@
     "awaitingApprovalHint": "This machine runs it, but its interface code only loads here once the same version, with the same signature, is installed and enabled on this computer.",
     "awaitingApprovalBuiltinHint": "This machine runs it, but its interface code only loads here once this computer ships the same version of this plugin, with the same interface code, and has it enabled. Two Timon releases can ship different code under one plugin version: update the older machine.",
     "modules": {
+      "agent-import": {
+        "label": "Agent import",
+        "description": "Bring your agents from Hermes, Grok Bot, another agent tool or another Timon: preview what will be created, then import."
+      },
       "@timon/db": {
         "label": "Database",
         "description": "SQLite store and its cold archive. Everything else injects it so the schema is up to date before the first read."
