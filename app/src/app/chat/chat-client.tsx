@@ -3238,6 +3238,24 @@ export function ChatClient({
     });
   }, [messages, thinking]);
 
+  // The thread also grows after the autoscroll above without a new message:
+  // the web font swapping in, code blocks highlighting, a late image. Pinned
+  // to the bottom, the reader stays there; scrolled up, nothing moves.
+  // Re-armed when the thread first has content: the scroller may not be
+  // mounted while the conversation loads.
+  const hasMessages = messages.length > 0;
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    const follow = new ResizeObserver(() => {
+      if (!stickToBottom.current) return;
+      programmaticUntil.current = performance.now() + 250;
+      root.scrollTop = root.scrollHeight;
+    });
+    for (const child of Array.from(root.children)) follow.observe(child);
+    return () => follow.disconnect();
+  }, [hasMessages]);
+
   // A block that changes height on its own (a document resizing itself) does
   // not go through the autoscroll above: ADR-MCPUI D10, `chat-scroll-anchor.ts`.
   const blockResize = useMemo<BlockResizeHandler>(() => ({
@@ -6059,8 +6077,10 @@ export function ChatClient({
             // `margin` on ::-webkit-scrollbar-track is ignored, this is not.
             !dense && "border-t-[10px] border-t-transparent",
             // Never under 6px for the text itself: with no margin left, the
-            // bubbles would touch the scrollbar and the island's edge.
-            dense ? "px-0" : "px-[max(6px,var(--chat-pad))]",
+            // bubbles would touch the scrollbar and the island's edge. On a
+            // phone 6px put the text against the glass; 14px lines it up with
+            // the inset composer below.
+            dense ? "px-0" : "px-[max(14px,var(--chat-pad))] sm:px-[max(6px,var(--chat-pad))]",
             // pb-12: past the 40px bottom fade, so the last message (and its
             // copy / read-aloud row) can be scrolled up out of the gradient.
             dense ? "pt-2 pb-2" : "pt-3 pb-12 md:pt-6",

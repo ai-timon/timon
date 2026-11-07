@@ -135,9 +135,11 @@ export function BoardCard({
               {badges}
               {meta}
               {(corner || actionsNode) && (
+                // The id closes the line, flush right: the gestures, invisible
+                // until hover, still take their width, so they come first.
                 <div data-board-card-foot="" className="ml-auto flex min-h-6 items-center gap-1">
-                  {corner && <div data-board-card-corner="" className="text-[11px] tabular-nums text-muted-foreground">{corner}</div>}
                   {actionsNode && <div className="flex">{actionsNode}</div>}
+                  {corner && <div data-board-card-corner="" className="text-[11px] tabular-nums text-muted-foreground">{corner}</div>}
                 </div>
               )}
             </div>

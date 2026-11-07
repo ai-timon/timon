@@ -408,7 +408,9 @@ export function AppearanceSettings(): ReactElement {
                   checked={checked}
                   disabled={!native.glass || !variantReady}
                   onChange={() => { void persistNative({ glassScope: scope }); }}
-                  className="mt-0.5 size-3.5 accent-primary"
+                  // Drawn rather than native: a disabled native radio greys its
+                  // dot to the row's own grey, and the choice vanished.
+                  className="mt-0.5 size-3.5 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-muted-foreground/60 bg-transparent transition-colors checked:border-[4px] checked:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
                 />
                 <span className={cn(checked && 'font-medium')}>{label}<span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">{hint}</span></span>
               </label>
