@@ -47,11 +47,13 @@
     "awaitingApproval": "等待在此电脑上批准",
     "awaitingApprovalHint": "插件在所连接的设备上运行，但只有在此电脑上安装并启用版本和签名均相同的插件后，才会在此加载其界面代码。",
     "awaitingApprovalBuiltinHint": "插件在所连接的设备上运行，但只有此电脑自带版本及界面代码均相同的插件且已启用时，才会在此加载其界面代码。不同 Timon 版本可能包含同一插件版本的不同代码，请更新运行较旧版本的设备。",
-    "modules": {
+    "packages": {
       "agent-import": {
         "label": "导入智能体",
         "description": "从 Hermes、Grok Bot、其他智能体工具或另一套 Timon 导入智能体。先预览将创建的内容，再确认导入。"
-      },
+      }
+    },
+    "modules": {
       "@timon/db": {
         "label": "数据库",
         "description": "SQLite 数据存储及其冷归档。其他模块均将其作为依赖注入，确保首次读取前数据库架构已更新。"
