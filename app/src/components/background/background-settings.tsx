@@ -55,20 +55,25 @@ export function BackgroundSettings() {
     const ok = await update({ photo: null, mode: 'pattern' });
     if (ok) void fetch(old, { method: 'DELETE' }).catch(() => {});
   };
-  return <fieldset className="py-6" disabled={busy}>
-    <legend className="text-sm font-medium">{t('appearance.background.title')}</legend>
-    <p className="mt-1 max-w-[65ch] text-xs leading-relaxed text-muted-foreground">{t('appearance.background.hint')}</p>
+  // Same header as the Appearance sections above it: a deeper padding put
+  // twice their gap between this title and its hint.
+  return <fieldset className="min-w-0 py-4" disabled={busy}>
+    <legend className="text-[14px] font-semibold leading-snug">{t('appearance.background.title')}</legend>
+    <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">{t('appearance.background.hint')}</p>
     <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
       <div className="min-w-0 space-y-5">
-        <div className="flex flex-wrap gap-2">
-          {(['pattern', 'photo'] as const).map(mode => <button key={mode} type="button" aria-pressed={background.mode === mode} className={cn(button, background.mode === mode && 'border-primary text-primary')} onClick={() => {
+        {/* A segmented control, like the tabs above it: one plate, the chosen
+            side raised. A filled button beside an outlined one read as two
+            unrelated controls. */}
+        <div className="inline-flex gap-1 rounded-lg bg-foreground/[0.05] p-1">
+          {(['pattern', 'photo'] as const).map(mode => <button key={mode} type="button" aria-pressed={background.mode === mode} className={cn('rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50', background.mode === mode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')} onClick={() => {
             if (mode === 'photo' && !background.photo) fileInput.current?.click();
             else void update({ mode });
           }}>{t(`appearance.background.${mode}`)}</button>)}
         </div>
         {background.mode === 'pattern' && <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label={t('appearance.background.pattern')}>
-            {BACKGROUND_PATTERNS.map(pattern => <label key={pattern} className={cn('relative cursor-pointer overflow-hidden rounded-lg border bg-card', pattern === background.pattern ? 'border-primary ring-1 ring-primary' : 'border-border')}>
+            {BACKGROUND_PATTERNS.map(pattern => <label key={pattern} className={cn('relative cursor-pointer overflow-hidden rounded-lg border bg-card', pattern === background.pattern ? 'border-primary ring-1 ring-primary' : 'border-transparent')}>
               <div className="relative h-16 overflow-hidden" style={{ backgroundColor: background.colors[scheme] ?? 'hsl(var(--background))' }}><BackgroundPattern pattern={pattern} intensity={0.65} /></div>
               <span className="flex items-center gap-1.5 bg-muted/30 px-2 py-2 text-[11px]"><input type="radio" name="background-pattern" value={pattern} checked={background.pattern === pattern} onChange={() => void update({ pattern })} className="accent-primary" />{t(`appearance.background.patterns.${pattern}`)}</span>
             </label>)}
@@ -95,9 +100,9 @@ export function BackgroundSettings() {
         </div>
       </div>
       <div className="min-w-0">
-        <div className="relative h-48 overflow-hidden rounded-xl border border-border" aria-label={t('appearance.background.preview')}>
+        <div className="relative h-48 overflow-hidden rounded-xl bg-foreground/[0.03]" aria-label={t('appearance.background.preview')}>
           <BackgroundSurface background={background} />
-          <div className="absolute inset-x-5 bottom-5 rounded-lg border border-border bg-card p-3"><span className="text-xs font-medium text-card-foreground">{t('appearance.background.preview')}</span><p className="mt-1 text-[11px] text-muted-foreground">{t('appearance.background.previewHint')}</p></div>
+          <div className="absolute inset-x-5 bottom-5 rounded-lg bg-card p-3 shadow-elev-1"><span className="text-xs font-medium text-card-foreground">{t('appearance.background.preview')}</span><p className="mt-1 text-[11px] text-muted-foreground">{t('appearance.background.previewHint')}</p></div>
         </div>
       </div>
     </div>

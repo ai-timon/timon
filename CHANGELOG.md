@@ -40,6 +40,10 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Changed
+
+- The interface is easier on the eyes: the same Inter typeface on every system, a calmer light mode, and cards, badges and controls drawn with fills instead of outlines.
+
 ### Known issues
 
 - Onboarding form details are still in English outside English and French; the step titles are translated.

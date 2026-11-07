@@ -319,7 +319,7 @@ export function KanbanClient({ defaultAgent }: { defaultAgent?: string }) {
       )}
 
       <header className="flex flex-wrap items-center gap-3 pb-3">
-        <h1 className="m-0 mr-1 text-[20px] font-semibold tracking-tight">{i18n('kanbanPage.title')}</h1>
+        <h1 className="m-0 mr-1 text-[22px] font-semibold -tracking-[0.01em]">{i18n('kanbanPage.title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <label className={controlClass}>
             <span className="text-[12px] text-muted-foreground">{i18n('kanbanPage.filterProject')}</span>

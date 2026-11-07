@@ -229,7 +229,8 @@ export function PluginsClient(): React.ReactElement {
               onChange={(e) => setFilter({ q: e.target.value })}
               placeholder={t('pluginsPage.searchPlaceholder')}
               aria-label={t('pluginsPage.searchPlaceholder')}
-              className="pl-8"
+              // Filled like the Missions search; the outline only appears on focus.
+              className="border-transparent bg-foreground/[0.05] pl-8 shadow-none focus-visible:border-ring/60"
             />
           </div>
         </div>
@@ -241,8 +242,8 @@ export function PluginsClient(): React.ReactElement {
             aria-checked={type === 'all'}
             onClick={() => setFilter({ t: 'all' })}
             className={cn(
-              'rounded-md border border-border bg-muted/30 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-all',
-              type === 'all' ? 'ring-1 ring-current' : 'opacity-40 hover:opacity-70',
+              'rounded-md border border-transparent bg-muted/30 px-2 py-0.5 text-[11.5px] font-medium text-muted-foreground transition-all',
+              type === 'all' ? 'ring-1 ring-current' : 'opacity-60 hover:opacity-100',
             )}
           >
             {t('pluginsPage.typesAll')}
@@ -257,9 +258,9 @@ export function PluginsClient(): React.ReactElement {
                 aria-checked={on}
                 onClick={() => setFilter({ t: kind })}
                 className={cn(
-                  'rounded-md border px-2 py-0.5 text-[11px] font-medium transition-all',
+                  'rounded-md border px-2 py-0.5 text-[11.5px] font-medium transition-all',
                   KIND_TONE[kind] ?? 'text-muted-foreground',
-                  on ? 'ring-1 ring-current' : 'opacity-40 hover:opacity-70',
+                  on ? 'ring-1 ring-current' : 'opacity-60 hover:opacity-100',
                 )}
               >
                 {kindLabel(kind)}

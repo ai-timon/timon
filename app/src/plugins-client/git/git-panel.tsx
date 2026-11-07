@@ -181,7 +181,10 @@ export function GitPanel({ agentId, slug }: { agentId: string; slug: string | nu
 
       <div className={cn('flex min-h-0 flex-1 flex-col', tab !== 'graph' && 'overflow-y-auto')} role="tabpanel">
         {error && tab !== 'publish' && (
-          <div className="m-2 rounded-md bg-destructive/10 px-2 py-1.5 text-[11px] text-destructive">{error}</div>
+          // A project with no folder, or a folder that is no repository, is a
+          // state to explain, not a failure: it gets a quiet note, and only
+          // real errors keep the red.
+          <div className={cn('m-2 rounded-md px-2 py-1.5 text-[11.5px]', remote?.state === 'no-cwd' || remote?.state === 'not-a-repo' ? 'bg-foreground/[0.04] text-muted-foreground' : 'bg-destructive/10 text-destructive')}>{error}</div>
         )}
         {tab === 'branches' && data?.ok && (
           <GitBranches slug={slug} repo={repo || null} agentId={agentId} data={data} remote={remote ?? null} />

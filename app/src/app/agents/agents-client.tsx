@@ -1727,23 +1727,23 @@ export function AgentsClient() {
        *  Missions stay global. */}
         <div className="pointer-events-none fixed left-1/2 top-[calc(var(--timon-topbar-h)+14px)] z-[5] -translate-x-1/2 hidden flex-col items-center gap-1.5 md:flex">
           {/* Workspace header chip — centered, aligned under the header */}
-          <div className="pointer-events-auto relative flex items-center justify-center rounded-xl border border-border/60 bg-card/90 px-6 py-2 shadow-md backdrop-blur-sm">
+          <div className="pointer-events-auto relative flex items-center justify-center rounded-xl bg-card/90 px-6 py-2 shadow-elev-1 backdrop-blur-sm">
             <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-foreground">
               Workspace
             </span>
           </div>
           {/* Toggles chip */}
-          <div className="pointer-events-auto flex flex-wrap justify-center gap-1 rounded-xl border border-border/60 bg-card/90 px-2 py-1.5 shadow-md backdrop-blur-sm">
+          <div className="pointer-events-auto flex flex-wrap justify-center gap-1 rounded-xl bg-card/90 px-2 py-1.5 shadow-elev-1 backdrop-blur-sm">
             {poleChips.map((w) => (
               <button
                 key={w.slug}
                 type="button"
                 onClick={() => setWorkspace(w.slug)}
                 className={cn(
-                  'rounded-md border px-2 py-0.5 text-[10px] transition-colors',
+                  'rounded-md px-2 py-0.5 text-[10.5px] transition-colors',
                   workspace === w.slug
-                    ? 'border-primary bg-primary/15 text-primary'
-                    : 'border-border bg-muted/30 text-muted-foreground hover:text-foreground',
+                    ? 'bg-primary/15 text-primary'
+                    : 'bg-foreground/[0.05] text-muted-foreground hover:text-foreground',
                 )}
               >
                 {w.label}
@@ -1754,7 +1754,7 @@ export function AgentsClient() {
               onClick={() => setPoleDialog({ pole: null })}
               title={i18n('agentsPage.newPole')}
               aria-label={i18n('agentsPage.newPole')}
-              className="flex items-center gap-1 rounded-md border border-dashed border-border px-2 py-0.5 text-[10px] text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+              className="flex items-center gap-1 rounded-md bg-foreground/[0.05] px-2 py-0.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
             >
               <Plus className="size-3" />
               {i18n('agentsPage.newPole')}
@@ -1818,13 +1818,15 @@ export function AgentsClient() {
         <MainSeatNotice candidates={seatCandidates} className="fixed bottom-16 left-4 z-[5] w-[min(18rem,calc(100%-6rem))]" />
       )}
 
-      {/* Auto-fit: reframes the whole constellation into view. */}
+      {/* Auto-fit: reframes the whole constellation into view. Top right, the
+          one corner no widget slot claims: at the bottom it sat on top of
+          the right-hand placeholder. */}
       <button
         type="button"
         onClick={() => fitRef.current?.()}
         title={i18n('agentsPage.autoFitView')}
         aria-label={i18n('agentsPage.autoFitView')}
-        className="fixed bottom-16 right-4 z-[5] flex size-9 items-center justify-center rounded-lg border border-border bg-card/80 text-muted-foreground shadow-lg backdrop-blur transition-colors hover:bg-card hover:text-foreground"
+        className="fixed right-4 top-[calc(var(--timon-topbar-h)+14px)] z-[5] flex size-9 items-center justify-center rounded-lg bg-card/90 text-muted-foreground shadow-elev-1 backdrop-blur transition-colors hover:bg-card hover:text-foreground"
       >
         <Maximize2 className="size-4" />
       </button>
@@ -1832,7 +1834,7 @@ export function AgentsClient() {
       {/* readout */}
       <div
         ref={readoutRef}
-        className="pointer-events-none fixed bottom-16 left-1/2 -translate-x-1/2 z-[4] rounded-md border border-border bg-card/70 px-2.5 py-1 tabular-nums text-[10.5px] text-muted-foreground backdrop-blur"
+        className="pointer-events-none fixed bottom-16 left-1/2 -translate-x-1/2 z-[4] rounded-md bg-card/70 px-2.5 py-1 tabular-nums text-[10.5px] text-muted-foreground backdrop-blur"
       >
         node graph
       </div>
@@ -1842,17 +1844,19 @@ export function AgentsClient() {
        *  to avoid overflowing the viewport. We keep the creation actions +
        *  the _main chat; the Kanban / Missions nav links live in the main
        *  menu, not here. */}
-      <div className="fixed bottom-4 left-1/2 z-[5] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-xl border border-border bg-card/80 px-2 py-1.5 shadow-lg backdrop-blur scrollbar-none">
+      {/* Ghost buttons in one bar: outlined buttons inside an outlined bar
+          were a box in a box. The plugins' own controls get the same look. */}
+      <div className="fixed bottom-4 left-1/2 z-[5] flex max-w-[calc(100%-1rem)] -translate-x-1/2 items-center gap-2 overflow-x-auto rounded-xl bg-card/90 px-2 py-1.5 shadow-elev-2 backdrop-blur scrollbar-none [&_[data-slot-region]_button]:border-transparent [&_[data-slot-region]_button]:bg-transparent [&_[data-slot-region]_button]:shadow-none">
         <Button
           size="sm"
-          variant="outline"
+          variant="ghost"
           className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium"
           onClick={() => setShowNewTask(true)}
         >
           <ListTodo className="size-3.5" />
           New task
         </Button>
-        <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
+        <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
           <Link
             href="/edit?new=1"
             onClick={(e) => {
@@ -1868,7 +1872,7 @@ export function AgentsClient() {
         <SlotRegion name="agents.toolbar" className="flex shrink-0 items-center gap-2" />
         <Button
           size="sm"
-          variant={orgOpen ? 'default' : 'outline'}
+          variant={orgOpen ? 'default' : 'ghost'}
           className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium"
           onClick={() => setOrgOpen((v) => !v)}
           aria-pressed={orgOpen}
@@ -1876,7 +1880,7 @@ export function AgentsClient() {
           <ListTree className="size-3.5" />
           {i18n('agentsPage.orgTitle')}
         </Button>
-        <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
+        <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" asChild>
           <Link href="/chat">
             <MessageSquare className="size-3.5" />
             {i18n('chatEntry.openMain')}
@@ -1961,7 +1965,7 @@ export function AgentsClient() {
         .fold-badge rect { fill: hsl(var(--primary)); stroke: hsl(var(--background)); stroke-width: 1.5; }
         .fold-badge text { font: 600 9.5px var(--font-sans), system-ui, sans-serif; font-variant-numeric: tabular-nums; fill: hsl(var(--primary-foreground)); pointer-events: none; user-select: none; }
         .fold-badge:hover rect { filter: brightness(1.1); }
-        .fold-badge.open rect { fill: hsl(var(--background)); stroke: hsl(var(--primary) / 0.7); }
+        .fold-badge.open rect { fill: hsl(var(--surface-3)); stroke: hsl(var(--background)); }
         .fold-badge.open text { fill: hsl(var(--primary)); }
         g.node.pole .node-sub { fill: hsl(var(--foreground) / 0.8); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
         /* Nothing blurs what lies over the graph: a backdrop-filter above a

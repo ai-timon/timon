@@ -94,7 +94,7 @@ const STATUS_TONE: Record<Row['status'], { label: string; chip: string; dot: str
   },
   done: {
     label: 'done',
-    chip: 'bg-[hsl(var(--success)/0.08)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]',
+    chip: 'bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]',
     dot: 'bg-[hsl(var(--success))]',
   },
   terminated: {
@@ -508,7 +508,7 @@ export function MissionsClient() {
             </SelectContent>
           </Select>
         </FilterField>
-        <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-[12.5px]">
+        <div className="flex items-center gap-1.5 rounded-lg border border-transparent bg-foreground/[0.05] px-2.5 py-1.5 text-[12.5px] focus-within:border-ring/60">
           <Search className="size-3.5 text-muted-foreground" />
           <input
             value={filters.search}
@@ -518,9 +518,9 @@ export function MissionsClient() {
           />
         </div>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="h-8 border-dashed text-muted-foreground"
+          className="h-8 text-muted-foreground"
           onClick={() =>
             setFilters({ agent: 'all', project: 'all', status: 'all', origin: 'all', search: '' })
           }
@@ -565,13 +565,13 @@ export function MissionsClient() {
                 onClick={() => select(m)}
                 className={cn(
                   'cursor-pointer transition-colors',
-                  i % 2 === 1 && 'bg-foreground/[0.025]',
+                  i % 2 === 1 && 'bg-foreground/[0.015]',
                   'hover:bg-muted/40',
                   selected?.fullId === m.fullId &&
                     'bg-primary/10 shadow-[inset_2px_0_0_hsl(var(--primary))]',
                 )}
               >
-                <Td className="tabular-nums text-[11.5px] text-muted-foreground">{m.id}</Td>
+                <Td className="text-[11.5px] text-muted-foreground">{m.id}</Td>
                 <Td className="max-w-[380px] truncate font-medium text-foreground">
                   {m.origin && <MissionOriginIcon origin={m.origin} className="mr-1.5 align-[-1px]" />}
                   {m.title}
@@ -785,11 +785,13 @@ function Stat({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card px-4 py-3.5',
-        accent && 'border-primary/30 bg-gradient-to-b from-primary/[0.08] to-transparent',
+        // Surface contrast instead of an outline; the accented figure keeps
+        // its warm gradient.
+        'rounded-xl bg-card px-4 py-3.5',
+        accent && 'bg-gradient-to-b from-primary/[0.08] to-transparent',
       )}
     >
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="text-[12.5px] font-medium text-muted-foreground">
         {label}
       </div>
       <div
@@ -825,7 +827,7 @@ function FilterField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-0.5">
+    <div className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.05] px-2 py-0.5">
       <span className="text-[11px] text-muted-foreground">{label}</span>
       {children}
     </div>
@@ -849,7 +851,7 @@ function Th({
     <th
       onClick={onClick}
       className={cn(
-        'sticky top-0 z-[1] bg-card px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground',
+        'sticky top-0 z-[1] bg-card px-3 py-2.5 text-[12px] font-medium text-muted-foreground',
         right ? 'text-right' : 'text-left',
         onClick && 'cursor-pointer select-none hover:text-foreground',
         active && 'text-foreground',
@@ -888,7 +890,8 @@ function StatusBadge({ status }: { status: Row['status'] }) {
   return (
     <Badge
       variant="outline"
-      className={cn('gap-1.5 border font-normal', tone.chip)}
+      // Tint-only like every other badge: the status colour fills, no rim.
+      className={cn('gap-1.5 border font-normal', tone.chip, 'border-transparent')}
     >
       <span className={cn('size-1.5 rounded-full', tone.dot)} />
       {tone.label}

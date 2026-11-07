@@ -48,7 +48,7 @@ export function UrgencyBadge({ value, compact, children }: { value: TodoUrgency;
  *  no colour, so it reads as information rather than as a state. */
 export function MetaBadge({ children, title }: { children: ReactNode; title?: string }) {
   return (
-    <span title={title} className={cn(CHIP, 'border-border bg-muted/40 normal-case tracking-normal text-muted-foreground tabular-nums')}>
+    <span title={title} className={cn(CHIP, 'border-transparent bg-foreground/[0.06] normal-case tracking-normal text-muted-foreground tabular-nums')}>
       {children}
     </span>
   );
@@ -73,7 +73,7 @@ export function AuthorBadge({ author, links }: { author: string; links?: Project
 /** The ideas without an urgency, as the type filter names them. */
 export function UntypedBadge({ compact, children }: { compact?: boolean; children?: ReactNode }) {
   return (
-    <span className={cn(CHIP, compact && CHIP_COMPACT, 'border-border bg-muted/40 text-muted-foreground')}>
+    <span className={cn(CHIP, compact && CHIP_COMPACT, 'border-transparent bg-foreground/[0.06] text-muted-foreground')}>
       <Circle className="size-3" aria-hidden />
       {!compact && t('projectTodo.urgencyNone')}
       {children}

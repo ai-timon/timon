@@ -14,13 +14,14 @@ export function Kpi({ label, value, unit, delta, bad, accent, className }: KpiPr
   return (
     <div
       className={cn(
-        'relative flex flex-col justify-between gap-2 overflow-hidden rounded-xl border border-border bg-card p-3.5',
-        accent &&
-          'border-primary/30 bg-gradient-to-b from-primary/10 to-primary/[0.02]',
+        // Surface contrast, not an outline, like the other cards; the accented
+        // figure keeps its warm gradient.
+        'relative flex flex-col justify-between gap-2 overflow-hidden rounded-xl bg-card p-4',
+        accent && 'bg-gradient-to-b from-primary/10 to-primary/[0.02]',
         className,
       )}
     >
-      <div className="text-[9.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="text-[12.5px] font-medium text-muted-foreground">
         {label}
       </div>
       <div

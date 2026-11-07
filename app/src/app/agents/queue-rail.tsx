@@ -136,7 +136,7 @@ export function QueueRail({ poignee, className }: WidgetProps) {
       value={choice}
       aria-label={t('agentsLayout.projectFilter')}
       onChange={(e) => { setChoice(e.target.value); writeQueueRailProject(machineScopedStorage(window.localStorage), e.target.value); }}
-      className="pointer-events-auto w-full rounded border border-border bg-background/40 px-1.5 py-1 text-[11px] text-muted-foreground outline-none transition-colors focus:border-primary/60"
+      className="pointer-events-auto w-full rounded-md border border-transparent bg-foreground/[0.05] px-1.5 py-1 text-[11.5px] text-muted-foreground outline-none transition-colors focus:border-primary/60"
     >
       <option value={ALL_FILTER}>{t('agentsLayout.allProjects')}</option>
       {projects.map((p) => <option key={p.slug} value={p.slug}>{p.name || p.slug}</option>)}
@@ -239,11 +239,11 @@ export function QueueRail({ poignee, className }: WidgetProps) {
       )}
 
       {empty && (
-        <div className="pointer-events-auto rounded-xl border border-dashed border-border/50 bg-card/40 px-3 py-4 text-center shadow-sm backdrop-blur">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
+        <div className="pointer-events-auto rounded-xl bg-card/40 px-3 py-4 text-center backdrop-blur">
+          <p className="text-[12.5px] font-medium text-foreground/80">
             {t('agentsLayout.emptyTitle')}
           </p>
-          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground/60">
+          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
             {t('agentsLayout.emptyBody')}
           </p>
         </div>
