@@ -40,6 +40,15 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Changed
+
+- The interface is easier on the eyes: softer dark and light colours, the same Inter typeface on every system, and calmer cards, badges and empty states.
+
+### Fixed
+
+- The main agent's avatar shows an "m" instead of an underscore.
+- Conversations no longer open under a "Today" label that ignored the actual date.
+
 ### Known issues
 
 - Onboarding form details are still in English outside English and French; the step titles are translated.

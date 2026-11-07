@@ -17,8 +17,10 @@ export function AddWidgetCard({ className }: WidgetProps) {
         aria-label={t('widgets.placeholder.add')}
         onClick={() => setPaletteOpen(true)}
         className={cn(
-          'group flex min-h-[132px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border px-4 text-muted-foreground transition-colors',
-          'hover:border-primary/50 hover:bg-primary/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          // A quiet invitation, not a hole in the page: a hairline dash on a
+          // faint plate, which only takes the accent under the pointer.
+          'group flex min-h-[132px] flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-foreground/[0.015] px-4 text-muted-foreground transition-colors',
+          'hover:border-primary/40 hover:bg-primary/[0.04] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         )}
       >
         <span className="grid size-9 place-items-center rounded-full bg-muted transition-colors group-hover:bg-primary/15 group-hover:text-primary">

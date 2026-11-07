@@ -1038,10 +1038,10 @@ function ComposerHeader({
         compact
           ? 'px-1 pb-1 pt-0.5 text-[9.5px]'
           : cn(
-              'mx-3 -mb-3 rounded-t-xl bg-foreground/[0.05] px-3 pb-[1.125rem] pt-1.5 text-[11.5px]',
+              'mx-3 -mb-3 rounded-t-xl bg-foreground/[0.035] px-3 pb-[1.125rem] pt-1.5 text-[11.5px]',
               // Outlined with the card, a shade softer than its edge. Its foot
               // hides under the card, so the two outlines never double.
-              appearance.showInputBorder ? 'border border-border/60' : 'border border-transparent',
+              appearance.showInputBorder ? 'border border-border/35' : 'border border-transparent',
             ),
       )}>
         <div className="flex min-w-0 items-center gap-1.5">

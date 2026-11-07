@@ -99,12 +99,20 @@ export function agentIdentity(
   const emoji = agent.emoji?.trim() || null;
   const base = { name: agent.name, accent, roleKey: agentRoleKey(agent.role), known: true, ...(look ? { lookBase: defaultLookFor(agent.role ?? '') } : {}) };
   const mode = avatarModeOf(agent.avatar);
-  if (mode === 'mascot' && look) return { ...base, iconUrl: null, fallback: emoji || agent.name.charAt(0).toLowerCase(), look };
+  if (mode === 'mascot' && look) return { ...base, iconUrl: null, fallback: emoji || glyphOf(agent.name), look };
   if (mode === 'emoji' && emoji) return { ...base, iconUrl: null, fallback: emoji, look: null };
-  if (mode === 'image' && isHttpUrl(agent.icon_url)) return { ...base, iconUrl: agent.icon_url, fallback: emoji || agent.name.charAt(0).toLowerCase(), look: null };
+  if (mode === 'image' && isHttpUrl(agent.icon_url)) return { ...base, iconUrl: agent.icon_url, fallback: emoji || glyphOf(agent.name), look: null };
   const iconUrl = isHttpUrl(agent.icon_url) ? agent.icon_url : (isHttpUrl(projectIcon) ? projectIcon : null);
-  const fallback = (projectIcon && !isHttpUrl(projectIcon) ? projectIcon : null) || agent.emoji || agent.name.charAt(0).toLowerCase();
+  const fallback = (projectIcon && !isHttpUrl(projectIcon) ? projectIcon : null) || agent.emoji || glyphOf(agent.name);
   return { ...base, iconUrl, fallback, look };
+}
+
+/**
+ * The letter a head without a picture shows: the first letter or digit of the
+ * name. `_main`, the main agent every install has, showed a bare underscore.
+ */
+export function glyphOf(name: string): string {
+  return (name.match(/[\p{L}\p{N}]/u)?.[0] ?? name.charAt(0)).toLowerCase() || '?';
 }
 
 /** True when the identity's head is its mascot: no picture, and a look. */
@@ -148,7 +156,7 @@ export function pseudoIdentity(name: string): AgentIdentity {
     name,
     accent: paletteFor(name),
     iconUrl: null,
-    fallback: name.charAt(0).toLowerCase() || '?',
+    fallback: glyphOf(name),
     roleKey: null,
     known: false,
   };

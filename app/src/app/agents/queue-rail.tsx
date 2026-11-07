@@ -239,11 +239,11 @@ export function QueueRail({ poignee, className }: WidgetProps) {
       )}
 
       {empty && (
-        <div className="pointer-events-auto rounded-xl border border-dashed border-border/50 bg-card/40 px-3 py-4 text-center shadow-sm backdrop-blur">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
+        <div className="pointer-events-auto rounded-xl bg-card/40 px-3 py-4 text-center backdrop-blur">
+          <p className="text-[12.5px] font-medium text-foreground/80">
             {t('agentsLayout.emptyTitle')}
           </p>
-          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground/60">
+          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
             {t('agentsLayout.emptyBody')}
           </p>
         </div>
