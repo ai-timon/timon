@@ -44,6 +44,10 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 - **Simplified Chinese** for the interface and desktop menus: choose **简体中文** in **Settings → Interface → Language**.
 
+### Fixed
+
+- **Simplified Chinese settings**: built-in setting names, descriptions, units and plugin tabs are translated, and settings search matches both the Chinese text and the original setting keys.
+
 ### Known issues
 
 - Onboarding form details are still in English outside English, French and Simplified Chinese; the step titles are translated.

@@ -1,0 +1,640 @@
+{
+  "settingsFields": {
+    "TIMON_TODO_OUTCOME_ENABLED": {
+      "label": "点子处理结果",
+      "description": "在待办点子中显示“处理结果”区块，可填写处理结论、公开备注和重复条目引用。适用于社区反馈场景（由机器人向点子作者转达结果），默认关闭。"
+    },
+    "TIMON_CLI_UPDATE_CHECK": {
+      "label": "检查 CLI 更新",
+      "description": "启动时以及之后按下方设置的间隔，向各 AI CLI 的供应方（npm 注册表、x.ai）查询最新版本，以便在提供商卡片上显示“有可用更新”。关闭后不发送请求，但仍会从 CLI 本身读取已安装版本。"
+    },
+    "TIMON_CLI_UPDATE_INTERVAL_HOURS": {
+      "label": "CLI 更新检查间隔",
+      "description": "两次检查 AI CLI 新版本之间的小时数，最短为 1 小时。",
+      "unit": "小时"
+    },
+    "TIMON_UPDATES_CHECK": {
+      "label": "检查 Timon 更新",
+      "description": "启动时及之后每隔 6 小时从 timon-ai.com 读取经签名的 Timon 发布列表；当前构建所属的发布渠道有新版本时显示横幅。请求不携带许可证、账号或设备标识符。关闭后不发送请求。从源码运行的构建始终不检查更新。"
+    },
+    "TIMON_MAX_LIVE_MISSIONS": {
+      "label": "运行中的任务会话（软上限）",
+      "description": "调度、唤醒等自动启动机制遵循此上限。用户发起的聊天不检查此上限。"
+    },
+    "TIMON_HARD_MAX_LIVE_MISSIONS": {
+      "label": "运行中的任务会话（硬上限）",
+      "description": "所有来源合计的绝对上限。0 = 自动（软上限的 2 倍）。这是防止任务会话失控增长的最后一道保护。"
+    },
+    "TIMON_MAX_PARALLEL": {
+      "label": "看板任务并行调度数",
+      "description": "可同时调度的看板任务数量，仍受全局任务会话上限约束。"
+    },
+    "TIMON_LOAD_THRESHOLD": {
+      "label": "每核心系统负载阈值",
+      "description": "按核心数归一化的 1 分钟平均负载（loadavg）。超过此阈值时，减慢启动任务会话的速度。"
+    },
+    "TIMON_SWITCH_TRANSCRIPT_MAX_TOKENS": {
+      "label": "切换后端时发送完整会话记录的阈值",
+      "description": "任务途中切换后端时会新建空白会话。记录低于此阈值时，重新发送完整记录，不丢失信息；超过阈值则改用摘要，可能丢失信息。0 = 始终使用摘要。",
+      "unit": "词元"
+    },
+    "TIMON_SWITCH_KICKOFF_MARGIN_BYTES": {
+      "label": "交接消息预留空间",
+      "description": "交接消息在上下文之外还包含标题、说明和后续指示。从目标 CLI 接受的最大长度中预留此空间，以免添加这些内容后提示词超限。仅对从 argv 读取提示词的 CLI 生效。",
+      "unit": "字节"
+    },
+    "TIMON_MISSION_TITLE_MODEL": {
+      "label": "标题生成模型",
+      "description": "为用户新开的会话生成标题，适用于未在设置中自行选择模型的账号。`auto`：使用会话后端最轻量的模型。`off`：不生成标题。`<backend>:<model>`：使用指定模型（如 `claude:haiku`），后端须以本地进程运行。每生成一个标题都会消耗该后端一次短调用的配额，并将会话的首条消息发送给该后端。"
+    },
+    "TIMON_MISSION_TITLE_TIMEOUT_MS": {
+      "label": "标题生成超时",
+      "description": "用户新开的会话在首轮结束时通过一次性模型调用生成简短标题。超时后终止调用，保留首条消息作为会话名称，不重试。",
+      "unit": "ms"
+    },
+    "TIMON_SUMMARY_TIMEOUT_MS": {
+      "label": "摘要生成超时",
+      "description": "压缩会话记录时会启动一个不受回收机制监控的一次性 CLI 进程。如果不设时限，无响应的进程会阻塞等待摘要的操作，尤其是后端切换。超时后终止进程，调用方改用备用方案。",
+      "unit": "ms"
+    },
+    "TIMON_SESSION_ONE_SHOT_OPEN_MS": {
+      "label": "一次性会话开启超时",
+      "description": "对使用会话协议的智能体（opencode、Hermes）执行摘要生成、记忆处理或发送 Dreaming 提示词时，先开启一个临时会话。如果超时仍未开启会话，就停止智能体并使调用失败，而不是继续等待摘要生成超时。",
+      "unit": "ms"
+    },
+    "TIMON_FALLBACK_ENABLED": {
+      "label": "用量配额耗尽时自动切换",
+      "description": "当后端报告已达到用量上限时，依赖它的任务会话和任务将在备用后端重新启动，避免接连失败。"
+    },
+    "TIMON_PREFERRED_BACKEND": {
+      "label": "首选提供商",
+      "description": "未另行指定提供商时，新智能体、任务会话或聊天使用此提供商，前提是它已启用并登录。留空（默认）则使用首个已启用且已登录的提供商。"
+    },
+    "TIMON_FALLBACK_BACKEND": {
+      "label": "备用后端（最后选择）",
+      "description": "只有任务、任务系列和模型等价矩阵都未提供可用目标时才使用。必须填写已安装并启用的提供商 ID（如 claude、codex 或提供商插件的 ID）。留空（默认）则最多查到模型等价矩阵，不假定任何特定提供商存在。"
+    },
+    "TIMON_FALLBACK_MODEL": {
+      "label": "备用模型",
+      "description": "由上方的备用后端处理请求时使用的模型。留空则使用该后端的默认模型。不影响由任务系列或模型等价矩阵指定的备用方案，它们各自指定模型。"
+    },
+    "TIMON_FALLBACK_COOLDOWN_MS": {
+      "label": "用量配额耗尽后的后端停用时长",
+      "description": "仅在提供商未告知配额恢复时间时生效；若已告知，则以该时间为准。默认：5 小时，与 Anthropic 的滑动窗口一致。",
+      "unit": "ms"
+    },
+    "TIMON_BACKEND_EXHAUSTED_COOLDOWN_MS": {
+      "label": "余额耗尽后的后端停用时长",
+      "description": "在后端返回支付错误（HTTP 402、`balance exhausted`）而非用量限制时生效。余额不会随配额窗口恢复，只能靠充值恢复。此时长特意设得比配额冷却期更长；该后端首次成功完成一轮后可提前解除停用。默认：24 小时。",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_ENABLED": {
+      "label": "连续多轮无输出即失败时熔断",
+      "description": "当后端立即拒绝每个任务会话时（例如身份验证失效、端点不可用或账号余额耗尽），暂时停用该后端，无需等到识别出具体错误消息。"
+    },
+    "TIMON_TURN_RETRIES": {
+      "label": "提供商中断单轮执行后的自动重试次数",
+      "description": "仅适用于无人值守的任务会话（看板任务、唤醒、例行任务、子任务会话）。提供商遇到临时故障并放弃自行重试后，Timon 会在同一会话内重试该轮，次数由此设置决定。0 表示禁用。用户聊天改为显示“重试”按钮。"
+    },
+    "TIMON_TURN_RETRY_BASE_MS": {
+      "label": "首次自动重试前的等待时间",
+      "description": "每次重试的等待时间翻倍（默认依次为 30 秒、60 秒、120 秒），且不短于提供商要求的等待时间。",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_THRESHOLD": {
+      "label": "触发熔断所需的连续无输出失败轮数",
+      "description": "同一后端在下方时间窗口内连续无输出即失败的轮数。最少为 2 轮：单次失败可能只是偶发。"
+    },
+    "TIMON_BREAKER_WINDOW_MS": {
+      "label": "熔断计数窗口",
+      "description": "超出窗口的失败不再计数。只关注短时间内集中发生的失败，而非累计总数：例如十分钟内失败三次，而不是一周内失败三次。默认：10 分钟。",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_STERILE_MS": {
+      "label": "判定为立即失败的时长阈值",
+      "description": "一轮执行在此时限内失败，且既未产生回复轮次，也未输出任何词元，则记为被提供商立即拒绝。默认：2 秒。",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_COOLDOWN_MS": {
+      "label": "熔断后停用后端的时长",
+      "description": "此时长特意设得比用量配额或余额耗尽的冷却期短：原因尚不明确，可能只是服务短暂中断，或令牌过期后会刷新。该后端首次成功完成一轮后可提前解除停用。默认：30 分钟。",
+      "unit": "ms"
+    },
+    "TIMON_RESOURCE_GUARD_ENABLED": {
+      "label": "限制任务会话资源（systemd scope）",
+      "description": "在独立的 systemd scope（位于 timon-missions.slice）中启动每个任务会话，设置内存上限，且所有进程都继承 nice 和 ionice 设置，包括由第三级子进程启动的 ffmpeg。关闭后，高负载的生成操作可能再次影响整台机器。"
+    },
+    "TIMON_DAY_START_HOUR": {
+      "label": "白天开始时间（本地）",
+      "description": "您使用这台机器工作的时段起点。此时段内会限制任务会话的资源。取值范围：0 至 23。",
+      "unit": "小时"
+    },
+    "TIMON_DAY_END_HOUR": {
+      "label": "白天结束时间（本地）",
+      "description": "此时段之外采用夜间配置，放宽资源上限。取值范围：0 至 24（24 表示白天持续到午夜；与开始时间相同则始终采用夜间配置）。",
+      "unit": "小时"
+    },
+    "TIMON_DAY_CPU_QUOTA_PCT": {
+      "label": "任务会话 CPU 配额 — 白天",
+      "description": "所有任务会话共用的 CPU 配额，以单个核心的百分比表示（400 表示 32 个核心中的 4 个）。其余 CPU 资源保证留给桌面。",
+      "unit": "%"
+    },
+    "TIMON_NIGHT_CPU_QUOTA_PCT": {
+      "label": "任务会话 CPU 配额 — 夜间",
+      "description": "1600 表示 32 个核心中的 16 个。即使在夜间也保留一半 CPU 资源，以控制发热并确保仍可使用远程会话。",
+      "unit": "%"
+    },
+    "TIMON_DAY_MEM_MAX_GB": {
+      "label": "内存 — 白天硬上限",
+      "description": "所有任务会话合计的内存上限。超出后，内核只会在此 cgroup 内终止任务会话进程，不影响整台机器或桌面会话。刻意不设更低的软阈值：对任务会话限流会造成内存压力，可能导致系统的 OOM 守护进程终止整个桌面会话。",
+      "unit": "GB"
+    },
+    "TIMON_NIGHT_MEM_MAX_GB": {
+      "label": "内存 — 夜间硬上限",
+      "description": "夜间所有任务会话合计的内存上限。自动设定的默认值取决于检测到的 RAM 容量档位。",
+      "unit": "GB"
+    },
+    "TIMON_MISSION_MEM_MAX_GB": {
+      "label": "内存 — 单个任务会话上限",
+      "description": "单个任务会话及其所有进程的内存上限。超限时只终止该任务会话，避免整台机器卡死：8 月 13 日的 ffmpeg 进程曾占用多达 35 GB。",
+      "unit": "GB"
+    },
+    "TIMON_DAY_NICE": {
+      "label": "任务会话 nice 值 — 白天",
+      "description": "CPU 优先级（0 = 正常，19 = 最低）。任务会话的每个进程都会继承此值。"
+    },
+    "TIMON_NIGHT_NICE": {
+      "label": "任务会话 nice 值 — 夜间"
+    },
+    "TIMON_DAY_IONICE_CLASS": {
+      "label": "ionice 类别 — 白天",
+      "description": "1 = 实时，2 = 尽力而为，3 = 空闲。cgroup 的 io 控制器未委托给用户管理器，因此磁盘优先级通过对进程设置 ionice 来控制，而不是使用 IOWeight。"
+    },
+    "TIMON_NIGHT_IONICE_CLASS": {
+      "label": "ionice 类别 — 夜间"
+    },
+    "TIMON_DAY_MAX_LIVE_MISSIONS": {
+      "label": "运行中的任务会话 — 白天上限",
+      "description": "白天采用更低的任务会话上限。若四个任务会话各自启动一个编码进程，就可能导致系统崩溃。此值不会超过全局上限。"
+    },
+    "TIMON_DAY_MAX_PARALLEL": {
+      "label": "并行调度任务数 — 白天上限",
+      "description": "降低白天看板调度器的并行任务数。"
+    },
+    "TIMON_RESOURCE_WATCH_MS": {
+      "label": "资源监测间隔",
+      "description": "重新读取 cgroup 计数器的间隔，用于切换配置和检测 OOM。最短为 5 秒。",
+      "unit": "ms"
+    },
+    "TIMON_REAP_IDLE_MS": {
+      "label": "空闲任务会话的回收等待时间",
+      "description": "无人值守的任务会话结束一轮后，如果在此时长内没有新动静，就会被终止；如果它还有自己启动的后台进程在运行，则按下一项设置处理。",
+      "unit": "ms"
+    },
+    "TIMON_REAP_BG_MS": {
+      "label": "有后台进程时的回收等待上限",
+      "description": "默认 1 小时。无人值守的任务会话结束一轮后，如果其 CLI 启动的进程仍在运行（例如已在后台启动测试套件，正等待完成通知），超过上述空闲时限也不会立即终止，但自该轮结束起不得超过此硬上限。没有此类进程的任务会话不受影响。",
+      "unit": "ms"
+    },
+    "TIMON_CHAT_ATTACHMENT_TTL_MS": {
+      "label": "任务会话结束后聊天附件的保留时长",
+      "description": "默认 30 天。任务会话结束达到此时长后，会删除在聊天中添加的附件。运行中的会话绝不会清理；恢复后的会话重新视为运行中。设为 0 可关闭清理。",
+      "unit": "ms"
+    },
+    "TIMON_PROVIDER_SESSION_TTL_MS": {
+      "label": "任务会话结束后后端会话的保留时长",
+      "description": "默认 30 天。将对话保存在任务会话专属目录中的 CLI（Codex），只要该目录仍在，就可以恢复对话。停止或强制终止不会删除该目录；任务会话结束达到此时长后才会删除。运行中绝不会清理；恢复后的会话重新视为运行中。设为 0 可关闭清理。",
+      "unit": "ms"
+    },
+    "TIMON_REAP_HUNG_MS": {
+      "label": "回收前允许的轮次静默时长",
+      "description": "默认 45 分钟。若某轮运行期间，智能体达到此时长仍没有任何输出、工具进度或事件，就会判定该轮卡住并停止它。仍在工作的长轮次不受影响（见下方的轮次时限）。这也是权限请求自动超时的隐含上限，设得更长也无效。",
+      "unit": "ms"
+    },
+    "TIMON_REAP_TURN_MAX_MS": {
+      "label": "轮次时限",
+      "description": "默认 4 小时，设为 0 可关闭。这是单个轮次的硬性时限，即使该轮仍在工作，超时也会停止，原因记为“达到轮次时限”，绝不会报为卡住。在自主任务会话中，CLI 在后台作业完成后自行开启的轮次合计为一轮，从 Timon 上次启动的轮次结束时开始计时。与静默回收一样，正在等待人工处理权限卡片的轮次不受此限。",
+      "unit": "ms"
+    },
+    "TIMON_REAP_CHAT_IDLE_MS": {
+      "label": "回收聊天进程前的空闲时长",
+      "description": "默认 1 小时。人工聊天的一轮对话结束后，CLI 进程仍在运行。如果不按此时长回收，进程会一直占用一个全局名额（2026-08-22 夜间：9 个聊天空闲到凌晨 4:45 → 全局名额占满 12/12，无法启动其他会话）。回收只会终止进程，不会删除会话；发送下一条消息即可恢复对话。考虑到用户可能回来继续聊，此时长远长于自主会话的空闲回收时长。",
+      "unit": "ms"
+    },
+    "TIMON_REAP_INTERVAL_MS": {
+      "label": "回收扫描间隔",
+      "description": "回收程序检查活跃任务会话的间隔。",
+      "unit": "ms"
+    },
+    "TIMON_REAP_ORPHAN_GRACE_MS": {
+      "label": "孤立会话回收宽限期",
+      "description": "任务会话没有存活进程时，经过此时长才会被判定为孤立，以免误终止仍在启动的会话。",
+      "unit": "ms"
+    },
+    "TIMON_WORKTREE_GC_ENABLED": {
+      "label": "自动清理工作树",
+      "description": "删除已完成（DONE）且变更已合入基准分支的任务的工作树和分支。未合入的分支无论保留多久都绝不会被删除。"
+    },
+    "TIMON_WORKTREE_GC_GRACE_MIN": {
+      "label": "清理宽限期",
+      "description": "任务关闭后，经过此时长，其工作树才会被纳入清理范围，为负责合并的智能体及后续文档任务留出使用时间。",
+      "unit": "分钟"
+    },
+    "TIMON_PERMISSION_AUTONOMOUS_TIMEOUT_MS": {
+      "label": "自动拒绝前的等待时长（自主任务会话）",
+      "description": "仅当无法通知任何人的手机时（未配置 Web Push、无订阅或发送失败），才对“允许／拒绝”卡片采用这段较短的等待时间（表单另有时限）。此时可认为没人会点击，无需让夜间运行的智能体一直等待。超时后会拒绝请求，并提示智能体另选方案。若推送送达，则改用“自动拒绝前的等待时长（已通知用户）”。聊天会话绝不会自动处理此类请求。",
+      "unit": "ms"
+    },
+    "TIMON_PERMISSION_PUSHED_TIMEOUT_MS": {
+      "label": "自动拒绝前的等待时长（已通知用户）",
+      "description": "Web Push 通知送达至少一台设备后，即采用这段较长的等待时间，让收到通知的人有时间从锁屏界面回应。此时长不得超过“回收前允许的轮次静默时长”（45 分钟）的 80 %，否则回收程序可能在自动拒绝前就终止任务会话，比拒绝请求本身更糟。",
+      "unit": "ms"
+    },
+    "TIMON_PERMISSION_FORM_TIMEOUT_MS": {
+      "label": "表单过期前的等待时长（自主任务会话）",
+      "description": "智能体打开表单（`question`、`kanban_plan`）时，使用此时长而非自动拒绝的等待时长：填写表单需要阅读和选择，不是点一下就能完成。超时后表单过期，智能体会收到提示，在没有答复的情况下继续。与其他等待时长一样，硬性上限为“回收前允许的轮次静默时长”的 80 %。聊天会话中的表单不会过期。",
+      "unit": "ms"
+    },
+    "TIMON_PERMISSION_DETACH_GRACE_MS": {
+      "label": "撤下无人等待的卡片前的宽限期",
+      "description": "智能体不再等待卡片时（调用取消或 MCP 桥接断开），若桥接未在此时长内重新连接该卡片，卡片就会被撤下。此时长大于桥接自身的重连退避时间，以免把套接字断开误判为取消。",
+      "unit": "ms"
+    },
+    "TIMON_WAKE_SWEEP_MS": {
+      "label": "收件箱扫描间隔",
+      "description": "扫描智能体间收件箱的间隔，决定消息发给某个智能体后，最多要等多久才会将其唤醒。",
+      "unit": "ms"
+    },
+    "TIMON_WAKE_PAIR_MAX_MESSAGES": {
+      "label": "暂存消息前两个智能体可互发的消息数",
+      "description": "无人介入时，两个智能体在下方时间窗口内最多可互发的消息总数，双向都计入。超过上限后，消息会暂存在收件箱，双方不再互相唤醒，你会收到一条列明这两个智能体的提醒。在聊天中给其中任意一个发消息即可恢复。任务和任务会话的返回结果始终不计入。"
+    },
+    "TIMON_WAKE_PAIR_WINDOW_MS": {
+      "label": "智能体间消息计数窗口",
+      "description": "统计上述智能体间消息数量的滑动窗口。",
+      "unit": "ms"
+    },
+    "TIMON_MEMORY_INJECTION_ENABLED": {
+      "label": "将记忆注入提示词",
+      "description": "启动智能体时，将积累的规则和需要避开的陷阱注入其提示词。关闭后，智能体不会在不同任务会话之间保留这些记忆。"
+    },
+    "TIMON_MEMORY_CORE_CAP": {
+      "label": "注入的核心规则数上限",
+      "description": "启动智能体时最多注入多少条“核心”规则。设得越高，智能体掌握的信息越多，但每个任务会话的提示词也越长。"
+    },
+    "TIMON_MEMORY_RECALL_MAX_CHARS": {
+      "label": "记忆召回预算",
+      "description": "提示词中分配给记忆召回的字符数上限，用于限制注入所消耗的词元。",
+      "unit": "字符"
+    },
+    "TIMON_MEMORY_SEARCH_CAP": {
+      "label": "记忆搜索结果数上限",
+      "description": "每次记忆搜索最多返回的结果数。"
+    },
+    "TIMON_FACT_CAPTURE_ENABLED": {
+      "label": "任务会话结束时提取事实",
+      "description": "每个任务会话结束时，由小型模型提取值得记录的事实（决策、陷阱、偏好），供夜间归纳使用。"
+    },
+    "TIMON_FACT_CAPTURE_MODEL": {
+      "label": "事实提取模型",
+      "description": "用于在任务会话结束时提取事实的模型。由于工作简单且每个会话都会触发，特意使用小而快的模型。"
+    },
+    "TIMON_MEMORY_SYNTH_ENABLED": {
+      "label": "启用夜间归纳",
+      "description": "夜间按项目将积累的原始事实归纳为长期规则，让记忆不断改进，而不是只增不减。"
+    },
+    "TIMON_MEMORY_SYNTH_MODEL": {
+      "label": "归纳模型",
+      "description": "负责整理记忆的模型，直接写入选定的规则，无需人工审核。"
+    },
+    "TIMON_MEMORY_SYNTH_AGENT": {
+      "label": "负责归纳的智能体",
+      "description": "以该智能体的身份运行归纳，工作目录（cwd）、MCP 和权限均由该身份决定。"
+    },
+    "TIMON_MEMORY_SYNTH_HOUR": {
+      "label": "开始时间（本地整点）",
+      "description": "夜间归纳窗口的开始时间。安排在评分和梦境反思之前，因为两者都要使用归纳结果。",
+      "unit": "小时"
+    },
+    "TIMON_MEMORY_SYNTH_WINDOW_H": {
+      "label": "时间窗口长度",
+      "description": "允许触发归纳的时长。错过此窗口，就等到下一晚。",
+      "unit": "小时"
+    },
+    "TIMON_MEMORY_SYNTH_MIN_FACTS": {
+      "label": "触发归纳所需的最少事实数",
+      "description": "待处理事实少于此数量时跳过该项目，因为材料不足以做出有用的归纳。"
+    },
+    "TIMON_MEMORY_SYNTH_MAX_FACTS": {
+      "label": "每轮最多处理的事实数",
+      "description": "限制每轮处理的事实数量，以控制一晚的成本。"
+    },
+    "TIMON_MEMORY_SYNTH_SPACING_MS": {
+      "label": "项目间隔",
+      "description": "将额度消耗分散到整个时间窗口内。",
+      "unit": "ms"
+    },
+    "TIMON_MEMORY_PROMOTION_ENABLED": {
+      "label": "将反复出现的事实提议为规则",
+      "description": "找出反复出现的事实，并建议将其纳入长期规则。"
+    },
+    "TIMON_MEMORY_PROMOTE_THRESHOLD": {
+      "label": "提议为规则所需的重现次数",
+      "description": "一条事实需要再次出现多少次，才会被提议为长期规则。设得越低，记忆更新越灵敏，但也越容易引入噪声。"
+    },
+    "TIMON_MEMORY_PROMOTE_INTERVAL_MS": {
+      "label": "提议检查间隔",
+      "description": "检查重复事实并提议长期规则的运行间隔。",
+      "unit": "ms"
+    },
+    "TIMON_MEMORY_DECAY_ENABLED": {
+      "label": "逐步遗忘（衰减）",
+      "description": "归档陈旧且不重要的事实。此操作可逆：事实会存入 learnings.archive.jsonl。经过整理的项目记忆层始终不受影响。"
+    },
+    "TIMON_MEMORY_DECAY_HALFLIFE_DAYS": {
+      "label": "遗忘半衰期",
+      "description": "决定遗忘的速度：经过一个半衰期，未使用的事实分数减半。",
+      "unit": "天"
+    },
+    "TIMON_MEMORY_DECAY_THRESHOLD": {
+      "label": "归档阈值",
+      "description": "事实分数低于此值时会被归档。设得越高，遗忘越积极。"
+    },
+    "TIMON_DIGEST_HOT_DAYS": {
+      "label": "活跃项目的活动窗口",
+      "description": "项目超过此时长没有活动，就不再被全局摘要视为活跃项目。",
+      "unit": "天"
+    },
+    "TIMON_DIGEST_HOT_MAX": {
+      "label": "保留的活跃项目数",
+      "description": "注入未关联项目的智能体的摘要中，保留的活跃项目数。"
+    },
+    "TIMON_DIGEST_CHAR_CAP": {
+      "label": "摘要长度上限",
+      "description": "全局摘要的最大长度。摘要会注入提示词，因此每个相关任务会话都会消耗相应的词元。",
+      "unit": "字符"
+    },
+    "TIMON_SCORE_ENABLED": {
+      "label": "启用项目评分",
+      "description": "夜间为每个项目评分（盈利能力 × 进展），以确定关注顺序。梦境反思依据评分选择要思考的内容。"
+    },
+    "TIMON_SCORE_MODEL": {
+      "label": "模型",
+      "description": "用于评估项目的模型。"
+    },
+    "TIMON_SCORE_AGENT": {
+      "label": "智能体",
+      "description": "以该智能体的身份运行评分。"
+    },
+    "TIMON_SCORE_HOUR": {
+      "label": "开始时间（本地整点）",
+      "description": "在记忆归纳之后开始（默认凌晨 3 点）。",
+      "unit": "小时"
+    },
+    "TIMON_SCORE_WINDOW_H": {
+      "label": "时间窗口长度",
+      "description": "允许触发评分的时长。错过此窗口，就等到下一晚。",
+      "unit": "小时"
+    },
+    "TIMON_SCORE_STALE_DAYS": {
+      "label": "重新评分的最长间隔",
+      "description": "项目达到此时长未重新评分时，即使近期没有活动也会重新评估。",
+      "unit": "天"
+    },
+    "TIMON_SCORE_SPACING_MS": {
+      "label": "项目评分间隔",
+      "description": "两个项目的评分之间暂停一段时间，以分散额度消耗。",
+      "unit": "ms"
+    },
+    "TIMON_DREAM_ENABLED": {
+      "label": "启用夜间梦境",
+      "description": "梦境智能体在夜间探索改进线索和机会。绝不会创建任务：所有结果都进入审核队列，等待确认。"
+    },
+    "TIMON_DREAM_MODEL": {
+      "label": "模型",
+      "description": "夜间梦境使用的模型。"
+    },
+    "TIMON_DREAM_AGENT": {
+      "label": "梦境智能体",
+      "description": "以该智能体的身份运行夜间梦境（cwd、MCP、默认模型）。留空则使用主智能体。"
+    },
+    "TIMON_DREAM_HOUR": {
+      "label": "开始时刻（本地时间）",
+      "description": "在汇总（凌晨 3 点）和评分（凌晨 5 点）之后。",
+      "unit": "小时"
+    },
+    "TIMON_DREAM_WINDOW_H": {
+      "label": "时间窗口长度",
+      "description": "夜间梦境可触发的时段长度。错过此窗口后，等到下一晚再运行。",
+      "unit": "小时"
+    },
+    "TIMON_DREAM_IMPROVE_TOP_N": {
+      "label": "每晚探索的项目数",
+      "description": "每晚从评分最高的项目中选取的探索数量。不探索不活跃的项目。"
+    },
+    "TIMON_DREAM_IMPROVE_PER_PROJECT": {
+      "label": "每个项目的线索数",
+      "description": "每个探索项目提出的线索数量。"
+    },
+    "TIMON_DREAM_OPP_MAX": {
+      "label": "每晚寻找的外部机会数",
+      "description": "每晚通过网络搜索寻找的外部机会数量。设为 0 可禁用此阶段。"
+    },
+    "TIMON_DREAM_MIN_PRIORITY": {
+      "label": "项目最低优先级",
+      "description": "低于此优先级的项目会被跳过。"
+    },
+    "TIMON_DREAM_DEDUP_DAYS": {
+      "label": "去重时间窗口",
+      "description": "此窗口内已提出的线索不会再次提出。否则每晚都会重复建议相同的想法。",
+      "unit": "天"
+    },
+    "TIMON_DREAM_SPACING_MS": {
+      "label": "梦境运行间隔",
+      "description": "两次梦境运行之间暂停一段时间，以在夜间时段内分散额度消耗。",
+      "unit": "ms"
+    },
+    "TIMON_DREAM_IMPROVE_TIMEOUT_MS": {
+      "label": "“改进”梦境超时",
+      "description": "防止运行卡住：改进梦境不属于受跟踪的任务，不会被超时清理机制处理。",
+      "unit": "ms"
+    },
+    "TIMON_DREAM_OPP_TIMEOUT_MS": {
+      "label": "“机会”梦境超时",
+      "description": "同样用于防止机会探索卡住。由于需要搜索网络，超时时间更长。",
+      "unit": "ms"
+    },
+    "TIMON_TERMINAL_ENABLED": {
+      "label": "“打开终端”按钮",
+      "description": "在聊天中显示按钮，用于在托管协调器的机器上打开原生终端，工作目录为任务文件夹。禁用后，按钮会隐藏，服务器也会拒绝调用。"
+    },
+    "TIMON_TERMINAL_COMMAND": {
+      "label": "终端命令",
+      "description": "要启动的可执行文件，以文件夹为唯一参数（hyper、gnome-terminal、x-terminal-emulator…）。不经 shell 执行。"
+    },
+    "TIMON_TERMINAL_WEB_ENABLED": {
+      "label": "内置终端",
+      "description": "Timon 内的终端模拟器（桌面端、浏览器、手机），以守护进程的用户身份在本机运行 shell。只有具备“terminal:open”权限的账号才能打开终端（超级管理员始终可以）。禁用后将拒绝新建会话和重新连接。"
+    },
+    "TIMON_TERMINAL_WEB_IDLE_MIN": {
+      "label": "未连接窗口的终端关闭前等待时长",
+      "description": "关闭窗口或锁定手机后，内置终端仍会运行，以便耗时命令执行完毕。若达到此时长仍无窗口连接，则终止其 shell。",
+      "unit": "分钟"
+    },
+    "TIMON_TERMINAL_WEB_SHELL": {
+      "label": "内置终端 shell",
+      "description": "每个内置终端启动的可执行文件。留空则使用你的登录 shell（Windows 上为 PowerShell）。"
+    },
+    "TIMON_BACKUP_KEEP": {
+      "label": "保留的备份数量",
+      "description": "在 Timon 主目录的 backups 文件夹中保留的夜间备份归档数量。每次备份完成后，立即删除超出此数量的最旧归档。",
+      "unit": "个归档"
+    },
+    "TIMON_BACKUP_MAX_AGE_DAYS": {
+      "label": "删除超过此期限的备份",
+      "description": "每次备份完成后，立即删除超过此期限的归档，不受数量限制。始终保留最新的归档。0 表示不限制存放时间，仅应用上面的数量限制。",
+      "unit": "天"
+    },
+    "TIMON_AGENT_TRASH_ENABLED": {
+      "label": "将删除的智能体保留在回收站",
+      "description": "删除智能体时，会将其文件夹（配置、系统提示词、身份文档和记忆）移到 Timon 主目录的回收站，以便恢复。关闭后，删除不可恢复。"
+    },
+    "TIMON_AGENT_TRASH_RETENTION_DAYS": {
+      "label": "回收站保留期限",
+      "description": "智能体删除后，达到此天数即永久清除。0 表示保留至手动清除。",
+      "unit": "天"
+    },
+    "TIMON_BRAIN_VAULT": {
+      "label": "Obsidian 仓库文件夹",
+      "description": "留空则在常用位置自动检测。"
+    },
+    "TIMON_VAULT_MCP_SERVER": {
+      "label": "为任务智能体保留的笔记连接器",
+      "description": "填写一个外部 MCP 服务器在 MCP 页面上显示的 ID（例如提供笔记访问权限的账号连接器）。任务智能体和资料管理员可继续使用它，其他账号连接器对它们保持禁用。留空则不保留任何连接器。"
+    },
+    "TIMON_PREAPPROVED_MCP_TOOLS": {
+      "label": "无需确认即可调用的 MCP 工具",
+      "description": "以逗号分隔的工具名称（mcp__server__tool），任何智能体调用这些工具时都不会显示“允许/拒绝”确认卡片。请仅列出只读工具：写入操作仍需确认。"
+    },
+    "TIMON_CHROME_PATH": {
+      "label": "从内置浏览器登录时使用的 Chrome",
+      "description": "留空则按 Google Chrome、Microsoft Edge、Chromium 的顺序自动查找。填写“使用 Chrome 登录”时要打开的 Chrome、Edge 或 Chromium 的完整路径（文件名须与其中一种浏览器对应）；仅在安装位置不常见，或通过 snap 或 flatpak 安装时需要填写。"
+    },
+    "TIMON_LOG_SYSTEM_PROMPT": {
+      "label": "记录完整系统提示词",
+      "description": "调试选项：日志量很大。写入 Timon 主目录下 tmp 文件夹中的 prompts-<day>.log，而非守护进程日志。"
+    },
+    "TIMON_ORCH_URL": {
+      "label": "供智能体使用的协调器 URL",
+      "description": "注入到任务中启动的 TIMON MCP 服务。"
+    },
+    "TIMON_PUBLIC_API_URL": {
+      "label": "公开 API URL",
+      "description": "OAuth redirect_uri 的基础 URL，浏览器必须能访问。"
+    },
+    "TIMON_PUBLIC_APP_URL": {
+      "label": "公开应用 URL",
+      "description": "完成 OAuth 流程后，用户返回的地址。"
+    },
+    "TIMON_TRAEFIK_HOST": {
+      "label": "Traefik 容器名称",
+      "description": "从 Docker 网络可访问的 Traefik 主机。"
+    },
+    "TIMON_BROWSER_IMAGE": {
+      "label": "内置浏览器镜像"
+    },
+    "TIMON_BROWSER_PROXY_IMAGE": {
+      "label": "CDP 中继镜像"
+    },
+    "TIMON_BROWSER_NETWORK": {
+      "label": "浏览器 Docker 网络"
+    },
+    "TIMON_BROWSER_HOSTS": {
+      "label": "浏览器流的可路由主机",
+      "description": "以逗号分隔。"
+    },
+    "TIMON_BROWSER_WEB_PORT": {
+      "label": "浏览器容器 Web 端口"
+    },
+    "TIMON_BROWSER_IDLE_MINUTES": {
+      "label": "浏览器空闲后自动关闭的等待时长",
+      "description": "≤ 0 时禁用自动关闭。",
+      "unit": "分钟"
+    },
+    "TIMON_BROWSER_RECORDING_RETENTION_DAYS": {
+      "label": "未转为技能的浏览器录制保留期限",
+      "description": "未转为技能的录制达到此天数后会被删除。≤ 0 时保留至手动删除。",
+      "unit": "天"
+    },
+    "TIMON_BROWSER_ANNOTATION_RETENTION_DAYS": {
+      "label": "未处理的浏览器批注保留期限",
+      "description": "未解决或未忽略的批注达到此天数后会被删除。≤ 0 时保留至手动删除。",
+      "unit": "天"
+    },
+    "TIMON_BROWSER_ANNOTATION_RESOLVED_RETENTION_DAYS": {
+      "label": "已处理的浏览器批注保留期限",
+      "description": "批注标记为已解决或已忽略后，达到此天数即删除。≤ 0 时保留至手动删除。",
+      "unit": "天"
+    },
+    "TIMON_CHROME_DEVTOOLS_MCP": {
+      "label": "chrome-devtools MCP npm 包"
+    },
+    "TIMON_VAPID_SUBJECT": {
+      "label": "VAPID 主题（Web Push）"
+    },
+    "TIMON_VAPID_PUBLIC_KEY": {
+      "label": "VAPID 公钥",
+      "description": "私钥不得写入设置注册表，只能通过密钥存储、环境变量或 secrets.env 提供。"
+    },
+    "TIMON_ALLOW_HTTP": {
+      "label": "允许通过 HTTP 远程访问",
+      "description": "仅用于本地开发：不使用 HTTPS 时，远程访问令牌会以明文传输。应用重启后生效。通过 Docker Compose 部署的应用会忽略此设置，改为从其 .env 文件读取 TIMON_ALLOW_HTTP。"
+    },
+    "VF_DB_PATH": {
+      "label": "video-factory 数据库",
+      "description": "留空则禁用与 Video Factory 的连接。"
+    },
+    "DISPATCHER_INTERVAL_MS": {
+      "label": "看板调度间隔",
+      "unit": "ms"
+    },
+    "TIMON_EVENTS_HOT_DAYS": {
+      "label": "事件表中的保留期限",
+      "description": "0 表示禁用归档。超过此期限的事件会迁移到 ~/.timon/archive/events.db，仍可读取，但默认导出或备份不再包含这些事件。",
+      "unit": "天"
+    },
+    "TIMON_TRACE_SPANS_RETENTION_DAYS": {
+      "label": "任务时间线保留期限",
+      "description": "任务结束达到此期限后，将删除其时间线，但保留工具调用总数、错误总数和总耗时。可通过任务页面上的按钮根据事件重建时间线。工作流运行自身的步骤仍会保留。0 表示保留所有时间线。",
+      "unit": "天"
+    },
+    "TIMON_INTEGRATION_RECEIPT_RETENTION_DAYS": {
+      "label": "消息集成投递记录保留期限",
+      "description": "消息集成已投递的消息会保留指定时长，以识别服务提供商的重复投递，之后删除。耗尽重试次数的消息会从失败时起保留同样的时长，供你重新处理。仍在处理的消息不会被删除。0 表示永久保留。",
+      "unit": "天"
+    },
+    "TIMON_LOG_RETENTION_DAYS": {
+      "label": "日志保留期限",
+      "description": "Timon 主目录下 tmp 文件夹中超过此期限的每日日志文件（守护进程日志、桌面应用日志和提示词转储）将被删除。0 表示永久保留。",
+      "unit": "天"
+    },
+    "TIMON_LOG_MAX_MB": {
+      "label": "日志总大小上限",
+      "description": "日志总大小超过此上限时，从最早的每日日志文件开始删除。0 表示不设上限。",
+      "unit": "MB"
+    },
+    "TIMON_TRACE_SPAN_MAX_BYTES": {
+      "label": "追踪跨度载荷大小上限",
+      "description": "trace_spans 中保存的单个追踪跨度输入和输出（工具参数和工具结果）的大小上限。超限内容会被截断，事件表仍保留完整载荷。",
+      "unit": "字节"
+    },
+    "TIMON_TTS_URL": {
+      "label": "外部 TTS 服务 URL",
+      "description": "留空则使用本地 TTS 服务（容器）。"
+    },
+    "TIMON_GPT_LIVE_ENABLED": {
+      "label": "GPT-Live 实时对话模式",
+      "description": "在聊天输入区添加实时语音对话按钮。使用 OPENAI_GPT_LIVE_API_KEY 密钥，由 OpenAI 按分钟计费。"
+    }
+  }
+}

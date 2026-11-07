@@ -135,9 +135,9 @@ export function pluginGalleryLabel(plugin: {
   id: string;
   label: string | null;
   source?: 'bundled' | 'third-party';
+  builtin?: boolean;
 }): string {
-  const bundled = plugin.source === 'bundled' || plugin.id.startsWith('@timon/');
-  if (bundled) {
+  if (plugin.builtin || plugin.source === 'bundled' || plugin.id.startsWith('@timon/')) {
     const key = `pluginsPage.modules.${plugin.id}.label`;
     const value = t(key);
     if (value !== key) return value;
@@ -153,8 +153,8 @@ export function toCardData(plugin: PluginPublic): PluginCardData {
   return {
     id: plugin.id,
     pkg: plugin.pkg,
-    label: bundled ? (bundledCopy(plugin, 'label') ?? plugin.id) : (plugin.label ?? plugin.id),
-    description: bundled ? bundledCopy(plugin, 'description') : plugin.description,
+    label: pluginGalleryLabel(plugin),
+    description: bundled || plugin.builtin ? bundledCopy(plugin, 'description') : plugin.description,
     author: plugin.author,
     signed: plugin.signed,
     builtin: plugin.builtin === true,
