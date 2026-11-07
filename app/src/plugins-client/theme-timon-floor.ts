@@ -83,13 +83,13 @@ export const TIMON_THEME_TOKENS_CSS = `
 }
 
 :root.light {
-    --surface-0: 33 34% 94.5%;
+    --surface-0: 33 32% 93.2%;
     --surface-1: 35 38% 97.6%;
     --surface-2: 33 30% 91.4%;
     --surface-3: 35 40% 98.8%;
     --surface-4: 32 30% 88.4%;
     --surface-sunken: 33 30% 91.4%;
-    --chrome: 32 26% 88.6%;
+    --chrome: 32 24% 87.8%;
     --surface-chip: var(--surface-2);
 
     --shadow-1: 0 1px 2px hsl(15 30% 20% / 0.08);
