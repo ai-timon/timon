@@ -10,10 +10,10 @@ import React from 'react'
  * reloads hot: editing this file takes effect without rebuilding the app.
  *
  * Dark: the website's violet-tinted night (266°), on the product's steps so
- * the frame, the islands and the cards read apart: frame 7%, islands 12%,
- * cards 15.5%, menus 20.5%, hover 23%, borders 26.5%. A near-black frame
- * around bright ivory text was tiring over a working day, hence these steps
- * and a softer ivory (90.5%). Peach champagne `#F9BB91` as the primary.
+ * the frame, the islands and the cards read apart: frame 4.5%, islands
+ * 10.5%, cards 13.5%, menus 18.5%, hover 22%, borders 25.5% (the site's
+ * `#16131a`, 8.8%, sits between the frame and the islands). Peach champagne
+ * `#F9BB91` as the primary, warm ivory text.
  * Light: a beige canvas instead of neutral grey, a copper apricot primary
  * (the peach cannot carry text on light), obsidian text.
  *
@@ -27,13 +27,13 @@ const TOKENS = `
 :root {
     --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-    --surface-0: 266 14% 12%;
-    --surface-1: 267 12% 15.5%;
-    --surface-2: 268 11% 18%;
-    --surface-3: 269 10% 20.5%;
-    --surface-4: 270 10% 23%;
-    --surface-sunken: 266 15% 9%;
-    --chrome: 266 16% 7%;
+    --surface-0: 266 15% 10.5%;
+    --surface-1: 268 13% 13.5%;
+    --surface-2: 270 12% 16%;
+    --surface-3: 271 11% 18.5%;
+    --surface-4: 272 10% 22%;
+    --surface-sunken: 266 18% 7.5%;
+    --chrome: 266 22% 4.5%;
     --surface-chip: var(--surface-3);
 
     --shadow-1: 0 1px 2px hsl(266 40% 2% / 0.5);
@@ -41,21 +41,21 @@ const TOKENS = `
     --shadow-3: 0 18px 44px -12px hsl(266 40% 2% / 0.78), 0 6px 14px -6px hsl(266 40% 2% / 0.5);
 
     --background: var(--surface-0);
-    --foreground: 30 32% 90.5%;
+    --foreground: 30 50% 93.7%;
     --card: var(--surface-1);
-    --card-foreground: 30 32% 90.5%;
+    --card-foreground: 30 50% 93.7%;
     --popover: var(--surface-3);
-    --popover-foreground: 30 32% 90.5%;
+    --popover-foreground: 30 50% 93.7%;
     --primary: 24 90% 77.3%;
-    --primary-foreground: 266 14% 12%;
+    --primary-foreground: 266 15% 10.5%;
     --secondary: var(--surface-4);
-    --secondary-foreground: 30 32% 90.5%;
+    --secondary-foreground: 30 50% 93.7%;
     --muted: var(--surface-2);
-    --muted-foreground: 22 12% 68%;
+    --muted-foreground: 20 15% 69%;
     --accent: var(--primary);
-    --accent-foreground: 266 14% 12%;
-    --border: 268 10% 26.5%;
-    --input: 268 10% 26.5%;
+    --accent-foreground: 266 15% 10.5%;
+    --border: 268 10% 25.5%;
+    --input: 268 10% 25.5%;
     --ring: var(--primary);
     --radius: 0.75rem;
 
@@ -64,13 +64,13 @@ const TOKENS = `
     --salmon-3: var(--primary);
     --salmon-soft: var(--primary) / 0.12;
 
-    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 3%, hsl(var(--surface-4)));
-    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 6%, hsl(var(--surface-4)));
+    --bubble-user: color-mix(in srgb, hsl(var(--primary)) 14%, hsl(var(--card)));
+    --bubble-user-border: color-mix(in srgb, hsl(var(--primary)) 30%, hsl(var(--card)));
 
     --timon-scrollbar-thumb: hsl(var(--primary) / 0.26);
     --timon-scrollbar-thumb-hover: hsl(var(--primary) / 0.45);
 
-    --hl-bg: #141118;
+    --hl-bg: #110e15;
 }
 
 :root.light {
