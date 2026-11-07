@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useColorScheme } from '@/components/theme-provider';
 import VaultNotePanel from '@/components/vault/vault-note-panel';
 import { VAULT_LOGO_MASK } from '@/vendor/vault-graph/logo-mask';
-import { VAULT_GRAPH_MARKUP } from '@/vendor/vault-graph/markup';
+import { createVaultGraphMarkup } from '@/vendor/vault-graph/markup';
+import graphSource from '@/locales/en/vaultGraphSurface.json';
 import type {
   VaultDiscData,
   VaultGraphApi,
@@ -12,7 +13,8 @@ import type {
 } from '@/vendor/vault-graph/page';
 import '@/vendor/vault-graph/page.css';
 import { machineScopedStorage } from '@/lib/machines/machine-storage';
-import { t } from '@/lib/i18n';
+import { getLocale, t } from '@/lib/i18n';
+import { dateTimeFormat, formatDateTime } from '@/lib/intl';
 
 const COLORS_KEY = 'timon-brain-disc-colors';
 const SHOWN_KEY = 'timon-brain-disc-shown';
@@ -150,7 +152,17 @@ export default function BrainDisc() {
     handleRef.current = null;
     host.replaceChildren();
 
-    const parsed = new DOMParser().parseFromString(VAULT_GRAPH_MARKUP, 'text/html');
+    const dictionary = Object.fromEntries(Object.entries(graphSource.vaultGraphSurface).map(([key, message]) => {
+      const placeholders = Object.fromEntries(Array.from(message.matchAll(/\{(\w+)\}/g), ([slot, name]) => [name, slot]));
+      return [key, t(`vaultGraphSurface.${key}`, placeholders)];
+    }));
+    const locale = getLocale();
+    const calendarFormats = {
+      month: dateTimeFormat({ month: 'short', timeZone: 'UTC' }, locale),
+      weekday: dateTimeFormat({ weekday: 'short', timeZone: 'UTC' }, locale),
+      weekdayNarrow: dateTimeFormat({ weekday: 'narrow', timeZone: 'UTC' }, locale),
+    };
+    const parsed = new DOMParser().parseFromString(createVaultGraphMarkup(dictionary), 'text/html');
     const page = parsed.body.firstElementChild;
     if (!(page instanceof HTMLElement)) {
       setError(t('vault.invalidMarkup'));
@@ -170,6 +182,14 @@ export default function BrainDisc() {
       Graph,
       Sigma,
       rendering,
+      locale,
+      dictionary,
+      formatDate: (value, kind) => kind === 'generated'
+        ? formatDateTime(value, {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC',
+          }, locale)
+        : calendarFormats[kind].format(new Date(value)),
       logoMask: VAULT_LOGO_MASK,
       settingsUI: true,
       folderColors: readMap(COLORS_KEY) as Record<string, string> | undefined,

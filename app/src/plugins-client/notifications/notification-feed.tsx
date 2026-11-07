@@ -22,6 +22,7 @@ import {
   visibleNotificationTotal,
   visibleNotificationTypes,
 } from '@/lib/notification-prefs';
+import { systemNotificationText, type SystemNotificationPresentation } from '@/lib/system-notifications';
 
 /**
  * The short list of recent notifications, shared by the bell's dropdown and
@@ -44,6 +45,7 @@ export type FeedNotification = {
   created_at: number;
   /** Agent that raised it (its mission's, else its task's); null = Timon itself. */
   agent?: string | null;
+  presentation?: SystemNotificationPresentation;
 };
 
 const POLL_MS = 20_000;
@@ -204,16 +206,17 @@ export function NotificationFeed({
     <ul className={cn('flex flex-col gap-0.5', className)}>
       {items.map((n) => {
         const href = notificationHref(n);
+        const display = systemNotificationText(n);
         const text = (
           <>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-[12.5px] font-medium leading-snug text-foreground" title={n.title}>
-                {n.title}
+              <span className="min-w-0 truncate text-[12.5px] font-medium leading-snug text-foreground" title={display.title}>
+                {display.title}
               </span>
               {n.urgent === 1 && <UrgentPill type={n.type} label={t('notifications.urgent')} />}
             </span>
-            {n.body && (
-              <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-muted-foreground">{n.body}</p>
+            {display.body && (
+              <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-muted-foreground">{display.body}</p>
             )}
             <p className="mt-1 flex min-w-0 items-center gap-1 text-[10.5px] text-muted-foreground/70" suppressHydrationWarning>
               <span
@@ -255,7 +258,7 @@ export function NotificationFeed({
               <div className="min-w-0 flex-1">{text}</div>
             )}
             {/* Always visible, not revealed on hover: a phone has no hover. */}
-            <CopyNotificationButton notification={n} className="size-7" />
+            <CopyNotificationButton notification={display} className="size-7" />
             <button
               type="button"
               onClick={() => onRead(n.id)}

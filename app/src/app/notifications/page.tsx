@@ -16,6 +16,7 @@ import { NotificationKindBadge } from '@/plugins-client/notifications/notificati
 import { isModuleOn, isPageSurfaceAllowed, useCapabilities } from '@/lib/capabilities';
 import { ForbiddenScreen, PluginOffScreen } from '@/lib/plugin-host/module-page-gate';
 import { PageIslandBody, PageIslandHost } from '@/components/islands/page-island-host';
+import { systemNotificationText, type SystemNotificationPresentation } from '@/lib/system-notifications';
 
 type NotificationType = 'action_required' | 'alert' | 'report';
 
@@ -33,6 +34,7 @@ type Notification = {
   dismissed_at: number | null;
   /** Agent that raised it; null = Timon itself. */
   agent?: string | null;
+  presentation?: SystemNotificationPresentation;
 };
 
 function fmtDate(ts: number): string {
@@ -113,6 +115,7 @@ export default function NotificationsPage() {
               <div className="flex flex-col gap-2">
                 {notifications.map((n) => {
                   const href = notificationHref(n);
+                  const display = systemNotificationText(n);
 
                   const card = (
                     <div
@@ -129,13 +132,13 @@ export default function NotificationsPage() {
                               <span className="rounded-full bg-muted px-1.5 py-px text-[9.5px] font-semibold text-muted-foreground">{t('notifications.dismissed')}</span>
                             )}
                           </div>
-                          <p className="mt-0.5 text-[13.5px] font-semibold leading-snug">{n.title}</p>
-                          {n.body && <p className="mt-1 text-[12.5px] leading-relaxed text-muted-foreground">{n.body}</p>}
+                          <p className="mt-0.5 text-[13.5px] font-semibold leading-snug">{display.title}</p>
+                          {display.body && <p className="mt-1 whitespace-pre-wrap break-words text-[12.5px] leading-relaxed text-muted-foreground">{display.body}</p>}
                         </div>
                         <span className="flex shrink-0 flex-col items-end gap-0.5 text-[10.5px] text-muted-foreground/70">
                           <span data-notification-agent className="font-medium text-muted-foreground">{n.agent ?? BRAND.displayName}</span>
                           <span className="tabular-nums">{fmtDate(n.created_at)}</span>
-                          <CopyNotificationButton notification={n} className="mt-1 size-6" />
+                          <CopyNotificationButton notification={display} className="mt-1 size-6" />
                         </span>
                       </div>
                     </div>

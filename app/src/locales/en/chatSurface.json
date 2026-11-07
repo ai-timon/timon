@@ -1,0 +1,44 @@
+{
+  "chatSurface": {
+    "activeState": {
+      "thinking": "thinking",
+      "needs_action": "needs you",
+      "done": "done",
+      "idle": "idle"
+    },
+    "pendingCount": "{count, plural, one {# pending request} other {# pending requests}}",
+    "elapsed": "Elapsed: {duration}",
+    "today": "Today",
+    "newConversationEmpty": "New conversation. Type a message to start.",
+    "missionEmpty": "No messages in this mission — start the conversation with {agent}.",
+    "patternInPath": "{pattern} in {path}",
+    "patternUnderPath": "{pattern} under {path}",
+    "toolError": "error",
+    "toolEmpty": "(empty)",
+    "imageTooLarge": "Image too large ({size}, max {max})",
+    "fileTooLarge": "{name} — file too large ({size}, max {max})",
+    "attachFailed": "Attachment failed: {error}",
+    "reasoningChangeFailed": "Could not change the reasoning level",
+    "saveFailed": "Save failed: {error}",
+    "configSavedRespawn": "Configuration saved · agent will restart at the next message",
+    "killFailed": "Could not stop the mission: {status}",
+    "noWrittenAnswer": "The agent finished without a written answer.",
+    "requestExpired": "This request has expired (orchestrator restarted or mission ended).",
+    "resolveFailed": "Could not resolve the request: {error}",
+    "messageTag": {
+      "mission": "mission",
+      "routine": "routine"
+    },
+    "permission": "permission",
+    "permissionToRun": "The agent is requesting permission to run:",
+    "permissionState": {
+      "pending": "pending",
+      "allowed": "allowed",
+      "denied": "denied",
+      "expired": "expired",
+      "pasted": "pasted"
+    },
+    "unexpectedReaderResult": "Unexpected file reader result",
+    "readFailed": "Could not read the file"
+  }
+}
