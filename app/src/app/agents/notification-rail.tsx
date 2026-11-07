@@ -15,6 +15,7 @@ import { BRAND } from '@/lib/brand';
 import { isZoneVisible, useCapabilities } from '@/lib/capabilities';
 import { CopyNotificationButton } from '@/plugins-client/notifications/copy-notification-button';
 import { NotificationKindBadge } from '@/plugins-client/notifications/notification-icon';
+import { systemNotificationText, type SystemNotificationPresentation } from '@/lib/system-notifications';
 
 type NotificationType = 'action_required' | 'alert' | 'report';
 type FilterTab = 'all' | 'alert' | 'action_required' | 'report';
@@ -33,6 +34,7 @@ type Notification = {
   dismissed_at: number | null;
   /** Agent that raised it; null = Timon itself. */
   agent?: string | null;
+  presentation?: SystemNotificationPresentation;
 };
 
 type Counts = Record<NotificationType, number>;
@@ -67,7 +69,8 @@ export function NotifCard({
   // Built the same way as the Web Push payload — see lib/notification-href.
   const missionHref = notificationHref(n);
   const [expanded, setExpanded] = useState(false);
-  const expandable = isLongNotification(n);
+  const display = systemNotificationText(n);
+  const expandable = isLongNotification(display);
 
   const kindLabel = isUrgent ? t('notifications.urgent') : t(`notifications.kind.${n.type}`);
   const cardContent = (
@@ -86,19 +89,19 @@ export function NotifCard({
           'mt-1.5 text-[12px] font-semibold leading-snug text-foreground',
           expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-2 break-words',
         )}
-        title={expanded ? undefined : n.title}
+        title={expanded ? undefined : display.title}
       >
-        {n.title}
+        {display.title}
       </p>
-      {n.body && (
+      {display.body && (
         <p
           className={cn(
             'mt-0.5 text-[11px] leading-snug text-muted-foreground',
             expanded ? 'select-text whitespace-pre-wrap break-words' : 'line-clamp-2',
           )}
-          title={expanded ? undefined : n.body}
+          title={expanded ? undefined : display.body}
         >
-          {n.body}
+          {display.body}
         </p>
       )}
       {expandable && (
@@ -119,7 +122,7 @@ export function NotifCard({
       )}
       {/* Over the card, not beside it: hidden, they take no width from the text. */}
       <div className="absolute right-2 top-2 flex items-center gap-0.5 rounded-md bg-card opacity-0 shadow-sm transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-        <CopyNotificationButton notification={n} className="size-6" />
+        <CopyNotificationButton notification={display} className="size-6" />
         <button
           type="button"
           onClick={(e) => {

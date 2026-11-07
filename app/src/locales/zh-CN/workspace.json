@@ -1,0 +1,88 @@
+{
+  "logoCrop": {
+    "title": "调整标志取景", "zoom": "缩放", "apply": "应用", "uploading": "正在上传…",
+    "adjust": "调整", "loading": "正在加载…", "loadFailed": "无法加载此图片。",
+    "imageTooLarge": "图片过大（最大 8 MB）",
+    "dragHint": "拖动图片以调整取景。", "fit": "适应", "fill": "填充",
+    "background": "背景", "transparent": "透明", "projectColor": "主题色",
+    "customBackground": "自定义背景色"
+  },
+  "emojiPicker": {
+    "trigger": "表情符号", "title": "选择表情符号", "search": "搜索表情符号…",
+    "loading": "正在加载…", "noResults": "没有找到匹配的表情符号。",
+    "groups": {
+      "smileys": "笑脸与情感", "people": "人物与身体", "nature": "动物与自然",
+      "food": "食物与饮品", "travel": "旅行与地点", "activities": "活动",
+      "objects": "物品", "symbols": "符号", "flags": "旗帜"
+    }
+  },
+  "projectsPage": {
+    "namePlaceholder": "我的项目", "slugPlaceholder": "my-project", "cwdPlaceholder": "/path/to/my-project",
+    "invalidSlug": "项目标识无效（仅限字母、数字及 . _ -，长度为 1–64 个字符）",
+    "updated": "已更新：{slug}", "created": "已创建：{slug}", "deleted": "已删除：{slug}",
+    "cwdWarnMissing": "已保存，但守护进程找不到此文件夹：{path}",
+    "cwdWarnDenied": "已保存，但守护进程无权访问此文件夹（{code}）：{path}。在 macOS 上，请检查「系统设置 › 隐私与安全性」。",
+    "cwdWarnNotDirectory": "已保存，但此路径不是文件夹：{path}",
+    "deleteConfirm": "要删除项目「{slug}」吗？",
+    "fateTitle": "如何处理「{slug}」中的 {count} 个智能体？",
+    "fate": {
+      "move": "移至其他项目",
+      "moveHint": "保留智能体的名称和记忆，并将其移至你选择的项目。",
+      "detach": "解除项目关联",
+      "detachHint": "保留这些智能体，但不再归属任何项目。",
+      "delete": "删除这些智能体",
+      "deleteHint": "智能体的身份和记忆将被清除。此操作无法撤销。",
+      "target": "目标项目",
+      "confirm": "删除项目"
+    },
+    "imageOnly": "仅支持图片", "imageTooLarge": "图片过大（最大 8 MB）",
+    "invalidUploadResponse": "上传响应无效", "iconUploaded": "图标已上传",
+    "create": "创建", "refresh": "刷新", "projectCount": "{count} 个项目",
+    "empty": "暂无项目。创建你的第一个项目吧。", "edit": "编辑", "delete": "删除",
+    "editTitle": "编辑「{slug}」", "createTitle": "创建项目", "name": "名称", "slug": "项目标识",
+    "logo": "标志", "color": "颜色", "workspace": "工作区",
+    "workingDirectory": "工作目录", "speech": "语音（描述）",
+    "uploading": "正在上传…", "chooseImage": "选择图片", "clearLogo": "清除标志",
+    "logoHint": "点击圆形区域选择图片，也可粘贴（Ctrl/Cmd+V）、拖入图片或选择表情符号。", "logoPlaceholder": "表情符号或简短文字",
+    "autoColor": "根据名称自动生成", "auto": "自动",
+    "saving": "正在保存…", "save": "保存",
+    "deleting": "正在删除…", "dangerZone": "危险操作", "dangerZoneHint": "项目删除后无法恢复。"
+  },
+  "memoryPage": {
+    "title": "记忆", "dashboard": "仪表板", "browse": "浏览", "loading": "正在加载…",
+    "curationRun": "记忆整理记录", "decisionsRun": "{count} 项决定 · 第 {run} 次整理",
+    "detailError": "无法加载详情", "noAudit": "本次整理没有记录。", "reverted": "已撤销", "noCandidateText": "（无文本，请参阅对应的规则）",
+    "facts": "事实", "pitfalls": "常见陷阱", "pending": "待处理", "projects": "项目", "agents": "智能体",
+    "pendingPromotions": "待采纳的提案", "noProposals": "没有待处理的提案。", "latestRuns": "最近的记忆整理记录",
+    "noRuns": "暂无整理记录。", "promote": "采纳", "reject": "拒绝", "rejected": "已拒绝",
+    "promoted": "已采纳至 {target}", "projectFile": "项目文件", "target": "目标",
+    "noProjects": "暂无项目。", "noAgents": "暂无智能体。", "chooseProject": "请选择项目。", "chooseAgent": "请选择智能体。",
+    "permanentInstructions": "永久指令（始终注入）", "technicalDecisions": "技术决策",
+    "editorPlaceholder": "{slug} 中没有 {file}。可在此编写永久规则，规则会注入项目中的每个智能体。",
+    "noCapturedMemory": "尚未为 {agent} 捕获记忆（需启用记忆捕获且至少进行 3 轮对话）。",
+    "injectedPitfalls": "已注入的常见陷阱（pieges.md）", "saving": "正在保存…", "saved": "已保存 ✓", "saveFailed": "保存失败",
+    "browseByProject": "按项目浏览"
+  },
+  "gitPage": {
+    "refresh": "刷新", "loading": "正在加载…", "selectProject": "请选择项目。", "unreadableRepo": "无法读取 Git 仓库。", "staged": "已暂存", "delete": "删除", "projects": "项目", "repoCount": "{count} 个仓库",
+    "never": "—", "justNow": "刚刚", "minutesAgo": "{count} 分钟前", "hoursAgo": "{count} 小时前", "daysAgo": "{count} 天前",
+    "checkedOut": "已切换到 {branch}", "branchDeleted": "已删除分支 {branch}", "title": "Git", "noProjects": "没有项目配置工作目录。",
+    "workingTree": "工作树", "cleanTree": "工作树干净，没有可提交的更改。", "modified": "已修改", "untracked": "未跟踪",
+    "branches": "分支", "unmergedBranches": "未合并的分支", "allMerged": "所有分支均已合并到", "deleteBranchTitle": "要删除分支吗？",
+    "current": "当前", "base": "基准", "worktree": "工作树", "merged": "已合并", "unmerged": "未合并", "switch": "切换"
+  },
+  "gitWidget": {
+    "tabs": {"branches": "分支", "graph": "提交图", "publish": "发布"},
+    "detached": "分离的 HEAD",
+    "noProject": "此智能体未关联项目，没有可显示的仓库。",
+    "repos": {"label": "仓库", "root": "{name}（根仓库）", "otherToPush": "{name}：{count} 个待推送的提交"},
+    "status": {"toPush": "{count} 个待推送的提交", "unpublished": "未发布", "noRemote": "无远程仓库", "synced": "已同步", "unknown": "数量未知", "changes": "{count} 项未提交的更改"},
+    "branches": {"workingTree": "工作树", "title": "分支", "worktree": "工作树", "localOnly": "仅本地", "localOnlyTitle": "从未推送：这些提交仅存在于本机磁盘。", "checkout": "切换到 {branch}", "switched": "已切换到 {branch}"},
+    "publish": {
+      "addRemote": "添加远程仓库…", "addRemoteTitle": "支持 SSH、GitLab、Gitea、自建服务器等任意 Git URL", "remotes": "远程仓库…", "remotesTitle": "添加、更改或移除远程仓库", "project": "项目", "remote": "远程仓库", "notRepo": "不是 Git 仓库", "none": "无", "branch": "分支", "noUpstream": "无上游分支", "toPush": "待推送", "ahead": "领先", "upToDate": "已同步", "commits": "{count} 个提交", "unknown": "未知", "unknownTitle": "无法解析用于比较的分支：提交数未知，并非零。", "notPublished": "未发布", "notPublishedCount": "未发布 · {count} 个提交", "comparedTo": "与 {ref} 比较", "neverPushedVs": "从未推送，差异以 {ref} 为基准", "nothingPublished": "远程仓库中没有已发布的提交", "behind": "落后", "dirty": "未提交", "files": "{count} 个文件", "last": "最近一次", "notVersioned": "此文件夹尚未纳入版本控制：请先运行 {cmd} 并完成首次提交，再发布。", "noRemote": "没有远程仓库：代码仅保存在本机磁盘。", "noRemoteNoCommit": "没有远程仓库，也没有提交：请先完成首次提交，再发布。", "neverPushed": "此分支从未推送，推送时将设置上游分支。", "detachedHint": "HEAD 已分离，请选择要推送的分支。", "ghMissing": "未找到 gh CLI", "noCommit": "没有可发布的提交", "createRemote": "在 GitHub 上创建…", "push": "推送", "pushing": "正在推送…", "publishBranch": "发布", "fetch": "获取", "fetchTitle": "git fetch — 更新落后的提交数", "destination": "推送目标", "upstreamTag": "上游", "remoteAbsent": "分支不存在", "remotePending": "{count} 个待推送的提交", "pushTo": "推送到 {remote}", "confirmPushTitle": "要将 {branch} 推送到 {url} 吗？", "confirmPushCount": "{branch} 的 {count} 个提交将发布到 {remote}（{url}）。推送无法撤回，这些提交历史将保留在目标仓库。", "confirmPushAbsent": "{remote}（{url}）上还没有 {branch}，其完整提交历史将发布到目标仓库。推送无法撤回。", "confirmPushUnknown": "无法确定 {remote}（{url}）缺少多少提交；目标仓库尚未包含的所有提交都将发布。推送无法撤回。", "confirmRepo": "仓库：{repo}。", "confirmNotUpstream": "{remote} 不是 {branch} 的上游远程仓库。", "confirmUpstreamUnknown": "目标：远程仓库 {remote}（{url}）。无法确定它缺少多少提交；目标仓库尚未包含的所有提交都将发布。推送无法撤回。", "confirmUpstreamAbsent": "{remote}（{url}）上还没有 {branch}，其完整提交历史将发布到目标仓库，并在 {remote} 上设置上游分支。推送无法撤回。", "confirmUpstream": "目标：此分支的上游远程仓库 {remote}（{url}）。推送无法撤回。", "confirmPublishTitle": "要将 {branch} 发布到 {url} 吗？", "confirmPushCountTitle": "要将 {branch} 的 {count, plural, other {# 个提交}}推送到 {url} 吗？"
+    },
+    "graph": {"loading": "正在读取提交历史…", "empty": "暂无提交。", "truncated": "最近的 {count} 个提交。", "copyHash": "复制提交哈希", "copied": "已复制提交哈希", "parents": "父提交", "close": "关闭", "held": "已在 {path} 中检出", "detachedWorktree": "HEAD 已分离的工作树：{path}", "synced": "与远程仓库的提交一致", "more": "+{count}", "label": "提交历史"},
+    "remotes": {"title": "远程仓库", "intro": "在此设置项目代码的推送和获取地址。请使用 SSH 密钥或 Git 凭据助手保存凭据，不要将凭据放在 URL 中。", "loading": "正在读取远程仓库…", "empty": "尚未配置远程仓库：代码仅保存在本机磁盘。", "publication": "推送目标", "pushUrl": "推送地址：{url}", "edit": "更改 URL", "remove": "移除", "confirmRemove": "移除", "removing": "正在移除…", "addTitle": "添加远程仓库", "editTitle": "更改 {name} 的 URL", "name": "名称", "url": "URL", "urlPlaceholder": "git@gitlab.com:team/project.git", "urlHint": "支持 SSH（git@host:path 或 ssh://）、不含凭据的 HTTPS、git://、file:// 或本机文件夹。", "issue": {"name": "只能使用字母、数字、点、连字符和下划线，且不能以连字符开头。", "credentials": "URL 中不能包含用户名或令牌，请使用 SSH 密钥或 Git 凭据助手。", "url": "不是有效的远程仓库 URL。"}, "add": "添加", "save": "保存", "saving": "正在保存…", "cancelEdit": "取消", "close": "关闭", "reached": "已保存 {name}，且连接成功。", "saved": "已保存 {name}。", "unreached": "已保存 {name}，但 Git 无法连接：", "removed": "已移除 {name}。"},
+    "picker": {"title": "分支和工作树", "branches": "分支", "worktrees": "工作树", "loading": "正在读取仓库…", "current": "当前", "here": "此处", "main": "主工作树", "locked": "已锁定", "missing": "缺失", "inWorktree": "此会话在工作树 {name} 中运行，请到对应文件夹切换分支。", "otherRepo": "此会话在另一个仓库 {name} 中运行，请到对应文件夹切换分支。", "otherRepoUnnamed": "此会话在另一个仓库中运行，请到对应文件夹切换分支。", "dirty": "有未提交的更改", "clean": "工作树干净", "diff": "相对于 HEAD，新增 {added} 行，删除 {removed} 行", "worktreeOf": "工作树 {name}"}
+  }
+}

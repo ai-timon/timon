@@ -1,0 +1,13 @@
+{
+  "invitePage": {
+    "title": "接受邀请",
+    "description": "为 {email} 设置密码。",
+    "invalid": "此邀请无效或已过期。",
+    "name": "姓名",
+    "password": "密码",
+    "submit": "创建账号",
+    "working": "正在处理…",
+    "failed": "无法接受邀请",
+    "goHome": "继续"
+  }
+}

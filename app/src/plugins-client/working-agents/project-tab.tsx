@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Pin, PinOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
+import { formatNumber } from '@/lib/intl';
 import { STATE_VISUALS } from '@/lib/agent-state';
 import type { AgentIdentity } from '@/components/agent-avatar';
 import type { ProjectGroup } from '@/lib/working-agents';
@@ -57,6 +58,8 @@ export function ProjectTab({ group, identity, label, href, size, shape, vertical
   children: ReactNode[];
 }) {
   const vis = STATE_VISUALS[group.state];
+  const stateLabel = t(`chatSurface.activeState.${group.state}`);
+  const pendingLabel = group.pending > 0 ? t('chatSurface.pendingCount', { count: group.pending }) : '';
   const title = `${label} — ${t('workingAgents.projectCount', { count: String(size) })}`;
   // No agent at work, no list: it would open on nothing, or on finished agents.
   const list = useHoverList(hoverList && children.length > 0, vertical);
@@ -102,15 +105,15 @@ export function ProjectTab({ group, identity, label, href, size, shape, vertical
             <span className="flex min-w-0 items-center gap-1">
               <span className="truncate text-foreground">{label}</span>
               {group.pending > 0 && (
-                <span className="shrink-0 rounded px-0.5 text-[8.5px] font-semibold md:px-1 md:text-[9.5px]" style={{ background: vis.colorVar, color: '#0c0c0c' }}>
-                  {group.pending}
+                <span className="shrink-0 rounded px-0.5 text-[8.5px] font-semibold md:px-1 md:text-[9.5px]" style={{ background: vis.colorVar, color: '#0c0c0c' }} title={pendingLabel} aria-label={pendingLabel}>
+                  {formatNumber(group.pending)}
                 </span>
               )}
             </span>
             {/* Nothing at work, nothing to say: no "idle 0/3" under the name. */}
             {group.working > 0 && (
               <span className="flex items-center gap-1">
-                <span className={cn('text-[9.5px] md:text-[10.5px]', vis.textClass)}>{vis.label}</span>
+                <span className={cn('text-[9.5px] md:text-[10.5px]', vis.textClass)}>{stateLabel}</span>
                 <span className="text-[9.5px] tabular-nums text-muted-foreground/70 md:text-[10.5px]">
                   {t('workingAgents.projectWorking', { working: String(group.working), count: String(size) })}
                 </span>

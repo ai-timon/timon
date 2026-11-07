@@ -31,7 +31,8 @@ import { MissionBadgeSlot } from '@/plugins-client/missions/mission-badge-slot';
 import { toMissionItem, type MissionItem } from '@/lib/mission-liveness';
 import { MissionOriginIcon } from '@/components/mission-origin-icon';
 import { MISSION_ORIGIN_FILTERS, isMissionOrigin, type MissionOrigin } from '@/lib/mission-origin';
-import { t } from '@/lib/i18n';
+import { getLocale, t } from '@/lib/i18n';
+import { dateTimeFormat, numberFormat } from '@/lib/intl';
 import { chatHref } from '@/lib/chat-island-params';
 import { forgetChatMission } from '@/lib/chat-mission-cache';
 
@@ -86,34 +87,28 @@ type Lineage = {
   children: Array<{ id: string; agent_name: string; status: string; started_at: number }>;
 };
 
-const STATUS_TONE: Record<Row['status'], { label: string; chip: string; dot: string }> = {
+const STATUS_TONE: Record<Row['status'], { chip: string; dot: string }> = {
   running: {
-    label: 'running',
     chip: 'bg-primary/10 text-primary border-primary/30',
     dot: 'bg-primary animate-pulse shadow-[0_0_6px_hsl(var(--primary))]',
   },
   done: {
-    label: 'done',
     chip: 'bg-[hsl(var(--success)/0.08)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.25)]',
     dot: 'bg-[hsl(var(--success))]',
   },
   terminated: {
-    label: 'terminated',
     chip: 'bg-muted-foreground/10 text-muted-foreground border-muted-foreground/25',
     dot: 'bg-muted-foreground/60',
   },
   failed: {
-    label: 'failed',
     chip: 'bg-destructive/10 text-destructive border-destructive/25',
     dot: 'bg-destructive',
   },
   queued: {
-    label: 'queued',
     chip: 'bg-[hsl(var(--info)/0.08)] text-[hsl(var(--info))] border-[hsl(var(--info)/0.25)]',
     dot: 'bg-[hsl(var(--info))]',
   },
   backlog: {
-    label: 'backlog',
     chip: 'bg-muted text-muted-foreground border-border',
     dot: 'bg-muted-foreground/50',
   },
@@ -135,23 +130,24 @@ function paletteFor(name: string) {
   return c[h % c.length]!;
 }
 
-function fmtDur(s: number) {
+function fmtDur(s: number, number: Intl.NumberFormat) {
   if (!s) return '—';
-  if (s < 60) return s + 's';
-  if (s < 3600) return Math.floor(s / 60) + 'm ' + (s % 60) + 's';
-  return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+  if (s < 60) return t('missionsPage.duration.seconds', { seconds: number.format(s) });
+  if (s < 3600) {
+    return t('missionsPage.duration.minutesSeconds', {
+      minutes: number.format(Math.floor(s / 60)),
+      seconds: number.format(s % 60),
+    });
+  }
+  return t('missionsPage.duration.hoursMinutes', {
+    hours: number.format(Math.floor(s / 3600)),
+    minutes: number.format(Math.floor((s % 3600) / 60)),
+  });
 }
 
-function fmtTime(ms: number) {
+function fmtTime(ms: number, time: Intl.DateTimeFormat, dateTime: Intl.DateTimeFormat) {
   if (!ms) return '—';
-  const d = new Date(ms);
-  const dt = Date.now() - ms;
-  if (dt < 24 * 3600e3) return d.toTimeString().slice(0, 5);
-  return d.toISOString().slice(5, 10) + ' ' + d.toTimeString().slice(0, 5);
-}
-
-function kfmt(n: number) {
-  return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
+  return (Date.now() - ms < 24 * 3600e3 ? time : dateTime).format(ms);
 }
 
 function mapStatus(s: string | undefined, running?: boolean): Row['status'] {
@@ -189,6 +185,16 @@ function shape(m: RawMission): Row {
 type SortKey = 'started' | 'duration' | 'cost';
 
 export function MissionsClient() {
+  const locale = getLocale();
+  const formats = useMemo(() => ({
+    number: numberFormat(undefined, locale),
+    compact: numberFormat({ notation: 'compact', maximumFractionDigits: 1 }, locale),
+    cost: numberFormat({ style: 'currency', currency: 'USD', minimumFractionDigits: 3, maximumFractionDigits: 3 }, locale),
+    totalCost: numberFormat({ style: 'currency', currency: 'USD' }, locale),
+    percent: numberFormat({ style: 'percent', maximumFractionDigits: 0 }, locale),
+    time: dateTimeFormat({ hour: '2-digit', minute: '2-digit' }, locale),
+    dateTime: dateTimeFormat({ month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }, locale),
+  }), [locale]);
   const [missions, setMissions] = useState<Row[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [filters, setFilters] = useState({
@@ -265,7 +271,7 @@ export function MissionsClient() {
         });
         if (cancelled) return;
         if (!r.ok) {
-          toast.error(`Mission ${deepLinked.slice(0, 8)} not found`);
+          toast.error(t('missionsPage.notFound', { id: deepLinked.slice(0, 8) }));
           router.replace('/missions', { scroll: false });
           return;
         }
@@ -386,7 +392,7 @@ export function MissionsClient() {
       count: missions.length,
       cost: missions.reduce((s, m) => s + m.cost, 0),
       tok: missions.reduce((s, m) => s + m.tokIn + m.tokOut, 0),
-      succ: terminal ? Math.round(((done + terminated) / terminal) * 100) + '%' : '—',
+      succ: terminal ? (done + terminated) / terminal : null,
       failed,
     };
   }, [missions]);
@@ -400,10 +406,10 @@ export function MissionsClient() {
     const r = await fetch(`/api/ui/missions/${selected.fullId}`, { method: 'DELETE' });
     if (r.ok) {
       forgetChatMission(selected.fullId);
-      toast.success('killed');
+      toast.success(t('missionsPage.terminated'));
       fetchAll();
     } else {
-      toast.error('failed: ' + r.status);
+      toast.error(t('missionsPage.terminateFailed', { status: r.status }));
     }
   }
 
@@ -416,19 +422,19 @@ export function MissionsClient() {
         selected ? 'overflow-hidden' : 'overflow-auto',
       )}
     >
-      <h1 className="text-[22px] font-semibold -tracking-[0.01em]">Missions</h1>
+      <h1 className="text-[22px] font-semibold -tracking-[0.01em]">{t('missionsPage.title')}</h1>
       <p className="mt-1 text-[13px] text-muted-foreground">
-        Every task you've handed off to an agent. Tap a row for the full trace.
+        {t('missionsPage.description')}
       </p>
       <div className="mt-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Missions" value={stats.count} />
-        <Stat label="Total cost" value={`$${stats.cost.toFixed(2)}`} unit="USD" />
-        <Stat label="Tokens consumed" value={kfmt(stats.tok)} unit="in / out" />
+        <Stat label={t('missionsPage.title')} value={formats.number.format(stats.count)} />
+        <Stat label={t('missionsPage.stats.totalCost')} value={formats.totalCost.format(stats.cost)} unit="USD" />
+        <Stat label={t('missionsPage.stats.tokens')} value={formats.compact.format(stats.tok)} unit={t('missionsPage.stats.inOut')} />
         <Stat
-          label="Success rate"
-          value={stats.succ}
+          label={t('missionsPage.stats.successRate')}
+          value={stats.succ === null ? '—' : formats.percent.format(stats.succ)}
           accent
-          delta={stats.failed ? `${stats.failed} failed` : 'all green'}
+          delta={stats.failed ? t('missionsPage.stats.failed', { count: stats.failed, formattedCount: formats.number.format(stats.failed) }) : t('missionsPage.stats.allGreen')}
           bad={stats.failed > 0}
         />
       </div>
@@ -452,7 +458,7 @@ export function MissionsClient() {
             </SelectContent>
           </Select>
         </FilterField>
-        <FilterField label="Project">
+        <FilterField label={t('missionsPage.filters.project')}>
           <Select
             value={filters.project}
             onValueChange={(v) => setFilters((f) => ({ ...f, project: v }))}
@@ -461,17 +467,17 @@ export function MissionsClient() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">all</SelectItem>
+              <SelectItem value="all">{t('missionsPage.filters.all')}</SelectItem>
               {projects.map((p) => (
                 <SelectItem key={p} value={p}>
                   {p}
                 </SelectItem>
               ))}
-              <SelectItem value="__none__">· no project</SelectItem>
+              <SelectItem value="__none__">{t('missionsPage.filters.noProject')}</SelectItem>
             </SelectContent>
           </Select>
         </FilterField>
-        <FilterField label="Agent">
+        <FilterField label={t('missionsPage.filters.agent')}>
           <Select
             value={filters.agent}
             onValueChange={(v) => setFilters((f) => ({ ...f, agent: v }))}
@@ -480,7 +486,7 @@ export function MissionsClient() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">all</SelectItem>
+              <SelectItem value="all">{t('missionsPage.filters.all')}</SelectItem>
               {agents.map((a) => (
                 <SelectItem key={a.name} value={a.name}>
                   {a.name}
@@ -489,7 +495,7 @@ export function MissionsClient() {
             </SelectContent>
           </Select>
         </FilterField>
-        <FilterField label="Status">
+        <FilterField label={t('missionsPage.filters.status')}>
           <Select
             value={filters.status}
             onValueChange={(v) => setFilters((f) => ({ ...f, status: v }))}
@@ -498,13 +504,13 @@ export function MissionsClient() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">all</SelectItem>
-              <SelectItem value="running">running</SelectItem>
-              <SelectItem value="done">done</SelectItem>
-              <SelectItem value="terminated">terminated</SelectItem>
-              <SelectItem value="failed">failed</SelectItem>
-              <SelectItem value="queued">queued</SelectItem>
-              <SelectItem value="backlog">backlog</SelectItem>
+              <SelectItem value="all">{t('missionsPage.filters.all')}</SelectItem>
+              <SelectItem value="running">{t('missionsPage.status.running')}</SelectItem>
+              <SelectItem value="done">{t('missionsPage.status.done')}</SelectItem>
+              <SelectItem value="terminated">{t('missionsPage.status.terminated')}</SelectItem>
+              <SelectItem value="failed">{t('missionsPage.status.failed')}</SelectItem>
+              <SelectItem value="queued">{t('missionsPage.status.queued')}</SelectItem>
+              <SelectItem value="backlog">{t('missionsPage.status.backlog')}</SelectItem>
             </SelectContent>
           </Select>
         </FilterField>
@@ -513,7 +519,8 @@ export function MissionsClient() {
           <input
             value={filters.search}
             onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-            placeholder="Search title or ID…"
+            placeholder={t('missionsPage.filters.search')}
+            aria-label={t('missionsPage.filters.search')}
             className="border-0 bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground/70"
           />
         </div>
@@ -525,11 +532,12 @@ export function MissionsClient() {
             setFilters({ agent: 'all', project: 'all', status: 'all', origin: 'all', search: '' })
           }
         >
-          Clear
+          {t('missionsPage.filters.clear')}
         </Button>
         <div className="flex-1" />
         <span className="tabular-nums text-[12px] text-muted-foreground">
-          <b className="font-medium text-foreground">{rows.length}</b> missions
+          <b className="font-medium text-foreground">{formats.number.format(rows.length)}</b>{' '}
+          {t('missionsPage.missionCount', { count: rows.length })}
         </span>
       </div>
 
@@ -537,11 +545,11 @@ export function MissionsClient() {
         <table className="w-full border-separate border-spacing-0 text-[12.5px]">
           <thead>
             <tr>
-              <Th>ID</Th>
-              <Th>Title</Th>
-              <Th>Agent</Th>
+              <Th>{t('missionsPage.table.id')}</Th>
+              <Th>{t('missionsPage.table.title')}</Th>
+              <Th>{t('missionsPage.filters.agent')}</Th>
               <Th onClick={() => toggleSort('started')} active={sort.key === 'started'} dir={sort.dir}>
-                Started
+                {t('missionsPage.table.started')}
               </Th>
               <Th
                 onClick={() => toggleSort('duration')}
@@ -549,13 +557,13 @@ export function MissionsClient() {
                 dir={sort.dir}
                 right
               >
-                Duration
+                {t('missionsPage.table.duration')}
               </Th>
               <Th onClick={() => toggleSort('cost')} active={sort.key === 'cost'} dir={sort.dir} right>
-                Cost
+                {t('missionsPage.table.cost')}
               </Th>
-              <Th right>Tokens (in/out)</Th>
-              <Th>Status</Th>
+              <Th right>{t('missionsPage.table.tokens')}</Th>
+              <Th>{t('missionsPage.filters.status')}</Th>
             </tr>
           </thead>
           <tbody>
@@ -591,18 +599,18 @@ export function MissionsClient() {
                   </span>
                 </Td>
                 <Td className="tabular-nums text-[11.5px] text-muted-foreground">
-                  {fmtTime(m.startedAt)}
+                  {fmtTime(m.startedAt, formats.time, formats.dateTime)}
                 </Td>
                 <Td right className="tabular-nums text-[12px]">
-                  {fmtDur(m.duration)}
+                  {fmtDur(m.duration, formats.number)}
                 </Td>
                 <Td right className="tabular-nums text-[12px]">
-                  {m.cost ? '$' + m.cost.toFixed(3) : '—'}
+                  {m.cost ? formats.cost.format(m.cost) : '—'}
                 </Td>
                 <Td right className="tabular-nums text-[11.5px] text-muted-foreground">
-                  <b className="font-medium text-foreground">{kfmt(m.tokIn)}</b>
+                  <b className="font-medium text-foreground">{formats.compact.format(m.tokIn)}</b>
                   <span className="mx-1 text-muted-foreground/40">/</span>
-                  <b className="font-medium text-foreground">{kfmt(m.tokOut)}</b>
+                  <b className="font-medium text-foreground">{formats.compact.format(m.tokOut)}</b>
                 </Td>
                 <Td>
                   <div className="flex flex-wrap items-center gap-1">
@@ -618,7 +626,7 @@ export function MissionsClient() {
                   colSpan={8}
                   className="py-10 text-center text-[12.5px] text-muted-foreground/70"
                 >
-                  No missions match the current filters.
+                  {t('missionsPage.empty')}
                 </td>
               </tr>
             )}
@@ -645,8 +653,8 @@ export function MissionsClient() {
                   />
                   <span className="text-muted-foreground/40">·</span>
                   <span>
-                    {fmtTime(selected.startedAt)}
-                    {selected.duration ? ` · ${fmtDur(selected.duration)}` : ''}
+                    {fmtTime(selected.startedAt, formats.time, formats.dateTime)}
+                    {selected.duration ? ` · ${fmtDur(selected.duration, formats.number)}` : ''}
                   </span>
                   <span className="ml-auto flex items-center gap-2">
                     <StatusBadge status={selected.status} />
@@ -660,7 +668,7 @@ export function MissionsClient() {
                       <ChatLink
                         href={chatHref(selected.agent, selected.fullId)}
                       >
-                        Open in chat →
+                        {t('missionsPage.detail.openChat')}
                       </ChatLink>
                     </Button>
                     {selected.running && (
@@ -670,7 +678,7 @@ export function MissionsClient() {
                         onClick={killSelected}
                         className="h-7 border-destructive/40 px-2 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
                       >
-                        <X className="mr-1 size-3" /> Kill
+                        <X className="mr-1 size-3" /> {t('missionsPage.detail.kill')}
                       </Button>
                     )}
                   </span>
@@ -681,7 +689,7 @@ export function MissionsClient() {
                 <div className="mx-5 mb-3 space-y-1.5 rounded-lg bg-muted/30 px-3 py-2.5 text-[11.5px]">
                   {lineage.parent_mission_id && (
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <span>↑ Spawned by</span>
+                      <span>{t('missionsPage.detail.spawnedBy')}</span>
                       <Link
                         href={`/missions?selected=${lineage.parent_mission_id}`}
                         className="tabular-nums text-primary hover:underline"
@@ -695,7 +703,7 @@ export function MissionsClient() {
                   )}
                   {lineage.task_id && (
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <span>↑ Task</span>
+                      <span>{t('missionsPage.detail.task')}</span>
                       <Link
                         href={`/kanban?task=${lineage.task_id}`}
                         className="tabular-nums text-[hsl(var(--info))] hover:underline"
@@ -706,19 +714,19 @@ export function MissionsClient() {
                   )}
                   {lineage.children.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-                      <span>↓ Spawned {lineage.children.length}:</span>
+                      <span>{t('missionsPage.detail.spawned', { count: lineage.children.length, formattedCount: formats.number.format(lineage.children.length) })}</span>
                       {lineage.children.slice(0, 6).map((c) => (
                         <Link
                           key={c.id}
                           href={`/missions?selected=${c.id}`}
                           className="tabular-nums text-primary hover:underline"
-                          title={`${c.agent_name} · ${c.status}`}
+                          title={`${c.agent_name} · ${missionStatusLabel(c.status)}`}
                         >
                           {c.id.slice(0, 6)}
                         </Link>
                       ))}
                       {lineage.children.length > 6 && (
-                        <span className="text-muted-foreground/70">+{lineage.children.length - 6}</span>
+                        <span className="text-muted-foreground/70">+{formats.number.format(lineage.children.length - 6)}</span>
                       )}
                     </div>
                   )}
@@ -726,10 +734,10 @@ export function MissionsClient() {
               )}
 
               <div className="grid grid-cols-4 gap-2.5 px-5 pb-3.5">
-                <MiniKpi label="Cost" value={'$' + selected.cost.toFixed(3)} />
-                <MiniKpi label="Tokens in" value={kfmt(selected.tokIn)} />
-                <MiniKpi label="Tokens out" value={kfmt(selected.tokOut)} />
-                <MiniKpi label="Events" value={detailEvents.length || selected.events} />
+                <MiniKpi label={t('missionsPage.table.cost')} value={formats.cost.format(selected.cost)} />
+                <MiniKpi label={t('missionsPage.detail.tokensIn')} value={formats.compact.format(selected.tokIn)} />
+                <MiniKpi label={t('missionsPage.detail.tokensOut')} value={formats.compact.format(selected.tokOut)} />
+                <MiniKpi label={t('missionsPage.detail.events')} value={formats.number.format(detailEvents.length || selected.events)} />
               </div>
 
               <Tabs
@@ -738,10 +746,10 @@ export function MissionsClient() {
                 className="flex min-h-0 flex-1 flex-col"
               >
                 <TabsList className="h-auto justify-start gap-0 rounded-none bg-transparent px-5 py-0">
-                  <DrawerTab value="timeline">Timeline</DrawerTab>
-                  <DrawerTab value="output">Output</DrawerTab>
-                  <DrawerTab value="logs">Logs</DrawerTab>
-                  <DrawerTab value="trace">Trace</DrawerTab>
+                  <DrawerTab value="timeline">{t('missionsPage.detail.timeline')}</DrawerTab>
+                  <DrawerTab value="output">{t('missionsPage.detail.output')}</DrawerTab>
+                  <DrawerTab value="logs">{t('missionsPage.detail.logs')}</DrawerTab>
+                  <DrawerTab value="trace">{t('missionsPage.detail.trace')}</DrawerTab>
                 </TabsList>
                 <div className="flex-1 overflow-auto px-5 py-4">
                   <TabsContent value="timeline" className="m-0">
@@ -826,7 +834,7 @@ function FilterField({
 }) {
   return (
     <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2 py-0.5">
-      <span className="text-[11px] text-muted-foreground">{label}</span>
+      <span className="shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">{label}</span>
       {children}
     </div>
   );
@@ -883,6 +891,13 @@ function Td({
   );
 }
 
+function missionStatusLabel(status: string) {
+  if (Object.hasOwn(STATUS_TONE, status)) return t(`missionsPage.status.${status}`);
+  if (status === 'completed') return t('missionsPage.status.done');
+  if (status === 'error') return t('missionsPage.status.failed');
+  return status;
+}
+
 function StatusBadge({ status }: { status: Row['status'] }) {
   const tone = STATUS_TONE[status];
   return (
@@ -891,7 +906,7 @@ function StatusBadge({ status }: { status: Row['status'] }) {
       className={cn('gap-1.5 border font-normal', tone.chip)}
     >
       <span className={cn('size-1.5 rounded-full', tone.dot)} />
-      {tone.label}
+      {missionStatusLabel(status)}
     </Badge>
   );
 }
@@ -939,27 +954,66 @@ const KIND_DOT: Record<string, string> = {
   stop: 'bg-primary',
 };
 
-function summarizePayload(p: any): string {
-  if (!p || typeof p !== 'object') return '';
-  if (p.type === 'assistant' && p.message && Array.isArray(p.message.content)) {
-    return p.message.content
-      .map((b: any) => {
-        if (b.type === 'text') return (b.text || '').slice(0, 200);
-        if (b.type === 'tool_use') return 'tool_use(' + b.name + ')';
-        return b.type;
+function isPayloadRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
+}
+
+function assistantBlocks(payload: unknown): Record<string, unknown>[] {
+  if (!isPayloadRecord(payload) || !isPayloadRecord(payload.message)) return [];
+  const content: unknown = payload.message.content;
+  return Array.isArray(content) ? content.filter(isPayloadRecord) : [];
+}
+
+function eventTypeLabel(type: string): string {
+  switch (type) {
+    case 'user':
+    case 'assistant':
+    case 'system':
+    case 'result':
+    case 'tool_use':
+    case 'tool_result':
+      return t(`missionsPage.eventType.${type}`);
+    default:
+      return type;
+  }
+}
+
+function summarizePayload(p: unknown, formatCost?: Intl.NumberFormat): string {
+  if (!isPayloadRecord(p)) return '';
+  if (p.type === 'assistant') {
+    return assistantBlocks(p)
+      .map((b) => {
+        if (b.type === 'text') return typeof b.text === 'string' ? b.text.slice(0, 200) : '';
+        if (b.type === 'tool_use') {
+          const name = typeof b.name === 'string' ? b.name : '';
+          return formatCost ? t('missionsPage.detail.toolUse', { name }) : 'tool_use(' + name + ')';
+        }
+        const type = typeof b.type === 'string' ? b.type : '';
+        return formatCost ? eventTypeLabel(type) : type;
       })
       .join(' · ');
   }
-  if (p.type === 'result') return 'result · cost=$' + (p.total_cost_usd || 0).toFixed(4);
-  if (p.subtype) return p.type + ':' + p.subtype;
-  return p.type || '';
+  if (p.type === 'result') {
+    const cost = typeof p.total_cost_usd === 'number' ? p.total_cost_usd : 0;
+    return formatCost
+      ? t('missionsPage.detail.resultCost', { cost: formatCost.format(cost) })
+      : 'result · cost=$' + cost.toFixed(4);
+  }
+  const type = typeof p.type === 'string' ? p.type : '';
+  if (typeof p.subtype === 'string' && p.subtype) return type + ':' + p.subtype;
+  return formatCost ? eventTypeLabel(type) : type;
 }
 
 function Timeline({ events }: { events: DetailEvent[] }) {
+  const locale = getLocale();
+  const formats = useMemo(() => ({
+    time: dateTimeFormat({ hour: '2-digit', minute: '2-digit', second: '2-digit' }, locale),
+    cost: numberFormat({ style: 'currency', currency: 'USD', minimumFractionDigits: 4, maximumFractionDigits: 4 }, locale),
+  }), [locale]);
   if (!events.length) {
     return (
       <div className="rounded-lg border border-dashed border-border p-6 text-center text-[12px] text-muted-foreground/70">
-        No trace recorded yet.
+        {t('missionsPage.detail.noTrace')}
       </div>
     );
   }
@@ -979,7 +1033,7 @@ function Timeline({ events }: { events: DetailEvent[] }) {
               )}
             />
             <span className="mr-2.5 text-muted-foreground/50">
-              {new Date(e.timestamp).toTimeString().slice(0, 8)}
+              {formats.time.format(e.timestamp)}
             </span>
             <span
               className={cn(
@@ -990,9 +1044,9 @@ function Timeline({ events }: { events: DetailEvent[] }) {
                 kind === 'stop' && 'text-primary',
               )}
             >
-              {e.type}
+              {eventTypeLabel(e.type)}
             </span>
-            <span className="text-muted-foreground">{summarizePayload(e.payload)}</span>
+            <span className="text-muted-foreground">{summarizePayload(e.payload, formats.cost)}</span>
           </div>
         );
       })}
@@ -1004,9 +1058,9 @@ function extractAssistantText(events: DetailEvent[]) {
   const out: string[] = [];
   for (const e of events) {
     if (e.type !== 'assistant') continue;
-    const blocks = (e.payload as any)?.message?.content;
-    if (!Array.isArray(blocks)) continue;
-    for (const b of blocks) if (b.type === 'text' && b.text) out.push(b.text);
+    for (const b of assistantBlocks(e.payload)) {
+      if (b.type === 'text' && typeof b.text === 'string' && b.text) out.push(b.text);
+    }
   }
   return out.join('\n').trim();
 }
@@ -1016,7 +1070,7 @@ function Output({ events }: { events: DetailEvent[] }) {
   if (!text) {
     return (
       <p className="text-[13px] italic text-muted-foreground/70">
-        No assistant output recorded for this mission.
+        {t('missionsPage.detail.noOutput')}
       </p>
     );
   }
@@ -1031,7 +1085,7 @@ function Logs({ events, agent }: { events: DetailEvent[]; agent: string }) {
   if (!events.length) {
     return (
       <pre /* code-font: raw log lines */ className="rounded-lg border border-border bg-muted/30 p-4 font-mono text-[11.5px] text-muted-foreground/70">
-        # no raw logs recorded
+        {t('missionsPage.detail.noLogs')}
       </pre>
     );
   }

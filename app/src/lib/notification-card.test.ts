@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import zhSystemNotifications from '../locales/zh-CN/systemNotifications.json';
+import { getLocale, registerLocale, setLocale } from './i18n';
 
 /**
  * TIM-0025: the Notification center cut a long alert to one title line and a
@@ -86,4 +88,28 @@ test('a short card has no toggle', async () => {
   await render({ ...LONG, title: 'Merged', body: 'Task done.' }, async (host) => {
     assert.ok(!host.querySelector('button[aria-expanded]'));
   });
+});
+
+test('a recognized backend warning renders localized title, body and expansion tooltips', async () => {
+  const previous = getLocale();
+  registerLocale('zh-CN-x-card-test', zhSystemNotifications);
+  setLocale('zh-CN-x-card-test');
+  const notification = {
+    ...LONG,
+    presentation: {
+      kind: 'backend-binary' as const, cmd: 'claude', backends: ['claude'], pinned: true,
+      installCommand: 'npm install -g @anthropic-ai/claude-code',
+    },
+  };
+  try {
+    await render(notification, async (host) => {
+      assert.match(host.textContent!, /未找到 claude 命令行工具/);
+      assert.match(host.textContent!, /未指向可执行文件/);
+      assert.ok(host.textContent!.includes(notification.presentation.installCommand));
+      assert.doesNotMatch(host.textContent!, /\*\*|Timon cannot run|Backend claude/);
+      const titled = Array.from(host.querySelectorAll('p[title]'));
+      assert.ok(titled.some((p) => p.getAttribute('title')?.includes('未找到')));
+      assert.ok(titled.some((p) => p.getAttribute('title')?.includes('host.binaries.claude')));
+    });
+  } finally { setLocale(previous); }
 });

@@ -13,6 +13,7 @@ import { closePushFor, createNotification, dismissNotificationRow } from '../../
 import { viewerFromRequest } from '../../users/identity.js';
 import { scopedDb } from '../../users/scoped-db.js';
 import { apiError } from '../../api-error.js';
+import { backendBinaryPresentation, checkBackendBinaries } from '../../backends/binary-check.js';
 
 /**
  * How an agent's `action_required` goes away by itself (SUG-0048). An agent
@@ -72,7 +73,12 @@ export function registerRoutes(app: Router): void {
     const rows = scope.listNotifications({ archived, limit });
     // Which agent raised it: the center shows it on every row.
     const agents = dbApi.notificationAgents(rows);
-    const notifications = rows.map((n) => ({ ...n, agent: agents.get(n.id) ?? null }));
+    const binaries = rows.some((n) => n.anchor?.startsWith('backend-binary:')) ? checkBackendBinaries() : [];
+    const notifications = rows.map((n) => ({
+      ...n,
+      agent: agents.get(n.id) ?? null,
+      presentation: backendBinaryPresentation(n, binaries),
+    }));
     const counts = scope.countActiveByType();
     res.json({ notifications, counts, total_active: scope.countActiveNotifications() });
   });

@@ -1,0 +1,97 @@
+{
+  "missionsPage": {
+    "title": "任务会话",
+    "description": "查看交给智能体执行的所有任务会话。点击任意一行可查看完整追踪记录。",
+    "notFound": "未找到任务会话 {id}",
+    "terminated": "任务会话已终止",
+    "terminateFailed": "终止任务会话失败：{status}",
+    "missionCount": "{count, plural, other {个任务会话}}",
+    "empty": "没有符合当前筛选条件的任务会话。",
+    "duration": {
+      "seconds": "{seconds}秒",
+      "minutes": "{minutes}分钟",
+      "minutesSeconds": "{minutes}分{seconds}秒",
+      "hoursMinutes": "{hours}小时{minutes}分钟"
+    },
+    "stats": {
+      "totalCost": "总费用",
+      "tokens": "Token 消耗",
+      "inOut": "输入 / 输出",
+      "successRate": "成功率",
+      "failed": "{count, plural, other {{formattedCount} 个失败}}",
+      "allGreen": "全部正常"
+    },
+    "filters": {
+      "project": "项目",
+      "agent": "智能体",
+      "status": "状态",
+      "all": "全部",
+      "noProject": "· 无项目",
+      "search": "搜索标题或 ID…",
+      "clear": "清除"
+    },
+    "status": {
+      "running": "运行中",
+      "done": "已完成",
+      "terminated": "已终止",
+      "failed": "失败",
+      "queued": "排队中",
+      "backlog": "待处理"
+    },
+    "table": {
+      "id": "ID",
+      "title": "标题",
+      "started": "开始时间",
+      "duration": "持续时间",
+      "cost": "费用",
+      "tokens": "Token（输入/输出）"
+    },
+    "eventType": {
+      "user": "用户",
+      "assistant": "助手",
+      "system": "系统",
+      "result": "结果",
+      "tool_use": "工具调用",
+      "tool_result": "工具结果"
+    },
+    "detail": {
+      "openChat": "在聊天中打开 →",
+      "kill": "终止",
+      "spawnedBy": "↑ 派生来源",
+      "task": "↑ 关联任务",
+      "spawned": "{count, plural, other {↓ 派生了 {formattedCount} 个：}}",
+      "tokensIn": "输入 Token",
+      "tokensOut": "输出 Token",
+      "events": "事件",
+      "timeline": "时间线",
+      "output": "输出",
+      "logs": "日志",
+      "trace": "追踪",
+      "toolUse": "工具调用（{name}）",
+      "resultCost": "结果 · 费用={cost}",
+      "noTrace": "暂无追踪记录。",
+      "noOutput": "此任务会话暂无助手输出记录。",
+      "noLogs": "暂无原始日志记录。"
+    },
+    "dashboard": {
+      "activeMissions": "运行中的任务会话",
+      "runningCount": "{count, plural, other {{formattedCount} 个运行中}}",
+      "noActiveMissions": "暂无运行中的任务会话",
+      "kanbanActivity": "看板与活动",
+      "tasksLive": "任务 · 实时",
+      "inProgress": "进行中",
+      "blockedCount": "{count, plural, other {受阻：{formattedCount}}}",
+      "pending": "待处理",
+      "completed": "已完成",
+      "messagesPerSecond": "每秒消息数",
+      "perSecond": "/秒",
+      "rollingMinute": "最近 60 秒滚动统计",
+      "events24Hours": "24 小时事件",
+      "hourlyPoints": "每小时一个数据点",
+      "activityByAgent": "智能体活动",
+      "topFiveToday": "今日前 5 名",
+      "noEventsToday": "今日暂无事件",
+      "eventUnit": "条事件"
+    }
+  }
+}

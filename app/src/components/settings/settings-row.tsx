@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { reportDirectoryPick, useDirectoryPicker } from '@/components/directory-browser';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
+import { settingCopy } from '@/lib/settings-copy';
 
 export type Setting = {
   key: string;
@@ -54,6 +55,9 @@ export function SettingsRow({
   onDraft: (key: string, value: string) => void;
   onSave: (key: string, value: string | null) => void;
 }): ReactElement {
+  const label = settingCopy(setting.key, 'label', setting.label);
+  const description = settingCopy(setting.key, 'description', setting.description);
+  const unit = settingCopy(setting.key, 'unit', setting.unit);
   const locked = setting.source === 'env' || setting.source === 'config';
   const current = draft !== undefined ? draft : String(setting.value);
   const dirty = draft !== undefined && draft !== String(setting.value);
@@ -73,7 +77,7 @@ export function SettingsRow({
     <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13px] font-medium leading-snug">{setting.label}</span>
+          <span className="text-[13px] font-medium leading-snug">{label}</span>
           {setting.overridden && !locked && (
             <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
               {t('settingsPage.modified')}
@@ -88,9 +92,9 @@ export function SettingsRow({
             </span>
           )}
         </div>
-        {setting.description && (
+        {description && (
           <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">
-            {setting.description}
+            {description}
           </p>
         )}
         <p /* code-font: setting key */ className="mt-1 font-mono text-[10.5px] text-muted-foreground/70">
@@ -118,6 +122,7 @@ export function SettingsRow({
                 min={setting.type === 'string' ? undefined : setting.min ?? undefined}
                 max={setting.type === 'string' ? undefined : setting.max ?? undefined}
                 value={current}
+                aria-label={label}
                 disabled={locked}
                 aria-invalid={rangeError !== null || undefined}
                 onChange={(e) => onDraft(setting.key, e.target.value)}
@@ -141,7 +146,7 @@ export function SettingsRow({
                 </Button>
               )}
               {isDirectory && directoryPicker.dialog}
-              {setting.unit && <span className="text-[11px] text-muted-foreground">{setting.unit}</span>}
+              {unit && <span className="text-[11px] text-muted-foreground">{unit}</span>}
               {dirty && (
                 <Button
                   size="sm"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -12,7 +12,8 @@ import {
 } from 'recharts';
 import { Tile } from '@/components/tile';
 import { Kpi } from '@/components/kpi';
-import { t } from '@/lib/i18n';
+import { getLocale, t } from '@/lib/i18n';
+import { formatRelativeTime, numberFormat } from '@/lib/intl';
 
 type Stats = {
   activeMissions: { id: string; agent_name: string | null; started_at: number; running: boolean }[];
@@ -22,12 +23,15 @@ type Stats = {
   taskCounts: { PENDING: number; IN_PROGRESS: number; DONE: number; BLOCKED: number };
 };
 
-function fmtDuration(startMs: number): string {
+function fmtDuration(startMs: number, number: Intl.NumberFormat): string {
   const s = Math.floor((Date.now() - startMs) / 1000);
-  if (s < 60) return `${s}s`;
+  if (s < 60) return t('missionsPage.duration.seconds', { seconds: number.format(s) });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}`;
+  if (m < 60) return t('missionsPage.duration.minutes', { minutes: number.format(m) });
+  return t('missionsPage.duration.hoursMinutes', {
+    hours: number.format(Math.floor(m / 60)),
+    minutes: number.format(m % 60),
+  });
 }
 
 function paletteFor(name: string) {
@@ -47,6 +51,11 @@ function paletteFor(name: string) {
 }
 
 export function DashboardClient() {
+  const locale = getLocale();
+  const formats = useMemo(() => ({
+    number: numberFormat(undefined, locale),
+    rate: numberFormat({ minimumFractionDigits: 2, maximumFractionDigits: 2 }, locale),
+  }), [locale]);
   const [stats, setStats] = useState<Stats | null>(null);
 
   const refresh = useCallback(async () => {
@@ -78,13 +87,13 @@ export function DashboardClient() {
 
       {/* ── Active missions ─────────────────────────────────────────── */}
       <Tile
-        title="Active missions"
-        subtitle={`${activeMissions.length} running`}
+        title={t('missionsPage.dashboard.activeMissions')}
+        subtitle={t('missionsPage.dashboard.runningCount', { count: activeMissions.length, formattedCount: formats.number.format(activeMissions.length) })}
         className="md:col-start-1 md:row-start-1"
       >
         {activeMissions.length === 0 ? (
           <div className="grid flex-1 place-items-center text-[12px] text-muted-foreground/60">
-            No active missions
+            {t('missionsPage.dashboard.noActiveMissions')}
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-auto">
@@ -109,10 +118,10 @@ export function DashboardClient() {
                   </div>
                   <div className="text-right">
                     <span className="block tabular-nums text-[11px] text-muted-foreground">
-                      {fmtDuration(m.started_at)}
+                      {fmtDuration(m.started_at, formats.number)}
                     </span>
                     <span className="block text-[9px] uppercase tracking-wider text-[hsl(var(--success))]">
-                      running
+                      {t('missionsPage.status.running')}
                     </span>
                   </div>
                 </div>
@@ -124,33 +133,33 @@ export function DashboardClient() {
 
       {/* ── Kanban summary + messages/s ───────────────────────────────── */}
       <Tile
-        title="Kanban + activity"
-        subtitle="tasks · live"
+        title={t('missionsPage.dashboard.kanbanActivity')}
+        subtitle={t('missionsPage.dashboard.tasksLive')}
         className="md:col-start-2 md:row-start-1"
         bodyClassName="!p-3.5"
       >
         <div className="grid h-full grid-cols-2 gap-2.5">
           <Kpi
             accent
-            label="In Progress"
-            value={taskCounts.IN_PROGRESS}
-            delta={`blocked: ${taskCounts.BLOCKED}`}
+            label={t('missionsPage.dashboard.inProgress')}
+            value={formats.number.format(taskCounts.IN_PROGRESS)}
+            delta={t('missionsPage.dashboard.blockedCount', { count: taskCounts.BLOCKED, formattedCount: formats.number.format(taskCounts.BLOCKED) })}
           />
           <Kpi
-            label="Pending"
-            value={taskCounts.PENDING}
-            delta="queued"
+            label={t('missionsPage.dashboard.pending')}
+            value={formats.number.format(taskCounts.PENDING)}
+            delta={t('missionsPage.status.queued')}
           />
           <Kpi
-            label="Done"
-            value={taskCounts.DONE}
-            delta="completed"
+            label={t('missionsPage.status.done')}
+            value={formats.number.format(taskCounts.DONE)}
+            delta={t('missionsPage.dashboard.completed')}
           />
           <Kpi
-            label="Msg/s"
-            value={messagesPerSec < 10 ? messagesPerSec.toFixed(2) : Math.round(messagesPerSec)}
-            unit="/s"
-            delta="rolling 60s"
+            label={t('missionsPage.dashboard.messagesPerSecond')}
+            value={messagesPerSec < 10 ? formats.rate.format(messagesPerSec) : formats.number.format(Math.round(messagesPerSec))}
+            unit={t('missionsPage.dashboard.perSecond')}
+            delta={t('missionsPage.dashboard.rollingMinute')}
             accent={messagesPerSec > 0.5}
           />
         </div>
@@ -158,8 +167,8 @@ export function DashboardClient() {
 
       {/* ── 24h sparkline ────────────────────────────────────────────── */}
       <Tile
-        title="Events 24h"
-        subtitle="one point per hour"
+        title={t('missionsPage.dashboard.events24Hours')}
+        subtitle={t('missionsPage.dashboard.hourlyPoints')}
         className="md:col-start-1 md:row-start-2"
       >
         <div className="min-h-0 flex-1">
@@ -179,7 +188,7 @@ export function DashboardClient() {
               <XAxis
                 dataKey="hour"
                 tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 9 }}
-                tickFormatter={(h: number) => `h-${23 - h}`}
+                tickFormatter={(h: number) => formatRelativeTime((h - 23) * 3600_000, 0, 'short', locale)}
                 interval={5}
               />
               <YAxis hide />
@@ -191,8 +200,8 @@ export function DashboardClient() {
                   borderRadius: 'calc(var(--radius) * 0.8)',
                   fontSize: 11,
                 }}
-                labelFormatter={(h: number) => `${23 - h}h ago`}
-                formatter={(v: number) => [v, 'events']}
+                labelFormatter={(h: number) => formatRelativeTime((h - 23) * 3600_000, 0, 'long', locale)}
+                formatter={(v: number) => [formats.number.format(v), t('missionsPage.detail.events')]}
               />
               <Area
                 type="monotone"
@@ -210,13 +219,13 @@ export function DashboardClient() {
 
       {/* ── Activity by agent ────────────────────────────────────────── */}
       <Tile
-        title="Activity by agent"
-        subtitle="top 5 · today"
+        title={t('missionsPage.dashboard.activityByAgent')}
+        subtitle={t('missionsPage.dashboard.topFiveToday')}
         className="md:col-start-2 md:row-start-2"
       >
         {activityByAgent.length === 0 ? (
           <div className="grid flex-1 place-items-center text-[12px] text-muted-foreground/60">
-            No events today
+            {t('missionsPage.dashboard.noEventsToday')}
           </div>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col justify-around gap-2 overflow-auto">
@@ -238,8 +247,8 @@ export function DashboardClient() {
                   </div>
                 </div>
                 <span className="tabular-nums text-[13px]">
-                  {a.count}
-                  <span className="ml-0.5 text-[10px] font-normal text-muted-foreground">ev</span>
+                  {formats.number.format(a.count)}
+                  <span className="ml-0.5 text-[10px] font-normal text-muted-foreground">{t('missionsPage.dashboard.eventUnit')}</span>
                 </span>
               </div>
             ))}

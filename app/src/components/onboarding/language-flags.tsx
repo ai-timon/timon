@@ -78,6 +78,18 @@ export const FLAGS: Readonly<Record<string, () => ReactElement>> = {
       <path d="M10 10a5 5 0 0 0 10 0z" fill="#003478" />
     </>
   ),
+  'zh-CN': () => (
+    <>
+      <rect width="30" height="20" fill="#DE2910" />
+      <g fill="#FFDE00">
+        <path d="M5 2l.7 2.1H8L6.1 5.5l.7 2.2L5 6.3 3.2 7.7l.7-2.2L2 4.1h2.3Z" />
+        <path d="m10 2 .3.8h.9l-.7.5.3.9-.8-.5-.7.5.3-.9-.7-.5h.8Z" />
+        <path d="m12 4 .3.8h.9l-.7.5.3.9-.8-.5-.7.5.3-.9-.7-.5h.8Z" />
+        <path d="m12 7 .3.8h.9l-.7.5.3.9-.8-.5-.7.5.3-.9-.7-.5h.8Z" />
+        <path d="m10 9 .3.8h.9l-.7.5.3.9-.8-.5-.7.5.3-.9-.7-.5h.8Z" />
+      </g>
+    </>
+  ),
 };
 
 /** The flag of a locale, or nothing for a locale without one. */

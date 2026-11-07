@@ -39,7 +39,7 @@ function layoutInput(over: Partial<SettingsLayoutInput> = {}): SettingsLayoutInp
   };
 }
 
-function run(query: string, over: Partial<SettingsLayoutInput> = {}, keywords: Record<string, string> = {}) {
+function run(query: string, over: Partial<SettingsLayoutInput> = {}, keywords: Record<string, string> = {}, rowCopy?: (row: SearchableRow) => Pick<SearchableRow, 'label' | 'description'>) {
   const input = layoutInput(over);
   return searchSettings({
     query,
@@ -47,6 +47,7 @@ function run(query: string, over: Partial<SettingsLayoutInput> = {}, keywords: R
     rows: ROWS.filter((row) => isRowListed(row, input)),
     categoryLabel: (id) => LABELS.get(id) ?? id,
     tabLabel: (category, tab: SettingsTab) => (tab.kind === 'rows' && tab.ownerLabel) || LABELS.get(`${category}/${tab.id}`) || tab.id,
+    rowCopy,
     rowKeywords: (key) => (keywords[key] ? [keywords[key]!] : []),
     tabKeywords: (category, tab) => (keywords[`${category}/${tab.id}`] ? [keywords[`${category}/${tab.id}`]!] : []),
   });
@@ -105,6 +106,22 @@ test('a row painted by a native pane leads to the pane, not to a row of its own'
   const found = run('cooldown');
   assert.deepEqual(found.rows, []);
   assert.deepEqual(found.tabs.map((hit) => [`${hit.category}/${hit.tab.id}`, hit.via]), [['models/fallback', ['Fallback cooldown']]]);
+});
+
+test('translated rows match localized copy without losing the daemon label or setting key', () => {
+  const rowCopy = (row: SearchableRow) => row.key === 'TIMON_MAX_LIVE_MISSIONS'
+    ? { label: '任务会话上限', description: '同时运行的会话数。' }
+    : row;
+  for (const query of ['会话上限', '同时运行', 'live missions', 'TIMON_MAX_LIVE_MISSIONS']) {
+    assert.deepEqual(run(query, {}, {}, rowCopy).rows.map((hit) => hit.key), ['TIMON_MAX_LIVE_MISSIONS']);
+  }
+});
+
+test('plugin settings still match the stable plugin ID after the tab label is translated', () => {
+  const over = { pluginLabels: new Map([['@timon/video-factory', '视频工厂']]) };
+  for (const query of ['视频工厂', '@timon/video-factory']) {
+    assert.deepEqual(tabIds(query, over), ['plugins/@timon/video-factory']);
+  }
 });
 
 test('every locale carries the same hidden keywords and they point at real tabs', () => {
