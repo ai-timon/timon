@@ -47,6 +47,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 ### Fixed
 
 - The main agent's avatar shows an "m" instead of an underscore.
+- Conversations no longer open under a "Today" label that ignored the actual date.
 
 ### Known issues
 

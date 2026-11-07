@@ -6069,7 +6069,6 @@ export function ChatClient({
             // (globals.css), so the bar stays fully visible under the gradients.
             compact ? "chat-thread-fade-top" : "chat-thread-fade",
           )}>
-            {!dense && <DayDivider label="Today" />}
             <BlockResizeContext.Provider value={blockResize}>
             <ChatDocumentHostProvider value={documentHost}>
             <div className={cn(
@@ -6785,14 +6784,6 @@ export function ChatClient({
       {body}
     </div>
     </BubbleFaceContext.Provider>
-  );
-}
-
-function DayDivider({ label }: { label: string }) {
-  return (
-    <div className="mx-auto mb-4 mt-2 max-w-[var(--chat-col,780px)] px-6 text-center text-[11px] uppercase tracking-[0.06em] text-muted-foreground/70">
-      {label}
-    </div>
   );
 }
 
