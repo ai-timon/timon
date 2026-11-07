@@ -195,8 +195,10 @@ export function PluginsClient(): React.ReactElement {
     }
   };
 
+  // Same side padding as Missions and Kanban (px-6): at px-7 the title and
+  // the grid jumped 4px to the right when switching pages.
   return (
-    <div className="relative z-[1] h-full overflow-auto px-7 pt-5 pb-8">
+    <div className="relative z-[1] h-full overflow-auto px-6 pt-5 pb-8">
       <h1 className="m-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {t('pluginsPage.eyebrow')}
       </h1>

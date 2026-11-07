@@ -60,6 +60,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 - Kanban: the last card of a long column fades out at its foot instead of being cut through.
 - On a phone, the chat's panel buttons above the composer sit on a light fill, like the other controls.
 - Agents canvas: the node and edge count sits a little higher above the action bar.
+- The Plugins page lines up with the Missions and Kanban pages instead of sitting 4px further right.
 
 ### Known issues
 
