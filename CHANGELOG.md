@@ -44,6 +44,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 - The interface is easier on the eyes: the same Inter typeface on every system, a calmer light mode, and cards, badges and controls drawn with fills instead of outlines.
 - An agent without a picture shows its initial as a capital letter, as the canvas and your own avatar do.
+- In light mode, secondary text such as times, sizes and descriptions is a little darker and easier to read.
 
 ### Fixed
 

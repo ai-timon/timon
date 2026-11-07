@@ -104,7 +104,7 @@ export const TIMON_THEME_TOKENS_CSS = `
     --secondary: var(--surface-4);
     --secondary-foreground: 345 12% 13%;
     --muted: var(--surface-2);
-    --muted-foreground: 18 10% 34%;
+    --muted-foreground: 18 10% 30%;
     --accent: var(--primary);
     --accent-foreground: 30 60% 97.5%;
     --border: 30 24% 81.5%;
