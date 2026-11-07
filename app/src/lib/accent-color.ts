@@ -151,9 +151,11 @@ export function accentVars(color: string | null | undefined): CSSProperties {
   return {
     '--accent': light,
     '--accent-dark': dark,
-    '--accent-soft': alpha(light, '24'),
-    '--accent-soft-dark': alpha(dark, '24'),
-    '--accent-border': alpha(light, '66'),
-    '--accent-border-dark': alpha(dark, '66'),
+    // A tint and a rim, not a second fill: at 14% and 40% a saturated project
+    // colour glowed louder than the text beside it.
+    '--accent-soft': alpha(light, '1c'),
+    '--accent-soft-dark': alpha(dark, '1c'),
+    '--accent-border': alpha(light, '38'),
+    '--accent-border-dark': alpha(dark, '38'),
   } as CSSProperties;
 }

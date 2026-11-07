@@ -63,6 +63,6 @@ test('short hex is accepted', () => {
 
 test('vars carry the tinted background and border both themes need', () => {
   const vars = accentVars('#2b2b2b') as Record<string, string>;
-  assert.equal(vars['--accent-soft'], '#2b2b2b24');
-  assert.match(String(vars['--accent-border-dark']), /^#[0-9a-f]{6}66$/);
+  assert.equal(vars['--accent-soft'], '#2b2b2b1c');
+  assert.match(String(vars['--accent-border-dark']), /^#[0-9a-f]{6}38$/);
 });

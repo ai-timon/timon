@@ -72,8 +72,10 @@ export function BoardCard({
     if (hit && e.currentTarget.contains(hit) && !hit.hasAttribute('data-board-card-open')) return;
     onOpen();
   };
+  // On a card the title is what the eye looks for, so it is the strongest
+  // text there; a row keeps the quieter size of a list.
   const titleClass = cn(
-    'text-[12.5px] leading-tight [text-wrap:pretty]',
+    density === 'card' ? 'text-[13.5px] font-medium leading-snug [text-wrap:pretty]' : 'text-[12.5px] leading-tight [text-wrap:pretty]',
     density === 'card' && 'line-clamp-3',
     muted ? 'text-muted-foreground/45 line-through' : 'text-foreground',
   );

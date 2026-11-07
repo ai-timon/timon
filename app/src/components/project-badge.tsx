@@ -63,9 +63,9 @@ export function ProjectBadge({
   const style = color
     ? accentVars(color)
     : {
-        background: `hsl(${hue} 65% 50% / 0.14)`,
-        borderColor: `hsl(${hue} 65% 50% / 0.40)`,
-        color: `hsl(${hue} 70% 55%)`,
+        background: `hsl(${hue} 45% 50% / 0.11)`,
+        borderColor: `hsl(${hue} 45% 50% / 0.22)`,
+        color: `hsl(${hue} 45% 55%)`,
       };
 
   return (

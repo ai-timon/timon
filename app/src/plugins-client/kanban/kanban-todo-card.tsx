@@ -28,8 +28,8 @@ export function KanbanTodoCard({ card }: { card: KanbanTodoCardValue }): ReactEl
       data-todo-card={item.id}
       identity={lead && (
         <span className="flex min-w-0 flex-col">
-          <span className="truncate text-[13px] font-semibold">{lead}</span>
-          {sub && <span className="truncate text-[12px] text-muted-foreground">{sub}</span>}
+          <span className="truncate text-[12px] font-medium text-muted-foreground">{lead}</span>
+          {sub && <span className="truncate text-[12px] text-muted-foreground/80">{sub}</span>}
         </span>
       )}
       // The id is how agents and the orchestrator name an idea ("#209"):

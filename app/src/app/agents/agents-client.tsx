@@ -1024,7 +1024,7 @@ export function AgentsClient() {
         // gray/salmon stroke → this is our main visual signal for "which
         // project does this node belong to".
         .attr('stroke', (d) => d.agentColor || d.projectColor || (d.isMain || d.pole ? 'hsl(var(--primary))' : '#2a2a2a'))
-        .attr('stroke-width', (d) => ((d.agentColor || d.projectColor) ? 2 : (d.isMain ? 1.4 : 1)));
+        .attr('stroke-width', (d) => ((d.agentColor || d.projectColor) ? 1.5 : (d.isMain ? 1.4 : 1)));
       ent
         .append('circle')
         .attr('class', 'liveness-dot')
@@ -1122,7 +1122,7 @@ export function AgentsClient() {
       nd.attr('class', (d) => 'node ' + (d.isMain ? 'main' : d.pole ? 'sub pole' : 'sub'));
       nd.select<SVGCircleElement>('circle.node-core')
         .attr('stroke', (d) => d.agentColor || d.projectColor || (d.isMain || d.pole ? 'hsl(var(--primary))' : '#2a2a2a'))
-        .attr('stroke-width', (d) => ((d.agentColor || d.projectColor) ? 2 : (d.isMain ? 1.4 : 1)));
+        .attr('stroke-width', (d) => ((d.agentColor || d.projectColor) ? 1.5 : (d.isMain ? 1.4 : 1)));
       nd.select<SVGTextElement>('text.node-sub').text(nodeCaption);
       nd.select<SVGTextElement>('text.node-label').text(centreText).style('fill', centreFill);
       // The mascot of a node whose head is one: a box over the disc, under the
@@ -1985,12 +1985,19 @@ export function AgentsClient() {
         /* No rim: links stop short of captions instead (cf. trimmed()). */
         .node-sub { font: 500 10.5px var(--font-sans), system-ui, sans-serif; fill: hsl(var(--foreground) / 0.82); pointer-events: none; user-select: none; letter-spacing: .02em; }
         .node-sub.main { font-size: 12px; font-weight: 700; fill: hsl(var(--foreground)); }
-        /* Light theme: charcoal discs rather than near-black, softer on a
-           light page; the white initials stay readable on them. */
-        :root:not(.dark) #g-sub stop:first-child { stop-color: #4a4d52; }
-        :root:not(.dark) #g-sub stop:last-child { stop-color: #33363a; }
-        :root:not(.dark) #g-main stop:first-child { stop-color: #4d4340; }
-        :root:not(.dark) #g-main stop:last-child { stop-color: #37302d; }
+        /* Light theme: discs from the theme's own raised surfaces. Charcoal
+           discs read as a dark-theme asset pasted on a beige page; on a light
+           disc the initials take the text colour and the ring alone carries
+           the agent's colour. */
+        :root:not(.dark) #g-sub stop:first-child { stop-color: hsl(var(--surface-3)); }
+        :root:not(.dark) #g-sub stop:last-child { stop-color: hsl(var(--surface-2)); }
+        :root:not(.dark) #g-main stop:first-child { stop-color: hsl(var(--surface-3)); }
+        :root:not(.dark) #g-main stop:last-child { stop-color: hsl(var(--primary) / 0.14); }
+        :root:not(.dark) .node-label { fill: hsl(var(--foreground) / 0.8) !important; }
+        :root:not(.dark) .node-label.main { fill: hsl(var(--foreground)) !important; }
+        /* The identity ring is a hint, not a frame: thinner and a little
+           transparent, so a saturated project colour does not glow. */
+        .node-core { stroke-opacity: 0.7; }
         .link { stroke: hsl(var(--primary) / 0.4); stroke-width: 1.5; transition: stroke .2s ease, stroke-opacity .2s ease; fill: none; }
         .link.active { stroke: hsl(var(--primary) / 0.85); stroke-width: 1.8; }
         .link-flow { stroke: hsl(var(--primary)); stroke-width: 1.3; stroke-dasharray: 4 8; fill: none; opacity: 0; }

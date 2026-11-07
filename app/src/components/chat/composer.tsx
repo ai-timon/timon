@@ -1037,12 +1037,10 @@ function ComposerHeader({
         'group/composer-bar relative z-0 flex items-center justify-between gap-2 tabular-nums text-muted-foreground',
         compact
           ? 'px-1 pb-1 pt-0.5 text-[9.5px]'
-          : cn(
-              'mx-3 -mb-3 rounded-t-xl bg-foreground/[0.035] px-3 pb-[1.125rem] pt-1.5 text-[11.5px]',
-              // Outlined with the card, a shade softer than its edge. Its foot
-              // hides under the card, so the two outlines never double.
-              appearance.showInputBorder ? 'border border-border/35' : 'border border-transparent',
-            ),
+          // A plain row of context above the card, with no tab of its own: a
+          // tinted, outlined tab stacked behind the composer read as a
+          // rendering fault, and an empty one (no project) as a hole.
+          : 'mx-3 -mb-3 px-3 pb-[1.125rem] pt-1.5 text-[11.5px]',
       )}>
         <div className="flex min-w-0 items-center gap-1.5">
           {projectName && (

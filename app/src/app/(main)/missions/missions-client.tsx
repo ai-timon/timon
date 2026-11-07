@@ -518,9 +518,9 @@ export function MissionsClient() {
           />
         </div>
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
-          className="h-8 border-dashed text-muted-foreground"
+          className="h-8 text-muted-foreground"
           onClick={() =>
             setFilters({ agent: 'all', project: 'all', status: 'all', origin: 'all', search: '' })
           }
@@ -785,11 +785,13 @@ function Stat({
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card px-4 py-3.5',
-        accent && 'border-primary/30 bg-gradient-to-b from-primary/[0.08] to-transparent',
+        // Surface contrast instead of an outline; the accented figure keeps a
+        // faint tint of the accent rather than a framed gradient.
+        'rounded-xl bg-card px-4 py-3.5',
+        accent && 'bg-primary/[0.07]',
       )}
     >
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      <div className="text-[12.5px] font-medium text-muted-foreground">
         {label}
       </div>
       <div
@@ -849,7 +851,7 @@ function Th({
     <th
       onClick={onClick}
       className={cn(
-        'sticky top-0 z-[1] bg-card px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground',
+        'sticky top-0 z-[1] bg-card px-3 py-2.5 text-[12px] font-medium text-muted-foreground',
         right ? 'text-right' : 'text-left',
         onClick && 'cursor-pointer select-none hover:text-foreground',
         active && 'text-foreground',

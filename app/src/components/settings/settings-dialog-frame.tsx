@@ -26,6 +26,10 @@ export function SettingsDialogFrame({
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         hideClose
+        // Focus lands on the dialog itself, not on its first category: opened
+        // from a link or a reload, that button wore the keyboard ring as if it
+        // had been tabbed to. Tab still reaches it first.
+        onOpenAutoFocus={(event) => { event.preventDefault(); (event.currentTarget as HTMLElement).focus(); }}
         onPointerDownOutside={(event) => {
           const target = event.target;
           // Toasts live in their own portal: a click on one is not a click on the page.
@@ -39,7 +43,7 @@ export function SettingsDialogFrame({
           }
         }}
         className={cn(
-          'flex max-w-none gap-0 overflow-hidden p-0',
+          'flex max-w-none gap-0 overflow-hidden p-0 outline-none focus-visible:outline-none',
           'h-[100dvh] w-screen rounded-none',
           'sm:h-[min(860px,calc(100dvh-3rem))] sm:w-[min(1240px,calc(100vw-3rem))] sm:rounded-xl',
         )}

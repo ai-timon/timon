@@ -81,7 +81,10 @@ export function logoFallbackFor(
     return project.icon;
   }
   if (agent?.emoji) return agent.emoji;
-  return agent?.name?.slice(0, 1).toUpperCase() ?? '?';
+  // The first letter or digit: `_main`, every install's main agent, showed
+  // a bare underscore (same rule as `glyphOf` in components/agent-avatar).
+  const name = agent?.name ?? '';
+  return (name.match(/[\p{L}\p{N}]/u)?.[0] ?? name.charAt(0)).toUpperCase() || '?';
 }
 
 /** Auto color hash for projects without explicit color (mirrors orchestrator
@@ -91,5 +94,5 @@ export function autoColorFor(slug: string | null | undefined): string {
   let h = 0;
   for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
   const hue = h % 360;
-  return `hsl(${hue}, 60%, 55%)`;
+  return `hsl(${hue}, 45%, 55%)`;
 }

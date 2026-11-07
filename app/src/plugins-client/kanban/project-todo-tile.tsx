@@ -252,7 +252,10 @@ export function ProjectTodoTile({
         )}
       </div>
 
-      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 py-2">
+      {/* The fade says the list goes on: a row cut through its badge read as
+          a rendering fault. The bottom padding lets the last row scroll
+          clear of it. */}
+      <div className="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-1.5 pb-6 pt-2 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]">
         {visibles.length === 0 && !chargement ? (
           <div className="flex flex-col items-center justify-center gap-2 py-6">
             <Lightbulb className="size-4 text-muted-foreground/60" aria-hidden />
