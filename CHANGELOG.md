@@ -40,9 +40,13 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Added
+
+- **Simplified Chinese** for the interface and desktop menus: choose **简体中文** in **Settings → Interface → Language**.
+
 ### Known issues
 
-- Onboarding form details are still in English outside English and French; the step titles are translated.
+- Onboarding form details are still in English outside English, French and Simplified Chinese; the step titles are translated.
 
 - Chat: while a turn is being prepared, a tool the previous turn left unfinished can show as still running, with its old duration, until the new turn starts.
 - An agent's island card applied to a page other than the one on screen removes the tabs it replaces, but a replaced terminal keeps running: end it from the Terminal page.

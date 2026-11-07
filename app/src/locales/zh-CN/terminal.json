@@ -1,0 +1,78 @@
+{
+  "terminal": {
+    "title": "终端",
+    "tabs": "终端会话",
+    "state": {
+      "connecting": "正在连接…",
+      "retrying": "连接已断开，正在重新连接…",
+      "unauthorized": "会话已过期，请重新登录。",
+      "ended": "会话已结束。",
+      "exited": "Shell 已退出（退出码 {code}）。"
+    },
+    "actions": {
+      "new": "新建终端",
+      "kill": "关闭 {name}（将停止其 Shell）",
+      "reconnect": "立即重新连接",
+      "popOut": "在浮动窗口中打开"
+    },
+    "keys": {
+      "toolbar": "扩展按键",
+      "up": "上",
+      "down": "下",
+      "left": "左",
+      "right": "右",
+      "copy": "复制"
+    },
+    "clipboard": {
+      "menu": "终端剪贴板",
+      "copy": "复制",
+      "paste": "粘贴",
+      "copied": "已复制到剪贴板。",
+      "copyFailed": "无法复制：浏览器拒绝访问剪贴板。",
+      "pasteFailed": "无法读取剪贴板：请允许访问剪贴板，或按 Ctrl+Shift+V（Mac 上为 Cmd+V）粘贴。"
+    },
+    "errors": {
+      "create": "无法启动终端：{error}",
+      "kill": "无法关闭终端：{error}",
+      "load": "无法连接终端服务：{error}"
+    },
+    "unavailable": {
+      "disabled": "内置终端已关闭。管理员可在 {settingsPath} 中启用。",
+      "forbidden": "你的账号没有打开终端的权限（terminal:open）。",
+      "session_required": "请在浏览器中登录后打开终端。",
+      "unauthorized": "请登录后打开终端。",
+      "pty_unavailable": "此设备无法启动终端：伪终端组件加载失败。请查看守护进程日志。"
+    },
+    "titleScoped": "终端 — {scope}",
+    "scopes": {
+      "none": "无项目",
+      "label": "项目"
+    },
+    "request": {
+      "title": "{agent} 请求你运行一条命令",
+      "titleFrom": "{agent} · {project} 请求你运行一条命令",
+      "badge": "命令",
+      "allow": "允许",
+      "paste": "粘贴到终端",
+      "deny": "忽略",
+      "copy": "复制命令",
+      "copied": "命令已复制到剪贴板。",
+      "hint": "已粘贴，尚未执行。请先检查命令，再自行按 Enter 执行。",
+      "state": {
+        "allow": "已允许：由智能体执行",
+        "paste": "已粘贴到终端",
+        "deny": "已忽略"
+      },
+      "errors": {
+        "forbidden": "你的账号无法打开终端，未粘贴任何内容。",
+        "not_found": "此请求已不存在。",
+        "already_decided": "此请求已处理。",
+        "not_offered": "此选项已不可用：智能体目前无法执行这条命令。",
+        "failed": "无法记录你的决定，请重试。"
+      },
+      "windowRefused": "已记录你的决定，但 {scope} 的终端未显示。命令已复制到剪贴板，请打开 {scope} 的任一对话并在其中粘贴。",
+      "windowRefusedNoClipboard": "已记录你的决定，但 {scope} 的终端未显示。请打开 {scope} 的任一对话，再从卡片中复制命令。",
+      "pendingBadge": "有 {count} 条命令等待你处理"
+    }
+  }
+}

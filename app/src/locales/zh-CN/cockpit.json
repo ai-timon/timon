@@ -1,0 +1,21 @@
+{
+  "cockpit": {
+    "common": { "loading": "正在加载…" },
+    "dreams": { "pending": "{count} 个待处理的梦境", "empty": "没有待处理的梦境" },
+    "accountUsage": {
+      "disconnected": "未登录",
+      "connectCliThen": "通过命令行登录 {name}：运行 {command}，然后运行 {then}。",
+      "connectCli": "通过命令行登录 {name}：运行 {command}。",
+      "connect": "请通过此提供商的命令行工具登录。",
+      "connectAccount": "请在 {settingsPath} 中重新登录此账号。",
+      "error": "无法获取用量"
+    },
+    "board": {
+      "move": "移动 {title}",
+      "resize": "调整 {title} 的大小",
+      "centerZone": "控制台中央区域",
+      "leftRail": "控制台左侧栏",
+      "rightRail": "控制台右侧栏"
+    }
+  }
+}

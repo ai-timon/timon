@@ -1,0 +1,123 @@
+{
+  "machines": {
+    "title": "设备",
+    "thisComputer": "本机",
+    "backToLocal": "返回本机",
+    "status": {
+      "online": "在线",
+      "unreachable": "无法连接",
+      "unauthorized": "访问权限已撤销",
+      "tls_error": "证书未获信任",
+      "error": "错误",
+      "unknown": "尚未检查"
+    },
+    "switcher": {
+      "trigger": "设备：{name}。切换设备",
+      "menuTitle": "设备",
+      "actingAs": "以 {account} 身份访问",
+      "add": "添加设备…",
+      "manage": "管理连接",
+      "active": "当前设备",
+      "switching": "正在切换到 {name}…",
+      "loadError": "无法加载设备列表。"
+    },
+    "settings": {
+      "description": "管理本机可控制的其他 Timon 设备。切换后，当前窗口会显示所选设备的完整界面。每台设备都有独立的智能体、项目和设置。",
+      "local": "此界面由本机提供。",
+      "add": "添加设备",
+      "addTitle": "添加设备",
+      "addHint": "在另一台设备上打开 {settingsPath}，授权新设备以获取有效期为 5 分钟的一次性配对码。必须能通过 HTTPS 访问该设备（例如通过 tailscale serve 或反向代理）。",
+      "urlLabel": "设备地址",
+      "urlPlaceholder": "https://my-server.example.net",
+      "codeLabel": "配对码",
+      "nameLabel": "名称（可选）",
+      "pair": "配对",
+      "pairing": "正在配对…",
+      "paired": "已添加 {name}。",
+      "repaired": "已重新配对 {name}。",
+      "listTitle": "已配对的设备",
+      "empty": "尚未添加其他设备。",
+      "loadError": "无法加载设备列表。",
+      "active": "当前设备",
+      "switchTo": "切换到此设备",
+      "check": "立即检查",
+      "checking": "正在检查…",
+      "online": "{name} 连接正常。",
+      "rename": "重命名",
+      "renameLabel": "设备名称",
+      "renamed": "设备已重命名。",
+      "save": "保存",
+      "cancel": "取消",
+      "remove": "移除",
+      "removeConfirm": "要从本机移除 {name} 吗？本机在该设备上的访问权限将被撤销，浏览器为该设备保存的数据也将被清除。",
+      "removeAction": "移除设备",
+      "removed": "设备已移除。",
+      "removedNotRevoked": "设备已移除，但未能连接到该设备。请在该设备的「设备」设置中撤销本机的访问权限。",
+      "version": "版本 {version}",
+      "versionUnknown": "版本未知",
+      "apiNewer": "版本高于当前界面",
+      "apiUnknown": "接口级别未知",
+      "apiTooOld": "版本过旧，与当前界面不兼容",
+      "lastSeen": "上次连接成功：{date}",
+      "neverSeen": "从未连接成功",
+      "actingAs": "以 {account} 身份访问",
+      "actingAsAdmin": "以 {account}（管理员）身份访问"
+    },
+    "errors": {
+      "invalidCode": "设备拒绝了此配对码：配对码不正确、已过期或已使用。请在该设备上生成新的配对码。",
+      "invalidUrl": "此地址不可用：请仅输入设备地址，不要包含登录信息、查询参数或片段。",
+      "httpsRequired": "必须通过 HTTPS 访问设备。只有访问本机时才允许使用 HTTP。",
+      "blockedAddress": "此地址不可能指向 Timon 设备。",
+      "notTimon": "此地址没有 Timon 设备响应。",
+      "requiresTls": "设备未将此连接识别为 HTTPS。请检查其反向代理的 HTTPS 设置。",
+      "unreachable": "目前无法连接到该设备。",
+      "unauthorized": "该设备不再允许本机访问：访问权限已撤销或已过期。请重新配对。",
+      "tlsError": "设备的证书未获信任。",
+      "redirect": "设备返回了重定向。请输入最终地址。",
+      "badResponse": "设备返回了意外的响应。",
+      "throttled": "尝试次数过多。请等待几分钟后重试。",
+      "tooMany": "最多可管理 50 台设备。",
+      "vault": "密钥保险库不可用，无法保存设备访问凭据。",
+      "incompatible": "该设备上的 Timon 版本过旧，与当前界面不兼容。请先更新该设备上的 Timon。",
+      "notFound": "该设备已不在你的设备列表中。",
+      "notHere": "请在已登录本机的浏览器中管理设备。",
+      "sessionRequired": "请先登录本机。",
+      "invalidName": "此名称不可用。",
+      "generic": "出了点问题，请重试。"
+    },
+    "banner": {
+      "unreachable": "目前无法连接到 {name}。",
+      "apiUnknown": "{name} 未报告其所需的接口级别，部分页面可能无法使用。",
+      "apiNewer": "{name} 上的 Timon 版本比当前界面更新。请更新此应用以使用全部功能。",
+      "retry": "重试",
+      "dismiss": "关闭"
+    },
+    "blocked": {
+      "unnamed": "此设备",
+      "retry": "重试",
+      "title": {
+        "unreachable": "无法连接到 {name}",
+        "unauthorized": "{name} 不再允许本机访问",
+        "incompatible": "{name} 版本过旧，与当前界面不兼容",
+        "unknown": "此设备不在你的设备列表中",
+        "session_required": "请登录本机",
+        "unavailable": "无法从这里打开 {name}"
+      },
+      "body": {
+        "unreachable": "设备没有响应，可能已关机或网络不可用。你在该设备上的工作不受影响。",
+        "unauthorized": "本机在该设备上的访问权限已撤销或已过期。请在 {settingsPath} 中重新配对。",
+        "incompatible": "该设备的接口级别为 {level}，而当前界面至少需要 {min}。请更新该设备上的 Timon，再切换过去。",
+        "unknown": "此窗口控制的设备已从你的设备列表中移除，或属于其他账号。",
+        "session_required": "你在本机的登录会话已结束。请返回本机重新登录。",
+        "unavailable": "本机暂时无法访问该设备，可能是密钥保险库或守护进程不可用。请稍后重试。"
+      }
+    },
+    "lock": {
+      "remote": "此许可证属于当前窗口控制的设备 {name}，本机不受影响。",
+      "unnamed": "另一台设备"
+    },
+    "localOnly": {
+      "remoteSessions": "这些是本机的远程 API 令牌，不属于当前界面已切换到的设备。"
+    }
+  }
+}
