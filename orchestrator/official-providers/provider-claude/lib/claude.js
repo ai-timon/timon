@@ -46,7 +46,11 @@ async function buildArgs(opts, thinkingArgs) {
  if (cfg.permission_mode) args.push('--permission-mode', cfg.permission_mode);
  const prompts = opts.timonMcp !== false && (cfg.permission_mode ?? 'auto') !== 'bypassPermissions';
  const plan = await services.mcp(opts, { permissionPrompt: prompts });
- args.push('--allowedTools', [...new Set([...(cfg.allowed_tools ?? []), ...plan.preApprovedTools])].join(','));
+ const search = plan.webSearch;
+ const allowed = [...(cfg.allowed_tools ?? []), ...plan.preApprovedTools];
+ if (search?.mode === 'parallel' && search.preApproved) allowed.push('mcp__timon-parallel-search__web_search');
+ args.push('--allowedTools', [...new Set(allowed)].join(','));
+ if (opts.oneShot && !opts.readOnlyTools) args.push('--strict-mcp-config');
  // MCP children inherit the mission token. It must never enter argv; user secrets live in a private file.
  const roles = ['user', 'forms', 'timon', 'grepai', 'browser'];
  const servers = [...plan.servers].sort((a, b) => roles.indexOf(a.role) - roles.indexOf(b.role)).map((server) => {
@@ -67,6 +71,7 @@ async function buildArgs(opts, thinkingArgs) {
  } else args.push('--mcp-config', mcpJson);
  if (plan.permissionTool) args.push('--permission-prompt-tool', plan.permissionTool);
  const disallowed = new Set([...(cfg.disallowed_tools ?? []), 'AskUserQuestion', 'Task', 'Agent', 'advisor']);
+ if (search && search.mode !== 'native') disallowed.add('WebSearch');
  for (const name of plan.excludedServers ?? []) {
    const slug = name.replace(/[.\s]+/g, '_').replace(/[^A-Za-z0-9_-]/g, '');
    disallowed.add(`mcp__${slug}__*`);

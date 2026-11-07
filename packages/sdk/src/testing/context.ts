@@ -109,6 +109,7 @@ function fakeMcpPlan(spawn: BuildSpawnOpts, options: ProviderMcpOptions | undefi
     daemonUrl: identityEnv.TIMON_ORCH_URL,
     scripts: { timon: 'timon-mcp.mjs', forms: 'permission-mcp.mjs' },
     permissionTool: prompt && spawn.timonMcp !== false ? CLAUDE_PERMISSION_PROMPT_TOOL : null,
+    webSearch: { mode: 'native', preApproved: false },
     preApprovedTools: [...claudeAskToolNames(), ...PRE_APPROVED_MCP_TOOLS],
     commandPolicy: COMMAND_POLICY,
   };

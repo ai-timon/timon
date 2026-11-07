@@ -41,6 +41,7 @@ type Exemption = { reason: string; until: string };
 
 /** Paths relative to the repository, `/`-separated; a trailing `/` is a whole folder. */
 const EXEMPT: Record<string, Exemption> = {
+  'orchestrator/src/web-search.ts': { reason: 'Search routing is a fail-closed product rollout policy: exact official profiles qualify, never every profile sharing their dialect; opaque CLI permission files withhold routing', until: 'until other profiles prove independent native search suppression and permission translation' },
   'orchestrator/src/plugins/policy.ts': { reason: 'E13 — EXEC_DENIED / isSubscriptionCli: a plugin may not run the subscription CLIs for its own account; a denylist read from manifests would shrink when one is missing or altered, so it is written here, fail-closed', until: 'stays (security policy, lists names on purpose)' },
   'app/src/components/brand-mark.tsx': { reason: 'the logo registry: keys are logo names (a brand can outlive or precede a provider), not providers', until: 'stays (logo assets)' },
 };

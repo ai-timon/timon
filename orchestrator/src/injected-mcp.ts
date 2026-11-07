@@ -20,6 +20,7 @@ import { ASK_MCP_SERVER, LEGACY_ASK_MCP_SERVER } from './ask-mcp.js';
 /** Every server key a dialect registers by itself, as the claude CLI names it. */
 export const INJECTED_MCP_SERVERS: readonly string[] = [
   'timon',
+  'timon-parallel-search',
   ASK_MCP_SERVER,
   // Never registered any more, but a resumed session still reports it.
   LEGACY_ASK_MCP_SERVER,

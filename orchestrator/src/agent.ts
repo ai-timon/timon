@@ -2169,6 +2169,7 @@ async function spawnTurn(args: {
     memoryDir,
     // A backend that cannot use Timon's MCP servers is not handed them.
     ...(backendCapabilities(backend.name).timonMcp ? {} : { timonMcp: false }),
+    ...(missionRow?.mcp_servers_override != null ? { searchServerOverride: cfg.mcp_servers?.length ? 'nonempty' as const : 'empty' as const } : {}),
     ...(readOnlyTools ? { readOnlyTools: true } : {}),
     ...(args.agentCommand ? { agentCommand: true } : {}),
   };

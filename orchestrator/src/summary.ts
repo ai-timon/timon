@@ -253,6 +253,9 @@ export async function oneShotPrompt(
   extraAllowedTools?: string[],
   timeoutMs?: number,
 ): Promise<string> {
+  if (extraAllowedTools?.includes('WebSearch') && agentCfg.allowed_tools?.some((tool) => /^WebSearch\(/.test(tool))) {
+    throw new Error('One-shot web search is unavailable: the original agent has a scoped search grant');
+  }
   const target = oneShotTarget(agentCfg.backend, agentCfg.model);
   if (target.movedFrom) {
     console.warn(`[summary] ${agentName}: ${target.movedFrom} is remote, one-shot prompt runs on ${target.backend.name}`);
@@ -308,6 +311,8 @@ async function runOneShot(
     // deferred to a permission card nobody validates at night.
     // plan mode stays active → no workspace write possible.
     ...(extraAllowedTools && extraAllowedTools.length ? { allowed_tools: extraAllowedTools } : {}),
+    disallowed_tools: agentCfg.disallowed_tools,
+    excluded_mcp_servers: agentCfg.excluded_mcp_servers,
   };
   const missionId = 'summary-' + randomUUID().slice(0, 8);
   const spawnOpts: BuildSpawnOpts = {
@@ -324,6 +329,7 @@ async function runOneShot(
     // The transcript it summarises may carry a prompt injection: an agent that decides its tool
     // uses alone is confined by its provider (`AcpAgentSpec.oneShotEnv`), never asked.
     oneShot: true,
+    searchConfiguredConnectors: !!agentCfg.mcp_servers?.length,
     // Nothing to run, read or write when the whole input is in the prompt: on a
     // dialect that can honour it, no built-in tool at all. A caller that asked
     // for a tool (the Dreaming's WebSearch) keeps the restricted plan mode.

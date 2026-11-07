@@ -16,6 +16,7 @@
 import { apiBaseUrl } from '../api-url.js';
 import { TIMON_HOME } from '../paths.js';
 import { config } from '../config/load.js';
+import { searchPolicy, PARALLEL_SEARCH_SERVER } from '../web-search.js';
 import { settingStr } from '../settings.js';
 import { nodeRuntime, type NodeRuntime } from '../host/node-runtime.js';
 import { ASK_MCP_FORMS_ONLY_ENV, ASK_MCP_SERVER, CLAUDE_PERMISSION_PROMPT_TOOL, claudeAskToolNames } from '../ask-mcp.js';
@@ -98,9 +99,9 @@ export async function providerMcpPlan(input: {
   }
   // The project's index serves file contents: a mission that must read no file (the conversion of a
   // browser recording, TODO #471) is not handed it.
-  const grepai = spawn.readOnlyTools ? null : grepaiMcpEntry(cfg.cwd);
+  const grepai = spawn.readOnlyTools || spawn.oneShot ? null : grepaiMcpEntry(cfg.cwd);
   if (grepai) servers.push({ role: 'grepai', type: 'stdio', name: 'grepai', command: grepai.command, args: grepai.args, env: {} });
-  const browser = chromeDevtoolsMcpEntry(cfg);
+  const browser = spawn.oneShot ? null : chromeDevtoolsMcpEntry(cfg);
   if (browser) {
     servers.push({
       role: 'browser', type: 'stdio', name: CHROME_DEVTOOLS_MCP_KEY, command: browser.command, args: browser.args,
@@ -121,7 +122,11 @@ export async function providerMcpPlan(input: {
     }
   }
 
+  const webSearch = searchPolicy(spawn, seal?.backend, servers);
+  if (webSearch.mode === 'parallel') servers.push(PARALLEL_SEARCH_SERVER);
+
   return Object.freeze({
+    webSearch,
     servers: Object.freeze(servers),
     identityEnv: Object.freeze(identityEnv),
     daemonUrl,

@@ -237,3 +237,62 @@ test('plugin: a one-shot past its timeout is killed and released', async () => {
   }, true);
   assertReleased();
 });
+
+
+test('Dreaming opportunity pass uses the sealed search-only launch and persists fixture sources', async () => {
+  const { invalidateSettingsCache } = await import('./settings.js');
+  const { runDreamPass } = await import('./dreaming.js');
+  const { dbApi } = await import('./db.js');
+  process.env.TIMON_DREAM_IMPROVE_TOP_N = '0';
+  process.env.TIMON_DREAM_SPACING_MS = '1';
+  process.env.TIMON_DREAM_OPP_MAX = '1';
+  invalidateSettingsCache();
+  const sources = ['https://example.com/fixture-source'];
+  const output = JSON.stringify([{ title: 'Synthetic opportunity', body: 'A fixture proposal.', sources }]);
+  const lines = [JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: output }] } }),
+    JSON.stringify({ type: 'result', subtype: 'success', result: output })];
+  await withFakeCli(lines, async (spawned) => {
+    assert.deepEqual(await runDreamPass(), { improve: 0, opportunity: 1 });
+    assert.equal(spawned.length, 1);
+    const { args, env } = spawned[0]!;
+    assert.ok(args.includes('--strict-mcp-config'));
+    assert.equal(env.TIMON_API_TOKEN, undefined);
+    const mcp = JSON.parse(args[args.indexOf('--mcp-config') + 1]!);
+    assert.deepEqual(Object.keys(mcp.mcpServers), ['timon-parallel-search']);
+    assert.match(args[args.indexOf('--disallowedTools') + 1]!, /WebSearch/);
+    const proposal = dbApi.listDreamProposals({ kind: 'opportunity' }).find(row => row.title === 'Synthetic opportunity');
+    assert.deepEqual(JSON.parse(proposal!.sources!), sources);
+  });
+  for (const mode of ['off', undefined]) {
+    if (mode) process.env.TIMON_WEB_SEARCH_PROVIDER = mode;
+    else { delete process.env.TIMON_WEB_SEARCH_PROVIDER; process.env.TIMON_DREAM_OPP_MAX = '0'; }
+    invalidateSettingsCache();
+    await withFakeCli(lines, async (spawned) => {
+      assert.deepEqual(await runDreamPass(), { improve: 0, opportunity: 0 });
+      assert.equal(spawned.length, 0);
+    });
+  }
+});
+
+test('one-shot search preserves the original agent denial and fetch domain rule', async () => {
+  const { invalidateSettingsCache } = await import('./settings.js');
+  delete process.env.TIMON_WEB_SEARCH_PROVIDER;
+  invalidateSettingsCache();
+  await withFakeCli(CLAUDE_ANSWER, async (spawned) => {
+    await oneShotPrompt('acme.dreamer', { ...claudeCfg, disallowed_tools: ['WebSearch', 'WebFetch(domain:private.example)'] },
+      'Research.', 'Cite sources.', ['WebSearch', 'WebFetch']);
+    const { args } = spawned[0]!;
+    const mcp = JSON.parse(args[args.indexOf('--mcp-config') + 1]!);
+    assert.deepEqual(mcp.mcpServers, {});
+    assert.ok(args[args.indexOf('--disallowedTools') + 1]!.includes('WebFetch(domain:private.example)'));
+  });
+});
+
+
+test('one-shot callers cannot broaden a scoped search preapproval', async () => {
+  await withFakeCli([], async (spawned) => {
+    await assert.rejects(oneShotPrompt('scoped', { ...claudeCfg, allowed_tools: ['WebSearch(domain:example.com)'] },
+      'Research.', 'Cite sources.', ['WebSearch']), /scoped search grant/);
+    assert.equal(spawned.length, 0);
+  });
+});
