@@ -1686,7 +1686,7 @@ export function AgentsClient() {
             <clipPath id="clip-node-sub"><circle r={20} /></clipPath>
             <radialGradient id="g-main" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="hsl(var(--surface-3))" />
-              <stop offset="100%" stopColor="hsl(var(--primary) / 0.12)" />
+              <stop offset="100%" stopColor="hsl(var(--surface-2))" />
             </radialGradient>
             <radialGradient id="g-sub" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="hsl(var(--surface-3))" />
