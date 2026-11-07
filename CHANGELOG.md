@@ -44,6 +44,10 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 - The interface is easier on the eyes: the same Inter typeface on every system, a calmer light mode, and cards, badges and controls drawn with fills instead of outlines.
 
+### Fixed
+
+- The main agent's avatar shows an "m" instead of an underscore.
+
 ### Known issues
 
 - Onboarding form details are still in English outside English and French; the step titles are translated.
