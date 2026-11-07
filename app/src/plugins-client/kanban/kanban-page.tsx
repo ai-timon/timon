@@ -277,7 +277,9 @@ export function KanbanClient({ defaultAgent }: { defaultAgent?: string }) {
     dragOver.current = null;
   }
 
-  const controlClass = 'flex h-9 items-center gap-2 rounded-lg bg-muted/50 px-2.5';
+  // A tint of the text colour, like the Missions filters: half of `muted`
+  // vanished into the light island, which is nearly the same beige.
+  const controlClass = 'flex h-9 items-center gap-2 rounded-lg bg-foreground/[0.06] px-2.5';
   const triggerClass = 'h-8 border-0 bg-transparent px-1 text-[13px] shadow-none focus:ring-0 focus:ring-offset-0';
 
   return (
