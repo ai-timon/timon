@@ -441,3 +441,16 @@ How the agent then uses it matters:
 - **Otherwise**: the value enters the agent's environment the next time its program starts, as a variable of that name. Anything the agent runs can read it, so it can also print it (an `echo` is enough); Timon masks a value it recognises in the conversation, but that is a safety net, not a guarantee. Prefer the first way for an API key.
 
 A secret is only open to the mission that asked for it, not to other missions of the same agent. One kept after the mission stays in the vault with no agent able to use it, until you open it to a project or an agent on the **Secrets** page. A mission nobody is watching (a Kanban task, a sub-mission, a routine) cannot ask: the request is refused at once, and the agent is told to have you store the secret on the **Secrets** page instead. Your account needs the `secrets:create` permission for your agents to ask.
+
+## Managed web search
+
+Eligible official Claude and Codex launches use Parallel's anonymous
+search-only MCP tool, `web_search`, for intentional web searches. Search queries
+are sent to Parallel with Timon attribution. An existing unconditional
+`WebSearch` permission transfers to this exact tool; a denial takes priority.
+Claude calls that need approval still ask, and Codex receives the managed tool
+only with an unconditional grant. Native search is disabled while the managed
+route is active. Direct URL reading keeps its existing fetch rules.
+
+See [Headless web search](settings.md#headless-web-search) for eligibility,
+configuration, unattended opportunity research, and the `native`/`off` choices.

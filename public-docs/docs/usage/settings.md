@@ -267,3 +267,40 @@ For a server or a VPS, [Remote access to the web interface](../installation/remo
 The remote-access panel and WebUI settings show a Tailscale Serve command when Timon manages a known local web listener. The command uses that listener's configured port, regardless of the browser address.
 
 For external hosting, including Docker behind a reverse proxy, the sharing command is withheld because the host-side target is unknown. Verify which local address serves Timon on the host before configuring Tailscale Serve. A port inside a container is not necessarily published on the host. If you switch to Timon's managed web server, reopen the panel to read its current configuration and update your existing Tailscale forwarding rule accordingly.
+
+## Headless web search
+
+`TIMON_WEB_SEARCH_PROVIDER` selects `parallel` (default), `native`, or `off`.
+Set it in the daemon environment or in the `settings` object of
+`timon.config.json`; the usual environment → config → saved value → default
+precedence applies. Relaunch a running agent after changing it.
+
+Parallel receives intentional search queries at
+`https://mcp.parallel.ai/mcp?tools=web_search`, with Timon attribution and no
+search key or Timon credential. The endpoint exposes only `web_search`.
+Ordinary URL reads and browser navigation keep their existing permissions.
+
+Eligibility is deliberately conservative: only the official `claude` (Linux)
+and `codex` profiles qualify, with no configured connectors or opaque CLI
+configuration. Existing CLI settings files, custom connectors, scoped search
+rules, and ambiguous exclusions keep their existing policy under the implicit
+default. An explicit `parallel` selection reports unavailable in these cases
+rather than using another service. Codex requires an unconditional
+`WebSearch` grant because its unattended MCP client cannot prompt for approval.
+Launches explicitly requiring native `WebFetch` remain outside the Codex managed
+route until independent page-reading behavior is qualified. On other operating
+systems the managed route is withheld pending qualification.
+Claude keeps approval-required search behind its normal permission prompt.
+Other profiles keep native behavior; explicitly requiring Parallel on them
+is an error. No request failure falls back to a second search service.
+
+`native` restores the previous launch behavior. `off` disables native and
+managed search on covered profiles; separately installed connectors remain
+operator-owned. Search denials, empty task server overrides and recording
+conversions receive no managed search server. Nonempty task overrides require
+an explicit search grant.
+
+Nightly opportunity research uses the same route through its existing search
+grant, without a mission token or unrelated connectors. Search off or excluded
+skips that phase. Improvement passes, transcript summaries and other tool-free
+one-shots receive no managed search server.
