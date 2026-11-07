@@ -1,0 +1,29 @@
+{
+  "name": "@timon-ai/provider-llmtr",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "timon": {
+    "id": "provider-llmtr",
+    "apiVersion": 12,
+    "kind": "provider",
+    "label": "LLMTR",
+    "description": "Official LLMTR profile. Missions call its OpenAI-compatible Chat Completions endpoint with the user's own API key.",
+    "author": "Timon",
+    "permissions": [
+      "backends:register"
+    ],
+    "provider": {
+      "backends": [
+        {
+          "id": "llmtr",
+          "rank": 100
+        }
+      ]
+    },
+    "license": {
+      "required": false
+    }
+  }
+}
