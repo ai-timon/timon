@@ -8,6 +8,7 @@
  * Timon's servers, which would otherwise fall back to the daemon-token.
  */
 import './test-home.js';
+import '../tests/helpers/search-cli-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -295,4 +296,42 @@ test('one-shot callers cannot broaden a scoped search preapproval', async () => 
       'Research.', 'Cite sources.', ['WebSearch']), /scoped search grant/);
     assert.equal(spawned.length, 0);
   });
+});
+
+
+test('Dreaming never broadens an original WebFetch domain grant, with managed or native search', async () => {
+  const { invalidateSettingsCache } = await import('./settings.js');
+  try {
+    for (const mode of ['parallel', 'native']) {
+      process.env.TIMON_WEB_SEARCH_PROVIDER = mode;
+      invalidateSettingsCache();
+      await withFakeCli(CLAUDE_ANSWER, async (spawned) => {
+        await oneShotPrompt('acme.dreamer', { ...claudeCfg, allowed_tools: ['WebFetch(domain:example.com)'] },
+          'Research.', 'Cite sources.', ['WebSearch', 'WebFetch']);
+        const args = spawned[0]!.args;
+        const grants = args[args.indexOf('--allowedTools') + 1]!.split(',');
+        assert.ok(grants.includes('WebFetch(domain:example.com)'));
+        assert.equal(grants.includes('WebFetch'), false);
+      });
+    }
+  } finally { delete process.env.TIMON_WEB_SEARCH_PROVIDER; invalidateSettingsCache(); }
+});
+
+test('explicit Parallel or native opt-out does not break unrelated third-party or Claude tool-free jobs', async () => {
+  const { invalidateSettingsCache } = await import('./settings.js');
+  plugin.mode = 'ok';
+  try {
+    for (const mode of ['parallel', 'native']) {
+      process.env.TIMON_WEB_SEARCH_PROVIDER = mode;
+      invalidateSettingsCache();
+      await withFakeCli(ANSWER, async () => {
+        assert.equal(await oneShotPrompt('acme.titler', pluginCfg, 'Name this.', 'Titles only.'), 'Title');
+      });
+      await withFakeCli(CLAUDE_ANSWER, async (spawned) => {
+        assert.equal(await oneShotPrompt('acme.summarizer', claudeCfg, 'Summarize.', 'Be brief.'), 'The summary.');
+        assert.ok(spawned[0]!.args.includes('--tools='));
+        assert.ok(spawned[0]!.args.includes('--strict-mcp-config'));
+      });
+    }
+  } finally { delete process.env.TIMON_WEB_SEARCH_PROVIDER; invalidateSettingsCache(); }
 });

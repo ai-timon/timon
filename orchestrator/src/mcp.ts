@@ -20,7 +20,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { TIMON_HOME } from './paths.js';
-import { isInjectedMcpServer, isInjectedMcpStubId } from './injected-mcp.js';
+import { isInjectedMcpServer, isInjectedMcpStubId, injectedMcpServersFromInit, isLaunchInjectedMcpServer } from './injected-mcp.js';
 import {
   serializeCodexMcpToml, serializeGrokMcpToml, serializeMcpJson, type McpLaunchServer,
 } from './backends/mcp-serialize.js';
@@ -864,6 +864,7 @@ export async function buildGrokMcpToml(ids: string[]): Promise<string | null> {
 export function refreshToolsCacheFromInit(initPayload: unknown): void {
   if (!initPayload || typeof initPayload !== 'object') return;
   const p = initPayload as Record<string, unknown>;
+  const injected = injectedMcpServersFromInit(p);
   const tools = Array.isArray(p.tools) ? (p.tools as unknown[]) : [];
   const serversStatus = Array.isArray(p.mcp_servers)
     ? (p.mcp_servers as Array<{ name?: string; status?: string }>)
@@ -900,7 +901,7 @@ export function refreshToolsCacheFromInit(initPayload: unknown): void {
     // implementation detail, not an account connector the user could toggle.
     // Listed as one, the entry reads as a second `timon` and excluding it
     // bans the real server's tools.
-    if (isInjectedMcpServer(key)) continue;
+    if (isInjectedMcpServer(key) || isLaunchInjectedMcpServer(key, injected)) continue;
     if (timonByKey.has(key)) continue;
     const id = ('ext-' + key).toLowerCase().replace(/[^a-z0-9._-]+/g, '-');
     if (!ID_RE.test(id)) continue;
@@ -921,10 +922,12 @@ export function refreshToolsCacheFromInit(initPayload: unknown): void {
   // 2) For every server we now know about (managed + external), gather tools
   //    and update status from this init payload.
   for (const { raw, claudeKey } of timonByKey.values()) {
-    const prefix = 'mcp__' + claudeKey.replace(/[^A-Za-z0-9]+/g, '_') + '__';
+    if (isLaunchInjectedMcpServer(claudeKey, injected)) continue;
+    const prefixes = ['mcp__' + claudeKey + '__', 'mcp__' + claudeKey.replace(/[^A-Za-z0-9]+/g, '_') + '__'];
     const myTools: string[] = [];
     for (const t of tools) {
-      if (typeof t === 'string' && t.startsWith(prefix)) {
+      const prefix = typeof t === 'string' ? prefixes.find((candidate) => t.startsWith(candidate)) : undefined;
+      if (prefix && typeof t === 'string') {
         myTools.push(t.slice(prefix.length));
       }
     }

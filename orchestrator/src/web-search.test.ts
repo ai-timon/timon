@@ -1,7 +1,8 @@
 import './test-home.js';
+import '../tests/helpers/search-cli-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mountOfficialProviders, buildUnderSeal, stubCodexSignIn } from '../tests/helpers/official-providers.js';
 import { searchPolicy, PARALLEL_SEARCH_KEY, PARALLEL_SEARCH_TOOL } from './web-search.js';
@@ -12,7 +13,6 @@ import type { BuildSpawnOpts } from './backends/types.js';
 await mountOfficialProviders();
 await stubCodexSignIn();
 // Only an isolated, nonsecret CLI configuration folder is inspected by policy.
-process.env.CLAUDE_CONFIG_DIR = join(process.env.TIMON_HOME!, 'claude');
 process.env.CODEX_HOME = join(process.env.TIMON_HOME!, 'codex');
 const cwd = join(process.env.TIMON_HOME!, 'work');
 mkdirSync(cwd, { recursive: true });
@@ -38,10 +38,12 @@ test('search routing preserves explicit boundaries and never silently substitute
   for (const name of ['timon-parallel-search', 'timon_parallel_search']) {
     assert.equal(searchPolicy(s, 'claude', [{ role: 'user', type: 'http', name, url: 'https://example.com/mcp', headers: {} }]).mode, 'native');
   }
-  for (const p of [{ readOnlyTools: true }, { searchServerOverride: 'empty' as const },
-    { oneShot: true, cfg: { cwd } }, { searchServerOverride: 'nonempty' as const, cfg: { cwd } },
-    { cfg: { cwd, disallowed_tools: ['WebSearch'] } }, { cfg: { cwd, disallowed_tools: ['Web*'] } }, { cfg: { cwd, excluded_mcp_servers: [PARALLEL_SEARCH_KEY] } }]) {
+  for (const p of [{ cfg: { cwd, disallowed_tools: ['WebSearch'] } }, { cfg: { cwd, disallowed_tools: ['Web*'] } }, { cfg: { cwd, excluded_mcp_servers: [PARALLEL_SEARCH_KEY] } }]) {
     assert.equal(searchPolicy(spawn(p), 'claude', []).mode, 'off', JSON.stringify(p));
+  }
+  for (const p of [{ readOnlyTools: true }, { searchServerOverride: 'empty' as const },
+    { oneShot: true, cfg: { cwd } }, { searchServerOverride: 'nonempty' as const, cfg: { cwd } }]) {
+    assert.equal(searchPolicy(spawn(p), 'claude', []).mode, 'native', JSON.stringify(p));
   }
   for (const cfg of [{ cwd, allowed_tools: ['WebSearch(domain:example.com)'] },
     { cwd, mcp_servers: ['custom'] }, { cwd, excluded_mcp_servers: ['external'] },
@@ -51,6 +53,10 @@ test('search routing preserves explicit boundaries and never silently substitute
   assert.equal(searchPolicy(spawn({ cfg: { cwd } }), 'claude', []).preApproved, false);
   setting('parallel');
   assert.throws(() => searchPolicy(s, 'kimi', []), /unavailable/);
+  for (const backend of ['kimi', 'claude']) {
+    assert.equal(searchPolicy(spawn({ oneShot: true, cfg: { cwd } }), backend, []).mode, 'native');
+    assert.equal(searchPolicy(spawn({ readOnlyTools: true }), backend, []).mode, 'native');
+  }
   assert.throws(() => searchPolicy(spawn({ cfg: { cwd, mcp_servers: ['custom'] } }), 'claude', []), /unavailable/);
   setting('native');
   assert.equal(searchPolicy(s, 'claude', []).mode, 'native');
@@ -96,21 +102,25 @@ test('real Codex resume disables native search before resume and rewrites the sc
   setting();
 });
 
-test('managed init discovery stays injected under both CLI spellings', () => {
+test('search server names are not globally reserved under either CLI spelling', () => {
   for (const key of [PARALLEL_SEARCH_KEY, 'timon_parallel_search']) {
-    assert.ok(isInjectedMcpServer(key));
-    assert.ok(isInjectedMcpStubId(`ext-${key}`));
+    assert.equal(isInjectedMcpServer(key), false);
+    assert.equal(isInjectedMcpStubId(`ext-${key}`), false);
   }
 });
 
-test('an existing native CLI configuration with disabled search is never bypassed', () => {
+test('an existing native CLI configuration with disabled search is never bypassed', async () => {
   const dir = process.env.CODEX_HOME!;
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'config.toml'), 'web_search = "disabled"\n');
   setting();
   const searchOnly = spawn({ cfg: { cwd, allowed_tools: ['WebSearch'], disallowed_tools: ['WebFetch'] } });
-  assert.equal(searchPolicy(searchOnly, 'codex', []).mode, 'native');
+  assert.equal(searchPolicy(searchOnly, 'codex', []).mode, 'off');
+  const spec = await buildUnderSeal('codex', searchOnly);
+  assert.ok(spec.args.includes('web_search=disabled'));
+  assert.equal(readFileSync(join(spec.env!.CODEX_HOME!, 'config.toml'), 'utf8').includes(PARALLEL_SEARCH_KEY), false);
   setting('parallel');
   assert.throws(() => searchPolicy(searchOnly, 'codex', []), /cannot be translated/);
+  rmSync(join(dir, 'config.toml'));
   setting();
 });

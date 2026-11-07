@@ -103,7 +103,8 @@ import { DEFAULT_BACKEND_CAPABILITIES } from './backends/types.js';
 import { BUILTIN_DECLARATIONS } from './backends/builtin-declarations.js';
 import { withLaunchPath } from './host/launch-path.js';
 import { missionProcessDir, trackMissionProcess } from './host/mission-processes.js';
-import { closeLaunchSeal, openLaunchSeal } from './backends/launch-seal.js';
+import { closeLaunchSeal, openLaunchSeal, sealFor } from './backends/launch-seal.js';
+import { markInjectedMcpServers } from './injected-mcp.js';
 import { assertSpawnPinned, buildSealedSpawn } from './backends/sealed-spawn.js';
 import { parkProviderScratch } from './backends/provider-scratch.js';
 import { launchBackendName, launchForMission, replaceMissionLaunch, resolveLaunchBackend } from './backends/account-launch.js';
@@ -6030,7 +6031,10 @@ function selfOpenedTurn(agent: RunningAgent, type: string): boolean {
 }
 
 function processEvent(agent: RunningAgent, ev: NormalizedEvent): void {
-  const { type, payload } = ev;
+  const { type } = ev;
+  const payload = type === 'system' && (ev.payload as { subtype?: string })?.subtype === 'init'
+    ? markInjectedMcpServers(ev.payload, sealFor(agent.missionId)?.injectedMcpServers ?? [])
+    : ev.payload;
   // The session driver's `onActivity` already stamped the raw line; this covers a
   // protocol driver, which emits events and has no raw line to report.
   agent.lastOutputAt = Date.now();
@@ -6146,7 +6150,7 @@ function processEvent(agent: RunningAgent, ev: NormalizedEvent): void {
   const row = dbApi.insertEvent(agent.missionId, type, stored);
   // Trace spans (PRD §4.2): after the event, never before it, and never able
   // to fail it — `recordSpans` swallows everything (§12.1).
-  recordSpans(agent.backend, agent.spans, stored === payload ? ev : { type, payload: stored }, row.id);
+  recordSpans(agent.backend, agent.spans, stored === ev.payload ? ev : { type, payload: stored }, row.id);
   if (type === 'assistant') journalDirectSkillReads(agent.missionId, payload);
   if (type === 'result') {
     const obj = payload as {

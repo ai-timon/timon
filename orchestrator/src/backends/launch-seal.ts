@@ -39,6 +39,8 @@ export class LaunchSeal {
   readonly backend: string;
   /** What the daemon asked the provider to build — the plugin is given it, but a service answers from THIS copy, so a plugin cannot widen the question. Null for a seal minted for a single pipe. */
   readonly spawn: BuildSpawnOpts | null;
+  /** Host-owned provenance for discovery, not a globally reserved server name. */
+  readonly injectedMcpServers = new Set<string>();
 
   readonly #resolvers = new Map<string, () => string>();
   readonly #resolved = new Map<string, string>();

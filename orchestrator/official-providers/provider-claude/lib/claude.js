@@ -50,7 +50,7 @@ async function buildArgs(opts, thinkingArgs) {
  const allowed = [...(cfg.allowed_tools ?? []), ...plan.preApprovedTools];
  if (search?.mode === 'parallel' && search.preApproved) allowed.push('mcp__timon-parallel-search__web_search');
  args.push('--allowedTools', [...new Set(allowed)].join(','));
- if (opts.oneShot && !opts.readOnlyTools) args.push('--strict-mcp-config');
+ if (opts.oneShot && search?.mode === 'parallel') args.push('--strict-mcp-config');
  // MCP children inherit the mission token. It must never enter argv; user secrets live in a private file.
  const roles = ['user', 'forms', 'timon', 'grepai', 'browser'];
  const servers = [...plan.servers].sort((a, b) => roles.indexOf(a.role) - roles.indexOf(b.role)).map((server) => {
@@ -134,6 +134,7 @@ const legacy = {
         if (opts.memoryDir)
             args.push('--add-dir', opts.memoryDir);
         const account = services.account.of(profile);
+        const env = account ? claudeAccountEnv(account.configDir) : claudeSpawnEnv(profile.env);
         return {
             cmd: profile.cmd,
             args,
@@ -142,7 +143,8 @@ const legacy = {
 
 
 
-            env: withThinkingEnv(account ? claudeAccountEnv(account.configDir) : claudeSpawnEnv(profile.env), thinking.env),
+            env: withThinkingEnv(!account && process.env.CLAUDE_CONFIG_DIR
+                ? { CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, ...env } : env, thinking.env),
             initialStdin: streamJsonUser(opts.message, opts.images),
         };
     },

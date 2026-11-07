@@ -20,7 +20,6 @@ import { ASK_MCP_SERVER, LEGACY_ASK_MCP_SERVER } from './ask-mcp.js';
 /** Every server key a dialect registers by itself, as the claude CLI names it. */
 export const INJECTED_MCP_SERVERS: readonly string[] = [
   'timon',
-  'timon-parallel-search',
   ASK_MCP_SERVER,
   // Never registered any more, but a resumed session still reports it.
   LEGACY_ASK_MCP_SERVER,
@@ -41,6 +40,22 @@ const INJECTED = new Set(INJECTED_MCP_SERVERS.map(normalise));
 /** Whether `key` (a server name as a harness reports it) is one Timon injects. */
 export function isInjectedMcpServer(key: string): boolean {
   return INJECTED.has(normalise(key));
+}
+
+/** Stamp init events before persistence, replacing any claim made by the CLI.
+ * Replay can then distinguish our server from a user's same-name connector. */
+export function markInjectedMcpServers(payload: unknown, servers: Iterable<string>): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  return { ...payload, timon_injected_mcp_servers: [...servers] };
+}
+
+export function injectedMcpServersFromInit(payload: Record<string, unknown>): Set<string> {
+  const names = payload.timon_injected_mcp_servers;
+  return new Set(Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string').map(normalise) : []);
+}
+
+export function isLaunchInjectedMcpServer(key: string, names: ReadonlySet<string>): boolean {
+  return names.has(normalise(key));
 }
 
 /** Id prefix of the stub entries `refreshToolsCacheFromInit` writes. */

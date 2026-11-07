@@ -281,18 +281,28 @@ search key or Timon credential. The endpoint exposes only `web_search`.
 Ordinary URL reads and browser navigation keep their existing permissions.
 
 Eligibility is deliberately conservative: only the official `claude` (Linux)
-and `codex` profiles qualify, with no configured connectors or opaque CLI
-configuration. Existing CLI settings files, custom connectors, scoped search
-rules, and ambiguous exclusions keep their existing policy under the implicit
-default. An explicit `parallel` selection reports unavailable in these cases
+and `codex` profiles, including their Timon account profiles, qualify with no
+conflicting search settings or configured connectors. First-run and account metadata and unrelated CLI settings do not
+disable routing. Known configuration sources are inspected structurally; auth
+stores and keychains are not inspected. Custom connectors, scoped search rules,
+search permission rules, and ambiguous exclusions keep their existing policy
+under the implicit default. An explicit `parallel` selection reports unavailable in these cases
 rather than using another service. Codex requires an unconditional
 `WebSearch` grant because its unattended MCP client cannot prompt for approval.
 Codex also requires an explicit `WebFetch` denial: only search-only launches
 qualify until independent native page-reading behavior is verified. On other operating
 systems the managed route is withheld pending qualification.
-Claude keeps approval-required search behind its normal permission prompt.
+Claude keeps approval-required search behind its normal permission prompt and
+uses the selected `CLAUDE_CONFIG_DIR`. Managed search uses the CLI tool denial
+for native search. Dreaming preserves original domain-limited fetch grants.
 Other profiles keep native behavior; explicitly requiring Parallel on them
-is an error. No request failure falls back to a second search service.
+is an error for jobs that need search. Tool-free jobs retain their existing
+restrictions on every profile. MCP-only task overrides without a search grant
+retain native search. Codex CLI search controls cannot be translated into its
+isolated launch config, so search is disabled rather than silently ignoring
+them, including with `native` selected; explicit `parallel` reports unavailable.
+Unreadable configuration also withholds the managed route. No request failure
+falls back to a second search service.
 
 `native` restores the previous launch behavior. `off` disables native and
 managed search on covered profiles; separately installed connectors remain

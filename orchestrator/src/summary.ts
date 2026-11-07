@@ -296,6 +296,10 @@ async function runOneShot(
   extraAllowedTools: string[] | undefined,
   timeoutMs: number | undefined,
 ): Promise<string> {
+  // Dreaming's broad fetch request cannot widen the agent's domain grant.
+  const fetchGrants = agentCfg.allowed_tools?.filter((tool) => tool === 'WebFetch' || tool.startsWith('WebFetch('));
+  const allowedTools = extraAllowedTools?.flatMap((tool) =>
+    tool === 'WebFetch' && fetchGrants?.length ? fetchGrants : [tool]);
   const minimalCfg: AgentConfig = {
     backend: backend.name as AgentConfig['backend'],
     model,
@@ -310,7 +314,7 @@ async function runOneShot(
     // WebSearch/WebFetch for Dreaming). Without it, an unlisted tool is
     // deferred to a permission card nobody validates at night.
     // plan mode stays active → no workspace write possible.
-    ...(extraAllowedTools && extraAllowedTools.length ? { allowed_tools: extraAllowedTools } : {}),
+    ...(allowedTools?.length ? { allowed_tools: allowedTools } : {}),
     disallowed_tools: agentCfg.disallowed_tools,
     excluded_mcp_servers: agentCfg.excluded_mcp_servers,
   };

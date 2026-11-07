@@ -99,9 +99,9 @@ export async function providerMcpPlan(input: {
   }
   // The project's index serves file contents: a mission that must read no file (the conversion of a
   // browser recording, TODO #471) is not handed it.
-  const grepai = spawn.readOnlyTools || spawn.oneShot ? null : grepaiMcpEntry(cfg.cwd);
+  const grepai = spawn.readOnlyTools ? null : grepaiMcpEntry(cfg.cwd);
   if (grepai) servers.push({ role: 'grepai', type: 'stdio', name: 'grepai', command: grepai.command, args: grepai.args, env: {} });
-  const browser = spawn.oneShot ? null : chromeDevtoolsMcpEntry(cfg);
+  const browser = chromeDevtoolsMcpEntry(cfg);
   if (browser) {
     servers.push({
       role: 'browser', type: 'stdio', name: CHROME_DEVTOOLS_MCP_KEY, command: browser.command, args: browser.args,
@@ -109,7 +109,6 @@ export async function providerMcpPlan(input: {
     });
     // The one moment we know an agent just hooked onto the project's browser for
     // this mission. A probe asks for the plan without launching anything.
-    if (seal) noteBrowserSessionSpawned(cfg);
   }
   const ids = seal ? userServerIds(spawn) : [];
   if (seal && ids.length) {
@@ -123,7 +122,19 @@ export async function providerMcpPlan(input: {
   }
 
   const webSearch = searchPolicy(spawn, seal?.backend, servers);
-  if (webSearch.mode === 'parallel') servers.push(PARALLEL_SEARCH_SERVER);
+  seal?.injectedMcpServers.delete(PARALLEL_SEARCH_SERVER.name);
+  if (webSearch.mode === 'parallel') {
+    // Only the managed search one-shot needs this isolation; preserve other
+    // providers' and native one-shots' existing server composition.
+    if (spawn.oneShot) {
+      for (let i = servers.length - 1; i >= 0; i--) {
+        if (servers[i]!.role === 'grepai' || servers[i]!.role === 'browser') servers.splice(i, 1);
+      }
+    }
+    servers.push(PARALLEL_SEARCH_SERVER);
+    seal?.injectedMcpServers.add(PARALLEL_SEARCH_SERVER.name);
+  }
+  if (seal && servers.some((server) => server.role === 'browser')) noteBrowserSessionSpawned(cfg);
 
   return Object.freeze({
     webSearch,

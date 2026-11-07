@@ -52,3 +52,11 @@ test('claude measures an account on its own directory, never the host\'s sign-in
   if (process.platform === 'darwin') assert.equal(await claude, null);
   else await assert.rejects(claude, (error) => isUsageNotSignedInError(error));
 });
+
+test('claude: an explicit profile config directory takes precedence over the daemon directory', async (t) => {
+  isolate(t);
+  process.env.CLAUDE_CONFIG_DIR = join(TIMON_HOME, 'daemon-config');
+  const dir = join(TIMON_HOME, 'profile-config');
+  const spec = await buildDialectUnderSeal('claude', 'claude', { id: 'claude', cmd: 'claude', env: { CLAUDE_CONFIG_DIR: dir } }, opts());
+  assert.equal(spec.env?.CLAUDE_CONFIG_DIR, dir);
+});
