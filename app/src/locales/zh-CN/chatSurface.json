@@ -1,0 +1,44 @@
+{
+  "chatSurface": {
+    "activeState": {
+      "thinking": "思考中",
+      "needs_action": "需要你处理",
+      "done": "已完成",
+      "idle": "空闲"
+    },
+    "pendingCount": "{count, plural, other {# 个待处理请求}}",
+    "elapsed": "已用时：{duration}",
+    "today": "今天",
+    "newConversationEmpty": "新对话。输入消息即可开始。",
+    "missionEmpty": "此任务会话中还没有消息，开始与 {agent} 对话吧。",
+    "patternInPath": "{pattern}，在 {path} 中",
+    "patternUnderPath": "{pattern}，在 {path} 下",
+    "toolError": "错误",
+    "toolEmpty": "（空）",
+    "imageTooLarge": "图片过大（{size}，最大 {max}）",
+    "fileTooLarge": "{name} — 文件过大（{size}，最大 {max}）",
+    "attachFailed": "添加附件失败：{error}",
+    "reasoningChangeFailed": "无法更改推理级别",
+    "saveFailed": "保存失败：{error}",
+    "configSavedRespawn": "配置已保存 · 智能体将在下一条消息时重新启动",
+    "killFailed": "无法停止任务会话：{status}",
+    "noWrittenAnswer": "智能体已完成，但没有文字回复。",
+    "requestExpired": "此请求已过期（协调器已重启或任务会话已结束）。",
+    "resolveFailed": "无法处理此请求：{error}",
+    "messageTag": {
+      "mission": "任务会话",
+      "routine": "例行任务"
+    },
+    "permission": "权限请求",
+    "permissionToRun": "智能体正在请求运行以下工具的权限：",
+    "permissionState": {
+      "pending": "待处理",
+      "allowed": "已允许",
+      "denied": "已拒绝",
+      "expired": "已过期",
+      "pasted": "已粘贴"
+    },
+    "unexpectedReaderResult": "文件读取结果异常",
+    "readFailed": "无法读取文件"
+  }
+}

@@ -91,7 +91,7 @@ export function FileBrowser({ agentId }: { agentId: string }) {
       const r = await fetch('/api/ui/agents/' + encodeURIComponent(agentId) + '/files' + qs);
       const j = await r.json();
       if (!r.ok || j.kind !== 'dir') {
-        setError(apiErrorMessage(j, 'failed to list ' + (rel || '/')));
+        setError(apiErrorMessage(j, i18n('fileSurface.listFailed', { path: rel || '/' })));
         return;
       }
       const d = j as DirListing;
@@ -99,7 +99,7 @@ export function FileBrowser({ agentId }: { agentId: string }) {
       if (rel === '' && d.abs) setRootAbs(d.abs);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(i18n('fileSurface.requestFailed', { error: String(e) }));
     } finally {
       setLoading((s) => {
         const next = new Set(s);
@@ -138,13 +138,13 @@ export function FileBrowser({ agentId }: { agentId: string }) {
       );
       const j = await r.json();
       if (!r.ok) {
-        setError(apiErrorMessage(j, 'failed to open ' + rel));
+        setError(apiErrorMessage(j, i18n('fileSurface.openFailed', { path: rel })));
         return;
       }
       fileViewer.openText(agentId, j as FileBody);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(i18n('fileSurface.requestFailed', { error: String(e) }));
     } finally {
       setLoading((s) => {
         const next = new Set(s);
@@ -198,7 +198,7 @@ export function FileBrowser({ agentId }: { agentId: string }) {
     const path = inDir(dir, typed);
     const r = await fetch('/api/ui/agents/' + encodeURIComponent(agentId) + '/files?path=' + encodeURIComponent(path), { method: 'POST' });
     const j = await r.json();
-    if (!r.ok) { setError(apiErrorMessage(j, 'create failed')); return; }
+    if (!r.ok) { setError(apiErrorMessage(j, i18n('fileSurface.createFileFailed'))); return; }
     refreshParent(path);
     fileViewer.openText(agentId, { kind: 'file', path, size: 0, modified: Date.now(), binary: false, truncated: false, content: '' }, 'edit');
   }
@@ -207,7 +207,7 @@ export function FileBrowser({ agentId }: { agentId: string }) {
     const path = inDir(dir, typed);
     const r = await fetch('/api/ui/agents/' + encodeURIComponent(agentId) + '/files?path=' + encodeURIComponent(path) + '&action=mkdir', { method: 'POST' });
     const j = await r.json();
-    if (!r.ok) { setError(apiErrorMessage(j, 'mkdir failed')); return; }
+    if (!r.ok) { setError(apiErrorMessage(j, i18n('fileSurface.createFolderFailed'))); return; }
     refreshParent(path);
     setExpanded((s) => new Set(s).add(path));
   }
@@ -248,7 +248,7 @@ export function FileBrowser({ agentId }: { agentId: string }) {
     if (!(await confirmAction({ title: i18n('confirmDialog.deleteFile', { path: rel }), confirmLabel: i18n('confirmDialog.delete'), destructive: true }))) return;
     const r = await fetch('/api/ui/agents/' + encodeURIComponent(agentId) + '/files?path=' + encodeURIComponent(rel), { method: 'DELETE' });
     const j = await r.json();
-    if (!r.ok) { setError(apiErrorMessage(j, 'delete failed')); return; }
+    if (!r.ok) { setError(apiErrorMessage(j, i18n('fileSurface.deleteFailed'))); return; }
     fileViewer.closeUnder(rel, agentId);
     refreshParent(rel);
   }
@@ -261,7 +261,7 @@ export function FileBrowser({ agentId }: { agentId: string }) {
       { method: 'POST' },
     );
     const j = await r.json();
-    if (!r.ok) { setError(apiErrorMessage(j, 'rename failed')); return; }
+    if (!r.ok) { setError(apiErrorMessage(j, i18n('fileSurface.renameFailed'))); return; }
     setError(null);
     // What was open under the old name points nowhere now; the folders listed under it too.
     fileViewer.closeUnder(rel, agentId);
@@ -281,7 +281,7 @@ export function FileBrowser({ agentId }: { agentId: string }) {
       { method: 'POST' },
     );
     const j = await r.json();
-    if (!r.ok) { setError(apiErrorMessage(j, 'move failed')); return; }
+    if (!r.ok) { setError(apiErrorMessage(j, i18n('fileSurface.moveFailed'))); return; }
     setError(null);
     // The open file or preview would point at a path that no longer exists.
     fileViewer.closeUnder(from, agentId);
@@ -315,8 +315,8 @@ export function FileBrowser({ agentId }: { agentId: string }) {
         <span className={WIDGET_TOOLBAR_LABEL}>{agentId}/</span>
         <WidgetButton onClick={() => void revealEntry('')} title={i18n('chatPage.openRootInExplorer')} aria-label={i18n('chatPage.openRootInExplorer')} icon={<FolderSymlink className="size-3.5" />} />
         <WidgetButton onClick={() => void refreshAll()} title={i18n('chatPage.refreshFiles')} aria-label={i18n('chatPage.refreshFiles')} icon={<RefreshCw className="size-3.5" />} />
-        <WidgetButton onClick={() => startCreate('file')} title="New file" aria-label="New file" icon={<FilePlus className="size-3.5" />} />
-        <WidgetButton onClick={() => startCreate('dir')} title="New folder" aria-label="New folder" icon={<FolderPlus className="size-3.5" />} />
+        <WidgetButton onClick={() => startCreate('file')} title={i18n('fileSurface.newFile')} aria-label={i18n('fileSurface.newFile')} icon={<FilePlus className="size-3.5" />} />
+        <WidgetButton onClick={() => startCreate('dir')} title={i18n('fileSurface.newFolder')} aria-label={i18n('fileSurface.newFolder')} icon={<FolderPlus className="size-3.5" />} />
       </div>
       <div
         ref={treeBox}
@@ -440,7 +440,7 @@ function FileTreeLevel({
         className="py-1 text-[11px] text-muted-foreground/70"
         style={{ paddingLeft: 8 + depth * 14 }}
       >
-        loading…
+        {i18n('fileSurface.loading')}
       </div>
     ) : null;
   }
@@ -451,7 +451,7 @@ function FileTreeLevel({
         className="py-1 text-[11px] italic text-muted-foreground/60"
         style={{ paddingLeft: 8 + depth * 14 }}
       >
-        empty
+        {i18n('fileSurface.empty')}
       </div>
     );
   }
@@ -549,7 +549,7 @@ function FileTreeLevel({
               {onDelete && !renaming && (
                 <button
                   type="button"
-                  title={`Delete ${e.name}`}
+                  title={i18n('fileSurface.deleteEntry', { name: e.name })}
                   onClick={(ev) => { ev.stopPropagation(); onDelete(fullPath); }}
                   className="mr-1 grid size-5 shrink-0 place-items-center rounded text-destructive opacity-0 hover:bg-destructive/10 group-hover:opacity-100"
                 >

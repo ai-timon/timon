@@ -241,6 +241,8 @@ Timon is available in English, French, German, Spanish, Italian, Dutch, Polish, 
 
 In the desktop app, the application's own menus, the tray icon menu, the Dock menu on macOS, the taskbar jump list on Windows, the startup and update windows and Timon's dialogs follow the same choice. Menus switch as soon as you pick a language; a window already open keeps its words until it is opened again.
 
+The vault disc and its calendar, mission history and statistics, chat empty states and file controls, and the bundled quota monitor also follow the chosen language. Recognized system warnings about missing backend CLIs are translated in the notification list and archive; their stored diagnostic and command examples are unchanged. User-written messages, note names, paths, provider names and unknown diagnostic details are not translated.
+
 ## Voice conversation (GPT-Live)
 
 For dictation in the chat and the cockpit's voice mode, see [Voice dictation](voice-dictation.md).
