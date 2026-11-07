@@ -19,6 +19,21 @@
     U+F400-F533, U+F0001-F1AF0;
 }
 
+/*! Inter 4.1 — Copyright (c) 2016 The Inter Project Authors — SIL Open Font License 1.1
+ * https://github.com/rsms/inter (full text: src/styles/fonts/LICENSE-inter) */
+/* The face the Timon theme asks for first (`--font-sans: Inter, …`). Shipped
+ * because a stack that names it only finds it on the machines that happen to
+ * have it: elsewhere Linux drew DejaVu Sans and the interface looked like
+ * another product. One variable file covers every weight and the optical size
+ * axis; `swap` keeps text readable while it loads. */
+@font-face {
+  font-family: 'Inter';
+  src: url('./fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Palette tokens (`:root` / `.light`) live in `@timon/ui-theme`. This
  * file keeps infrastructure measures and the rules that consume tokens. */
 

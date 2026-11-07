@@ -11,3 +11,16 @@ Material Design Icons…), each redistributed upstream under a permissive licenc
 
 The copyright line is repeated in a `/*! … */` comment of `globals.css`, which
 CSS minification keeps, so the notice travels with the built stylesheet.
+
+| file | font | upstream | licence |
+|---|---|---|---|
+| `InterVariable.woff2` | Inter 4.1 (variable, roman) | https://github.com/rsms/inter (release v4.1, `InterVariable.ttf`) | SIL Open Font License 1.1 — `LICENSE-inter` |
+
+The upstream file is `InterVariable.ttf` (sha256 `4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf`),
+subset with fontTools `pyftsubset` to Latin, Latin Extended, Greek, Cyrillic,
+punctuation, currency, arrows and the keyboard symbols, keeping the `kern`,
+`liga`, `calt`, `ccmp`, `locl`, `mark`, `mkmk`, `tnum` and `cv11` features,
+and written as WOFF2. Inter declares no Reserved Font Name, so the subset keeps
+its name. Every system gets the same face: without it, a Linux machine with no
+Inter installed fell back on whatever sans-serif it had (often DejaVu Sans),
+and the interface looked like a different product there.

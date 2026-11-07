@@ -11,6 +11,7 @@ packages; the installed app ships them with the code.
 |---|---|---|---|
 | `app/src/vendor/vault-graph/` | Sigma.js, graphology | MIT | [NOTICE.md](app/src/vendor/vault-graph/NOTICE.md) |
 | `app/src/styles/fonts/SymbolsNerdFontMono-Regular.woff2` | Symbols Nerd Font Mono 3.5.1 | MIT | [NOTICE.md](app/src/styles/fonts/NOTICE.md), [LICENSE-nerd-fonts](app/src/styles/fonts/LICENSE-nerd-fonts) |
+| `app/src/styles/fonts/InterVariable.woff2` | Inter 4.1 | OFL-1.1 | [NOTICE.md](app/src/styles/fonts/NOTICE.md), [LICENSE-inter](app/src/styles/fonts/LICENSE-inter) |
 | `plugins/hermes-gateway/` | run handling ported from Hermes Web UI (`api/gateway_chat.py`) | MIT | [NOTICE](plugins/hermes-gateway/NOTICE) |
 
 ## Dependencies that call for a notice
