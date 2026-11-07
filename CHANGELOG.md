@@ -40,6 +40,10 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ## [Unreleased]
 
+### Added
+
+- **LLMTR** is a built-in provider. Save an inject secret named `LLMTR_API_KEY` (grant it to `global`, or to the `llmtr` backend) and pick LLMTR like any other backend. Missions call Chat Completions at `https://llmtr.com/v1`; the model id is sent as written. The public model list does not check the key.
+
 ### Known issues
 
 - Onboarding form details are still in English outside English and French; the step titles are translated.
