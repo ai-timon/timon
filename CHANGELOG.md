@@ -51,6 +51,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 - Conversations no longer open under a "Today" label that ignored the actual date.
 - Notification previews no longer show raw markdown markers such as `**` and backticks.
 - In light mode, the Kanban filters and search no longer fade into the page.
+- In light mode, a switch that is off no longer fades into the dialog behind it.
 
 ### Known issues
 
