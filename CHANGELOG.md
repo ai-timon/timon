@@ -48,6 +48,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 - The main agent's avatar shows an "m" instead of an underscore.
 - Conversations no longer open under a "Today" label that ignored the actual date.
+- Notification previews no longer show raw markdown markers such as `**` and backticks.
 
 ### Known issues
 

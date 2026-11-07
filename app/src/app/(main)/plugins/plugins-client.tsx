@@ -229,7 +229,8 @@ export function PluginsClient(): React.ReactElement {
               onChange={(e) => setFilter({ q: e.target.value })}
               placeholder={t('pluginsPage.searchPlaceholder')}
               aria-label={t('pluginsPage.searchPlaceholder')}
-              className="pl-8"
+              // Filled like the Missions search; the outline only appears on focus.
+              className="border-transparent bg-foreground/[0.05] pl-8 shadow-none focus-visible:border-ring/60"
             />
           </div>
         </div>

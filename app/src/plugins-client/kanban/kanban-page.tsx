@@ -61,7 +61,7 @@ const COLUMNS: ColumnDef[] = [
  *  island's own fill. Kept to a hint: at 13% the four hues smeared brown and
  *  red in dark and pastel in light, louder than the cards on top of them. */
 function columnWash(token: string): CSSProperties {
-  return { backgroundImage: `radial-gradient(110% 45% at 0% 0%, hsl(var(${token}) / 0.06), transparent 70%)` };
+  return { backgroundImage: `radial-gradient(110% 28% at 0% 0%, hsl(var(${token}) / 0.04), transparent 70%)` };
 }
 
 // ── Main kanban ────────────────────────────────────────────────────────────────

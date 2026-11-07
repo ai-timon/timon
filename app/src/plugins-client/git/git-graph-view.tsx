@@ -275,7 +275,7 @@ export function GitGraphView({ repoId }: { repoId: string }) {
                 className={cn(
                   'flex w-full flex-col justify-center rounded-md pr-1.5 text-left outline-none transition-colors',
                   'focus-visible:ring-2 focus-visible:ring-ring',
-                  active ? 'bg-primary/10' : 'hover:bg-muted/50',
+                  active ? 'bg-foreground/[0.07]' : 'hover:bg-muted/50',
                 )}
                 style={{ height: ROW_H, paddingLeft: width + 8 }}
               >

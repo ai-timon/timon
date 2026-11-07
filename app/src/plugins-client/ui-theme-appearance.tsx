@@ -387,7 +387,7 @@ export function AppearanceSettings(): ReactElement {
           </label>
         </div>
         {/* Where the glass sits: the default each island follows until its menu says otherwise. */}
-        <div role="radiogroup" aria-label={t('appearance.glassScope')} className={cn('mt-4 flex flex-col gap-1', (!native.glass || !variantReady) && 'pointer-events-none opacity-70')}>
+        <div role="radiogroup" aria-label={t('appearance.glassScope')} className={cn('mt-4 flex flex-col gap-1', (!native.glass || !variantReady) && 'pointer-events-none opacity-80')}>
           <span className="text-[13px] leading-snug">{t('appearance.glassScope')}<span className="mt-0.5 block text-[11px] text-muted-foreground">{t('appearance.glassScopeHint')}</span></span>
           {GLASS_SCOPES.map((scope) => {
             const checked = native.glassScope === scope;

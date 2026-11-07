@@ -992,7 +992,7 @@ export function AgentsClient() {
         .attr('class', 'halo')
         .attr('r', (d) => (d.isMain ? 50 : 32))
         .attr('fill', (d) => (d.isMain ? 'url(#g-halo-salmon)' : 'url(#g-halo)'))
-        .attr('opacity', (d) => (d.isMain ? 0.8 : 0.35));
+        .attr('opacity', (d) => (d.isMain ? 0.45 : 0.35));
       ent
         .append('circle')
         .attr('class', 'needs-action-halo')
@@ -1727,23 +1727,23 @@ export function AgentsClient() {
        *  Missions stay global. */}
         <div className="pointer-events-none fixed left-1/2 top-[calc(var(--timon-topbar-h)+14px)] z-[5] -translate-x-1/2 hidden flex-col items-center gap-1.5 md:flex">
           {/* Workspace header chip — centered, aligned under the header */}
-          <div className="pointer-events-auto relative flex items-center justify-center rounded-xl border border-border/60 bg-card/90 px-6 py-2 shadow-md backdrop-blur-sm">
+          <div className="pointer-events-auto relative flex items-center justify-center rounded-xl bg-card/90 px-6 py-2 shadow-elev-1 backdrop-blur-sm">
             <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-foreground">
               Workspace
             </span>
           </div>
           {/* Toggles chip */}
-          <div className="pointer-events-auto flex flex-wrap justify-center gap-1 rounded-xl border border-border/60 bg-card/90 px-2 py-1.5 shadow-md backdrop-blur-sm">
+          <div className="pointer-events-auto flex flex-wrap justify-center gap-1 rounded-xl bg-card/90 px-2 py-1.5 shadow-elev-1 backdrop-blur-sm">
             {poleChips.map((w) => (
               <button
                 key={w.slug}
                 type="button"
                 onClick={() => setWorkspace(w.slug)}
                 className={cn(
-                  'rounded-md border px-2 py-0.5 text-[10px] transition-colors',
+                  'rounded-md px-2 py-0.5 text-[10.5px] transition-colors',
                   workspace === w.slug
-                    ? 'border-primary bg-primary/15 text-primary'
-                    : 'border-border bg-muted/30 text-muted-foreground hover:text-foreground',
+                    ? 'bg-primary/15 text-primary'
+                    : 'bg-foreground/[0.05] text-muted-foreground hover:text-foreground',
                 )}
               >
                 {w.label}
@@ -1832,7 +1832,7 @@ export function AgentsClient() {
       {/* readout */}
       <div
         ref={readoutRef}
-        className="pointer-events-none fixed bottom-16 left-1/2 -translate-x-1/2 z-[4] rounded-md border border-border bg-card/70 px-2.5 py-1 tabular-nums text-[10.5px] text-muted-foreground backdrop-blur"
+        className="pointer-events-none fixed bottom-16 left-1/2 -translate-x-1/2 z-[4] rounded-md bg-card/70 px-2.5 py-1 tabular-nums text-[10.5px] text-muted-foreground backdrop-blur"
       >
         node graph
       </div>
@@ -1986,7 +1986,7 @@ export function AgentsClient() {
         html:has(#graph) .timon-glass-chat-card > div { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
         /* No rim: links stop short of captions instead (cf. trimmed()). */
         .node-sub { font: 500 10.5px var(--font-sans), system-ui, sans-serif; fill: hsl(var(--foreground) / 0.82); pointer-events: none; user-select: none; letter-spacing: .02em; }
-        .node-sub.main { font-size: 12px; font-weight: 700; fill: hsl(var(--foreground)); }
+        .node-sub.main { font-weight: 600; fill: hsl(var(--foreground)); }
         /* Discs come from the theme's raised surfaces (the gradients above),
            in both schemes: near-black discs read as holes in a dark island and
            as a pasted dark asset on a beige one. On them the initials take the
@@ -1995,7 +1995,7 @@ export function AgentsClient() {
         .node-label.main { fill: hsl(var(--foreground)) !important; }
         /* The identity ring is a hint, not a frame: thinner and a little
            transparent, so a saturated project colour does not glow. */
-        .node-core { stroke-opacity: 0.7; }
+        .node-core { stroke-opacity: 0.55; }
         .link { stroke: hsl(var(--primary) / 0.4); stroke-width: 1.5; transition: stroke .2s ease, stroke-opacity .2s ease; fill: none; }
         .link.active { stroke: hsl(var(--primary) / 0.85); stroke-width: 1.8; }
         .link-flow { stroke: hsl(var(--primary)); stroke-width: 1.3; stroke-dasharray: 4 8; fill: none; opacity: 0; }

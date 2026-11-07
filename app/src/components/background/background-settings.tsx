@@ -55,9 +55,11 @@ export function BackgroundSettings() {
     const ok = await update({ photo: null, mode: 'pattern' });
     if (ok) void fetch(old, { method: 'DELETE' }).catch(() => {});
   };
-  return <fieldset className="py-6" disabled={busy}>
-    <legend className="text-sm font-medium">{t('appearance.background.title')}</legend>
-    <p className="mt-1 max-w-[65ch] text-xs leading-relaxed text-muted-foreground">{t('appearance.background.hint')}</p>
+  // Same header as the Appearance sections above it: a deeper padding put
+  // twice their gap between this title and its hint.
+  return <fieldset className="min-w-0 py-4" disabled={busy}>
+    <legend className="text-[14px] font-semibold leading-snug">{t('appearance.background.title')}</legend>
+    <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">{t('appearance.background.hint')}</p>
     <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,1fr)_260px]">
       <div className="min-w-0 space-y-5">
         {/* A segmented control, like the tabs above it: one plate, the chosen

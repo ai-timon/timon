@@ -119,7 +119,7 @@ export function BoardCard({
         data-density="row"
         onClick={click}
         className={cn(
-          'group flex items-start gap-2 rounded-lg px-1.5 pb-0.5 pt-1 transition-colors hover:bg-primary/10',
+          'group flex items-start gap-2 rounded-lg px-1.5 pb-0.5 pt-1 transition-colors hover:bg-foreground/[0.05]',
           interactive && 'cursor-pointer',
           dragging && 'opacity-50',
           className,
@@ -128,17 +128,25 @@ export function BoardCard({
         {leading && <div data-board-card-leading="" className="flex flex-none items-center pt-[3px]" onClick={stop}>{leading}</div>}
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           {titleZone}
+          {/* With tags, the corner and the gestures close the tag line: on a
+              line of their own, a lone `#5` made every idea three lines. */}
           {(badges || meta) && (
             <div className="flex flex-wrap items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
               {badges}
               {meta}
+              {(corner || actionsNode) && (
+                <div data-board-card-foot="" className="ml-auto flex min-h-6 items-center gap-1">
+                  {corner && <div data-board-card-corner="" className="text-[11px] tabular-nums text-muted-foreground">{corner}</div>}
+                  {actionsNode && <div className="flex">{actionsNode}</div>}
+                </div>
+              )}
             </div>
           )}
           {context}
-          {/* The corner and the gestures share a full-width foot line: on
-              their own column beside the title they ate half of a narrow
-              widget's width. */}
-          {(corner || actionsNode) && (
+          {/* Without tags they share a full-width foot line: on their own
+              column beside the title they ate half of a narrow widget's
+              width. */}
+          {!(badges || meta) && (corner || actionsNode) && (
             <div data-board-card-foot="" className="flex min-h-6 items-center gap-1">
               {corner && <div data-board-card-corner="" className="min-w-0 flex-1 text-[11px] tabular-nums text-muted-foreground">{corner}</div>}
               {actionsNode && <div className="ml-auto flex">{actionsNode}</div>}

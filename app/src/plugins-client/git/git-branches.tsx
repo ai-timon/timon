@@ -114,7 +114,7 @@ export function GitBranches({
                     : manage.denied ?? t('gitWidget.branches.checkout', { branch: b.name })}
                 className={cn(
                   'flex w-full items-start gap-1.5 rounded px-1 py-0.5 text-left',
-                  b.current && 'bg-primary/10',
+                  b.current && 'bg-foreground/[0.07]',
                   canSwitch && 'cursor-pointer hover:bg-muted/50',
                   !canSwitch && 'cursor-default',
                   isLoading && 'opacity-60',

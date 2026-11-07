@@ -149,11 +149,16 @@ export function PluginCard({ plugin, catalog, onToggle, busyId }: PluginCardProp
             {plugin.description && (
               <p className="m-0 line-clamp-2 text-xs text-muted-foreground">{plugin.description}</p>
             )}
+            {/* The note sits above the tags, so every card ends on its tag row
+                and the rows line up across the grid. */}
+            {plugin.note && (
+              <p className="m-0 text-[11px] text-muted-foreground">{plugin.note}</p>
+            )}
             <div className="mt-auto flex flex-wrap gap-1.5">
               {plugin.kinds.map((kind) => <PluginKindBadge key={kind} kind={kind} />)}
               {plugin.builtin ? (
                 <span
-                  className="rounded-md border border-primary/40 px-2 py-0.5 text-[11px] font-medium text-primary"
+                  className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary"
                   title={t('pluginsPage.builtinHint')}
                 >
                   {t('pluginsPage.builtin')}
@@ -161,10 +166,10 @@ export function PluginCard({ plugin, catalog, onToggle, busyId }: PluginCardProp
               ) : plugin.signed !== null && (
                 <span
                   className={cn(
-                    'rounded-md border px-2 py-0.5 text-[11px] font-medium',
+                    'rounded-md px-2 py-0.5 text-[11px] font-medium',
                     plugin.signed
-                      ? 'border-emerald-500/40 text-emerald-700 dark:text-emerald-400'
-                      : 'border-border text-muted-foreground',
+                      ? 'bg-emerald-500/[0.12] text-emerald-700 dark:text-emerald-400'
+                      : 'bg-foreground/[0.06] text-muted-foreground',
                   )}
                 >
                   {t(plugin.signed ? 'pluginsPage.verified' : 'pluginsPage.unverified')}
@@ -172,7 +177,7 @@ export function PluginCard({ plugin, catalog, onToggle, busyId }: PluginCardProp
               )}
               {plugin.awaitingApproval && (
                 <span
-                  className="rounded-md border border-amber-500/40 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400"
+                  className="rounded-md bg-amber-500/[0.14] px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-400"
                   title={t(plugin.builtin ? 'pluginsPage.awaitingApprovalBuiltinHint' : 'pluginsPage.awaitingApprovalHint')}
                 >
                   {t('pluginsPage.awaitingApproval')}
@@ -180,9 +185,6 @@ export function PluginCard({ plugin, catalog, onToggle, busyId }: PluginCardProp
               )}
             </div>
             <VoiceDestinationLines lines={plugin.voice ?? []} compact />
-            {plugin.note && (
-              <p className="m-0 text-[11px] text-muted-foreground">{plugin.note}</p>
-            )}
             {blocked && (
               <p className="m-0 rounded bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-400">
                 {plugin.blockedReason}
