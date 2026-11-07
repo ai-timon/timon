@@ -56,6 +56,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 - On the Agents page, "Import agents" and "Export" have icons and the same size as the other actions in the bar.
 - The project filter of the Home Tasks widget looks like the other filters instead of a plain form field.
 - Missions: the Success rate card keeps a clear edge in light mode, and table rows alternate visibly in dark mode.
+- Dialogs no longer have a thin outline; their shadow sets them apart.
 
 ### Known issues
 
