@@ -297,8 +297,10 @@
   .chat-bubble :not(pre) > code {
     padding: 0.1em 0.38em;
     border-radius: calc(var(--radius) * 0.4);
-    /* A fill, no rim: a sentence with three framed spans read like a form. */
-    background: hsl(var(--surface-chip));
+    /* A fill, no rim: a sentence with three framed spans read like a form.
+     * Tinted from the text colour, which reads on any surface; the chip
+     * surface sat within a few points of the light island. */
+    background: hsl(var(--foreground) / 0.07);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
       'Liberation Mono', 'Courier New', monospace;
     font-size: 0.86em;
