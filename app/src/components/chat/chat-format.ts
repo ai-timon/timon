@@ -92,6 +92,14 @@ export function contextLimitFor(
   return null;
 }
 
+/** Share of the context window the compaction nudge reads, or `null` when no
+ *  percentage makes sense: no usage yet, or a window nobody knows. */
+export function contextNudgePct(ctxUsed: number, configured: number | null): number | null {
+  if (!ctxUsed || !configured) return null;
+  const limit = ctxUsed > configured ? nextStandardLimit(ctxUsed) : configured;
+  return Math.min(100, (ctxUsed / limit) * 100);
+}
+
 /** Round up to the next standard context-window tier. A safety net AFTER a
  *  KNOWN limit that observed usage already exceeds (stale catalog) —
  *  otherwise the status line would stay stuck at 100%. Never called when no

@@ -253,9 +253,9 @@ import {
 import { estMasquee } from '@/components/chat/chat-columns';
 import {
   contextLimitFor,
+  contextNudgePct,
   fmtRelativeShort,
   fmtSize,
-  nextStandardLimit,
   paletteFor,
   shortModelSlug,
   stripTaskIdPreamble,
@@ -2534,9 +2534,8 @@ export function ChatClient({
     );
     // Unknown window → no percentage makes sense: we don't nudge rather
     // than cry wolf over a made-up denominator.
-    if (!configured) return;
-    const ctxLimit = ctxUsed > configured ? nextStandardLimit(ctxUsed) : configured;
-    const ctxPct = Math.min(100, (ctxUsed / ctxLimit) * 100);
+    const ctxPct = contextNudgePct(ctxUsed, configured);
+    if (ctxPct === null) return;
     if (ctxPct >= 80 && lastCtxNudgePct.current < 80) {
       lastCtxNudgePct.current = ctxPct;
       const missionId = currentMissionId;
