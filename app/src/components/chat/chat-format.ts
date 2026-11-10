@@ -92,10 +92,13 @@ export function contextLimitFor(
   return null;
 }
 
-/** Share of the context window the compaction nudge reads, or `null` when no
- *  percentage makes sense: no usage yet, or a window nobody knows. */
-export function contextNudgePct(ctxUsed: number, configured: number | null): number | null {
-  if (!ctxUsed || !configured) return null;
+/** Share of the context window the compaction nudge reads, or `null` while it
+ *  cannot be trusted. The chat mounts with a placeholder agent whose model is the
+ *  backend default, not the agent's own: a window sized on it (200k for an Opus
+ *  mission at 1M) fires the one-shot nudge at a made-up percentage before the
+ *  agent's details land, and the gauge corrects itself right after. */
+export function contextNudgePct(ctxUsed: number, configured: number | null, agentSettled: boolean): number | null {
+  if (!agentSettled || !ctxUsed || !configured) return null;
   const limit = ctxUsed > configured ? nextStandardLimit(ctxUsed) : configured;
   return Math.min(100, (ctxUsed / limit) * 100);
 }
