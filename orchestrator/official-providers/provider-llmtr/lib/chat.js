@@ -124,7 +124,10 @@ export async function llmtrChatCompletion(options) {
       signal,
     });
   } catch (err) {
-    if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')) throw err;
+    // A policy refusal is not a transport failure: the caller must see it, and
+    // must not retry. `PluginPolicyError` is named, not imported: this package
+    // cannot reach the daemon.
+    if (err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError' || err.name === 'PluginPolicyError')) throw err;
     throw new LlmtrChatError('LLMTR did not answer');
   }
   if (response.redirected || response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {

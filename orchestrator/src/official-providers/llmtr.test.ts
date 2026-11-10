@@ -55,6 +55,7 @@ test('the product profile is Chat Completions, with a public model list and no R
   assert.deepEqual(profile.models.map((model) => model.slug), [LLMTR_DEFAULT_MODEL]);
   assert.equal(profile.models[0]?.contextWindow, undefined);
   assert.equal(profile.providerConfig, undefined);
+  assert.deepEqual(profile.credentialDirs, []);
   assert.deepEqual(profile.env.LLMTR_API_KEY, { secret: 'LLMTR_API_KEY' });
   assert.deepEqual(profile.envFrom, { LLMTR_API_KEY: 'LLMTR_API_KEY' });
   assert.deepEqual(profile.modelsEndpoint, { url: 'https://llmtr.com/v1/models', format: 'openai' });
@@ -305,20 +306,131 @@ test('cancelling aborts the request, and a missing key never calls the network',
   bare.close();
 });
 
-test('the built-in profile is registered and stays inactive until the key exists', async () => {
-  const previous = process.env.LLMTR_API_KEY;
-  delete process.env.LLMTR_API_KEY;
+test('a missing plugin fetch never calls the network', async () => {
+  const real = globalThis.fetch;
+  let network = 0;
+  globalThis.fetch = async () => {
+    network += 1;
+    return jsonResponse({});
+  };
   try {
-    const { officialContext } = await import('../../tests/helpers/official-providers.js');
-    const { getDialect, inactiveProfiles } = await import('../backends/registry.js');
-    const { ctx: plugin } = await officialContext('provider-llmtr');
+    const dialect = createLlmtrDialect(ctx.provider.runtime, {});
+    const emitted: Array<{ type: string; payload: Record<string, unknown> }> = [];
+    const driver = dialect.openSession({
+      spawn: {
+        agentName: 'tester', systemPrompt: '', message: '', resumeSession: null,
+        cfg: { model: LLMTR_DEFAULT_MODEL }, missionId: 'mission-llmtr-nofetch',
+      },
+      host: {
+        emit: (ev) => { emitted.push(ev as { type: string; payload: Record<string, unknown> }); },
+        requestPermission: async () => ({ allow: false }),
+        end: () => {},
+        saveResume: () => {},
+      },
+      env: { LLMTR_API_KEY: KEY },
+      profileId: 'llmtr',
+    });
+    await driver.start();
+    const outcome = await driver.prompt('Hi');
+    assert.equal(outcome.stopReason, 'error');
+    assert.equal(network, 0);
+    assert.match(String(emitted.at(-1)?.payload.error), /pluginPolicy\.http/);
+    assert.equal(String(emitted.at(-1)?.payload.error).includes(KEY), false);
+    driver.close();
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test('the built-in profile stays inactive without a key, and chat obeys pluginPolicy.http', async () => {
+  const previousKey = process.env.LLMTR_API_KEY;
+  delete process.env.LLMTR_API_KEY;
+  const { config, setConfig } = await import('../config/load.js');
+  const { TimonConfigSchema } = await import('../config/schema.js');
+  const saved = config();
+  const calls: Seen[] = [];
+  try {
+    const { createPluginContext, daemonHost } = await import('../plugins/context.js');
+    const { readManifest } = await import('../plugins/manifest.js');
+    const { readFileSync } = await import('node:fs');
+    const { Context } = await import('@deepseek-ai/cordis');
+    const json = JSON.parse(readFileSync(new URL('../../official-providers/provider-llmtr/package.json', import.meta.url), 'utf8')) as {
+      version: string;
+    };
+    const parsed = readManifest(json);
+    assert.equal(parsed.ok, true, parsed.ok ? '' : parsed.message);
+    if (!parsed.ok) return;
+    assert.ok(parsed.manifest.permissions.includes('http:outbound'));
+    assert.deepEqual(parsed.manifest.http?.hosts.map((host) => host.host), ['llmtr.com']);
+    const root = new Context();
+    const plugin = createPluginContext(root, { manifest: parsed.manifest, version: json.version, builtin: true }, {
+      ...daemonHost(root),
+      fetch: async (input, init) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        calls.push({ url, init: init ?? {} });
+        return jsonResponse({ choices: [{ message: { content: 'allowed' } }] });
+      },
+      mountRouter: () => () => {},
+    });
     apply(plugin);
-    assert.equal(getDialect('llmtr')?.transport, 'remote');
+    const { getDialect, inactiveProfiles } = await import('../backends/registry.js');
+    const dialect = getDialect('llmtr');
+    assert.equal(dialect && 'transport' in dialect ? dialect.transport : undefined, 'remote');
     const reason = inactiveProfiles().find((entry) => entry.id === 'llmtr')?.reason ?? '';
     assert.match(reason, /LLMTR_API_KEY/);
     assert.doesNotMatch(reason, /llmtr-test-key|Bearer /);
+    if (!dialect || !('openSession' in dialect) || typeof dialect.openSession !== 'function') {
+      assert.fail('llmtr dialect is not remote');
+    }
+
+    const session = () => {
+      const emitted: Array<{ type: string; payload: Record<string, unknown> }> = [];
+      const driver = dialect.openSession({
+        spawn: {
+          agentName: 'tester', systemPrompt: '', message: '', resumeSession: null,
+          cfg: { model: PREFIXED }, missionId: 'mission-llmtr-policy',
+        },
+        host: {
+          emit: (ev) => { emitted.push(ev as { type: string; payload: Record<string, unknown> }); },
+          requestPermission: async () => ({ allow: false }),
+          end: () => {},
+          saveResume: () => {},
+        },
+        env: { LLMTR_API_KEY: KEY },
+        profileId: 'llmtr',
+      });
+      return { driver, emitted };
+    };
+
+    setConfig(TimonConfigSchema.parse({ pluginPolicy: { http: { allow: [], byPlugin: {} } } }));
+    const denied = session();
+    await denied.driver.start();
+    const refused = await denied.driver.prompt('Hi');
+    assert.equal(refused.stopReason, 'error');
+    assert.equal(calls.length, 0, 'a denied host sends no request');
+    assert.match(String(denied.emitted.at(-1)?.payload.error), /pluginPolicy\.http/);
+    assert.equal(String(denied.emitted.at(-1)?.payload.error).includes(KEY), false);
+    denied.driver.close();
+
+    setConfig(TimonConfigSchema.parse({ pluginPolicy: { http: { byPlugin: { 'provider-llmtr': ['llmtr.com'] } } } }));
+    const granted = session();
+    await granted.driver.start();
+    const allowed = await granted.driver.prompt('Hi');
+    assert.equal(allowed.stopReason, 'end_turn');
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0]!.url, LLMTR_CHAT_URL);
+    assert.equal(calls[0]!.init.method, 'POST');
+    assert.equal(calls[0]!.init.redirect, 'manual');
+    assert.equal(authorization(calls[0]!), `Bearer ${KEY}`);
+    const body = parsedBody(calls[0]!);
+    assert.equal(body.model, PREFIXED);
+    assert.equal(body.stream, false);
+    assert.equal('tools' in body, false);
+    assert.equal('max_tokens' in body, false);
+    granted.driver.close();
   } finally {
-    if (previous === undefined) delete process.env.LLMTR_API_KEY;
-    else process.env.LLMTR_API_KEY = previous;
+    setConfig(saved);
+    if (previousKey === undefined) delete process.env.LLMTR_API_KEY;
+    else process.env.LLMTR_API_KEY = previousKey;
   }
 });

@@ -38,8 +38,9 @@ gallery with a **Built-in** badge, and they are written on the same
 `ctx.provider` kit described below, so they are the reference for what a
 provider can do. Kimi is a profile on the Claude provider; Ollama Cloud is a
 profile on Codex's. LLMTR is its own remote provider: it calls Chat Completions
-at `https://llmtr.com/v1` with the vault secret `LLMTR_API_KEY`, and it does not
-use the Responses API. It runs no local tools. Switching off the underlying provider leaves a profile
+at `https://llmtr.com/v1` with the vault secret `LLMTR_API_KEY`, through
+`ctx.fetch`, and only after the operator allows `llmtr.com` in
+`pluginPolicy.http`. It does not use the Responses API. It runs no local tools. Switching off the underlying provider leaves a profile
 that rides on it inactive until it is switched back on. Your saved model choices,
 accounts and fallback rules keep their provider IDs.
 

@@ -190,6 +190,14 @@ They need no backend of your own: create the key on the **Secrets** page, in *in
 
 LLMTR is a Chat Completions gateway, not an Anthropic or OpenAI Responses endpoint, so it is not added with the form above. It ships with Timon. Create an inject secret named `LLMTR_API_KEY` and grant it to `global`, or reserve it to the `llmtr` backend. The same variable in the daemon's environment is used when the vault has no entry yet. The backend turns active without a restart.
 
+The chat call is allowed only when the operator names `llmtr.com`. The manifest lists that host; it does not grant it. In `timon.config.json`:
+
+```json
+"pluginPolicy": { "http": { "byPlugin": { "provider-llmtr": ["llmtr.com"] } } }
+```
+
+`pluginPolicy.http.allow` with `"llmtr.com"` works too, and opens the host to every plugin that may call out. With neither entry, a turn fails and Timon does not send the request.
+
 Missions send each model id exactly as it is written, including a vendor prefix. The suggested default is `minimax/minimax-m3.1-flash`. The model menu also reads the public list at `https://llmtr.com/v1/models` when that list answers. That request carries no key: a successful list does not mean the key is valid, and **Test** on a backend you added yourself is a different check. LLMTR does not use the Responses API. It runs no worktree and receives none of Timon's tools, so a task that has to edit files needs another backend.
 
 ### Keys belong in the vault

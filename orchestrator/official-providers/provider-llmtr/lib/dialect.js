@@ -4,10 +4,10 @@
  * LLMTR's documented gateway is Chat Completions, so this dialect does not
  * ride on Codex and never calls `/v1/responses`.
  *
- * The host is fixed inside `chat.js`. The call uses the process `fetch` rather
- * than `ctx.fetch`: a built-in key provider would otherwise stay unable to
- * reach its own host until an operator edited `pluginPolicy.http`. The URL
- * guard and the refused redirect are what keep the key on that one host.
+ * The host is fixed inside `chat.js`. The call goes through the plugin's
+ * `ctx.fetch`, which enforces `pluginPolicy.http`. A missing client or a
+ * refused host ends the turn and sends nothing. Redirects stay refused, and
+ * there is no retry.
  */
 import { randomUUID } from 'node:crypto';
 import { LLMTR_API_KEY_ENV, llmtrChatCompletion } from './chat.js';
@@ -68,6 +68,12 @@ export function createLlmtrDialect(runtime, options = {}) {
           host.emit(events.resultErrorEvent({ error: 'LLMTR chat does not accept images' }));
           return { stopReason: 'error' };
         }
+        if (typeof fetchImpl !== 'function') {
+          host.emit(events.resultErrorEvent({
+            error: 'LLMTR cannot reach llmtr.com until that host is allowed in pluginPolicy.http.byPlugin for provider-llmtr, or in pluginPolicy.http.allow.',
+          }));
+          return { stopReason: 'error' };
+        }
         messages.push({ role: 'user', content: text });
         const ctrl = new AbortController();
         running = ctrl;
@@ -93,7 +99,8 @@ export function createLlmtrDialect(runtime, options = {}) {
             return { stopReason: 'cancelled' };
           }
           const status = err instanceof Error && 'status' in err && typeof err.status === 'number' ? err.status : undefined;
-          const message = err instanceof Error && err.message ? err.message : 'LLMTR request failed';
+          const raw = err instanceof Error && err.message ? err.message : 'LLMTR request failed';
+          const message = raw.includes(apiKey) ? 'LLMTR refused the request' : raw;
           host.emit(events.resultErrorEvent({ error: message, ...(status !== undefined ? { apiErrorStatus: status } : {}) }));
           return { stopReason: 'error' };
         } finally {

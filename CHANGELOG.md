@@ -42,7 +42,7 @@ bump. Until a release is called, everything accumulates under `Unreleased`.
 
 ### Added
 
-- **LLMTR** is a built-in provider. Save an inject secret named `LLMTR_API_KEY` (grant it to `global`, or to the `llmtr` backend) and pick LLMTR like any other backend. Missions call Chat Completions at `https://llmtr.com/v1`; the model id is sent as written. The public model list does not check the key.
+- **LLMTR** is a built-in provider. Save an inject secret named `LLMTR_API_KEY` (grant it to `global`, or to the `llmtr` backend) and allow the host `llmtr.com` in `pluginPolicy.http.byPlugin` for `provider-llmtr` (or in `pluginPolicy.http.allow`). Until that host is allowed, a turn fails and no request is sent. Missions then call Chat Completions at `https://llmtr.com/v1`; the model id is sent as written. The public model list does not check the key.
 
 ### Known issues
 
