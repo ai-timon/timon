@@ -46,6 +46,7 @@ import { join } from 'node:path';
 import { openGeneratedMedia } from '../../chat-media.js';
 import { sendMedia } from '../../media-send.js';
 import { MediaRequestSchema, addMissionMedia, mediaErrorResponse } from '../../chat-media-block.js';
+import { ChatPostRequestSchema, MAX_CHAT_POST_CHARS, postAgentMessage } from '../../chat-post.js';
 import { bus } from '../../bus.js';
 import { providerMediaRoots } from '../../backends/provider-media.js';
 import { viewerFromRequest, type DbViewer, type RequestAuth, isPersonAuth } from '../../users/identity.js';
@@ -1046,6 +1047,29 @@ export function registerRoutes(
     }
     const reply = await showMissionMedia(mission, req.body);
     res.status(reply.status).json(reply.body);
+  });
+
+  // An agent posts a message in its own chat (`chat_post_message`): an ordinary
+  // agent bubble, written by the daemon (`chat-post.ts`). Only the token
+  // issued to THIS mission writes it: these are the agent's words, which no
+  // session, other mission or daemon-token may put in its mouth.
+  app.post('/api/missions/:id/messages', (req, res) => {
+    const mission = scopedDb(viewerFromRequest(req)).getMission(req.params.id);
+    if (!mission) {
+      res.status(404).json(apiError('mission_not_found', 'mission not found'));
+      return;
+    }
+    if (req.auth?.kind !== 'api-token' || req.auth.missionId !== mission.id) {
+      forbidden(req, res, { kind: 'scope', reason: 'only this mission\'s agent can post a message in its chat' });
+      return;
+    }
+    const parsed = ChatPostRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json(apiError('invalid_request', `expected { text: string } with 1 to ${MAX_CHAT_POST_CHARS} characters`));
+      return;
+    }
+    const row = postAgentMessage(mission.id, parsed.data.text, 'chat_post_message');
+    res.status(201).json({ posted: true, event_id: row.id });
   });
 
   app.post('/api/agents/:id/send', async (req, res) => {

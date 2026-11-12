@@ -2,7 +2,7 @@
  * `scripts/install-linux.sh` — parse et dry-run. Le script est pour un VPS :
  * on ne l'exécute pas (ça écrirait l'unit live et appellerait systemctl).
  */
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,18 @@ function systemdStandIns(h: string): string {
     writeFileSync(join(bin, name), `#!/bin/sh\necho "stand-in ${name} was called" >&2\nexit 97\n`, { mode: 0o755 });
   }
   return bin;
+}
+
+/**
+ * The refusal tests leave only a fake `node` on the PATH, but the script runs a few system tools
+ * before it reaches its checks. A CI runner keeps them in /usr/bin, beside git, so that folder
+ * cannot go on the PATH of the test that wants git absent: each tool is linked instead.
+ */
+function linkSystemTools(bin: string): void {
+  for (const name of ['dirname', 'id', 'sed']) {
+    const found = spawnSync('sh', ['-c', `command -v ${name}`], { encoding: 'utf8' }).stdout.trim();
+    if (found) symlinkSync(found, join(bin, name));
+  }
 }
 
 function envFor(h: string, patch: Record<string, string | null> = {}): NodeJS.ProcessEnv {
@@ -110,6 +122,7 @@ test('Node < 20 est refusé avant tout clone', () => {
   try {
     mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, 'node'), '#!/bin/sh\necho v18.19.0\n', { mode: 0o755 });
+    linkSystemTools(bin);
     const r = run(['--dry-run'], { env: envFor(h, { PATH: bin }) });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /Node ≥ 20 required \(found v18\.19\.0\)/);
@@ -125,6 +138,7 @@ test('git absent est refusé', () => {
   try {
     mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, 'node'), '#!/bin/sh\necho v22.11.0\n', { mode: 0o755 });
+    linkSystemTools(bin);
     const r = run(['--dry-run'], { env: envFor(h, { PATH: bin }) });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /git not found/);

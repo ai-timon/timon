@@ -20,7 +20,9 @@ import { z } from 'zod';
 import { LicenseCapabilityError } from '../../license/capabilities.js';
 import { PLUGIN_INSTALL_PREFIX, PLUGIN_UPLOAD_MAX_BYTES } from '../../plugins/install-path.js';
 import { MAX_BUNDLE_CHILDREN, PluginInstallSources, PluginSourceError } from '../../plugins/install-sources.js';
-import { PluginEngineError } from '../../plugins/install.js';
+import { PluginEngineError, heldForWhiteLabel } from '../../plugins/install.js';
+import { whiteLabelAllowed } from '../../license/capabilities.js';
+import { licenseState } from '../../license/runtime.js';
 import { forbidden, isPersonAuth } from '../../users/identity.js';
 
 const KEY = 'timon.pluginInstallSources';
@@ -184,12 +186,17 @@ export function registerInstallRoutes(router: Router): void {
         vault: body.data.vault,
         vaultChildren: body.data.vaultChildren,
       });
+      // Installed with its permissions agreed, but held back until the licence
+      // includes White Label: said like a refusal, or the install card would
+      // announce as done a layout the interface never shows.
+      const heldBack = result.refused === null && result.manifest !== null
+        && heldForWhiteLabel(result.manifest, () => whiteLabelAllowed(licenseState()));
       res.json({
-        ok: result.refused === null,
+        ok: result.refused === null && !heldBack,
         id: result.id,
         pkg: result.pkg,
         version: result.version,
-        refused: result.refused,
+        refused: heldBack ? 'skipped:unlicensed' : result.refused,
         signature: result.signature.ok ? { state: 'signed', keyId: result.signature.keyId } : { state: result.signature.code },
         children: result.children.map((c) => ({ id: c.id, state: c.state })),
         /** Secrets granted to `agent:plugin:<id>` and hosts opened to it by this click. */

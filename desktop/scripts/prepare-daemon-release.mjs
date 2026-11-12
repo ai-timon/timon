@@ -4,6 +4,7 @@ import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, re
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createReleaseNotes } from './release-notes.mjs';
+import { FRAGMENTS_DIR, readFragments, withUnreleased } from '../../scripts/changelog-fragments.mjs';
 import { RELEASE_MANIFEST_VERSION, digest, productFiles, verifyRelease } from './release-integrity.mjs';
 import { BUILD_INFO_FILE, buildInfoPath, readBuildInfo } from './build-info.mjs';
 
@@ -161,6 +162,9 @@ export async function prepareDaemonRelease() {
     let changelog = '';
     try { changelog = readFileSync(join(repo, 'CHANGELOG.md'), 'utf8'); }
     catch { console.warn('[release] Changelog unavailable; shipping empty release notes'); }
+    // An rc's notes are the changes not released yet: they live in changes/,
+    // not in the file, and are rendered as its Unreleased section.
+    changelog = withUnreleased(changelog, readFragments(join(repo, FRAGMENTS_DIR)));
     const info = stageBuildInfo(stage);
     console.log(`[release] ${BUILD_INFO_FILE}: channel ${info.channel}, built ${info.builtAt}, expires ${info.expiresAt ?? 'never'}`);
     writeFileSync(join(stage, 'scripts', 'release-notes.json'), JSON.stringify(createReleaseNotes(changelog, pkg.version), null, 2) + '\n');

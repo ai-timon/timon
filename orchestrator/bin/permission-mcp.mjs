@@ -212,6 +212,28 @@ const REQUEST_TOOL = {
   },
 };
 
+/**
+ * The `message` both forms take. Posted by the daemon as a NORMAL chat message
+ * right above the card, never inside it: a long text a model writes in its turn
+ * right before the call can end up in its reasoning and never be shown, while
+ * a tool's arguments always arrive whole. Bound: `MAX_CHAT_POST_CHARS`
+ * (`orchestrator/src/chat-post.ts`).
+ */
+const MESSAGE_PROPERTY = {
+  type: 'string',
+  maxLength: 20000,
+  description:
+    'Optional. A normal message (markdown: headings, lists, tables) posted in the chat right ABOVE the form, so the '
+    + 'human has every piece of information needed to choose well: your report, a comparison, a table of the options. '
+    + 'Put it here rather than in your turn\'s text: text written right before a tool call may never reach the human. '
+    + 'Max 20000 characters.',
+};
+
+const MESSAGE_HINT =
+  'To give the human what they need to choose (a report, a comparison table), put it in `message`: it is posted as a '
+  + 'normal chat message right above the form. The text you write in your turn right before this call may never reach '
+  + 'the human (it can end up in your reasoning, which is not shown), so do not rely on it. ';
+
 const QUESTION_TOOL = {
   name: 'question',
   description:
@@ -227,10 +249,12 @@ const QUESTION_TOOL = {
     + 'When the human also typed in the free-text field of a question with options, that question\'s answer becomes an object holding the text beside the pick — {"choice": <label>, "text": <typed>}, {"choices": [<labels>], "text": <typed>} on a multiSelect, or {"text": <typed>} when they ticked nothing; the text may qualify or override the pick, take it into account. '
     + 'Example: {"answers": {"Which branch?": "main", "Which checks?": ["lint", "types"], "Ship it now?": {"choice": "Wait", "text": "after the demo on Friday"}}}. '
     + 'If the human cancels, the tool errors. '
+    + MESSAGE_HINT
     + '(Formerly `ask_user`.)',
   inputSchema: {
     type: 'object',
     properties: {
+      message: MESSAGE_PROPERTY,
       questions: {
         type: 'array',
         minItems: 1,
@@ -279,10 +303,12 @@ const KANBAN_PLAN_TOOL = {
     + "DO NOT ENUMERATE backends or models yourself, and do not ask about them with `question`: the UI builds its menus from the live catalog, your values would be stale. Send only the chantier's title and its volets. "
     + 'When the volets differ in difficulty, give each a short `group` name (e.g. "simple" / "complex", 6 groups max): the human can then pick models per group, the general settings staying the default. Still no model names from you. '
     + 'Returns {plan:{mode, roles:{<role>:{backend,model,fallbackBackend,fallbackModel}}, groups?:{<group>:{<role>:{…}}}}, commands:[...], note?} — `commands` being the exact `timon` commands to run, in order, to materialize the plan. If the human cancels, the tool errors. '
+    + MESSAGE_HINT
     + '(Formerly `ask_series_plan`.)',
   inputSchema: {
     type: 'object',
     properties: {
+      message: MESSAGE_PROPERTY,
       chantier: { type: 'string', description: 'Short chantier title, shown at the top of the form.' },
       volets: {
         type: 'array',
@@ -308,6 +334,12 @@ const KANBAN_PLAN_TOOL = {
     required: ['chantier', 'volets'],
   },
 };
+
+/** The form's input, with the agent's `message` beside it when there is one:
+ *  the daemon posts it, then strips it from the card. */
+function withMessage(input, args) {
+  return args.message === undefined ? input : { ...input, message: args.message };
+}
 
 rl.on('line', async (line) => {
   let msg;
@@ -379,7 +411,7 @@ rl.on('line', async (line) => {
         // cancel resolves as deny. We unwrap and present those as the
         // *result* of this tool call so claude reads the answers directly.
         const tuid = 'ask_user_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-        const decision = await callOrchestrator(FORM_CARD_TOOL, { questions: args.questions }, tuid, signal);
+        const decision = await callOrchestrator(FORM_CARD_TOOL, withMessage({ questions: args.questions }, args), tuid, signal);
         if (decision?.behavior === 'allow') {
           const answers = decision.updatedInput?.answers ?? {};
           // The form no longer has a global note: each question carries its own
@@ -410,7 +442,7 @@ rl.on('line', async (line) => {
         // card's name, it did not follow the tool's rename.
         const tuid = 'ask_series_plan_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
         const form = { kind: 'series_plan', chantier: args.chantier, volets: args.volets };
-        const decision = await callOrchestrator(FORM_CARD_TOOL, { form }, tuid, signal);
+        const decision = await callOrchestrator(FORM_CARD_TOOL, withMessage({ form }, args), tuid, signal);
         if (decision?.behavior === 'allow') {
           const u = decision.updatedInput ?? {};
           const payload = { plan: u.plan, commands: u.commands ?? [] };

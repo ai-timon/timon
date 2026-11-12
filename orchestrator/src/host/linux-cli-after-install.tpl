@@ -32,3 +32,6 @@ if [ ! -e /usr/bin/timon ] && [ ! -L /usr/bin/timon ]; then
 elif [ "$(readlink /usr/bin/timon)" != '/opt/${sanitizedProductName}/cli/timon' ]; then
     echo 'Timon CLI was not installed: /usr/bin/timon already belongs to another installation.' >&2
 fi
+
+echo 'Timon is installed. Open it from your applications.'
+echo 'On a server, as the account that will own Timon (not root): timon service install, then timon init.'

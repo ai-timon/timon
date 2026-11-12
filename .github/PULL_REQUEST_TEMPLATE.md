@@ -8,7 +8,7 @@
 
 - [ ] `npm test` passes for the packages I touched
 - [ ] `node scripts/check-portability.mjs --changed` is clean
-- [ ] A visible change has its line in `CHANGELOG.md` and, if needed, in `public-docs/`
+- [ ] A visible change has its fragment in `changes/` and, if needed, its documentation in `public-docs/`
 
 ## Systems
 

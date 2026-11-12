@@ -1091,7 +1091,7 @@ export function apply(ctx) {
 
 Source: `examples/plugin-mascot-pack`. Manifest ID: `example-mascot-pack`. Minimum API: **15**.
 
-API 15. Adds a woolly hat, a scarf, a midnight fur and snowflake eyes to the mascot configurator, in their own group under the pack's name. Two halves say the same ids: the manifest declares each part's slug by look field (timon.mascot), so Timon accepts example-mascot-pack:<slug> in an agent's look while the plugin is enabled; the browser half registers each part's drawing in the mascot.parts slot, as data — a fur colour, eye outlines, accessory SVG read by a strict whitelist. Remove the plugin and an agent that wore a part shows its job's default for it until the pack is back.
+API 15. Adds a woolly hat, a scarf, a midnight fur and snowflake eyes to the mascot configurator, in their own group under the pack's name. Two halves say the same ids: the manifest declares each part's slug by look field (timon.mascot), so Timon accepts `example-mascot-pack:<slug>` in an agent's look while the plugin is enabled; the browser half registers each part's drawing in the mascot.parts slot, as data — a fur colour, eye outlines, accessory SVG read by a strict whitelist. Remove the plugin and an agent that wore a part shows its job's default for it until the pack is back.
 
 Permissions: none. Read the [related guide](mascot-pack.md).
 

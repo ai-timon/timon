@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
@@ -15,8 +15,20 @@ function validPort(port, minimum = 0) {
   return Number.isInteger(port) && port > minimum && port < 65536;
 }
 
-/** Resolve against the caller's home so separate installations stay isolated. */
-export function resolveApiUrl(home, envUrl, explicitUrl) {
+/**
+ * The daemon port of a packaged first launch (`PACKAGED_PORTS` of
+ * `src/host/service-environment.ts`, which `cli-daemon.test.ts` holds equal):
+ * this file cannot import the compiled sources.
+ */
+export const PACKAGED_DAEMON_PORT = 3010;
+
+/**
+ * Resolve against the caller's home so separate installations stay isolated.
+ * `packaged`: the CLI runs on the package's runtime. Before any config file,
+ * `timon service install` gives a packaged service the first-launch port, and
+ * a server installed from a terminal has no desktop bootstrap to name it.
+ */
+export function resolveApiUrl(home, envUrl, explicitUrl, { packaged = false } = {}) {
   // Keep an explicit profile URL paired with its selected token.
   if (explicitUrl) return explicitUrl;
   if (envUrl) return envUrl;
@@ -39,6 +51,7 @@ export function resolveApiUrl(home, envUrl, explicitUrl) {
 
   const port = readJson(home, 'desktop-bootstrap.json')?.daemonPort;
   if (validPort(port, 1024)) return `http://127.0.0.1:${port}`;
+  if (packaged && !existsSync(join(home, 'timon.config.json'))) return `http://127.0.0.1:${PACKAGED_DAEMON_PORT}`;
   return 'http://localhost:3000';
 }
 
@@ -77,12 +90,12 @@ function isOwnLanListener(target, local) {
  * listener: a remote URL, another loopback port or a path behind a proxy must
  * never receive the operator's superadmin credential.
  */
-export function isLocalDaemonUrl(home, url) {
+export function isLocalDaemonUrl(home, url, { packaged = false } = {}) {
   let target;
   let local;
   try {
     target = new URL(url);
-    local = new URL(resolveApiUrl(home));
+    local = new URL(resolveApiUrl(home, undefined, undefined, { packaged }));
   } catch {
     return false;
   }

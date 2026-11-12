@@ -51,13 +51,28 @@ An archive can be:
 
 Timon refuses an archive larger than 25 MB, one that unpacks to more than 200 MB or 10,000 files, one that holds links or tries to write outside its folder, one with a file name Windows refuses (`CON`, `aux.txt`, a `:` in a name, a name ending with a dot or a space — refused on every OS, since a plugin must install on all three), and a `.zip` that is password-protected, split into several parts, or in the zip64 format. The message on screen says which.
 
-Timon reads the package without running any of it and opens its sheet: name, version, author, kind, the permissions it asks for, where it plugs in, and its signature status — **Verified signature**, **Unsigned** (with whether it would load on this installation) or **Altered package**. An altered package, or one whose manifest Timon cannot use, cannot be installed.
+Timon reads the package without running any of it and opens its sheet: name, version, author, kind, the permissions it asks for, where it plugs in, and its signature status — **Verified signature**, **Unsigned** (with whether it would load on this installation, see [Developer mode](#developer-mode-load-unsigned-plugins)) or **Altered package**. An altered package, or one whose manifest Timon cannot use, cannot be installed.
 
 Nothing is installed until you click **Install** on that sheet. Read the disclaimer above the button: third-party plugins are not made, reviewed or guaranteed by Timon, and Timon is not responsible for what they do. Once installed, a plugin runs inside Timon with the rights of your account, so only install plugins from authors you trust.
 
 The plugin appears in the gallery without restarting Timon. Its files are kept in the plugins folder (`~/.timon/plugins/` — on Windows `%USERPROFILE%\.timon\plugins\`), so you can delete the folder or archive you picked afterwards. Installing needs `npm`, which comes with Node.js, on the computer that runs Timon.
 
 A bundle whose plugins sit in neighbouring folders (declared as `file:../name`) can be picked as a folder: the gallery copies those neighbours into the plugins folder too and installs them with the bundle. A dependency further away (`file:../../…`) is not copied, and a `.tgz` or `.zip` only carries its own folder: install such a bundle with `timon plugin add <folder>`.
+
+## Developer mode: load unsigned plugins
+
+A plugin you write yourself has no signature. Timon installs it, but loads it only in developer mode. A superadmin turns the mode on in **Settings › Plugins › Developer mode**, with the **Developer mode — load unsigned plugins** switch. The change applies at once, without restarting Timon: an unsigned plugin already installed starts when you turn the mode on and stops when you turn it off. Signed plugins load either way.
+
+A plugin runs inside the Timon daemon, with the rights of the system account that runs it. Turn developer mode on only for code you wrote or have read.
+
+The switch works the same on Free and on a paid licence, and shows what Timon actually applies. A licence that includes a fixed plugin composition does not let unsigned plugins load: the switch then stays off and greyed out, and says why.
+
+The install sheet of an unsigned package, or of a bundle that brings one, follows the mode:
+
+- **Developer mode off**: the sheet says the plugin can be installed but will not load, and offers **Turn on developer mode** right there (unless your licence includes a fixed plugin composition) or **Open developer mode settings**.
+- **Developer mode on**: the sheet shows **Unsigned — loads in developer mode**.
+
+Either way, clicking **Install** first asks you to confirm: the package is not signed, its publisher is not verified, and its code will run inside the Timon daemon, at once or as soon as developer mode is on. **Install anyway** goes on; **Cancel** installs nothing.
 
 ## Plugins found in the plugins folder
 

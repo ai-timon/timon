@@ -60,6 +60,7 @@ Whatever the `timon` command does in a terminal, a tool of the same name does fo
 | Set the models and fallbacks of a series | `series_role_set`, `series_role_list`, `series_role_clear`, `series_fallback_set`, `series_fallback_list`, `series_fallback_clear` |
 | Remember a rule for later missions, or look memory up | `memory_rule_add`, `memory_rule_list`, `memory_rule_rm`, `memory_search`, `memory_overview`, `memory_show` |
 | Read this documentation (from a terminal: `timon docs search` and `timon docs read`) | `docs_search`, `docs_read` |
+| Post a message in the chat: a report, a comparison table, a step report during a long job | `chat_post_message` |
 | Show you an image or a video in the chat | `chat_show_media` |
 | Show you a table, a chart, a preview or a form as an HTML card in the chat, and read your answer ([HTML cards in the chat](html-cards.md)) | `ui_render`, `ui_document_get` |
 | Suggest a command for your terminal | `terminal_propose` |
@@ -327,6 +328,12 @@ Both tools open a form in the chat and **block the agent until you answer**. The
 | Use | A one-off decision: a choice between options, a go / no-go, a confirmation. | Planning work: Kanban tasks, a large multi-part job, work in parallel, which models run it. |
 | What you see | One to four questions, one tab each, each with two to four choices and a free-text field — or a single text field for an open question. | The planner: how the work runs, a model and a fallback per role, and, when the agent sorted the parts into groups, a fold-out per group with its own choices. |
 | What the agent gets back | Your answer to each question, with what you typed under it. | The plan, and the exact `timon` commands that put it in place. |
+
+### The explanation before the form
+
+Both tools take an optional `message`: a text in markdown — headings, lists, tables — that Timon posts as an ordinary agent message in the chat, right above the form, and not inside it. It is where the agent puts what you need to choose well: its report, a comparison of the options, a table. The message stays in the conversation like any other, after a reload too, and the search finds it.
+
+Agents are told why it exists: a long text an agent writes in its reply just before opening a form can stay in its reasoning, which the chat does not show. What goes through a tool always arrives whole. At any other moment, the tool `chat_post_message` posts the same kind of message, for example a step report during a long job. Both are limited to 20,000 characters, and an agent can only post in its own conversation.
 
 ### `question`
 

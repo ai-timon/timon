@@ -14,14 +14,23 @@
  * as shown; otherwise it falls back to what the permissions open. A bundle also
  * shows each of its children, by id: what it launches, where it sends the voice
  * (TODO #673), and the secrets and hosts it names, with boxes of its own (TODO #660).
+ *
+ * Unsigned code (the package, or a child the bundle installs) is said twice:
+ * with developer mode off, the sheet says why it will not load and how to turn
+ * the mode on; and Install always asks first, mode on or off, since a package
+ * installed while the mode is off starts the moment the mode goes on. Developer
+ * mode is read live, not from the preview, whose verdict was judged at staging.
  */
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { AlertTriangle, Blocks, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
 import { Picto } from '@/components/picto';
 import { PluginKindBadge } from '@/components/plugin-kind-badge';
 import { ProviderInstallConsent } from '@/components/provider-install-consent';
 import { PluginInstallChildren } from '@/components/plugin-install-children';
 import { PluginVaultConsent } from '@/components/plugin-vault-consent';
+import { PluginInstallDeveloperMode } from '@/components/plugin-install-developer-mode';
+import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
 import { VoiceDestinationLines } from '@/components/dictation/voice-destination-lines';
 import { declarationLines, readDictationDecl } from '@/lib/dictation/destination';
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +59,11 @@ import {
   type VaultTicks,
 } from '@/lib/plugin-install';
 import { pathsToAuthorize } from '@/lib/providers';
+import { useCapabilities } from '@/lib/capabilities';
+import {
+  DEVELOPER_MODE_TARGET, fetchDeveloperMode, previewHasUnsignedCode, setDeveloperMode, type DeveloperModeState,
+} from '@/lib/developer-mode';
+import { openSettingsFromAnywhere } from '@/lib/settings-navigation';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -85,6 +99,17 @@ export function PluginInstallDialog({
   const [childTicks, setChildTicks] = useState<{ token: string; ids: Record<string, VaultTicks> } | null>(null);
   const token = preview?.token;
   useEffect(() => { setAllow(false); }, [token]);
+  const caps = useCapabilities();
+  // Developer mode as the daemon applies it now, read when the sheet shows unsigned code.
+  const [developer, setDeveloper] = useState<DeveloperModeState | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const unsignedCode = preview ? previewHasUnsignedCode(preview) : false;
+  useEffect(() => {
+    if (!open || !unsignedCode) return;
+    let live = true;
+    fetchDeveloperMode().then((state) => { if (live) setDeveloper(state); }).catch(() => { /* the link to Settings stays */ });
+    return () => { live = false; };
+  }, [open, unsignedCode, token]);
   if (!preview) return null;
   const named = preview.vault ?? null;
   const ticks = named ? (vaultTicks?.token === preview.token ? vaultTicks.ticks : initialVaultTicks(named)) : null;
@@ -100,7 +125,36 @@ export function PluginInstallDialog({
   const cover = previewImage(preview.cover);
   const icon = previewImage(preview.icon);
   const title = preview.label ?? preview.pkg;
-  const signature = signatureSummary(preview.signature);
+  const unsignedLoads = developer?.effective ?? caps?.developer.unsignedPlugins;
+  const signature = signatureSummary(preview.signature, unsignedLoads);
+  const rootLoads = preview.signature.state === 'unsigned' && preview.signature.loads;
+  const unsignedWillLoad = unsignedCode && (unsignedLoads ?? rootLoads);
+  const enableDeveloperMode = async (): Promise<void> => {
+    setSwitching(true);
+    try {
+      setDeveloper(await setDeveloperMode(true));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSwitching(false);
+    }
+  };
+  const openDeveloperSettings = (): void => {
+    onOpenChange(false);
+    openSettingsFromAnywhere(DEVELOPER_MODE_TARGET);
+  };
+  const confirmInstall = async (): Promise<void> => {
+    // Nothing installs without an explicit yes: Escape, a click outside or no
+    // confirmation host on the page all answer no.
+    if (unsignedCode && !(await confirmAction({
+      title: t('pluginsPage.install.unsignedConfirm.title', { name: title }),
+      description: t(unsignedWillLoad ? 'pluginsPage.install.unsignedConfirm.body' : 'pluginsPage.install.unsignedConfirm.bodyOff'),
+      confirmLabel: t('pluginsPage.install.unsignedConfirm.confirm'),
+      cancelLabel: t('pluginsPage.install.cancel'),
+      destructive: true,
+    }))) return;
+    onInstall(preview, provider && allow ? authorizable : undefined, named && ticks ? vaultConsent(named, ticks) : undefined, childExecConsent(children, allowedChildren), childVaultConsent(children, tickedChildren));
+  };
   const SignatureIcon = signature.tone === 'ok' ? ShieldCheck : signature.tone === 'danger' ? ShieldX : ShieldAlert;
   const inserts = [...preview.slots, ...(preview.route ? [preview.route] : [])];
   const declares = Object.entries(preview.declares).map(([name, mode]) => `${name} (${mode})`);
@@ -158,6 +212,14 @@ export function PluginInstallDialog({
               <p className="m-0 rounded bg-destructive/10 px-2 py-1.5 text-[12px] text-destructive" role="alert">
                 {t('pluginsPage.install.tamperedHint')}
               </p>
+            )}
+            {unsignedCode && !unsignedWillLoad && (
+              <PluginInstallDeveloperMode
+                state={developer}
+                busy={busy || switching}
+                onEnable={() => { void enableDeveloperMode(); }}
+                onOpenSettings={openDeveloperSettings}
+              />
             )}
 
             <VoiceDestinationLines lines={voice} />
@@ -225,6 +287,7 @@ export function PluginInstallDialog({
               allowed={allowedChildren}
               vaultTicks={tickedChildren}
               busy={busy}
+              unsignedLoads={unsignedLoads}
               onAllow={(id, value) => setChildAllow({ token: preview.token, ids: { ...allowedChildren, [id]: value } })}
               onVaultTick={(id, next) => setChildTicks({ token: preview.token, ids: { ...tickedChildren, [id]: next } })}
             />
@@ -243,7 +306,7 @@ export function PluginInstallDialog({
           <Button variant="ghost" disabled={busy} onClick={() => onOpenChange(false)}>
             {t('pluginsPage.install.cancel')}
           </Button>
-          <Button disabled={!preview.installable || busy} onClick={() => onInstall(preview, provider && allow ? authorizable : undefined, named && ticks ? vaultConsent(named, ticks) : undefined, childExecConsent(children, allowedChildren), childVaultConsent(children, tickedChildren))}>
+          <Button disabled={!preview.installable || busy || switching} onClick={() => { void confirmInstall(); }}>
             {busy
               ? t('pluginsPage.install.installing')
               : preview.installed ? t('pluginsPage.install.reinstall') : t('pluginsPage.install.confirm')}

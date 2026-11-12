@@ -68,6 +68,9 @@ export const PRE_APPROVED_MCP_TOOLS: readonly string[] = Object.freeze([
   // guard, magic bytes, the mission's roots). An Allow/Deny card
   // would add nothing and, in an autonomous mission, would resolve into a refusal.
   'mcp__timon__chat_show_media',
+  // Posting a message in ITS chat: the daemon writes it only into the mission
+  // the token belongs to, bounded (zod) and drawn by the markdown renderer.
+  'mcp__timon__chat_post_message',
   // Reading back one message of a conversation the mission's token may read
   // (a reply's target, `reply-to.ts`): a read, scoped by the daemon.
   'mcp__timon__mission_message_get',

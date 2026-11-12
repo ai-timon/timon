@@ -17,6 +17,17 @@ No separate Node.js installation is needed: the packaged launcher uses Timon's o
 
 Open Timon and complete first run before issuing daemon commands. `timon --help` works without a running daemon; `timon list` requires one. If a command already existed before installation, use the packaged launcher directly to avoid contacting a source installation: `/opt/Timon/cli/timon` on Linux, `/Applications/Timon.app/Contents/cli/timon` on macOS, or `cli\timon.cmd` inside your Windows installation directory.
 
+## Getting started from the terminal
+
+`timon` on its own shows where this installation stands: the daemon, the background service, whether the first account exists, the address of the web interface, and the one command to type next. `timon help` prints every command.
+
+```bash
+timon          # where things stand, and what to do next
+timon init     # background service if missing, first account, AI tools
+```
+
+`timon init` is for the machine where Timon is installed, run by the account that owns its data. It asks for the account details in the terminal, with the password typed hidden; in a script, give `--email` (and optionally `--name`) and pipe the password with `--password-stdin`. `--yes` installs the background service without asking when it is missing. When a command cannot reach the daemon, it says how to start it.
+
 ## Inspect first
 
 ```bash
@@ -31,7 +42,7 @@ timon plugin list
 
 ## Select the instance
 
-The CLI automatically finds the local daemon from `timon.config.json`, then the desktop installation's saved port in `desktop-bootstrap.json`, under `TIMON_HOME` (normally `~/.timon`; see [Where Timon keeps its files](../installation/configuration.md#where-timon-keeps-its-files) for the Windows and macOS locations). If neither provides a usable address, it falls back to `http://localhost:3000`.
+The CLI automatically finds the local daemon from `timon.config.json`, then the desktop installation's saved port in `desktop-bootstrap.json`, under `TIMON_HOME` (normally `~/.timon`; see [Where Timon keeps its files](../installation/configuration.md#where-timon-keeps-its-files) for the Windows and macOS locations). If neither provides a usable address, the packaged command uses the port its background service gets before any configuration exists (`http://127.0.0.1:3010`), and a source installation falls back to `http://localhost:3000`.
 
 `--daemon` selects a URL or named profile and takes precedence over `TIMON_API`. Without the flag, `TIMON_API` overrides local discovery. Authentication uses the named profile's token when selected; otherwise it reads `TIMON_API_TOKEN` or the `daemon-token` file under the same home. Whether the target comes from `--daemon <url>` or `TIMON_API`, the local file token is only sent to the local daemon's own listener, with the same protocol and port and no path: its loopback address, or the IP address set in `daemon.listen.host` when the daemon listens on a LAN address that is still assigned to this computer. A host name in `daemon.listen.host`, or an address the computer no longer holds, never receives it: set `TIMON_API_TOKEN` in that case. For a remote URL, set `TIMON_API_TOKEN` explicitly or select a profile created with `timon daemon add`; otherwise the request is unauthenticated. Use a server-to-server token only in a trusted terminal or process; do not expose it in browser code.
 

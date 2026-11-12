@@ -3,6 +3,16 @@ title: Windows
 sidebar_position: 5
 ---
 
+## One command
+
+In PowerShell (Windows PowerShell or PowerShell 7):
+
+```powershell
+irm https://timon-ai.com/install.ps1 | iex
+```
+
+It downloads the Timon installer, checks it, and opens it: the installer then runs as described below. Run it in your desktop session, not over SSH: the installer window would open where nobody can see it, so the command refuses unless you add `-Silent`. Options and checks: [Install with one command](overview.md#install-with-one-command).
+
 ## Desktop installer
 
 Run the supplied Timon NSIS installer, choose its installation directory and open Timon. If Node.js or Git is missing, the installer installs Node.js (LTS) and Git for Windows with `winget`, after one Windows permission prompt; this can take a few minutes. If that fails or you decline, the setup screen offers them again.

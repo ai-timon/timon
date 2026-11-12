@@ -6,6 +6,8 @@ Free works without a licence key, registration, activation or renewal request.
 Free includes every feature and plugin for one account. Activate a paid licence
 only when you need additional user accounts: they come from the Multi-user
 plugin, reserved for a pro licence (see [Several accounts](multi-user.md)).
+One exception: a third-party layout that replaces the whole interface (White
+Label) needs a licence that includes White Label (see [Kinds](../plugins/kinds.md)).
 Your local Timon account remains separate from licence activation.
 
 ## Enter a key from your profile
