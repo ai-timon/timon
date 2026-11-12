@@ -59,7 +59,7 @@ const TITLED = [
   'project_todo_attachments_add', 'project_todo_attachments_remove', 'trigger_create', 'trigger_list',
   'trigger_test', 'trigger_remove', 'memory_rule_add', 'memory_rule_list', 'docs_search', 'docs_read',
   'mission_search', 'trace_get', 'workflow_list', 'workflow_status', 'workflow_run', 'workflow_get',
-  'workflow_node_types', 'workflow_propose', 'workflow_node_done', 'mission_message_get', 'chat_show_media', 'terminal_propose',
+  'workflow_node_types', 'workflow_propose', 'workflow_node_done', 'mission_message_get', 'chat_show_media', 'chat_post_message', 'terminal_propose',
   'mission_spawn', 'agent_create', 'agent_set_avatar', 'project_create', 'project_update',
   'project_demo_create', 'workspace_list', 'timon_http_call', 'secret_create', 'secret_request',
 ];

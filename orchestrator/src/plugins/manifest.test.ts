@@ -740,3 +740,22 @@ test('mascot: a bad slug, a duplicate or an empty block is refused', () => {
 test('mascot: needs the API that knows it', () => {
   assert.match(refusal(mascotPack({ apiVersion: 14 })), /`mascot` needs `apiVersion: 15`/);
 });
+
+test('`root` outside a layout is refused, whatever the other kind', () => {
+  // `root` is the whole interface: a non-layout naming it would replace the
+  // shell for everyone, with no choice in the appearance settings.
+  for (const extra of [
+    { kind: 'behavior' },
+    { kind: 'widget', client: { slots: ['cockpit.widget', 'root'] } },
+    { kind: 'page', route: '/acme' },
+    { kind: 'overlay', client: { slots: ['overlay', 'root'] } },
+    { kind: 'theme', client: { slots: ['theme', 'root'] } },
+  ]) {
+    const res = readManifest(pkg({ client: { slots: ['root'] }, ...extra }));
+    assert.ok(!res.ok, JSON.stringify(extra));
+    assert.equal(res.code, 'manifest');
+    assert.match(res.message, /`client\.slots` names `root` but `kind` is not `layout`/);
+  }
+  const layout = readManifest(pkg({ kind: ['layout', 'widget'], client: { slots: ['root', 'cockpit.widget'] } }));
+  assert.ok(layout.ok, layout.ok ? '' : layout.message);
+});

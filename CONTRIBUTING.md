@@ -100,7 +100,20 @@ licence and its attack surface: justify it in the pull request.
   `fix(kanban): a task moved during a merge keeps its branch`. The body says
   why the change is needed.
 - One commit per step. Moving code and changing it are two commits.
-- A change a user can see gets one line in `CHANGELOG.md`, under
-  `## [Unreleased]`, written from the user's point of view. A change that
-  alters what they do also updates `public-docs/`.
+- A change a user can see gets a changelog fragment: one small file in
+  `changes/`, written from the user's point of view (format in
+  `changes/README.md`). Do not edit `CHANGELOG.md`: the release writes it from
+  the fragments, and two pull requests then never conflict on it. A change that
+  alters what users do also updates `public-docs/`.
 - Do not bump versions: releases are cut by the maintainers.
+- Every change reaches `main` through a pull request, the maintainers' own
+  included: nobody pushes to `main`. Start your branch from an up-to-date
+  `main`; a pull request is merged once the required checks are green.
+- Licences, governance files (CI, code owners, these rules), the keys and
+  addresses Timon trusts, the brand and the identity of the packages are
+  maintained by the project: the list is `.github/protected-paths`. A pull
+  request that changes one of them fails the "protected paths" check until a
+  maintainer has reviewed and approved that change; if you need one, say why
+  in the pull request or open an issue. Dependencies are among them: adding,
+  removing or upgrading a package (a `package.json` dependency field or a
+  lockfile) needs a maintainer's approval.

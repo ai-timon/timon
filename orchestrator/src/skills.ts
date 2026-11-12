@@ -854,9 +854,10 @@ time: migrations run when the plugin starts, in your code. Make them safe:
 - **Timers and listeners go in \`ctx.effect\`** with a cleanup, so disabling the
   plugin stops them.
 - **Installed but not loaded** means admission refused it. An unsigned plugin
-  loads only on an installation where developer mode is open (a valid Timon
-  licence and \`developer.unsignedPlugins\`, see \`testing\`). Report that to the
-  user as it is; do not try to get around it.
+  loads only where the user switched developer mode on
+  (\`developer.unsignedPlugins: true\`, on Free as on a paid licence, see
+  \`testing\`); a licence with a fixed plugin composition refuses it even then.
+  Report that to the user as it is; do not try to get around it.
 - Never put a secret in the plugin's files; use the \`secrets\` page.
 
 ## Pre-ship check — run it before sharing, report the output

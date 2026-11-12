@@ -1355,6 +1355,7 @@
       "plugins": "Plugins"
     },
     "tab": {
+      "plugins": { "developer": "Developer mode" },
       "instructions": {
         "preamble": "Timon preamble",
         "global": "Global instructions"
@@ -1420,6 +1421,7 @@
     "countOne": "{count} result",
     "countOther": "{count} results",
     "tabKeywords": {
+      "plugins": { "developer": "developer mode unsigned plugin signature load local trust code" },
       "interface": {
         "appearance": "theme dark light mode colors palette look skin",
         "language": "language locale french english français translation",

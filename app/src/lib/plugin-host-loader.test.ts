@@ -19,6 +19,7 @@ import {
   type ChromePrefs,
   type PublicPlugin,
 } from './plugin-host/loader';
+import { resetCapabilitiesCacheForTests } from './capabilities';
 
 function plugin(over: {
   id: string;
@@ -55,9 +56,11 @@ test('two active layouts: an installed blank-layout is ignored until chosen', ()
   const idle = selectClientPlugins([productLayout, blankLayout, hello], DEFAULT_CHROME_PREFS);
   assert.deepEqual(idle.map((p) => p.id).sort(), [PRODUCT_LAYOUT_PLUGIN, 'hello'].sort());
 
+  // A third-party layout also needs the White Label right (`white-label-root.test.ts`).
   const chosen = selectClientPlugins(
     [productLayout, blankLayout, hello],
     { theme: PRODUCT_THEME_PLUGIN, layout: 'blank-layout' },
+    true,
   );
   assert.deepEqual(chosen.map((p) => p.id).sort(), [PRODUCT_LAYOUT_PLUGIN, 'blank-layout', 'hello'].sort());
 });
@@ -101,6 +104,8 @@ test('a plugin without a client half is never imported', () => {
 async function withLoader(opts: {
   plugins: PublicPlugin[];
   prefs?: ChromePrefs | null;
+  /** `capabilities.whitelabel`: absent, the daemon answers no capabilities. */
+  whitelabel?: boolean;
   run: (applied: string[]) => Promise<void> | void;
 }): Promise<void> {
   const applied: string[] = [];
@@ -118,6 +123,9 @@ async function withLoader(opts: {
     if (url.includes('/api/ui/plugins')) {
       return new Response(JSON.stringify({ plugins: opts.plugins }));
     }
+    if (url.includes('/api/ui/capabilities') && opts.whitelabel !== undefined) {
+      return new Response(JSON.stringify({ whitelabel: opts.whitelabel }));
+    }
     if (url.includes('/api/ui/auth/me')) {
       if (opts.prefs === null) return new Response('gone', { status: 404 });
       return new Response(JSON.stringify({
@@ -127,6 +135,7 @@ async function withLoader(opts: {
     return new Response('not found', { status: 404 });
   }) as typeof fetch;
   resetClientPluginsForTests();
+  resetCapabilitiesCacheForTests();
   try {
     await syncClientPlugins();
     await opts.run(applied);
@@ -151,6 +160,7 @@ test('syncClientPlugins applies prefs.layout and the product fallback, not a spa
   await withLoader({
     plugins: [productLayout, blankLayout, overlay],
     prefs: { theme: PRODUCT_THEME_PLUGIN, layout: 'blank-layout' },
+    whitelabel: true,
     run(applied) {
       assert.deepEqual(applied.sort(), [PRODUCT_LAYOUT_PLUGIN, 'blank-layout', 'mascot'].sort());
     },

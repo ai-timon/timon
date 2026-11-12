@@ -3,6 +3,14 @@ title: Linux
 sidebar_position: 3
 ---
 
+## One command
+
+```bash
+curl -fsSL https://timon-ai.com/install.sh | sh
+```
+
+It installs the deb package on Debian and Ubuntu (it asks for your password once, for `apt`) and the AppImage in `~/Applications` elsewhere. On a machine without a display, it also installs the background service and ends on `timon init`; see [Run Timon on a headless server](headless-server.md). Options and checks: [Install with one command](overview.md#install-with-one-command).
+
 ## Desktop package
 
 Use the supplied deb package, recommended during beta: it also installs the `timon` terminal command without requiring Node.js. AppImage remains portable and does not install a global CLI. Open Timon and follow [First run](first-run.md). The setup flow checks tools and installs a systemd user service so that agent work can continue after the window closes.

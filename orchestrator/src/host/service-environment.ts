@@ -47,7 +47,7 @@ export function serviceOptsFromEnvironment(
 }
 
 /** `PACKAGED_DEFAULTS` of `desktop/src/config.ts`: the ports shipped to testers. */
-const PACKAGED_PORTS = { daemon: 3010, app: 3110 };
+export const PACKAGED_PORTS = { daemon: 3010, app: 3110 };
 
 /**
  * Before `timon.config.json` exists, the desktop hands its daemon the ports of

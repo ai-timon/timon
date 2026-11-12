@@ -14,6 +14,11 @@ This is a reference snapshot, not a shell script to execute in full. Replace pla
 ```text
 timon — Timon control plane CLI
 
+Getting started:
+  timon                                   where this installation stands, and the next command
+  timon init [--email A] [--name N]       finish the setup from the terminal: background service,
+             [--password-stdin] [--yes]   first account, AI tools (the password is typed hidden)
+
 Updates (run on the daemon host):
   timon update check [--json]            ask timon-ai.com whether a newer Timon is published
   timon update status                    inspect a pending packaged update

@@ -1,10 +1,11 @@
 /**
  * Admission of unsigned third-party code.
  *
- * Two gates in series since step 5.9.3. A valid licence FIRST, with no way for
- * the config to buy past it; then, between licensed installs, the historical
- * rule: an unset setting resolves against the registry rather than against a
- * constant — open while it is empty, closed since the first production key.
+ * Two gates in series. Rights in force first (a valid paid licence or the
+ * local Free tier) and no fixed composition, with no way for the config to buy
+ * past either; then the owner's own switch: an unset setting resolves against
+ * the registry rather than against a constant — open while it is empty, closed
+ * since the first production key.
  */
 import '../test-home.js';
 import { paidTestLicense } from '../../tests/helpers/paid-license.js';
@@ -20,47 +21,71 @@ import { fileURLToPath } from 'node:url';
 const { unsignedPluginsAllowed, PLUGIN_PUBLIC_KEYS } = await import('./pubkey.js');
 const { verifyPluginDirectory } = await import('./signature.js');
 const { licenseState, setLicenseState } = await import('../license/runtime.js');
+const { unlicensed } = await import('../license/license.js');
+const { betaLocked } = await import('../license/build-policy.js');
 
 const A_KEY = [{ keyId: 'timon-plugins-2026-11', publicKey: 'irrelevant-here' }] as const;
 
-const LICENSED = { licensed: true };
+const PAID = { state: paidTestLicense() };
+const FREE = { state: unlicensed('missing') };
+const FIXED = { state: { ...paidTestLicense(), capabilities: { version: 1 as const, plugins: 'fixed' as const, accounts: 'standard' as const }, expiresAt: new Date(Date.now() + 86_400_000).toISOString() } };
+const LOCKED = { state: betaLocked('missing') };
 
 test('unset resolves open while the key registry is empty', () => {
-  assert.equal(unsignedPluginsAllowed(undefined, { keys: [], ...LICENSED }), true);
+  assert.equal(unsignedPluginsAllowed(undefined, { keys: [], ...PAID }), true);
 });
 
 test('unset resolves closed as soon as a production key exists', () => {
-  assert.equal(unsignedPluginsAllowed(undefined, { keys: A_KEY, ...LICENSED }), false);
+  assert.equal(unsignedPluginsAllowed(undefined, { keys: A_KEY, ...PAID }), false);
 });
 
 test('an explicit setting wins over the registry, both ways', () => {
-  assert.equal(unsignedPluginsAllowed(false, { keys: [], ...LICENSED }), false);
-  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY, ...LICENSED }), true);
+  assert.equal(unsignedPluginsAllowed(false, { keys: [], ...PAID }), false);
+  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY, ...PAID }), true);
 });
 
 /**
- * Ce que le premier lancement réel a montré (04/09/2026) : registre de clés
- * vide, donc défaut ouvert, et une instance JAMAIS activée rapportait
- * `developer: {"unsignedPlugins": true}` avec `license: null`. Elle chargeait
- * donc n'importe quel plugin non signé. Décision du mainteneur : licence valide
- * obligatoire, **sans échappatoire par la config** — amendement daté du plan §10.
+ * Free is `unlicensed` + `localFree`, never `valid`. Until 10/11/2026 the gate
+ * tested `status === 'valid'`, so no Free user could load a plugin they wrote
+ * themselves. The maintainer's decision: Free admits unsigned code exactly like
+ * a paid licence, once the owner switches developer mode on explicitly.
  */
-test('sans licence valide, le mode développeur reste fermé', () => {
-  const unlicensed = { licensed: false };
-  assert.equal(unsignedPluginsAllowed(undefined, { keys: [], ...unlicensed }), false);
-  // Le point de la décision : même demandé explicitement, il ne s'ouvre pas.
-  assert.equal(unsignedPluginsAllowed(true, { keys: [], ...unlicensed }), false);
-  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY, ...unlicensed }), false);
+test('Free admits unsigned code only once the owner sets developer.unsignedPlugins to true', () => {
+  assert.equal(FREE.state.status, 'unlicensed');
+  assert.equal(FREE.state.localFree, true);
+  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY, ...FREE }), true);
+  assert.equal(unsignedPluginsAllowed(undefined, { keys: A_KEY, ...FREE }), false);
+  assert.equal(unsignedPluginsAllowed(false, { keys: A_KEY, ...FREE }), false);
 });
 
-test("l'état de licence du process décide quand on ne l'injecte pas", () => {
+test('a valid paid licence admits unsigned code with an explicit true', () => {
+  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY, ...PAID }), true);
+});
+
+/**
+ * The lock the 10/11/2026 amendment keeps: a fixed composition (a paid offer
+ * may carry one, the locked beta state always does) refuses even an explicit
+ * `true`, and so does a state with no rights in force.
+ */
+test('a fixed composition and the locked beta state refuse even an explicit true', () => {
+  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY, ...FIXED }), false);
+  assert.equal(unsignedPluginsAllowed(true, { keys: [], ...FIXED }), false);
+  assert.equal(LOCKED.state.localFree, false);
+  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY, ...LOCKED }), false);
+  assert.equal(unsignedPluginsAllowed(true, { keys: [], ...LOCKED }), false);
+});
+
+test('the process licence state decides when none is injected', () => {
+  // `setLicenseState` turns any non-valid state into the local Free tier.
   setLicenseState({ ...licenseState(), status: 'unlicensed' });
-  // Défaut de production : une instance fraîche est `unlicensed`, donc fermée.
-  assert.equal(unsignedPluginsAllowed(true), false);
+  assert.equal(licenseState().localFree, true);
+  assert.equal(unsignedPluginsAllowed(true, { keys: A_KEY }), true);
+  assert.equal(unsignedPluginsAllowed(undefined, { keys: A_KEY }), false);
   setLicenseState(paidTestLicense());
   assert.equal(unsignedPluginsAllowed(undefined, { keys: [] }), true);
-  setLicenseState({ ...licenseState(), status: 'unlicensed' });
-  assert.equal(unsignedPluginsAllowed(undefined, { keys: [] }), false);
+  setLicenseState(FIXED.state);
+  assert.equal(unsignedPluginsAllowed(true, { keys: [] }), false);
+  setLicenseState(paidTestLicense());
 });
 
 const PRODUCTION_KEY_ID = 'timon-plugins-2026-11';
@@ -81,7 +106,7 @@ test('the shipped registry pins the first production key, a valid Ed25519 public
 
 test('with the production key shipped, an unset setting resolves closed on a licensed install', () => {
   setLicenseState(paidTestLicense());
-  assert.equal(unsignedPluginsAllowed(undefined, LICENSED), false);
+  assert.equal(unsignedPluginsAllowed(undefined, PAID), false);
   assert.equal(unsignedPluginsAllowed(undefined), false);
   // The escape hatch for a developer install: an explicit `true`.
   assert.equal(unsignedPluginsAllowed(true), true);

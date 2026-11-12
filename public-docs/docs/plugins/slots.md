@@ -17,6 +17,8 @@ Any slot ending in `.widget` is a general widget host. Declaring `cockpit.widget
 
 **Every other slot requires an exact declaration.** A widget does not gain access to `root`, `page`, `nav.item`, `nav.footer`, `settings.section` or `settings.missions`. Declaring one settings group does not open other groups.
 
+`root` is the whole interface. Only a `layout` may declare it, and it is filled only under a licence that includes White Label; otherwise the product layout keeps it (see [Kinds](kinds.md#layouts-and-white-label)).
+
 Registering in an undeclared or refused slot throws. The error identifies the requested surface and manifest slots.
 
 ## Slot lifetime

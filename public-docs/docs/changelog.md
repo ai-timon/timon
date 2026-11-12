@@ -7,6 +7,231 @@ slug: /changelog
 
 Published Timon releases. Preview changes are shown in the app when you install a release candidate.
 
+## 0.1.7 — 2026-11-06
+
+### Added
+- Plugins can draw their menu entry with the product's own (`NavLink` from `@timon/ui`), so it folds with the side menu instead of squeezing its label into it.
+- When accounts beyond the first superadmin are suspended (no pro licence, or no Multi-user plugin), the superadmin gets a card saying why; their data are kept.
+- Signed plugins can now manage a team's accounts: add accounts and open their sessions (`accounts:provision`), say which rights each account holds (`accounts:permissions-source`), and serve pages without a session such as an invitation (`http:public`). The account provider also reads and updates the accounts it serves, writes the audit log, and reads the catalogue of rights a role can grant.
+- Plugins can keep their data in a SQLite database of their own (`ctx.sql`, permission `storage:sql`), with migrations declared in their manifest and applied when they start.
+- The Git widget's **Publish** tab can push to any remote of the repository: a picker beside **Push** shows each remote with what it lacks, and pushing anywhere other than the branch's upstream asks first.
+- The Git widget asks before every push, naming the repository, the remote, its URL, the branch and the number of commits.
+- The Git widget shows the other repositories inside a project folder (an ignored nested repository, or one listed in `.worktreelinks`): a picker switches between them, and a dot flags one with commits to push.
+- A `.worktreelinks` file at the root of a repository lists ignored folders, such as a notes repository, that every Kanban task worktree links from the main checkout.
+- Two advanced settings let task agents keep one account connector (**Settings → Memory → Obsidian**) and let any agent call chosen MCP tools without a permission card (**Settings → Missions → Permissions**).
+- The first-run screens have a light/dark switch in the top-right corner; they follow your system until you pick, and your account keeps the mode you chose.
+- **Timon theme**: the brand's dark and light palettes (the website's violet-tinted night, beige-leaning whites, peach and copper accents), now the theme of every new account. Existing accounts keep their theme and can pick Timon in Settings → Appearance.
+
+- After updating from an earlier version, Timon signs you out once and opens the new welcome screen, then a new **Sign in** screen; once signed in, it offers to dress your main agent's mascot (**Keep this look** or **Not now**).
+- Chat: **Reply** under a message (the agent's or yours) answers it: a strip above the input shows which one, and your message shows a quote that scrolls back to the original. The agent receives the message's reference and opening words, not a copy.
+- Chat: **Copy as Markdown** under an agent's message copies its answer with the formatting, and every button under a message names itself on hover.
+- **Plugins**: the `chat.message.action` slot adds a button under chat messages, with `useChatMessage()`, `useComposerReply()` and `MessageActionButton` (API 15).
+- Agents: the `mission_message_get` tool reads a message of the conversation back by its id.
+- After your account, a **Choose your LLM** screen asks whether Timon runs on your AI subscription (the AI tools Timon supports — Claude Code, Codex, Copilot CLI, Grok Build — installed and signed in from compact cards, then **Ready with …**) or on local models with Ollama; the main agent setup no longer shows its own **Your AIs** step a second time.
+- Then **What brings you here?** asks your profile in one click — **I write code**, **I automate** or **I'm discovering** — and the setup conversation and the guided tour no longer ask it again.
+- Then **Bring your agent to life** creates your main agent on one screen: its mascot, name, role and model on a card, and the view your profile recommends — six ready-made profiles, a five-question interview, or a sheet with role, folder, model, exact permission mode, skills, MCP servers and instructions — with a switcher to the other two.
+- After your main agent is created, **Discover Timon** shows in four quick animated slides what your TIMs can do: work on their own, work as a team, and live inside a project with its own rules and memory; **Next** and **Skip all** keep it short.
+- **Customise** on that card opens a side panel to pick the mascot's skull, fur, eyes and accessory, with a live preview and states to try; until then it dresses for the agent's job.
+- Agents without a picture show their mascot instead of their initial.
+- The agent editor has an **Avatar** tab, before Identity: pick the head the agent shows everywhere — an emoji, an uploaded image you frame, or its mascot, dressed with the same configurator as the first-run setup. The other two settings are kept, and agents whose head was never chosen keep their face.
+- **Change avatar** in the right-click menu of an agent (chat card, Agents graph) opens that tab.
+- An agent's mascot now shows what the agent is doing wherever it appears — chat cards and bubbles, the chat header, side rails, Multichat, the Agents graph, the Kanban: asleep, thinking, working, searching, waiting for you, happy when a turn ends, celebrating when a task is done.
+- **Settings → Appearance → Animate mascots** keeps them still; they still show their state with their eyes, as they do when your system asks to reduce motion.
+- The chat bubbles, Multichat, the Agents graph and the mobile agent list now show the head picked in the **Avatar** tab.
+- Then your main agent's first conversation opens inside the onboarding: it speaks first, greets you by your first name in the language you picked, and writes its character from the card you made instead of asking for its language, name or picture again; beside it, its mascot shows whether it is thinking, working, waiting for your answer or pleased.
+- In that conversation, the agent offers to set up what its card asked to run on its own (every day at a set time, on a webhook), creates nothing before your yes, and saves it switched off: switch it on in **Triggers**, under **Routines** for a daily routine or **Webhooks** for a webhook.
+- It also offers to recruit two teammates, a coder and a reviewer, who appear beside it in the list; **Later** skips it.
+- `timon setup team --coder NAME --reviewer NAME` and `timon setup finish --no-tour`, the CLI counterparts of the setup conversation's new tools.
+- Onboarding: Timon installs its background service while you create your account, choose your AI and your profile, instead of holding a setup screen until it answers; a **Preparing Timon** card in the corner follows the service, the local database, the built-in browser and the search for your AIs, and a refused service shows why, with **Try again** and the repair screen. Only creating your agent waits for the service.
+- A new welcome screen opens a fresh install: mascots tumble in and pile up (you can grab them), and a language roller, each language with its flag, switches the whole screen to your language as soon as it stops on it, before you create your account.
+- `timon agent update --look '<json>'` and the `agent_update` tool set an agent's mascot (head, fur, eyes, accessory); `agent_list` returns it, and an unknown value is refused with the accepted ones.
+- Ask an agent to change its look ("put on your chef's hat") and it does it itself with the new `agent_set_look` tool, on itself or an agent it orchestrates, never on another one.
+- **Plugins**: `ctx.agents` reads an agent's mascot (`look`) and sets it on `create` / `update`, with the same lists as the Agents page (API 15).
+- **Plugins**: a mascot pack adds skulls, furs, eyes and accessories to the mascot configurator, in their own group under the pack's name; an agent wearing a part of a removed pack shows its role's default for it (API 15, template `examples/plugin-mascot-pack`).
+- Creating your local account confirms your email address with a 6-digit code sent by email, and **Forgot password** on the sign-in screen resets it with a code; an internet connection is needed for both.
+- **Create your local account** follows the welcome screen: first name, email and password on one screen, then the 6-digit code in six boxes, with **Resend** after 60 seconds and **Change email**; the account is created once the code is accepted. Waits and errors from Timon are shown with the time left.
+- **Plugins**: the `email.code` slot and `useEmailCode()` let a plugin replace the screen where the emailed code is typed (API 15).
+- A banner tells every signed-in account when a newer Timon is published for your channel, with its notes and a download link for your system; **Later** hides it until the next version. A beta build that has ended shows the newer version, with its download link, on its lock screen as soon as Timon has checked, without a reload. Turn the check off in **Settings › Plugins › Timon updates › Check for Timon updates**, or ask now with `timon update check`.
+- **Plugins**: the `updates.banner` slot and `useUpdateStatus()` let a plugin replace the "new version" banner (API 15).
+- Desktop app: **Download and verify** on the new-version banner (and on the lock screen of an ended beta build) downloads the installer for your computer, checks it against the signed checksum, then opens it or shows it in its folder.
+- Desktop app: **Install** on the new-version banner installs the verified update — the AppImage is replaced and Timon restarts, the Windows and macOS installers open, a `.deb` opens in your software manager with the command to run. When missions are running, Timon says how many first and offers **Wait** or **Install anyway**; the **Update Timon from X to Y** screen does the same before moving the service.
+- **Plugins**: `useUpdateStatus().download` lets a replacement banner drive that download (API 15).
+- The interface is available in Spanish, Italian and Portuguese (Brazil), desktop app windows and menus included: pick it in **Settings › Interface › Language**, or let Timon follow your system language.
+- The interface is available in Polish, desktop app windows and menus included.
+- The interface is available in Japanese (日本語) and Korean (한국어), desktop app windows and menus included.
+- The interface is available in German (Deutsch) and Dutch (Nederlands), desktop app windows and menus included.
+- **Official connectors**: the Connectors tab of Capabilities opens with the official MCP servers of 20 services (GitHub, GitLab, Sentry, Vercel, Cloudflare, Supabase, Neon, Notion, Linear, Atlassian, Stripe, Canva…), each with its publisher's logo, connected in one click by signing in with the publisher or with a key kept in the secrets vault.
+- **Capabilities**: skills are listed as compact rows grouped by source, and the Skills and Connectors tabs get a table of contents on the left to jump to a group.
+- **Plugins**: the `page.toc` slot and `usePageToc()` let a plugin replace that table of contents; any section enters it with a `data-toc` attribute (API 15).
+- **Plugins**: the `apps.card` slot and `useAppCard()` let a plugin replace the cards of the official connectors; the `mcp.featured` slot and `useMcpTab()` let it add its own section at the head of the Connectors tab (API 15).
+- **Plugins**: the `kanban.card` and `todo.form` slots, with `useKanbanCard()` and `useTodoForm()` in `@timon/ui`, let a plugin replace the tiles of the Kanban and of the TO DO widgets, and the window of a TO DO idea; `BoardCard`, `DetailShell` and `DetailFrame` join the kit (API 15).
+- Kanban: an idea of the TO DO notebook can carry files (screenshots, logs, specs), and promoting it hands the task its own copy; agents list, attach and remove them with `project_todo_attachments_list`, `_add` and `_remove`.
+- Kanban: attach files to a TO DO idea from its window, by dropping, choosing or pasting them, also when creating it; its card shows a paperclip with the number of files.
+- **Plugins**: `ctx.kanban.todos.attachments` lists, adds, reads and removes the files of an idea, and `PluginTodo.attachment_count` counts them (API 15).
+- **Plugins**: `ctx.webhooks.asOwner(name, fn)` runs code as a delivery of that webhook would, without waiting for the service to call (API 15).
+- Discord connector: a tester's screenshots and logs are attached to the ticket's idea instead of being pasted as paths in its notes; files saved by earlier versions move there at start.
+- Kanban: task attachments also accept source and config files (`.py`, `.ts`, `.js`, `.xml`, `.toml`, `.ini`, `.css`), kept as plain text.
+- **Plugins**: a plugin route can answer an error with a stable code (`apiError` in `@timon-ai/sdk`), and `apiErrorMessage` in `@timon/ui` shows it in the reader's language (API 15).
+- **Plugins**: `@timon/ui` exports the formatters Timon uses for dates, times, numbers, sizes, relative times and lists, in the reader's language (`formatDate`, `formatNumber`, `formatRelativeTime`…, API 15).
+- Chat: an agent can ask you for a password, a code or an API key (`secret_request`): a card with a masked field shows who asks, why, for how long and where the value may go (a service, or a website the built-in browser fills it into); **Provide** sends it straight to the vault and the agent never sees it, only whether you provided or refused. Unattended missions (Kanban tasks, sub-missions) are refused at once instead of waiting.
+- **Plugins**: the `chat.secret` slot and `useSecretRequest()` in `@timon/ui` let a plugin replace the secret request card (API 15).
+- Usage statistics also count, without any name or address, the days the app is opened, which parts of it are used, which features work or fail, how the previous run ended, subscription limits reached, how long agents wait for your answers, completed tasks, first steps reached, and a daily summary of the installation in numbers (see **Settings › System › Privacy** and the docs).
+- Licences: Free now includes every feature and every plugin (Machines, the embedded browser, Dreams, the native terminal, third-party plugins…); only additional user accounts need a paid licence.
+- **Bots**: the bots list is a widget, shown in an island of its own beside the chat; picking a bot changes the chat without a page change, and the **Bots** card dropped on any other view opens the bot's chat on that view.
+- **SUG-0084** — Agents: copy chosen agents (or all of them) to another Timon with **Export** and **Import agents** on the Agents page, or `timon agent export` / `timon agent import`; secrets stay behind, and the preview says when a working folder, backend or model does not exist on the other machine.
+- Agents: **Import agents** (Agents and Bots pages, Settings, first-run setup) brings agents from Grok Bot, Hermes or another agent tool, with their identity, memory, text skills, routines and Grok Bot groups as teams; a preview shows what will be created and what stays behind (secrets, history, working files) before anything is written.
+- Agents: the **Grok Bot, Hermes or another agent** import card gives Timon's export skill (**Copy the export skill**, or `timon agent export-skill`): pasted to Hermes or Grok Bot, it writes the `.zip` to import.
+- Agents: **Import agents** finds Hermes on the machine running Timon and imports the profiles you tick, with no archive to make first; also `timon agent import --hermes [profile…]`.
+- **Plugins**: `createTranslator()` in `@timon/ui` takes a plugin's strings in any language, with plurals in one message (ICU), and `getLocale()` returns any language tag (API 15); template `examples/plugin-i18n`.
+- **Plugins**: the `agentimport.source` slot and `useAgentImport()` let a plugin add a source to the agent import (API 15).
+- **SUG-0078** — Setup: **Skip this step** is offered on every screen of the main-agent step, from the start, to go straight to the cockpit.
+- Chat: the missions list can group each mission under the orchestrator that launched it (filter menu › **Group by orchestrator**), each group folding from its mission count; under a role filter, an orchestrator of another role, kept only to place its missions, is dimmed and not counted.
+- Anonymous usage statistics, on by default, with a switch to turn them off in **Settings › System › Privacy** (also `telemetry.enabled` in `timon.config.json` or `TIMON_TELEMETRY=0`); what is and is never sent is listed there and in the docs.
+- **Plugins**: the `directory.picker` slot and `useDirectoryBrowser()` in `@timon/ui` let a plugin replace the folder browser of Settings, projects and agents on another machine, and the plugin-archive and CLI-binary file pickers there (API 15).
+- **Plugins**: the `confirm.dialog` slot lets a plugin replace Timon's confirmation dialog, and `confirmAction()` in `@timon/ui` lets a plugin ask its own confirmations in it (API 15).
+- **Plugins**: a plugin whose `engines.node` needs a newer Node than the one Timon runs plugins on is refused at install, with both versions named; one already installed shows the same reason on the Plugins page, and `timon plugin check` reports it.
+- Settings → Appearance → Frosted glass: **Where the glass sits** puts it on the whole island (the default) or on each widget and the chat over a clear wallpaper, and any island can choose otherwise from its menu (right click on its tab → **Glass**).
+- **Plugins**: `useGlassScope()` in `@timon/ui` tells a widget where the frosted glass sits, so it can match it.
+- **Bots**: the list has a search bar at its foot, with **New bot**, **New team** and **Import agents** beside it; a right click on a bot, a team or the empty space opens its menu, a bot is moved into a team by dragging it there or from **Move to a team** in its menu, and **Export** in a bot's menu downloads that bot alone.
+- **Plugins**: the `bots.rail.action` and `agent.menu.item` slots, with `useAgentMenuItem()` in `@timon/ui`, let a plugin add a button to the foot of the Bots list and an entry to an agent's menu (API 15).
+- Settings → Appearance: **Ambient tint** picks one colour per mode (dark, light) and every background level, border and secondary text follows it — a blue-grey or violet dark mode, a beige light mode — while the accent colour stays separate.
+- Customize interface menu: **Appearance** now sits right under the dark theme switch.
+- Desktop app: its menus, tray icon menu, Dock menu, taskbar jump list, startup and update windows and dialogs follow the language chosen in **Settings → Interface → Language** (or the computer's language with **System language**); menus change at once, without restarting.
+- Desktop app: the boxes shown when Timon cannot start (daemon missing, crashing or not answering, port already in use, interface not coming up, background service not updated) are written in the app's language, or the computer's before one is chosen.
+
+### Fixed
+- In a language other than French, the chat's tool descriptions, the calendar event details, the multichat mission picker, the project form placeholders, the cockpit clock and the push notification buttons are no longer in French.
+- A plugin installed with `timon plugin add` now loads once its files are in place, without disabling and re-enabling it.
+- Chat: the thread no longer shows a “Conversation compacted” line, nor a message of yours, when the agent read an image or loaded a skill without any compaction.
+- Plugins: `timon plugin check` no longer fails with a `pack` error when npm is installed but cannot start (no `node` on the PATH); it falls back to the `files` list with its warning, as when npm is missing.
+- Desktop app: on a slow computer, the startup window no longer fills itself with the list of startup steps; the steps sit in a small card in the bottom-right corner, and on a first launch the integrity check already shows the welcome screen's colours.
+- Onboarding: the screens no longer flash the colours of the theme already installed before showing the Timon theme.
+- When a card waits for your answer in a chat, only that card's mascot hops; the agent's other bubbles, and its other conversations, stay still.
+- **TIMs**: a TIM created with **New TIM** now appears in the list right away, without reloading the page.
+- **TIMs**: clicking the list or the chat no longer draws a coloured outline around it.
+- Onboarding: **Customise** on the agent step opens beside the agent's card instead of a panel covering the form; the cards' shadows are no longer cut into a grey box in light mode.
+- The titles of the first-run screens now follow the language picked on the welcome screen in German, Spanish, Italian, Japanese, Korean, Dutch, Polish and Brazilian Portuguese, instead of staying in English.
+- The sentence under **Create my account** now reads: “We only collect your email in case you want to reset your password. The account you create stays local.”
+- When Timon's email service cannot send the confirmation or reset code, the account and password-reset screens now say so, instead of asking for an internet connection.
+- The first launch of the desktop app no longer shows the **Starting Timon…** screen with its list of steps before the welcome screen: the window waits in the welcome screen's colours.
+- Chat widgets: with borders on, the composer keeps the same margin on its sides as below it; without borders it lines up with the other widgets, with a small side margin on a phone or inside a tab stack. In Multichat, the composer no longer touches the cell's outline. On the cockpit, the side widget columns now end level with the centre.
+
+- Desktop app: when the downloaded update is no longer on the computer, **Install** now says so and offers **Download again** instead of reporting a failed installation.
+- **TIM-0144** — The Tasks tile now shows all its text in the selected language.
+- Timon's database, backups and configuration are no longer readable by other accounts on the computer: they are now private to your account, and an existing install is corrected at every start.
+- Third-party plugins showed translation keys instead of their text.
+- Connecting an MCP server through the publisher's sign-in (official connectors included) no longer fails with `dynamic client registration failed` or after the sign-in page.
+- A TO DO idea or task popup opened from a widget no longer shows the chat's text through it, and the idea's title field no longer shows a scrollbar.
+- With several accounts, a pipeline is private to the account that created it, and so are its runs and their tasks; the built-in `feature-flow` pipeline can be run by everyone and changed only by a superadmin. An agent can no longer make an agent it does not orchestrate work through a pipeline.
+- **TIM-0142** — When no agent holds the main orchestrator seat (for example after a rebuilt database), Timon now gives it to the only eligible orchestrator, or raises a notification and a `timon doctor` line listing the orchestrators you can set as main.
+- **TIM-0143** — With no main orchestrator, the **Agents** page no longer shows the first agent of the list as main: agents without a manager stay at the root of the graph and of the **Organization** panel, and a warning offers to set an eligible orchestrator as main.
+- **TIM-0141** — A Windows path written by an agent in the chat keeps its backslashes before a dot or other punctuation: `C:\Users\toto\.copilot` no longer shows as `C:\Users\toto.copilot`, and a `\\server\share` path keeps its leading double backslash.
+- The French interface is complete again: daemon error messages, the **Projects** menu entry and the team choice of the first-run setup are now in French.
+- Error messages from the daemon (not found, invalid request, wrong password, too many attempts, task and attachment errors…) now show in the interface language.
+- In the dark theme, a Kanban task's popup now stands out from the dimmed page behind it instead of blending into it.
+- MCP servers connected with OAuth: neither the agent's MCP configuration nor the server's file holds its tokens any more (they are kept in the secrets vault); Timon relays the calls itself, refreshes an expired token, and a disconnected or detached server answers the agent with an error instead of starting a login. With the secrets vault turned off or locked, a server connected before this version must be connected again.
+- Dates, times, counts and sizes across the interface (notifications, licence, machines, devices, Kanban, Git, missions, memory, routines, triggers, secrets) follow the interface language instead of the browser's, and relative times (« 3 min ago ») are written in it, and the workflow pages no longer write « ago » in English whatever the language.
+- Texts shown as a raw key or with a placeholder left in braces now read properly: the ages and the “Browse by project” link of the Memory page, the tooltip of the widget catalog's handle, the count of the series graph, the summary of the agent injections tile and a project card's “up to date”.
+- Menus: the secondary line and the icon of a highlighted entry (a machine's account, a bot's actions…) now take the entry's colour instead of staying grey.
+- Claude account usage: when Anthropic rate-limits the usage check, the gauge keeps the last figures instead of an error, and Timon waits before asking again.
+- Frosted glass: a popup island (a terminal opened over the page, for example) is now frosted like a widget, over what lies under it, instead of showing the sharp wallpaper through its title bar.
+- Settings → Appearance: dragging a colour picker follows the hand smoothly instead of updating about once a second.
+- Frosted glass: an island no longer mixes blurred and unblurred widgets — a transparent widget keeps its island's frosted plate instead of showing the sharp wallpaper, and the chat is blurred like its island.
+- **Plugins**: `timon plugin add <name>` no longer replaces a working plugin with an update whose `engines.node` excludes the Node Timon runs plugins on; the installed release stays, or is put back. A bundle's install sheet and `timon plugin add` also name a child that will not load for the same reason.
+- Frosted glass: the top bar, the side menu (folded, unfolded on hover or pinned) and the gaps between panels now form one evenly tinted and blurred frame, with no darker band or seam between the menu and the top bar.
+- Kanban task popup: fallback and permission overrides can be removed to restore inherited settings.
+- Windows: stopping a script whose main process has already exited avoids stopping an unrelated process that reused its identifier.
+- Plugins: the Kanban plugin's gallery details include its `task.form` slot.
+- Desktop app: the built-in browser works in every window and follows its selected machine; a refused native view uses live video.
+- Desktop app: at the next launch each window reopens on the page it showed, such as a window opened on the Kanban, instead of the home page.
+- Skipping the assistant setup step during onboarding now ends the setup conversation instead of leaving it running in the background.
+- Confirmations (stopping a mission, deleting a task, a secret, an agent, a file…) open in Timon's own dialog, matching the theme, instead of the browser's box.
+- **TIM-0135** — Machines: on another machine opened from the machine selector, the built-in quota monitor shows that machine's LLM usage instead of waiting for approval on this computer.
+- **TIM-0136** — Connected to another machine, **Browse…** for a folder (Obsidian vault in Settings › Memory, a project's or an agent's working directory) lists that machine's folders instead of opening this computer's picker; in a web browser it now works too.
+- **TIM-0136** — Connected to another machine, or in a web browser, **Browse…** for a CLI binary (Settings › AI models) and **Install a plugin** (a folder or an archive) pick on that machine's disk; an archive can still be sent from this computer.
+- **TIM-0128** — Desktop app: choosing **Stay** on « You have unsaved changes » while quitting keeps Timon fully running: missions, the built-in browser and the saving of window positions carry on.
+- **TIM-0138** — Windows: **Update** on the Copilot CLI card (Settings › AI models) updates the CLI, whether npm or winget installed it.
+- macOS and Linux: **Update** on the Copilot CLI card runs `copilot update` on the CLI Timon detects (npm, nvm, Volta, Homebrew or the install script) instead of installing a second copy in `~/.local/bin`.
+- **TIM-0139** — Desktop app: back on a machine you switched away from, the machine selector names that machine again instead of staying on **Switching to …**.
+- Web and installed web app: after switching machines, going **Back** to the page you left reloads it instead of showing it stuck on **Switching to …**.
+- **TIM-0137** — Machines: on another machine opened from the machine selector, the layout presets saved there before 0.1.6 are back in **Customize interface › Saved layouts**, next to those saved since.
+- **TIM-0137** — Machines: on another machine opened from the machine selector, each view's arrangement (widgets, islands, chat columns and appearance), the pinned rail, the pinned agent tabs and the pinned popups set there before 0.1.6 come back, unless you arranged them again since.
+- **TIM-0140** — Chat split into panels: a panel switched to another agent's conversation from its missions list is titled after that agent, and keeps it when you leave the view and come back by its agent's tab in the top bar, so the split comes back as you left it.
+- Widgets: a widget left alone in its column after its neighbour was moved away takes the whole height again, instead of keeping its former share with empty space below.
+- Setup: when the main agent's conversation fails (its tools refused, the conversation interrupted or stopped, no answer), **Skip this step** is put forward, with **Restart the conversation** when it stopped, instead of leaving you stuck on that screen.
+- Desktop app: when setup installs the background service, Timon restarts on it before you meet your main agent, so that conversation shows its cards instead of failing until the app is reopened.
+- A second Timon started on the same data folder (the background service next to the app's own, for example) now stops at once and no longer ends the conversations of the one already running.
+- Chat: in the missions list, the avatars of the missions scrolling by no longer show over the open mission pinned at the top or bottom.
+- Kanban: an account that may only read the Kanban can no longer create, change or delete a task, nor promote an idea into one; a new task or a change carrying a field Timon does not know is refused and names that field.
+- Kanban: an account that may only read the Kanban can no longer close someone else's task, mark a task merged, create, detach or delete its worktree, nor create, change, delete or run a pipeline; a pipeline step carrying a field Timon does not know is refused and names it.
+- Pipelines: running a pipeline whose steps set a permission mode or extra tools you may not give a task yourself is refused, and opens none of its tasks.
+- Chat: in English, the Grepai block of the right rail (labels, buttons, index age and size) is no longer shown in French.
+- In English, the Docker block of the chat's right rail, the cockpit's Dreams tile, the mobile agent list and the memory page's empty rule text are no longer shown in French.
+- The remote control API's OpenAPI description is titled "Timon — Remote Control", and the embedded browser's routable hosts default to `timon.localhost` only.
+
+### Changed
+- The Google agenda is removed for now — the cockpit **Agenda** widget, `timon agenda`, the agents' `agenda` tool and the plugins' `ctx.agenda` — and will come back once finished; an install that had it switched on starts normally.
+- Chat missions list: with **Group by orchestrator**, an orchestrator's missions now start folded (the new **Unfold sub-agents** option opens them by default), and once unfolded they sit on a lightly tinted panel joined to the orchestrator by a thin line.
+- The `timon migrate-v1` command, which imported a home from the earlier v1 build, is removed.
+- Inviting other people, roles, groups and the audit log move to the **Multi-user** plugin: its **Team** page replaces the **Users**, **Roles** and **Groups** pages. `timon user reset-password` still works without it, and an invitation link then shows "invitation not found".
+- Account administration now comes only from the **Multi-user** plugin (pro licence): an existing install's roles, groups and pending invitations are kept for it to take over, and `timon user disable|enable|invite|add-group|remove-group|groups`, `timon role` and `timon group` are removed (`timon user list` and `timon user reset-password` remain). Plugins lose `ctx.roles`, `ctx.groups` and `ctx.users.setGroups`.
+- The **Customize the menu** button at the foot of the side menu now shows a painter's palette, like the other appearance menus.
+- The guided tour is switched off for now: it is no longer offered after the setup, nor in the appearance menu.
+- A fresh install opens on simpler views: the cockpit shows Notifications, your main agent, TODO and Tasks, a project's chat shows Missions, Files, Git and Docker, and the agents canvas starts empty. A dashed **Your widget here** card opens the widget window.
+- The **Grepai index** widget is no longer offered.
+- After creating your agent, the onboarding opens the **TIMs** page: your main agent speaks first in its conversation and asks what you want to do next — another TIM, or a project with a team of TIMs. The conversation stays open afterwards.
+- Agent mascots no longer sit in a circle (top bar, rails, chat card, Kanban, Projects, Agents graph); emoji and picture avatars keep their round frame, and a working agent keeps its animated pulse.
+- **TIMs**: the chat no longer has a title bar with a drag handle; the view reads as a single page.
+- The **Bots** view is now called **TIMs**: menu entry, page, list, widget card and plugin gallery; its address stays `/bots`.
+- The onboarding opens in dark mode for everyone, whatever the system's mode; the switch at the top changes it.
+- New Timon logo: the « T » mark, drawn in the theme's primary colour on the sign-in page, the navigation and the top bar. The app, browser tab, installed app and system tray icons show it too, in the new brand colours.
+
+- Agent editor, **Avatar** tab: laid out on two columns, a larger head on the left and, on the right, the Emoji / Image / Mascot switch with the choices of the picked head, all in view without scrolling. The mascot's eyes choices show the screen and its eyes only, the accessory choices the tool only.
+- Chat: the message box has a new layout. A strip above it shows the project and the Git branch, with the **Terminal** and **New conversation** buttons; the model, thinking level and permission mode are pills at its bottom left; attach, dictation and the context ring sit beside a round send button. The message box is outlined by default, and a running tool or delegated missions show as a slim strip docked on top of it.
+- Creating the first account no longer asks for a licence key: Timon starts on Free (every feature and plugin, one account). Enter or replace a key in **Settings › Profile › License key**.
+- A beta build whose licence ends, or that never had one, keeps running on Free; only the build's own end date still stops it.
+- The project TO DO widget gives the idea's title the full width: the id and the buttons (mark done, send, delete, with tooltips) sit on a line below it, and the list no longer leaves a gap before the scrollbar.
+- Kanban: TO DO ideas, on the board, in the TO DO widgets and in their window, now take the look of task cards; an idea's card on the board can be ticked done, sent to the orchestrator or deleted.
+- Notifications: cards stay neutral; the kind shows as one coloured badge, a picto of the source and its word (**Alert**, **Needs you**, **Report** or **Urgent**), replacing the emoji; title and text use the full width of the card.
+- Setup: once onboarding is over, Timon opens on **Bots**, with the main bot's chat ready.
+- **Bots**: the list is redrawn — main bot centred on top, avatars twice as large, team headings without colour, and no title bar on the Bots view; **Export** left the foot of the list for each bot's menu.
+- Widgets: the **Edit Layout** mode is gone. Drag a widget by its title at any time; resting the pointer on a title for two seconds shows the grab hand and a small bar with the grip and the ⚙ menu, also opened by a right click on the title.
+- Widgets: the widgets of a column always share its whole height and never run past its bottom; drag the gap between two of them to resize, with stops at 25 %, 33 %, 50 % and 100 % (Shift drags freely).
+- Chat: resizing a side column resizes the other one by the same amount (hold Ctrl or ⌘ to resize only one), and the conversation's own width can be dragged from either of its edges.
+- Chat: the scrollbar of the conversation has a transparent track, like the widgets'; the **Chat appearance** switches are also in **Customize interface**.
+- Chat: the **+** and **⋯** buttons of the side columns are gone: right-click a column's tabs (Menu key or `Shift+F10`, or press and hold on a touch screen) to add or close a tab, add or remove a column, swap or collapse; a column with one tab shows a thin bar that carries this menu.
+- Chat: the top of the missions list shows the filter in effect (**All · 300**) with a funnel menu for role, automated missions, grouping and avatar, and a pen to start a new mission; a working mission's avatar pulses instead of showing dots.
+- **Plugins**: the deprecated `codexAuth` field is gone from `ctx.system.doctor()` and `timon doctor --json`; the codex entry of `auth[]` carries the same information (API 15).
+- **Settings → Interface → Language**: the first entry is now **System language**, followed by every language Timon ships, each in its own name; a browser asking for a regional variant (`fr-CA`, `pt-PT`) gets the closest language available.
+- **Kanban**: the **Tasks / Missions** switch at the top right of the board is gone; **Missions** stays in the navigation.
+- **Kanban**: a task's card shows its type and status as badges, its priority in the top right corner, its notices (validation required, interruption, block) under its badges, and its graph button with the other actions; in a task's window, the files sit in their own area, in view whatever the tab.
+- Desktop app: the Timon executable no longer runs as a Node interpreter (`ELECTRON_RUN_AS_NODE` is ignored); the daemon, the `timon` CLI and the web app run on the Node the package ships.
+
+### Known issues
+- Onboarding form details are still in English outside English and French; the step titles are translated.
+
+- Chat: while a turn is being prepared, a tool the previous turn left unfinished can show as still running, with its old duration, until the new turn starts.
+- An agent's island card applied to a page other than the one on screen removes the tabs it replaces, but a replaced terminal keeps running: end it from the Terminal page.
+- Windows: a CLI installed with pnpm or yarn can keep running after Timon stops or crashes; end it from Task Manager, or install it with npm.
+- **TIM-0034** — The installers are not code-signed: Windows SmartScreen or Smart App Control and macOS Gatekeeper warn about them or block them. On Windows, choose **More info → Run anyway** (turn Smart App Control off in Windows Security if it blocks); on macOS, allow the app in **System Settings → Privacy & Security**.
+- Windows: a Codex agent in auto or acceptEdits mode cannot `git commit` (Codex keeps `.git` read-only); give its code and merge tasks the bypassPermissions mode, or run them on another backend.
+- Windows: on a work or school account of a PC joined to Microsoft Entra ID, Windows may refuse to run Timon's background task; Timon then runs only while its window is open.
+- macOS: the usage of a Claude subscription account is not shown in the LLM quotas widget nor under the chat composer; Codex accounts are.
+- macOS: while Timon runs with no session open, Git over HTTPS and `gh` fail in missions; Git over SSH works.
+- Copilot CLI card: **Update** may update another copy than the one shown, or install a new one, when the CLI's path is pinned in **Settings › AI models › Providers › CLI binaries**, or when it was installed under an nvm pre-release of Node (such as `v21.0.0-rc.1`); run `copilot update` with the CLI's full path in a terminal instead.
+- If your organisation disables third-party MCP servers in Copilot, agents on Copilot cannot use Timon's tools and fall back to the `timon` command.
+- A Kanban task that depends on a `code` task which never gets a merge (no changes to review, or no reviewer) waits indefinitely; remove that dependency to release it.
+- opencode and Hermes have not yet been tried on a tester's own account, so a first mission (Hermes especially) may still fail.
+- Pi has not been tried with a tester's own model provider yet, so a first mission may fail.
+- With Pi as the only backend, conversations keep their default title.
+- opencode decides its own tool permissions: Timon shows no Allow/Deny card for it and cannot restrict what it does. The agent editor says so.
+- MCP servers you add over HTTP are not passed to opencode and Hermes agents; Timon's own tools and stdio servers are.
+- Opening the model list of opencode or Hermes leaves one empty session per agent in that agent's own history.
+- Windows: installing a new version of the app closes the built-in terminal's shells.
+- Chat: pressing Escape to close a dialog while dictating also cancels the dictation and puts the message back as it was before you clicked the mic.
+- Google refuses to sign in directly from the built-in browser ("This browser or app may not be secure"); use **Sign in with Chrome** in its options menu, which needs Chrome, Edge or Chromium installed outside a snap or flatpak package.
+- **Sign in with Chrome** copies the sign-in into the built-in browser; whether Google keeps it valid there over time has not been verified, and a password or 2FA step has not been tried. Run it again if the session is lost.
+
 ## 0.1.6 — 2026-11-02
 
 ### Added

@@ -1073,6 +1073,26 @@ const TOOLS = [
     },
   },
   {
+    name: 'chat_post_message',
+    title: 'Post a message in the chat',
+    description:
+      'Posts a NORMAL message in the chat of YOUR mission, right now: an ordinary agent bubble, rendered as '
+      + 'markdown (headings, lists, tables, code). Use it to make sure the user READS something: a report, a '
+      + 'comparison table, a step report during a long turn, everything they need before a decision. The text you '
+      + 'write in your turn right before a tool call may never reach the user (it can end up in your reasoning, '
+      + 'which is not shown): a tool call is always delivered whole. Before `question` or `kanban_plan`, prefer '
+      + 'their own `message` field, which posts the same message right above the form. No HTML, no markdown '
+      + 'images (use chat_show_media). Max 20000 characters. Only inside a mission.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'The message, in markdown (1 to 20000 characters).' },
+      },
+      required: ['text'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'terminal_propose',
     title: 'Propose a shell command',
     description:
@@ -1618,6 +1638,13 @@ async function runTool(rawName, args, ctx) {
       const r = await call('POST', `/api/missions/${encodeURIComponent(mission)}/media`, body);
       const b = r.block ?? {};
       return { shown: true, kind: b.kind, mime: b.mime, source: b.source };
+    }
+    case 'chat_post_message': {
+      const mission = env.missionId;
+      if (!mission) throw new Error('chat_post_message only works inside a mission (TIMON_MISSION_ID is not set)');
+      if (typeof args.text !== 'string' || !args.text.trim()) throw new Error('text must be a non-empty string');
+      const r = await call('POST', `/api/missions/${encodeURIComponent(mission)}/messages`, { text: args.text });
+      return { posted: r.posted === true, event_id: r.event_id };
     }
     case 'terminal_propose': {
       if (!env.missionId) throw new Error('terminal_propose only works inside a mission (TIMON_MISSION_ID is not set)');

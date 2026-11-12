@@ -353,11 +353,16 @@ export function discardPreview(token: string): void {
   void request('DELETE', `/staged/${encodeURIComponent(token)}`).catch(() => {});
 }
 
-/** One line for the signature verdict, and how loud it must be. */
-export function signatureSummary(signature: InstallSignature): { tone: 'ok' | 'warn' | 'danger'; text: string } {
+/**
+ * One line for the signature verdict, and how loud it must be. `unsignedLoads`
+ * is developer mode as the daemon applies it NOW: the preview's `loads` was
+ * judged at staging, and the mode may have been turned on since (from the
+ * sheet itself, or in Settings).
+ */
+export function signatureSummary(signature: InstallSignature, unsignedLoads?: boolean): { tone: 'ok' | 'warn' | 'danger'; text: string } {
   if (signature.state === 'signed') return { tone: 'ok', text: t('pluginsPage.install.signed') };
   if (signature.state === 'tampered') return { tone: 'danger', text: t('pluginsPage.install.tampered') };
-  return { tone: 'warn', text: t(signature.loads ? 'pluginsPage.install.unsignedLoads' : 'pluginsPage.install.unsignedBlocked') };
+  return { tone: 'warn', text: t((unsignedLoads ?? signature.loads) ? 'pluginsPage.install.unsignedLoads' : 'pluginsPage.install.unsignedBlocked') };
 }
 
 /** `data:` URLs only: the preview must never make the browser fetch an address. */

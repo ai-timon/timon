@@ -15,6 +15,15 @@ plugin page on top of each other.
 No host half, no permission, no build: `client.js` is already ESM, and
 `react` and `@timon/ui` stay external, provided by the platform.
 
+## Licence
+
+Replacing the whole interface needs a licence that includes White Label. Without
+it the package installs, `timon plugin list` shows it as `skipped:unlicensed`,
+and the standard interface stays. To try it, activate such a licence on the test
+instance below.
+
+## Try it
+
 Try it on a separate test instance, never on the one you work in:
 
 ```bash
