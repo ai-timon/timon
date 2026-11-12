@@ -13,14 +13,20 @@ Compose file, repository housekeeping: none of that reaches a tester, and
 listing it buries the two lines they actually needed to read. Those live in
 `docs/PROGRESS.md`, which exists for exactly that.
 
+**Changes that are not released yet are not written in this file.** Each one is
+a small file in [`changes/`](changes/README.md), so that two pull requests never
+edit the same lines; `node scripts/changelog-fragments.mjs` prints them as the
+next version's section, and `scripts/bump-version.mjs` writes them below when a
+version is released.
+
 Every entry goes under one of these headings:
 
 - **Added** — a capability they did not have before.
 - **Fixed** — something that was broken for them and no longer is.
 - **Changed** — existing behaviour or availability has changed.
 - **Known issues** — something still broken for them, or working only under
-  conditions. An entry stays here until a release actually fixes it; that
-  release then moves it to **Fixed**.
+  conditions. An entry stays listed in every release until one actually fixes
+  it; that release then lists the fix under **Fixed**.
 
 Write from where they stand: what they see now. Not the file you changed.
 
@@ -36,44 +42,7 @@ licence server as `appVersion`, so `orchestrator/package.json` and
 A version number is bumped only when a release is published, and only when the maintainers
 ask for it. Electron builds are made far more often than that — one is
 regularly produced just to check that everything holds — and those carry no
-bump. Until a release is called, everything accumulates under `Unreleased`.
-
-## [Unreleased]
-
-### Added
-
-- **Simplified Chinese** for the interface and desktop menus: choose **简体中文** in **Settings → Interface → Language**.
-
-### Fixed
-
-- **Simplified Chinese settings**: built-in setting names, descriptions, units and plugin tabs are translated, and settings search matches both the Chinese text and the original setting keys.
-- **Simplified Chinese surfaces**: chat empty states and file controls, working-agent states, quota panels, recognized backend CLI warnings, the vault disc and its calendar, mission history and statistics now follow the interface language. Commands, note names and user-authored text are preserved.
-
-### Known issues
-
-- Onboarding form details are still in English outside English, French and Simplified Chinese; the step titles are translated.
-
-- Chat: while a turn is being prepared, a tool the previous turn left unfinished can show as still running, with its old duration, until the new turn starts.
-- An agent's island card applied to a page other than the one on screen removes the tabs it replaces, but a replaced terminal keeps running: end it from the Terminal page.
-- Windows: a CLI installed with pnpm or yarn can keep running after Timon stops or crashes; end it from Task Manager, or install it with npm.
-- **TIM-0034** — The installers are not code-signed: Windows SmartScreen or Smart App Control and macOS Gatekeeper warn about them or block them. On Windows, choose **More info → Run anyway** (turn Smart App Control off in Windows Security if it blocks); on macOS, allow the app in **System Settings → Privacy & Security**.
-- Windows: a Codex agent in auto or acceptEdits mode cannot `git commit` (Codex keeps `.git` read-only); give its code and merge tasks the bypassPermissions mode, or run them on another backend.
-- Windows: on a work or school account of a PC joined to Microsoft Entra ID, Windows may refuse to run Timon's background task; Timon then runs only while its window is open.
-- macOS: the usage of a Claude subscription account is not shown in the LLM quotas widget nor under the chat composer; Codex accounts are.
-- macOS: while Timon runs with no session open, Git over HTTPS and `gh` fail in missions; Git over SSH works.
-- Copilot CLI card: **Update** may update another copy than the one shown, or install a new one, when the CLI's path is pinned in **Settings › AI models › Providers › CLI binaries**, or when it was installed under an nvm pre-release of Node (such as `v21.0.0-rc.1`); run `copilot update` with the CLI's full path in a terminal instead.
-- If your organisation disables third-party MCP servers in Copilot, agents on Copilot cannot use Timon's tools and fall back to the `timon` command.
-- A Kanban task that depends on a `code` task which never gets a merge (no changes to review, or no reviewer) waits indefinitely; remove that dependency to release it.
-- opencode and Hermes have not yet been tried on a tester's own account, so a first mission (Hermes especially) may still fail.
-- Pi has not been tried with a tester's own model provider yet, so a first mission may fail.
-- With Pi as the only backend, conversations keep their default title.
-- opencode decides its own tool permissions: Timon shows no Allow/Deny card for it and cannot restrict what it does. The agent editor says so.
-- MCP servers you add over HTTP are not passed to opencode and Hermes agents; Timon's own tools and stdio servers are.
-- Opening the model list of opencode or Hermes leaves one empty session per agent in that agent's own history.
-- Windows: installing a new version of the app closes the built-in terminal's shells.
-- Chat: pressing Escape to close a dialog while dictating also cancels the dictation and puts the message back as it was before you clicked the mic.
-- Google refuses to sign in directly from the built-in browser ("This browser or app may not be secure"); use **Sign in with Chrome** in its options menu, which needs Chrome, Edge or Chromium installed outside a snap or flatpak package.
-- **Sign in with Chrome** copies the sign-in into the built-in browser; whether Google keeps it valid there over time has not been verified, and a password or 2FA step has not been tried. Run it again if the session is lost.
+bump. Until a release is called, everything accumulates in `changes/`.
 
 ## [0.1.7] — 2026-11-06
 

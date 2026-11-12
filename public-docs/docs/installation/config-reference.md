@@ -50,7 +50,7 @@ Generated from the configuration schema and the loader's environment override ta
 | `modules` | object | {} | Bundled module IDs mapped to enabled state or module-specific options. | — |
 | `plugins` | object | {} | Third-party manifest IDs mapped to enabled state or plugin options; absent installed plugins are enabled. | — |
 | `developer` | object | See child fields | Developer-mode preferences. | — |
-| `developer.unsignedPlugins` | boolean | Not set | Allows unsigned plugins when `true`; requires a valid licence. Unset refuses them. | — |
+| `developer.unsignedPlugins` | boolean | Not set | Developer mode: allows unsigned plugins when `true`, on Free as on a paid licence; a licence with a fixed plugin composition still refuses them. Unset or `false` refuses them. | — |
 | `pluginPolicy` | object | See child fields | Operator ceilings on third-party plugin capabilities. | — |
 | `pluginPolicy.spawn` | object | See child fields | Approval and rate limits for plugin mission spawning. | — |
 | `pluginPolicy.spawn.max` | integer | 5 | Maximum missions one plugin may spawn in a window; zero denies spawning. | — |

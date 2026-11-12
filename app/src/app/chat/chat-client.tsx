@@ -151,6 +151,7 @@ import { sessionlessTurnNotice, type SessionlessTurnPayload } from '@/lib/sessio
 import { createStreamPresentation } from '@/lib/stream-presentation';
 import { StreamingMarkdown } from '@/components/chat/streaming-markdown';
 import { parseGeneratedMedia, parseMediaBlock, type ChatMediaBlock } from '@/lib/chat-media';
+import { chipInput } from '@/lib/chat-post';
 import { ChatMediaSlot } from '@/components/chat/media-block';
 import { BlockResizeContext, type BlockResizeHandler } from '@/components/chat/block-resize';
 import { ChatDocumentHostProvider, ChatUiDocumentSlot, type ChatDocumentHost } from '@/components/chat/ui-document-block';
@@ -756,7 +757,7 @@ function renderToolUse(b: { name: string; input?: Record<string, unknown> }) {
  * absurd.
  */
 function toolDetail(b: { name: string; input?: Record<string, unknown> }): string {
-  const inp = (b.input || {}) as Record<string, unknown>;
+  const inp = chipInput(b.name, (b.input || {}) as Record<string, unknown>);
   const pick = (k: string) => (typeof inp[k] === 'string' ? (inp[k] as string) : '');
 
   let detail = '';

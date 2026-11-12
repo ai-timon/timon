@@ -1,0 +1,55 @@
+# Paths a pull request from outside the project may not change.
+#
+# Read from main by .github/workflows/protected-paths.yml, never from the pull
+# request: a pull request cannot edit this list to let itself through. This
+# file is itself protected.
+#
+# One pattern per line. `**` crosses folders, `*` stays within one name, and a
+# pattern without a slash matches a file name in any folder. Lines starting
+# with `@` name the accounts allowed to change these paths.
+#
+# scripts/check-protected-paths.mjs also guards fields of every package.json:
+# identity, install-time scripts and dependencies. Changing a dependency, even
+# its version, or a lockfile needs a maintainer's approval.
+
+@ai-timon-admin
+
+# Licences, rights and trademarks
+LICENSE
+LICENSING.md
+CLA.md
+TRADEMARKS.md
+THIRD_PARTY_NOTICES.md
+LICENSE.*
+LICENCE*
+COPYING*
+NOTICE
+NOTICE.*
+
+# Governance: CI, code owners, the rules contributors and agents follow
+.github/**
+AGENTS.md
+CONTRIBUTING.md
+CONTRIBUTING-TRANSLATIONS.md
+SECURITY.md
+CODE_OF_CONDUCT.md
+
+# What Timon trusts: licence checks, release keys, update and install sources
+orchestrator/src/license/**
+orchestrator/src/plugins-bundled/updates/keyring.ts
+orchestrator/src/plugins-bundled/updates/manifest.ts
+scripts/install.sh
+scripts/install.ps1
+scripts/release-manifest.mjs
+scripts/check-protected-paths.mjs
+
+# The brand
+orchestrator/src/brand.ts
+app/src/lib/brand.ts
+
+# Dependencies: lockfiles and npm settings decide which code gets installed
+package-lock.json
+npm-shrinkwrap.json
+yarn.lock
+pnpm-lock.yaml
+.npmrc

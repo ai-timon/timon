@@ -3,6 +3,14 @@ title: macOS
 sidebar_position: 4
 ---
 
+## One command
+
+```bash
+curl -fsSL https://timon-ai.com/install.sh | sh
+```
+
+It downloads the pkg installer, checks it, installs it (macOS asks for your administrator password once) and opens Timon. Options and checks: [Install with one command](overview.md#install-with-one-command).
+
 ## Desktop package
 
 Use the supplied pkg installer to install Timon in `/Applications` and make the `timon` terminal command available without Node.js. The DMG also remains available; see [CLI setup](../usage/cli.md) to add its terminal command manually. Open Timon and follow [First run](first-run.md). The setup flow checks tools and installs a launchd agent so that agent work can continue after the window closes.

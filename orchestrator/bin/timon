@@ -27,10 +27,11 @@
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
+import { homedir, hostname, userInfo } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { isLocalDaemonUrl, resolveApiUrl } from './cli-api.mjs';
 import { isBundledNode, packagedLauncher } from './cli-runtime.mjs';
+import { aiToolLines, isDaemonUnreachable, isLoopbackHost, listenUrl, overviewLines, unreachableLines } from './cli-guide.mjs';
 import { readAvatarFile } from './avatar-file.mjs';
 import { installConsoleAscii } from './console-ascii.mjs';
 import { PRESERVED_ON_REWRITE } from './mcp-tools-agents.mjs';
@@ -94,7 +95,250 @@ function readDaemonTokenFile() {
 function resolveApiToken(apiUrl) {
   const env = process.env.TIMON_API_TOKEN;
   if (typeof env === 'string' && env.trim().length > 0) return env.trim();
-  return isLocalDaemonUrl(timonHome(), apiUrl) ? readDaemonTokenFile() : undefined;
+  return isLocalDaemonUrl(timonHome(), apiUrl, { packaged: packagedCli() }) ? readDaemonTokenFile() : undefined;
+}
+
+/** The CLI runs on the package's runtime (its launcher, or Electron as Node). */
+function packagedCli() {
+  return Boolean(process.versions.electron) || isBundledNode(process.execPath);
+}
+
+/** `timon service install` and the onboarding leave this marker once a service is registered. */
+function serviceInstalledMarker() {
+  return fs.existsSync(join(timonHome(), 'desktop-runtime', 'installed'));
+}
+
+/**
+ * `timon` alone: where this installation stands and the one command to type
+ * next, instead of the whole help. Every probe is short and optional: a
+ * missing daemon is a state to describe, not an error.
+ */
+async function cmdOverview(remote) {
+  const local = !remote && isLocalDaemonUrl(timonHome(), API, { packaged: packagedCli() });
+  const state = { api: API, local, reachable: false, serviceInstalled: local && serviceInstalledMarker(), version: null };
+  try {
+    const { timonVersion } = await loadDist('data-version');
+    state.version = timonVersion();
+  } catch { /* A CLI without its compiled sources still prints the rest. */ }
+  state.reachable = await daemonAnswers();
+  if (state.reachable) {
+    try {
+      const me = await httpRaw('GET', '/api/auth/me', undefined, 2500);
+      if (me.ok && typeof me.body?.needsSetup === 'boolean') state.needsSetup = me.body.needsSetup;
+    } catch { /* Account state unknown. */ }
+  }
+  if (local) Object.assign(state, await localWebInterface(state.version));
+  process.stdout.write(overviewLines(state).join('\n') + '\n');
+}
+
+/** This machine's web interface when its daemon serves it, and the SSH session to tunnel from. */
+async function localWebInterface(version) {
+  const found = { appUrl: null, appLocalOnly: true, ssh: null };
+  try {
+    // The packaged first-launch ports reach the config through the
+    // environment, as for `timon service`.
+    const { markPackagedCli } = await loadDist('host/service-environment');
+    const { TIMON_HOME } = await loadDist('paths');
+    markPackagedCli(process.env, process.versions, version ?? 'current', TIMON_HOME);
+    const { appStatus } = await loadDist('plugins-bundled/web-app/control');
+    const app = appStatus();
+    if (app.state === 'running') {
+      found.appUrl = listenUrl(app.listen);
+      found.appLocalOnly = isLoopbackHost(app.listen?.host);
+    }
+  } catch { /* No web interface to show. */ }
+  if (process.env.SSH_CONNECTION) found.ssh = { user: userInfo().username, host: hostname() };
+  return found;
+}
+
+async function daemonAnswers(timeoutMs = 2500) {
+  try {
+    const r = await fetch(`${API}/api/health`, { headers: timonHeaders(), signal: AbortSignal.timeout(timeoutMs) });
+    const body = await r.json().catch(() => null);
+    return r.ok && body?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
+
+/** One visible line from the terminal; '' on an empty answer. */
+async function askLine(question) {
+  const { createInterface } = await import('node:readline/promises');
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return (await rl.question(question)).trim();
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * `timon init` — finish an installation from the terminal: the background
+ * service if it is missing, the first account, the AI tools. For a server
+ * reached over SSH, where the web form would need a tunnel first.
+ *
+ * The account goes through `POST /api/auth/setup` with the daemon token, the
+ * path the route keeps for the operator: holding the token proves a shell on
+ * this machine, so neither the one-time setup token nor the email code is
+ * asked. The password is typed hidden, or piped with --password-stdin; never
+ * an argument, which any process could read.
+ */
+async function cmdInit(argv, remote) {
+  const usage = 'usage: timon init [--email ADDRESS] [--name NAME] [--password-stdin] [--yes]\n';
+  const email0 = takeFlag(argv, 'email');
+  const name0 = takeFlag(argv, 'name');
+  const passwordStdin = argv.includes('--password-stdin');
+  const yes = argv.includes('--yes') || argv.includes('-y');
+  const unknown = argv.filter((a) => !['--password-stdin', '--yes', '-y'].includes(a));
+  if (unknown.length) { process.stderr.write(`timon init: unknown argument ${unknown[0]}\n${usage}`); process.exit(64); }
+  const interactive = Boolean(process.stdin.isTTY) && !passwordStdin;
+  if (remote || !isLocalDaemonUrl(timonHome(), API, { packaged: packagedCli() })) {
+    process.stderr.write('timon init: run it on the machine where Timon is installed, without --daemon.\n');
+    process.exit(64);
+  }
+  if (process.env.TIMON_MISSION_ID) {
+    process.stderr.write('timon init: it is for a person at a terminal, not for an agent mission.\n');
+    process.exit(64);
+  }
+
+  if (!await daemonAnswers()) {
+    if (serviceInstalledMarker()) {
+      process.stderr.write(unreachableLines({ api: API, local: true, serviceInstalled: true }).join('\n') + '\n');
+      process.exit(1);
+    }
+    if (!yes) {
+      if (!interactive) {
+        process.stderr.write(unreachableLines({ api: API, local: true, serviceInstalled: false }).join('\n') + '\n');
+        process.stderr.write('  Or run timon init --yes to install it now.\n');
+        process.exit(1);
+      }
+      process.stderr.write('Timon does not run in the background yet.\n');
+      const answer = (await askLine('Install the background service now (starts at boot, keeps running after you log out)? [Y/n] ')).toLowerCase();
+      if (answer && answer !== 'y' && answer !== 'yes') {
+        process.stderr.write('Nothing installed. When you are ready: timon service install, then timon init.\n');
+        process.exit(1);
+      }
+    }
+    await cmdService(['install']);
+    if (process.exitCode) process.exit(process.exitCode);
+    process.stderr.write('Waiting for Timon to start');
+    const deadline = Date.now() + 120_000;
+    let up = false;
+    while (!up && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      process.stderr.write('.');
+      up = await daemonAnswers();
+    }
+    process.stderr.write('\n');
+    if (!up) {
+      process.stderr.write(unreachableLines({ api: API, local: true, serviceInstalled: true }).join('\n') + '\n');
+      process.exit(1);
+    }
+  }
+
+  // The daemon token: only the account that owns this home holds it.
+  if (!API_TOKEN) {
+    process.stderr.write(`timon init: cannot read ${daemonTokenPath()}. Run it as the account that owns Timon's data.\n`);
+    process.exit(1);
+  }
+  const me = await httpRaw('GET', '/api/auth/me', undefined, 5000);
+  if (!me.ok) {
+    process.stderr.write(`timon init: the daemon refused to describe its accounts (${me.status}).\n`);
+    process.exit(1);
+  }
+  const web = await localWebInterface(null);
+  if (me.body?.needsSetup === false) {
+    process.stdout.write('This Timon already has an account.\n');
+    for (const line of overviewLines({ api: API, reachable: true, needsSetup: false, ...web }).slice(2)) process.stdout.write(line + '\n');
+    return;
+  }
+
+  // Collect the account.
+  let email = (email0 ?? '').trim().toLowerCase();
+  let name = (name0 ?? '').trim();
+  let password = '';
+  let licenseKey = '';
+  if (passwordStdin) {
+    password = (await readAllStdin()).replace(/\r?\n$/, '');
+    if (!email) { process.stderr.write(`timon init: --password-stdin needs --email\n${usage}`); process.exit(64); }
+  } else if (!interactive) {
+    process.stderr.write(`timon init: no terminal to type the account in. Pipe the password with --password-stdin and give --email.\n${usage}`);
+    process.exit(64);
+  }
+  if (interactive) {
+    process.stderr.write('Create your Timon account. It stays on this machine; the email is only used to reset a forgotten password.\n');
+    if (!name0) name = await askLine('First name (your agents call you by it; Enter to skip): ');
+    while (!EMAIL_SHAPE.test(email)) {
+      if (email) process.stderr.write('  That is not an email address.\n');
+      email = (await askLine('Email: ')).toLowerCase();
+    }
+    for (let attempt = 0; attempt < 3 && !password; attempt++) {
+      const first = await readHiddenLine(`Password (at least ${MIN_PASSWORD} characters): `);
+      if (first.length < MIN_PASSWORD) { process.stderr.write(`  At least ${MIN_PASSWORD} characters.\n`); continue; }
+      const again = await readHiddenLine('Password again: ');
+      if (again !== first) { process.stderr.write('  The two passwords differ.\n'); continue; }
+      password = first;
+    }
+    if (!password) { process.stderr.write('timon init: no password set; nothing was created.\n'); process.exit(1); }
+    if (me.body?.setupRequiresLicense === true) licenseKey = (await readHiddenLine('Licence key: ')).trim();
+  }
+  if (!EMAIL_SHAPE.test(email)) { process.stderr.write('timon init: that is not an email address.\n'); process.exit(64); }
+  if (password.length < MIN_PASSWORD) { process.stderr.write(`timon init: the password needs at least ${MIN_PASSWORD} characters.\n`); process.exit(64); }
+  if (me.body?.setupRequiresLicense === true && !licenseKey) {
+    process.stderr.write('timon init: this build needs a licence key to create the first account; run timon init in a terminal.\n');
+    process.exit(64);
+  }
+  // The form's first name is optional too; the account needs a display name.
+  if (!name) name = email.split('@')[0];
+
+  const body = { email, name, password, ...(licenseKey ? { licenseMode: 'key', licenseKey } : {}) };
+  const r = await fetch(`${API}/api/auth/setup`, {
+    method: 'POST',
+    headers: { ...timonHeaders(), 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const answer = await r.json().catch(() => ({}));
+  if (r.status !== 201) {
+    const why = {
+      already_set_up: 'an account was created meanwhile; sign in with it.',
+      build_expired: 'this build has expired: install the current version of Timon first.',
+      setup_in_progress: 'another account creation is running; try again in a moment.',
+      license_invalid: 'the licence key was refused.',
+      license_required: 'this build needs a licence key.',
+    }[answer?.error] ?? (typeof answer?.error === 'string' ? answer.error : `the daemon answered ${r.status}.`);
+    process.stderr.write(`timon init: the account was not created: ${why}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`\nAccount created for ${email}.\n\n`);
+
+  // The route opened a session for the new account: the AI tools are a
+  // superadmin's view, read once with it, then the session is closed.
+  const cookie = (r.headers.get('set-cookie') ?? '').split(';')[0];
+  if (cookie.startsWith('timon_session=')) {
+    try {
+      const tools = await fetch(`${API}/api/host/provider-clis`, { headers: { cookie }, signal: AbortSignal.timeout(20_000) });
+      if (tools.ok) {
+        const listing = await tools.json();
+        process.stdout.write(aiToolLines(listing?.backends).join('\n') + '\n\n');
+      }
+    } catch { /* The web interface shows them too. */ }
+    await fetch(`${API}/api/auth/logout`, { method: 'POST', headers: { cookie }, signal: AbortSignal.timeout(5000) }).catch(() => {});
+  }
+
+  if (web.appUrl && web.ssh && web.appLocalOnly) {
+    const port = new URL(web.appUrl).port || '80';
+    process.stdout.write('Meet your main agent in the web interface. From your computer, open a tunnel:\n');
+    process.stdout.write(`  ssh -N -L ${port}:127.0.0.1:${port} ${web.ssh.user}@${web.ssh.host}\n`);
+    process.stdout.write(`then open http://127.0.0.1:${port} and sign in as ${email}.\n`);
+  } else if (web.appUrl) {
+    process.stdout.write(`Meet your main agent in the web interface: open ${web.appUrl} and sign in as ${email}.\n`);
+  } else {
+    process.stdout.write('Meet your main agent in the Timon app, signed in with this account.\n');
+  }
 }
 
 function isHttpUrl(s) {
@@ -492,6 +736,11 @@ async function cmdWait(argv) {
 function help() {
   process.stdout.write(
     `timon — Timon control plane CLI
+
+Getting started:
+  timon                                   where this installation stands, and the next command
+  timon init [--email A] [--name N]       finish the setup from the terminal: background service,
+             [--password-stdin] [--yes]   first account, AI tools (the password is typed hidden)
 
 Updates (run on the daemon host):
   timon update check [--json]            ask timon-ai.com whether a newer Timon is published
@@ -4165,14 +4414,36 @@ async function cmdPlugin(argv) {
         process.stdout.write(JSON.stringify(result, null, 2) + '\n');
         return;
       }
+      // Held back by the licence whatever its signature: said instead of
+      // "loads within the second". The guard covers a `dist/` built before
+      // the lock, which the repository's CLI can run until the next rebuild.
+      if (typeof mod.heldForWhiteLabel === 'function' && mod.heldForWhiteLabel(result.manifest)) {
+        process.stdout.write(
+          `${result.id}@${result.version} installed (${result.pkg})\n`
+          + `permissions: ${perms.length ? perms.join(', ') : 'none'}\n`
+          + 'installed but NOT loaded: it replaces the whole interface, which needs a licence\n'
+          + 'that includes White Label. It loads on its own once such a licence is active.\n',
+        );
+        return;
+      }
       // Whether the daemon will actually MOUNT it. An unsigned package is
       // installed either way (only a tampered one is refused above), but
       // saying "loads within the second" when admission will reject it sends
       // the user looking for the bug everywhere except where it is.
       const { config } = await loadDist('config/load');
       const { unsignedPluginsAllowed } = await loadDist('plugins/pubkey');
-      const admitted = result.signature.ok
-        || unsignedPluginsAllowed(config().developer.unsignedPlugins);
+      const devMode = config().developer.unsignedPlugins;
+      const admitted = result.signature.ok || unsignedPluginsAllowed(devMode);
+      // The two reasons an unsigned package stays unloaded need two different
+      // gestures. Ask the gate itself whether `true` would admit it: if not,
+      // the licence or the lock refuses it, and switching developer mode on
+      // would change nothing.
+      const refusal = !unsignedPluginsAllowed(true)
+        ? 'installed but NOT loaded: unsigned, and this installation refuses unsigned plugins even in\n'
+          + 'developer mode (a licence with a fixed plugin composition, or Timon locked until a licence\n'
+          + 'is activated). Install a signed version, or check `timon license status`.\n'
+        : 'installed but NOT loaded: unsigned, and developer mode is off.\n'
+          + 'Set `"developer": { "unsignedPlugins": true }` in timon.config.json to load it.\n';
       process.stdout.write(
         `${result.id}@${result.version} installed (${result.pkg})\n`
         + `permissions: ${perms.length ? perms.join(', ') : 'none'}\n`
@@ -4182,8 +4453,7 @@ async function cmdPlugin(argv) {
         + update
         + (admitted
           ? 'the daemon loads it within the second, no restart\n'
-          : 'installed but NOT loaded: unsigned, and `developer.unsignedPlugins` is false\n'
-            + 'in timon.config.json. Set it to true (or remove the key) to load it.\n'),
+          : refusal),
       );
       for (const c of result.children) {
         const label = c.state === 'installed' ? `installed (${c.pkg})`
@@ -4931,7 +5201,7 @@ async function cmdDoctor(argv) {
   const backendProfiles = await backendProfilesReport({
     // A section read through the route, not `diagnose()`: a CLI process loads
     // no provider, so only the daemon can tell which profiles really run.
-    local: isLocalDaemonUrl(timonHome(), API),
+    local: isLocalDaemonUrl(timonHome(), API, { packaged: packagedCli() }),
     fetchListing: () => httpRaw('GET', '/api/backends/custom', undefined, 5000),
     loadLocalProfiles: () => loadDist('backends/local-profiles'),
   });
@@ -5154,7 +5424,7 @@ async function main() {
   } else {
     // The token follows the resolved target: TIMON_API pointing elsewhere must
     // not carry this home's daemon-token with it.
-    API = resolveApiUrl(timonHome(), process.env.TIMON_API);
+    API = resolveApiUrl(timonHome(), process.env.TIMON_API, undefined, { packaged: packagedCli() });
     API_TOKEN = resolveApiToken(API);
   }
   const [cmd, ...rest] = argv;
@@ -5306,6 +5576,9 @@ async function main() {
       case 'service':
         await cmdService(rest);
         break;
+      case 'init':
+        await cmdInit(rest, daemonSpec !== undefined);
+        break;
       case 'setup-token':
         await cmdSetupToken();
         break;
@@ -5350,6 +5623,8 @@ async function main() {
         });
         break;
       case undefined:
+        await cmdOverview(daemonSpec !== undefined);
+        break;
       case 'help':
       case '-h':
       case '--help':
@@ -5363,6 +5638,12 @@ async function main() {
   } catch (e) {
     // 128 + SIGINT, what a shell reports for Ctrl-C. The person asked for it: nothing to explain.
     if (e?.code === PROMPT_CANCELLED) process.exit(130);
+    if (isDaemonUnreachable(e)) {
+      const local = daemonSpec === undefined && isLocalDaemonUrl(timonHome(), API, { packaged: packagedCli() });
+      const lines = unreachableLines({ api: API, local, serviceInstalled: local && serviceInstalledMarker() });
+      process.stderr.write(lines.join('\n') + '\n');
+      process.exit(1);
+    }
     process.stderr.write('timon: ' + (e && e.message ? e.message : String(e)) + '\n');
     process.exit(1);
   }

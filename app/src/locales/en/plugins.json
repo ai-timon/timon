@@ -1,4 +1,21 @@
 {
+  "developerMode": {
+    "label": "Developer mode — load unsigned plugins",
+    "description": "Lets plugins without a Timon signature load, such as one you are writing yourself. Signed plugins load either way.",
+    "warning": "A plugin runs inside the Timon daemon, with the rights of the system account that runs it. Turn this on only for code you wrote or have read.",
+    "turnedOn": "Developer mode is on: unsigned plugins now load.",
+    "turnedOff": "Developer mode is off: unsigned plugins no longer load.",
+    "blocked": {
+      "fixed": "Your licence includes a fixed plugin composition, so developer mode cannot be turned on."
+    },
+    "forbidden": "Only the superadmin can change developer mode.",
+    "loadError": "Developer mode could not be read. Try again.",
+    "errors": {
+      "unauthenticated": "Your session has expired. Sign in again.",
+      "forbidden": "Only the superadmin, signed in to the app, can change developer mode.",
+      "generic": "Developer mode could not be changed (HTTP {status})."
+    }
+  },
   "pluginsPage": {
     "kind": {
       "widget": "Widget",
@@ -275,6 +292,18 @@
       "manifestRefused": "Timon cannot use this plugin: {reason}",
       "nodeEngineRefused": "This plugin does not run on the Node this Timon uses: {reason}",
       "tamperedHint": "The files no longer match their signature: this package was modified after it was signed. It cannot be installed.",
+      "developerMode": {
+        "title": "Developer mode is off",
+        "body": "This package has no Timon signature. It can be installed, but it will not load until developer mode is turned on.",
+        "enable": "Turn on developer mode",
+        "openSettings": "Open developer mode settings"
+      },
+      "unsignedConfirm": {
+        "title": "Install {name} without a signature?",
+        "body": "This package is not signed and its publisher is not verified. Once installed, its code runs inside the Timon daemon with the rights of your system account.",
+        "bodyOff": "This package is not signed and its publisher is not verified. It will not load while developer mode is off; once the mode is on, its code runs inside the Timon daemon with the rights of your system account.",
+        "confirm": "Install anyway"
+      },
       "permissions": "Asks for",
       "permissionsNone": "no permission",
       "webhooks": "Webhooks",

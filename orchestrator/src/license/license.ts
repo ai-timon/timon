@@ -141,6 +141,11 @@ export type LicenseState = {
   lifetime: boolean;
   modules: readonly string[] | '*';
   plugins: readonly string[] | '*';
+  /** Signed feature entitlements (`features` claim), exact strings, never a
+   *  wildcard. Optional because a state built before the daemon read the claim
+   *  (a test helper, a remote snapshot) has none: absent means no feature,
+   *  which is the safe reading. Internal: `publicState` never hands it out. */
+  features?: readonly string[];
   /** How many app user profiles this machine may hold (`users` claim), `null`
    *  for unlimited on paid legacy claims. Free allows one superadmin; surplus
    *  accounts keep their rows but lose access until paid rights return. */
@@ -172,7 +177,7 @@ export const unlicensed = (reason: LicenseReason): LicenseState => ({
   status: 'unlicensed', reason, edition: 'expert', plan: 'Free', planId: 'free', lifetime: true,
   // Every module and every plugin: Free withholds only additional accounts,
   // the axis kept for paid offers (the maintainer's decision, 03/11/2026).
-  localFree: true, modules: '*', plugins: '*', users: 1,
+  localFree: true, modules: '*', plugins: '*', features: [], users: 1,
   capabilities: { version: 1, plugins: 'extensible', accounts: 'single-superadmin' },
   expiresAt: null, subscriptionExpiresAt: null, paymentStatus: 'active', offlineSince: null,
 });
@@ -218,7 +223,7 @@ function rightsOf(state: LicenseState): string {
   const caps = state.capabilities;
   return JSON.stringify([
     state.status, state.edition, state.plan, state.planId ?? null, state.licenseId ?? null,
-    state.lifetime, state.modules, state.plugins, state.users,
+    state.lifetime, state.modules, state.plugins, [...(state.features ?? [])].sort(), state.users,
     caps ? [caps.version, caps.plugins, caps.accounts] : null,
     state.expiresAt, state.subscriptionExpiresAt, state.paymentStatus,
   ]);
@@ -323,6 +328,7 @@ export function verifyLicenseToken(token: string, opts: VerifyOptions = {}): Lic
     // is a mapping nobody maintains.
     modules: claims.modules,
     plugins: claims.plugins,
+    features: [...claims.features],
     users: claims.users ?? null,
     ...(claims.capabilities ? { capabilities: claims.capabilities } : {}),
     expiresAt: new Date(claims.exp * 1000).toISOString(),

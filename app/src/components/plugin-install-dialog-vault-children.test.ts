@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { toast } from 'sonner';
+import { answerConfirmsForTests } from './confirm-dialog/confirm-dialog-context';
 
 /**
  * The install sheet of a bundle whose children name secrets and hosts (TODO
@@ -105,7 +106,10 @@ const untouched = (id: string) => ({
 });
 
 test('bundle sheet: each child has its own boxes, by id, and every line of every child goes back as shown', async () => {
-  await withDom(async ({ React, root, dialog }) => {
+  // acme-chat is unsigned: every Install asks first, and the lines must come through the yes intact.
+  const asked: string[] = [];
+  answerConfirmsForTests((request) => { asked.push(request.title); return true; });
+  try { await withDom(async ({ React, root, dialog }) => {
     const { PluginInstallDialog } = await import('./plugin-install-dialog');
     const calls: Array<{ vault?: Consent; children: ChildConsent }> = [];
     const render = (p: Preview) => React.act(async () => root.render(React.createElement(PluginInstallDialog, {
@@ -129,6 +133,7 @@ test('bundle sheet: each child has its own boxes, by id, and every line of every
     assert.ok(!box(mail, 'data-secret', 'ACME_OLD') && !box(mail, 'data-host', 'example.org'), 'no box where nothing can be granted');
 
     await React.act(async () => button(sheet, 'Install').click());
+    assert.deepEqual(asked, ['Install Acme bundle without a signature?'], 'an unsigned child: Install asks before anything goes back');
     assert.deepEqual(calls[0]?.children, [untouched('acme-mail'), untouched('acme-chat')], 'unticked, every line still goes back');
 
     await React.act(async () => box(mail, 'data-secret', 'ACME_TOKEN')!.click());
@@ -154,7 +159,10 @@ test('bundle sheet: each child has its own boxes, by id, and every line of every
     assert.equal(box(inChild(dialog(), 'acme-mail'), 'data-secret', 'ACME_TOKEN')?.checked, false);
     await React.act(async () => button(dialog(), 'Install').click());
     assert.deepEqual(calls[2]?.children, [untouched('acme-mail'), untouched('acme-chat')]);
-  });
+    assert.equal(asked.length, 3, 'one question per Install');
+  }); } finally {
+    answerConfirmsForTests(null);
+  }
 });
 
 test('bundle sheet: kept, unreadable, unresolved and altered children say why nothing is asked, with no box and no line sent', async () => {

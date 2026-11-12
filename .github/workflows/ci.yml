@@ -1,11 +1,14 @@
-# Checks every pull request and every push to main, on the three systems Timon
-# ships to. No secret is used: the jobs build and test only.
+# Checks every pull request on Linux, the system that gates the merge, and every
+# push to main on the three systems Timon ships to; a manual run (Actions tab,
+# "Run workflow") tests a branch on the three. No secret is used: the jobs build
+# and test only.
 name: CI
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -24,7 +27,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # A pull request waits on Linux only: macOS and Windows do not block a
+        # merge, and they held the slowest runners on every pull request.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
         # The daemon suite alone takes about 25 minutes on a hosted runner, close
         # to the 30 minutes run-tests.mjs allows a whole suite: it runs in two
         # halves (`node --test --test-shard`), beside the web app suite, each

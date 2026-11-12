@@ -33,7 +33,7 @@ export const SETTINGS_CATEGORY_IDS: readonly SettingsCategoryId[] = [
 ];
 
 /** Device-local panes: no row in the settings table. */
-export type NativePaneId = 'language' | 'push' | 'voice' | 'webui' | 'desktop' | 'installation' | 'instructions' | 'preamble' | 'fallback' | 'secrets' | 'connections' | 'accounts' | 'devices';
+export type NativePaneId = 'language' | 'push' | 'voice' | 'webui' | 'desktop' | 'installation' | 'instructions' | 'preamble' | 'fallback' | 'secrets' | 'connections' | 'accounts' | 'devices' | 'developer';
 
 type Placement = { category: SettingsCategoryId; tab: string };
 
@@ -105,7 +105,11 @@ export const STATIC_TABS: Readonly<Record<SettingsCategoryId, readonly StaticTab
     // Per-account plugin connections: every signed-in user has some to manage.
     { id: 'connections', kind: 'native', pane: 'connections' },
   ],
-  plugins: [],
+  plugins: [
+    // Developer mode, the door unsigned plugins go through: superadmin only,
+    // like the installation itself.
+    { id: 'developer', kind: 'native', pane: 'developer' },
+  ],
 };
 
 const GROUP_PLACEMENT: Readonly<Record<string, Placement>> = {
@@ -279,7 +283,7 @@ export function buildSettingsLayout(input: SettingsLayoutInput): SettingsCategor
       } else if (tab.kind === 'native') {
         if (tab.pane === 'desktop' && !input.desktop) continue;
         if (tab.pane === 'secrets' && !input.secrets) continue;
-        if (tab.pane === 'installation' && !input.superadmin) continue;
+        if ((tab.pane === 'installation' || tab.pane === 'developer') && !input.superadmin) continue;
         tabs.push({ id: tab.id, kind: 'native', pane: tab.pane, grafts });
       } else {
         const plugin = pluginById.get(tab.pluginId);

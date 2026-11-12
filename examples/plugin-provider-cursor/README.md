@@ -34,7 +34,7 @@ Cursor history). None is written in this plugin.
 
 ## Install
 
-The package is **unsigned**, so loading it needs a valid Timon licence and `developer.unsignedPlugins: true` in
+The package is **unsigned**, so loading it needs developer mode, `developer.unsignedPlugins: true` in
 `timon.config.json` (see the [testing guide](../../public-docs/docs/plugins/testing.md)). Then, from a terminal:
 
 ```bash
