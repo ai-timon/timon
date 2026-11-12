@@ -18,6 +18,7 @@ const { licenseState, setLicenseState } = await import('./license/runtime.js');
 const { deviceId } = await import('./license/device.js');
 const { readLicenseStore, writeLicenseStore } = await import('./license/store.js');
 const { bus } = await import('./bus.js');
+const { whiteLabelAllowed } = await import('./license/capabilities.js');
 const { LICENSE_FILE } = await import('./paths.js');
 
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/token-claims.json', import.meta.url), 'utf8')) as {
@@ -93,6 +94,26 @@ test('renew réussi : nouveau jeton installé, contact enregistré, aucune notif
   assert.equal(readLicenseStore().lastContact, clock);
   assert.equal(readLicense(LICENSE_FILE, { keys, device: DEVICE, now: new Date(nowMs()) }).status, 'valid');
   assert.equal(notices.length, 0);
+});
+
+test('a renewal that only adds or withdraws `whitelabel` recomposes the daemon', async () => {
+  activated();
+  const features = base.features as string[];
+  const recomposed = { n: 0 };
+  clock += 600;
+  const grant = loop([{ status: 200, body: { token: token(clock, { features: [...features, 'whitelabel'] }), refresh: { every: 300, offlineHours: 24 } } }], recomposed);
+  await grant.refresh.tick();
+  assert.equal(recomposed.n, 1, 'the loader must re-read the right');
+  assert.equal(whiteLabelAllowed(licenseState()), true);
+  clock += 600;
+  const same = loop([{ status: 200, body: { token: token(clock, { features: [...features, 'whitelabel'] }), refresh: { every: 300, offlineHours: 24 } } }], recomposed);
+  await same.refresh.tick();
+  assert.equal(recomposed.n, 1, 'an identical renewal changes nothing');
+  clock += 600;
+  const withdraw = loop([{ status: 200, body: { token: token(clock), refresh: { every: 300, offlineHours: 24 } } }], recomposed);
+  await withdraw.refresh.tick();
+  assert.equal(recomposed.n, 2);
+  assert.equal(whiteLabelAllowed(licenseState()), false);
 });
 
 test('403 revoked : la licence s\'éteint sur-le-champ, bus + notification + recomposition', async () => {

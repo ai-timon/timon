@@ -194,7 +194,7 @@ export const UiSchema = z.object({
 
 export const DeveloperSchema = z.object({
   /** Unset = resolved by `unsignedPluginsAllowed()` against the key registry, closed since it holds a key. */
-  unsignedPlugins: z.boolean().optional().describe("Allows unsigned plugins when `true`; requires a valid licence. Unset refuses them."),
+  unsignedPlugins: z.boolean().optional().describe("Developer mode: allows unsigned plugins when `true`, on Free as on a paid licence; a licence with a fixed plugin composition still refuses them. Unset or `false` refuses them."),
 });
 
 /**

@@ -1,5 +1,6 @@
 # Asks the author of a pull request to sign CLA.md once, by a comment.
 # Signatures are stored in this repository, on the `cla-signatures` branch.
+# ai-timon-admin is the account of the rights holder: it has nothing to sign.
 name: CLA
 
 on:
@@ -29,7 +30,7 @@ jobs:
           path-to-signatures: signatures/cla.json
           path-to-document: https://github.com/ai-timon/timon/blob/main/CLA.md
           branch: cla-signatures
-          allowlist: dependabot[bot],github-actions[bot]
+          allowlist: ai-timon-admin,dependabot[bot],github-actions[bot]
           custom-notsigned-prcomment: >-
             Thank you for your pull request. Before we can merge it, please read the
             [Contributor Licence Agreement](https://github.com/ai-timon/timon/blob/main/CLA.md)

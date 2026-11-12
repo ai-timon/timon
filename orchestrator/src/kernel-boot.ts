@@ -101,6 +101,7 @@ import { applyLicensedSurfaces } from './kernel/routes/license.js';
 import { effectiveEdition } from './license/license.js';
 import { bootLicenseState, startLicenseRefresh } from './license/refresh.js';
 import { licenseState, setLicenseState } from './license/runtime.js';
+import { whiteLabelAllowed } from './license/capabilities.js';
 import { createBetaGate } from './license/beta-gate.js';
 import { createMcpRelayMiddleware } from './mcp-relay-server.js';
 import { kernelBootSummary, pluginFailureNotification } from './kernel/boot-report.js';
@@ -230,6 +231,9 @@ export async function boot(opts: { listen?: boolean; catalog?: readonly ModuleDe
       // licensed by a fresher token lights up on the next `loader.update()` —
       // which the license route now triggers — instead of at next restart.
       licensedPlugins: () => licenseState().plugins,
+      // Live as well: a renewal that adds or withdraws the right recomposes
+      // the tree, and the layout follows without a restart.
+      whiteLabelAllowed: () => whiteLabelAllowed(licenseState()),
       // Shipped with the product: re-resolved (and, packaged, re-checked
       // against the verified release manifest) on every recomposition.
       builtins: () => resolveBuiltins(),

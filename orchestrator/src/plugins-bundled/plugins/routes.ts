@@ -7,6 +7,7 @@
  * `/api/plugins/:id/-/webhooks…` — the plugin's incoming webhooks: status,
  *   secret generation (shown once), end of a rotation.
  * `/api/plugins/-/install/…` — install from the gallery (`install-routes.ts`).
+ * `/api/plugins/-/developer` — the developer-mode switch (`developer-routes.ts`).
  *
  * This is not a boundary: anyone who reaches the daemon reads these
  * routes, like the rest of `/api`. They expose what the loader
@@ -17,6 +18,7 @@ import type { Request, Router } from 'express';
 import { z } from 'zod';
 import { bundleRouter } from '../../plugins/bundles.js';
 import { registerInstallRoutes } from './install-routes.js';
+import { registerDeveloperModeRoutes } from './developer-routes.js';
 import { registerProviderRoutes } from './provider-routes.js';
 import { registerAcpRegistryRoutes } from './acp-registry-routes.js';
 import { coverRouter } from '../../plugins/covers.js';
@@ -85,8 +87,9 @@ function visiblePlugin(req: Request, id: string) {
 }
 
 export function registerRoutes(router: Router): void {
-  // First: `/api/plugins/-/install/...` must never reach a `:id` route.
+  // First: `/api/plugins/-/...` must never reach a `:id` route.
   registerInstallRoutes(router);
+  registerDeveloperModeRoutes(router);
   registerProviderRoutes(router);
   registerAcpRegistryRoutes(router);
 

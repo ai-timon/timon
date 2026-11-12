@@ -38,7 +38,7 @@ const ENDED: readonly LicenseReason[] = ['expired', 'revoked', 'deactivated'];
 export function betaLocked(reason: LicenseReason): LicenseState {
   return {
     status: 'unlicensed', reason, edition: 'lite', plan: null, lifetime: false,
-    localFree: false, modules: [], plugins: [], users: 0,
+    localFree: false, modules: [], plugins: [], features: [], users: 0,
     capabilities: { version: 1, plugins: 'fixed', accounts: 'single-superadmin' },
     expiresAt: null, subscriptionExpiresAt: null, paymentStatus: 'active', offlineSince: null,
   };

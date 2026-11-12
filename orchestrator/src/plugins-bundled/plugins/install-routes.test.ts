@@ -61,7 +61,7 @@ function sign(dir: string): void {
 // ── Packages on the "PC" (outside the Timon home) ─────────────────────────
 const PC = mkdtempSync(join(tmpdir(), 'timon-pc-'));
 let serial = 0;
-function pluginFolder(opts: { signed?: boolean; name?: string; id?: string } = {}): string {
+function pluginFolder(opts: { signed?: boolean; name?: string; id?: string; timon?: Record<string, unknown> } = {}): string {
   const n = ++serial;
   const dir = join(PC, `plugin-${n}`);
   mkdirSync(dir, { recursive: true });
@@ -72,6 +72,7 @@ function pluginFolder(opts: { signed?: boolean; name?: string; id?: string } = {
     timon: {
       id: opts.id ?? `acme-demo-${n}`, apiVersion: 1, kind: 'behavior', label: `Demo ${n}`,
       description: 'A demo plugin', author: 'Acme', icon: 'icon.svg', permissions: ['usage:read'],
+      ...opts.timon,
     },
   }));
   writeFileSync(join(dir, 'index.js'), 'throw new Error("must never run during a preview");\n');
@@ -199,6 +200,25 @@ test('the install routes are not swallowed by `/api/plugins/:id`', async () => {
   const res = await call('GET', '/candidates');
   assert.equal(res.status, 200);
   assert.ok(Array.isArray(res.json.candidates));
+});
+
+test('confirm: a layout held back for White Label is installed but said not to load', async () => {
+  const { setLicenseState, licenseState } = await import('../../license/runtime.js');
+  const before = licenseState();
+  try {
+    for (const [features, ok] of [[[], false], [['whitelabel'], true]] as const) {
+      setLicenseState({ ...before, features });
+      const dir = pluginFolder({ timon: { kind: 'layout', client: { slots: ['root'] } } });
+      const preview = await call('POST', '/upload', tgzOf(dir));
+      assert.equal(preview.status, 201, preview.text);
+      const done = await call('POST', '/confirm', { token: preview.json.token, confirm: true });
+      assert.equal(done.status, 200, done.text);
+      assert.equal(done.json.ok, ok, JSON.stringify(features));
+      assert.equal(done.json.refused, ok ? null : 'skipped:unlicensed');
+    }
+  } finally {
+    setLicenseState(before);
+  }
 });
 
 test('upload: a signed archive is previewed, then installed only on confirmation', async () => {

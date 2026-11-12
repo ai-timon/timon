@@ -163,6 +163,9 @@ export function startLicenseRefresh(deps: RefreshDeps): LicenseRefresh {
       || JSON.stringify(before.modules) !== JSON.stringify(after.modules)
       || JSON.stringify(before.plugins) !== JSON.stringify(after.plugins)
       || JSON.stringify(before.capabilities) !== JSON.stringify(after.capabilities)
+      // A token that only adds or withdraws a feature (White Label) must still
+      // recompose: the plugin loader reads it to admit a layout.
+      || JSON.stringify(before.features ?? []) !== JSON.stringify(after.features ?? [])
       || before.users !== after.users || before.plan !== after.plan || before.planId !== after.planId;
     if (!changed) return;
     if (after.status === 'valid' && before.status !== 'valid') void clearLicenseAlerts();

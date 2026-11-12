@@ -162,6 +162,16 @@ test('desktop tab only in the desktop client', () => {
   assert.equal(tabIds(buildSettingsLayout(input()), 'system').includes('desktop'), false);
 });
 
+test('developer mode tab only for the superadmin, first under Plugins', () => {
+  const plugins = [{ id: '@acme/job', origin: 'occupant' as const, label: 'Job' }];
+  assert.deepEqual(tabIds(buildSettingsLayout(input({ superadmin: true, rows: [], plugins })), 'plugins'), ['developer', '@acme/job']);
+  assert.deepEqual(tabIds(buildSettingsLayout(input({ rows: [], plugins })), 'plugins'), ['@acme/job']);
+  // A superadmin with no plugin settings still reaches the switch.
+  const bare = buildSettingsLayout(input({ superadmin: true, rows: [], plugins: [] }));
+  assert.deepEqual(tabIds(bare, 'plugins'), ['developer']);
+  assert.equal(buildSettingsLayout(input({ rows: [], plugins: [] })).some((c) => c.id === 'plugins'), false);
+});
+
 test('installation tab only for the superadmin, first under System', () => {
   assert.deepEqual(tabIds(buildSettingsLayout(input({ superadmin: true })), 'system'), ['installation', 'diagnostics']);
   assert.equal(tabIds(buildSettingsLayout(input()), 'system').includes('installation'), false);

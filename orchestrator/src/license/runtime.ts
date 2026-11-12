@@ -15,6 +15,7 @@ const copy = (state: LicenseState): LicenseState => ({
   ...(state.capabilities ? { capabilities: { ...state.capabilities } } : {}),
   modules: state.modules === '*' ? '*' : [...state.modules],
   plugins: state.plugins === '*' ? '*' : [...state.plugins],
+  ...(state.features ? { features: [...state.features] } : {}),
 });
 
 /**
