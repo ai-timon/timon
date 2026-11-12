@@ -824,6 +824,14 @@ function kindMismatch(manifest: PluginManifest): string | null {
   const mascot = mascotMismatch(manifest);
   if (mascot) return mascot;
 
+  // The reverse of `KIND_SLOT.layout`: `root` is the whole interface, and only
+  // a layout may ask for it. Without this rule a `behavior` or a `page` naming
+  // `root` would replace the shell for everyone, with no choice in the
+  // appearance settings and around the licence right a layout needs.
+  if (slots.includes('root') && !kinds.includes('layout')) {
+    return '`client.slots` names `root` but `kind` is not `layout` — only a layout replaces the whole interface.';
+  }
+
   if (kinds.includes('page')) {
     if (!manifest.route) return '`kind: page` without `route` — a page is mounted by its route.';
   } else if (manifest.route) {

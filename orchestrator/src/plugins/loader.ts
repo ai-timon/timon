@@ -309,6 +309,20 @@ export function configuredPlugins(file: string = CONFIG_FILE): Record<string, Mo
  * marker part of `signature()` below — writing or clearing provenance would
  * then remount a perfectly running plugin.
  */
+/**
+ * Does this plugin replace the whole interface? Read on both fields: the
+ * manifest already refuses `root` outside a layout, and checking the two
+ * keeps the licence gate shut should either rule ever loosen.
+ */
+export function requestsRoot(manifest: Pick<PluginManifest, 'kind' | 'client'>): boolean {
+  return manifest.kind.includes('layout') || (manifest.client?.slots.includes('root') ?? false);
+}
+
+/** What the loader, the gallery and `timon plugin list` say of a layout refused for want of the right. */
+export function whiteLabelRefusal(id: string): string {
+  return `plugin \`${id}\` replaces the whole interface, which needs a licence that includes White Label`;
+}
+
 function settingOf(v: ModuleSetting | undefined, offByDefault = false): { enabled: boolean; config: Record<string, unknown> } {
   if (v === undefined || v === 'auto') return { enabled: !offByDefault, config: {} };
   if (typeof v === 'boolean') return { enabled: v, config: {} };
@@ -361,6 +375,13 @@ export type PluginLoaderOptions = {
   allowUnsigned?: () => boolean;
   /** Allowlist from the license verified before boot. */
   licensedPlugins?: () => readonly string[] | '*';
+  /**
+   * Whether the licence in force carries the White Label right, re-read on
+   * every update so losing it while the daemon runs unmounts the layout.
+   * Absent means `false`: replacing the whole interface is never open by
+   * default.
+   */
+  whiteLabelAllowed?: () => boolean;
   /**
    * Plugins shipped with the product, re-resolved on every update so a file
    * altered while the daemon runs loses its trust. The daemon passes
@@ -517,6 +538,13 @@ export class PluginLoader {
       if (!trusted && fixedComposition(licenseState())) {
         await this.unmount(id);
         records.push({ ...base, state: 'skipped', reason: 'skipped:unlicensed', error: 'This licence has a fixed bundled composition; external plugins cannot run.' });
+        continue;
+      }
+      // Before the signature admission on purpose: developer mode lets an
+      // unsigned package through, and must not open the whole interface with it.
+      if (!trusted && requestsRoot(d.manifest) && !(this.opts.whiteLabelAllowed?.() ?? false)) {
+        await this.unmount(id);
+        records.push({ ...base, state: 'skipped', reason: 'skipped:unlicensed', error: whiteLabelRefusal(id) });
         continue;
       }
       if (!trusted && d.manifest.license.required) {

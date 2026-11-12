@@ -30,11 +30,13 @@ const TONE: Record<'ok' | 'warn' | 'danger', string> = {
   danger: 'text-destructive',
 };
 
-export function PluginInstallChildren({ items, allowed, vaultTicks, busy, onAllow, onVaultTick }: {
+export function PluginInstallChildren({ items, allowed, vaultTicks, busy, unsignedLoads, onAllow, onVaultTick }: {
   items: readonly BundleChildPreview[];
   allowed: Readonly<Record<string, boolean>>;
   vaultTicks: Readonly<Record<string, VaultTicks>>;
   busy: boolean;
+  /** Developer mode as the daemon applies it now (`signatureSummary`). */
+  unsignedLoads?: boolean;
   onAllow: (id: string, allow: boolean) => void;
   onVaultTick: (id: string, ticks: VaultTicks) => void;
 }): ReactElement | null {
@@ -49,6 +51,7 @@ export function PluginInstallChildren({ items, allowed, vaultTicks, busy, onAllo
           allow={allowed[child.id] === true}
           vaultTicks={vaultTicks}
           busy={busy}
+          unsignedLoads={unsignedLoads}
           onAllow={onAllow}
           onVaultTick={onVaultTick}
         />
@@ -57,11 +60,12 @@ export function PluginInstallChildren({ items, allowed, vaultTicks, busy, onAllo
   );
 }
 
-function Child({ child, allow, vaultTicks, busy, onAllow, onVaultTick }: {
+function Child({ child, allow, vaultTicks, busy, unsignedLoads, onAllow, onVaultTick }: {
   child: BundleChildPreview;
   allow: boolean;
   vaultTicks: Readonly<Record<string, VaultTicks>>;
   busy: boolean;
+  unsignedLoads?: boolean;
   onAllow: (id: string, allow: boolean) => void;
   onVaultTick: (id: string, ticks: VaultTicks) => void;
 }): ReactElement {
@@ -69,7 +73,7 @@ function Child({ child, allow, vaultTicks, busy, onAllow, onVaultTick }: {
   const tampered = child.signature?.state === 'tampered';
   const decl = lands ? readDictationDecl(child.dictation) : null;
   const voice = decl ? declarationLines(decl) : [];
-  const signature = child.signature ? signatureSummary(child.signature) : null;
+  const signature = child.signature ? signatureSummary(child.signature, unsignedLoads) : null;
   const named = childAsksVault(child) && !tampered ? child : null;
   const ticks = named ? childVaultTicks(named, vaultTicks) : null;
   // The daemon's Node is too old for it (TODO #794): it lands, but asks nothing.

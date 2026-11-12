@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isLocalDaemonUrl, resolveApiUrl } from '../bin/cli-api.mjs';
+import { PACKAGED_DAEMON_PORT, isLocalDaemonUrl, resolveApiUrl } from '../bin/cli-api.mjs';
+import { PACKAGED_PORTS } from './host/service-environment.js';
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-cli-daemon-test-'));
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
@@ -118,6 +119,26 @@ test('API resolution respects overrides, config, bootstrap and legacy fallback',
   assert.equal(resolveApiUrl(home, 'https://env.example', 'https://profile.example'), 'https://profile.example');
   assert.equal(resolveApiUrl(home, 'https://env.example'), 'https://env.example');
   assert.equal(resolveApiUrl(freshHome()), 'http://localhost:3000');
+});
+
+test('a packaged CLI without config or bootstrap reaches the port its service was given', () => {
+  // A server installed from a terminal: `timon service install` gave the
+  // service the first-launch port, and no desktop ever wrote a bootstrap.
+  assert.equal(PACKAGED_DAEMON_PORT, PACKAGED_PORTS.daemon);
+  const home = freshHome();
+  assert.equal(resolveApiUrl(home, undefined, undefined, { packaged: true }), `http://127.0.0.1:${PACKAGED_PORTS.daemon}`);
+  assert.equal(resolveApiUrl(home), 'http://localhost:3000', 'a source checkout keeps the schema default');
+  writeFileSync(join(home, 'desktop-bootstrap.json'), JSON.stringify({ daemonPort: 3020, appPort: 3120 }));
+  assert.equal(resolveApiUrl(home, undefined, undefined, { packaged: true }), 'http://127.0.0.1:3020');
+  const configured = freshHome();
+  // Once a config file exists the service no longer gets first-launch ports.
+  writeFileSync(join(configured, 'timon.config.json'), JSON.stringify({ edition: 'expert' }));
+  assert.equal(resolveApiUrl(configured, undefined, undefined, { packaged: true }), 'http://localhost:3000');
+  assert.equal(resolveApiUrl(home, 'https://env.example', undefined, { packaged: true }), 'https://env.example');
+  // The daemon token follows: the packaged port is this machine's daemon.
+  const fresh = freshHome();
+  assert.equal(isLocalDaemonUrl(fresh, `http://127.0.0.1:${PACKAGED_PORTS.daemon}`, { packaged: true }), true);
+  assert.equal(isLocalDaemonUrl(fresh, `http://127.0.0.1:${PACKAGED_PORTS.daemon}`), false);
 });
 
 test('API resolution silently skips malformed files and invalid ports', () => {

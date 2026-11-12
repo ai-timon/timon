@@ -110,6 +110,25 @@ function kindsOf(plugin: PublicPlugin): readonly string[] {
   return Array.isArray(plugin.kind) ? plugin.kind : [];
 }
 
+/** Asks for the whole interface: a layout, or a half naming the `root` slot. */
+function requestsRoot(plugin: PublicPlugin): boolean {
+  return kindsOf(plugin).includes('layout') || (plugin.client?.slots.includes('root') ?? false);
+}
+
+/**
+ * May this half occupy `root`? Only a layout, and any layout other than the
+ * product's only under a licence that includes White Label (`whitelabel` in
+ * the capabilities). The daemon already refuses it otherwise; this is the
+ * second barrier, for a daemon that would not (an older remote machine).
+ * `builtin` grants nothing here: the daemon sets it for any package found in
+ * a built-in location, even one the release manifest does not vouch for, so
+ * a layout dropped there would otherwise take `root` without the right.
+ */
+export function rootAllowed(plugin: PublicPlugin, whitelabel: boolean): boolean {
+  if (!kindsOf(plugin).includes('layout')) return false;
+  return plugin.id === PRODUCT_LAYOUT_PLUGIN || whitelabel;
+}
+
 /**
  * Active client halves that this tab should import.
  *
@@ -117,10 +136,13 @@ function kindsOf(plugin: PublicPlugin): readonly string[] {
  * unauthorized bundles). Themes and layouts: only the product fallback if
  * it is active, plus the chosen plugin if it differs, is active, and has
  * the matching kind. An invalid choice is silent — the fallback stays.
- * MULTI-THEME.md §5 / T.4.
+ * MULTI-THEME.md §5 / T.4. A half that asks for `root` without the right
+ * to it is never imported, chosen or not: `prefs.layout` keeps the choice
+ * for the day the right comes back.
  */
-export function isClientPluginWanted(plugin: PublicPlugin, prefs: ChromePrefs): boolean {
+export function isClientPluginWanted(plugin: PublicPlugin, prefs: ChromePrefs, whitelabel = false): boolean {
   if (plugin.state !== 'active' || !plugin.client) return false;
+  if (requestsRoot(plugin) && !rootAllowed(plugin, whitelabel)) return false;
   const kinds = kindsOf(plugin);
   const isTheme = kinds.includes('theme');
   const isLayout = kinds.includes('layout');
@@ -130,8 +152,8 @@ export function isClientPluginWanted(plugin: PublicPlugin, prefs: ChromePrefs): 
   return false;
 }
 
-export function selectClientPlugins(plugins: readonly PublicPlugin[], prefs: ChromePrefs): PublicPlugin[] {
-  return plugins.filter((plugin) => isClientPluginWanted(plugin, prefs));
+export function selectClientPlugins(plugins: readonly PublicPlugin[], prefs: ChromePrefs, whitelabel = false): PublicPlugin[] {
+  return plugins.filter((plugin) => isClientPluginWanted(plugin, prefs, whitelabel));
 }
 
 function chromePrefsFromBody(body: unknown): ChromePrefs {
@@ -152,7 +174,7 @@ async function readChromePrefs(response: Response | null): Promise<ChromePrefs> 
   }
 }
 
-export function clientContext(id: string, declaredSlots: readonly string[], subscribeSse: typeof sseOn = sseOn, permissions: readonly string[] = []) {
+export function clientContext(id: string, declaredSlots: readonly string[], subscribeSse: typeof sseOn = sseOn, permissions: readonly string[] = [], mayOccupyRoot = false) {
   // What the browser checks on its own (`browser:control`), for this load only.
   const effects: Array<() => void> = [grantClientPermissions(id, permissions)];
   const effect = (setup: () => void | (() => void)): void => {
@@ -180,6 +202,9 @@ export function clientContext(id: string, declaredSlots: readonly string[], subs
         Component?: ComponentType,
       ): () => void {
         if (!isSlotAdmissible(declaredSlots, options.slot)) throw slotAdmissionError(id, options.slot, declaredSlots);
+        if (options.slot === 'root' && !mayOccupyRoot) {
+          throw new Error(`Plugin ${id} is not allowed in slot root: replacing the whole interface is reserved to a layout, under a licence that includes White Label.`);
+        }
         const dispose = register({ ...options, pluginId: id }, Component);
         effects.push(dispose);
         return dispose;
@@ -261,14 +286,21 @@ async function syncClientPluginPass(epoch: number): Promise<void> {
   recordDictationDeclarations(plugins);
   // Same for a mascot pack: its drawings are admitted against its manifest.
   recordMascotDeclarations(plugins);
-  const wanted = new Map(selectClientPlugins(plugins, prefs).map((p) => [p.id, p]));
+  // Read fresh, and only when a half asks for the whole interface: when the
+  // right comes back, the `plugins_changed` that brought this pass also left
+  // the cached capabilities behind, and the layout would wait for their TTL.
+  const whitelabel = plugins.some((p) => requestsRoot(p) && p.id !== PRODUCT_LAYOUT_PLUGIN)
+    ? (await fetchCapabilities(true))?.whitelabel === true
+    : false;
+  if (epoch !== syncEpoch) return;
+  const wanted = new Map(selectClientPlugins(plugins, prefs, whitelabel).map((p) => [p.id, p]));
   for (const [id, current] of loaded) {
     const next = wanted.get(id);
     if (!next?.client || next.client.rev !== current.rev) { current.dispose(); loaded.delete(id); }
   }
   for (const plugin of wanted.values()) {
     if (!plugin.client || loaded.has(plugin.id)) continue;
-    const context = clientContext(plugin.id, plugin.client.slots, sseOn, plugin.client.permissions ?? []);
+    const context = clientContext(plugin.id, plugin.client.slots, sseOn, plugin.client.permissions ?? [], rootAllowed(plugin, whitelabel));
     try {
       const url = `/api/ui/plugin-bundles/${encodeURIComponent(plugin.id)}?rev=${encodeURIComponent(plugin.client.rev)}`;
       const module = await loadClientModule(url);

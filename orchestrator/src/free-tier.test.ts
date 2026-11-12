@@ -132,7 +132,7 @@ test('Free signed policy and all local admission boundaries', async (t) => {
     assert.equal(ran, false); assert.equal(existsSync(dir), false);
     assert.throws(() => setPluginEnabled('external', true), LicenseCapabilityError);
     assert.throws(() => setModuleEnabled('@timon/vault', false), LicenseCapabilityError);
-    assert.equal(unsignedPluginsAllowed(true, { keys: [], licensed: true }), false);
+    assert.equal(unsignedPluginsAllowed(true, { keys: [] }), false);
     const r = await call('/api/plugins/%40timon%2Fvault/enabled', { enabled: false });
     assert.equal(r.status, 403); assert.equal(r.body.error, 'plugin_composition_fixed');
   });
@@ -155,7 +155,7 @@ test('Free signed policy and all local admission boundaries', async (t) => {
     assert.doesNotThrow(() => setModuleEnabled('@timon/vault', false));
     assert.doesNotThrow(() => setModuleEnabled('@timon/vault', true));
     assert.doesNotThrow(() => setPluginEnabled('external', true));
-    assert.equal(unsignedPluginsAllowed(true, { keys: [], licensed: true }), true);
+    assert.equal(unsignedPluginsAllowed(true, { keys: [] }), true);
     const r = await call('/api/plugins/%40timon%2Fvault/enabled', { enabled: false });
     assert.notEqual(r.body.error, 'plugin_composition_fixed');
     fixedPaid();
@@ -191,6 +191,37 @@ test('Free signed policy and all local admission boundaries', async (t) => {
     assert.equal(signedRecords[0].reason, 'skipped:unlicensed', 'a valid signature is not a commercial grant');
     await signedLoader.dispose();
     await loader.dispose();
+  });
+  await t.test('Free mounts a plugin without SIGNATURE once developer.unsignedPlugins is true, and only then', async () => {
+    // Free is `unlicensed` + `localFree`, never `valid`: until 10/11/2026 the
+    // admission gate read `status === 'valid'` and no Free user could load a
+    // plugin they wrote themselves (the maintainer's decision of that day).
+    activateFree();
+    assert.equal(licenseState().status, 'unlicensed');
+    assert.equal(licenseState().localFree, true);
+    const dir = join(process.env.TIMON_HOME!, 'free-dev');
+    const pkg = join(dir, 'node_modules', 'free-dev-plugin'); mkdirSync(pkg, { recursive: true });
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { 'free-dev-plugin': '1' } }));
+    writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: 'free-dev-plugin', version: '1.0.0', type: 'module', main: 'index.js', timon: { id: 'free-dev-plugin', apiVersion: 1 } }));
+    writeFileSync(join(pkg, 'index.js'), 'export const name = "free-dev-plugin";\nexport function apply() { globalThis.__timonFreeDevMounted = true; }\n');
+    const marker = globalThis as { __timonFreeDevMounted?: boolean };
+    const ctx = new Context();
+    // A real key in the registry: an unset setting resolves closed, as shipped.
+    for (const setting of [undefined, false] as const) {
+      const closed = new PluginLoader(ctx, { dir, host: {} as import('./plugins/context.js').PluginHost, publicKeys: keys, allowUnsigned: () => unsignedPluginsAllowed(setting, { keys }), licensedPlugins: () => licenseState().plugins });
+      const [record] = await closed.update();
+      assert.equal(record.reason, 'skipped:unsigned', `setting ${String(setting)}`);
+      assert.equal(marker.__timonFreeDevMounted, undefined, 'refused before import');
+      await closed.dispose();
+    }
+    const open = new PluginLoader(ctx, { dir, host: {} as import('./plugins/context.js').PluginHost, publicKeys: keys, allowUnsigned: () => unsignedPluginsAllowed(true, { keys }), licensedPlugins: () => licenseState().plugins });
+    const [record] = await open.update();
+    assert.equal(record.state, 'active', record.error ?? '');
+    assert.equal(record.signed, false);
+    assert.equal(marker.__timonFreeDevMounted, true);
+    await open.dispose();
+    delete marker.__timonFreeDevMounted;
+    fixedPaid();
   });
   await t.test('Free grants every catalogue module and every plugin, machines included', async () => {
     const { CATALOG } = await import('./kernel/catalog.js');

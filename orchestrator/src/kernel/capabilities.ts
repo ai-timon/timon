@@ -27,6 +27,8 @@ import { capabilitiesReport, planEntries, type CapabilitiesReport, type EntryDec
 import { effectiveEdition } from '../license/license.js';
 import { bootLicenseState } from '../license/refresh.js';
 import { applyBuildPolicy } from '../license/build-policy.js';
+import { whiteLabelAllowed } from '../license/capabilities.js';
+import { licenseState } from '../license/runtime.js';
 import { isFirstRun } from '../setup.js';
 import { timonVersion } from '../data-version.js';
 
@@ -80,6 +82,10 @@ export type CapabilitiesPayload = CapabilitiesReport & {
    *  `timon.config.json` — the last step of the wizard waits for its restart. */
   restartOnboarding: boolean;
   beta: boolean;
+  /** Whether a layout plugin may replace the whole interface here. The only
+   *  licence detail the browser gets for it: neither the plan nor the signed
+   *  features, just the answer its second barrier needs. */
+  whitelabel: boolean;
 };
 
 /**
@@ -167,5 +173,7 @@ export function capabilitiesPayload(): CapabilitiesPayload {
     mainAgentOnboarding: mainAgentOnboardingPending(),
     restartOnboarding: restartOnboardingPending(),
     beta: setupPolicy() === 'beta',
+    // The state the plugin loader reads, so the two barriers never disagree.
+    whitelabel: whiteLabelAllowed(licenseState()),
   };
 }

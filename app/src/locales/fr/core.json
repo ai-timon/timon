@@ -1355,6 +1355,7 @@
       "plugins": "Plugins"
     },
     "tab": {
+      "plugins": { "developer": "Mode développeur" },
       "instructions": {
         "preamble": "Préambule Timon",
         "global": "Instructions globales"
@@ -1420,6 +1421,7 @@
     "countOne": "{count} résultat",
     "countOther": "{count} résultats",
     "tabKeywords": {
+      "plugins": { "developer": "mode développeur plugin non signé signature charger local confiance code developer unsigned" },
       "interface": {
         "appearance": "thème sombre clair mode couleurs palette apparence",
         "language": "langue locale français anglais english traduction",

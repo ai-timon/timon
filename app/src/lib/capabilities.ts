@@ -58,6 +58,9 @@ export type Capabilities = {
    *  process answers. */
   restartOnboarding?: boolean;
   beta?: boolean;
+  /** The licence on the daemon lets a layout plugin replace the whole
+   *  interface. Absent (an older daemon) reads as `false`. */
+  whitelabel?: boolean;
   /**
    * Surfaces this viewer may see (M.4). Absent or `{ all: true }` is the
    * historical unrestricted payload (first-run, superadmin, old daemon).

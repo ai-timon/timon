@@ -22,6 +22,7 @@ import { PluginSettingsPane } from '@/components/plugin-settings-sections';
 import { PluginWebhooksPane } from '@/components/plugin-webhooks-pane';
 import { PluginConnectionsSettings } from '@/components/settings/plugin-connections';
 import { DevicesSettings } from '@/components/settings/devices-settings';
+import { DeveloperModeSettings } from '@/components/settings/developer-mode-settings';
 import { LanguageSettings } from '@/components/settings/language-settings';
 import { PushToggle } from '@/components/push-toggle';
 import { VoiceDictationSettings } from '@/components/voice-dictation-settings';
@@ -533,6 +534,8 @@ function TabContent({
         return <PluginConnectionsSettings />;
       case 'devices':
         return <DevicesSettings />;
+      case 'developer':
+        return <DeveloperModeSettings />;
     }
   }
   return (

@@ -6,8 +6,8 @@ sidebar_position: 8.5
 A server that never sleeps (a VPS, a home server, a NAS) is the best home for agents that work while you are away: scheduled Kanban tasks, overnight series and long missions keep running whatever your own computer does. This page puts the pieces together: install Timon as a background service, reach it safely, keep it up to date, and drive it from the Timon you already use on your computer.
 
 :::tip The short version
-1. Install Timon on the server and run it as a service: `timon service install`, then `timon service status`.
-2. Create your account through an SSH tunnel, before opening any access ([step 0 of Remote access](remote-access.md#step-0-finish-the-first-run-through-an-ssh-tunnel)).
+1. Install Timon on the server, as the account that will own it: `curl -fsSL https://timon-ai.com/install.sh | sh`. On a Debian or Ubuntu server it installs the package and the background service.
+2. Create your account on the server, before opening any access: `timon init`.
 3. Publish it on your private Tailscale network with `tailscale serve`, over **HTTPS**.
 4. On your computer, turn on the **Machines** plugin and pair the server with a one-time code (`timon device pair` on the server prints one): the interface you already use switches to it in the same window. See [Machines](../usage/machines.md).
 5. To update, install the new package, then on the server: `timon update apply` (moves the service onto it), `timon update status`, and `timon update approve <daemon-version>`.
@@ -15,7 +15,15 @@ A server that never sleeps (a VPS, a home server, a NAS) is the best home for ag
 
 ## 1. Install and run as a service
 
-On a Debian or Ubuntu server, install the supplied deb package: it also installs the `timon` command. From an authorised source checkout, follow [Linux](linux.md#from-an-authorised-source-checkout). In both cases, the daemon runs as a service of the operating system's supervisor, not inside a window:
+On a Debian or Ubuntu server, in an SSH session as the account that will own Timon's data (not `root`):
+
+```bash
+curl -fsSL https://timon-ai.com/install.sh | sh
+```
+
+It installs the deb package (with the `timon` command), then the background service. Run as `root`, it installs the package only and asks you to install the service from the owner's account. `timon` on its own then shows where the installation stands and the next command to type.
+
+By hand, install the supplied deb package: it also installs the `timon` command. From an authorised source checkout, follow [Linux](linux.md#from-an-authorised-source-checkout). In both cases, the daemon runs as a service of the operating system's supervisor, not inside a window:
 
 ```bash
 timon service install --dry-run   # shows what will be installed
@@ -32,7 +40,17 @@ The AI providers' command-line tools (`claude`, `codex`…) and their sign-in li
 
 ## 2. Create your account first
 
-The web interface and the daemon only listen on the server itself (the loopback) until you decide otherwise. Create your administrator account through an SSH tunnel, which nobody else can use, **before** opening any other access:
+The web interface and the daemon only listen on the server itself (the loopback) until you decide otherwise. Create your administrator account **before** opening any other access. On the server:
+
+```bash
+timon init
+```
+
+It asks for your first name, your email and a password (typed hidden, twice), creates the account, and shows which AI tools (`claude`, `codex`…) are ready, installed but not signed in, or missing. If the background service is not installed yet, it offers to install it first. For a script, pipe the password instead of typing it: `printf '%s\n' "$PASSWORD" | timon init --email you@example.com --password-stdin`. The password is never accepted as an argument.
+
+`timon init` only works on the server itself, as the account that owns Timon's data: it proves who you are with that account's daemon token, so it asks neither for the one-time setup token nor for an email code.
+
+Alternatively, create it in the web form through an SSH tunnel, which nobody else can use:
 
 ```bash
 ssh -N -L 3100:127.0.0.1:3100 you@your-server

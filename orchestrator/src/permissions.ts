@@ -49,6 +49,7 @@ import { approvalMotif, findApproval, motifLabel, rememberApproval, rememberable
 import type { PushFanoutResult } from './notifications.js';
 import { ownerCanPaste, pasteReply, shellCommandOf } from './plugins-bundled/terminal-web/command-requests.js';
 import { emitQuestionEvent, type QuestionActor, type QuestionSnapshot } from './question-bus.js';
+import { formMessageOf, postAgentMessage, withoutFormMessage } from './chat-post.js';
 
 /**
  * Auto-resolution timeout for permission cards on AUTONOMOUS missions
@@ -443,6 +444,9 @@ function questionLabel(index: number, q: unknown): string {
  */
 export function validateAskUserPayload(input: unknown): string | null {
   if (!isRecord(input)) return 'the payload is not an object';
+  // The message posted before the card (`chat-post.ts`), on both kinds of form.
+  const message = formMessageOf(input);
+  if (message && 'defect' in message) return message.defect;
   // TYPED form (`ask_series_plan` and successors): it replaces `questions`,
   // it does not add to it. The UI renders a dedicated component from `kind`
   // and builds its own menus itself; also asking the agent for a multiple-
@@ -818,7 +822,10 @@ export function requestPermission(input: RequestInput): Promise<PermissionDecisi
   // 2 bis. Typed form: we attach WHAT APPLIES TODAY (role model, current
   //    fallback). Neither the agent nor the UI can know it — without this,
   //    "keep the global fallback" is a blind choice.
-  const effectiveInput = withSeriesPlanDefaults(input);
+  // The `message` of a form is posted in the chat, never shown inside the card.
+  const formMessage = input.tool_name === 'ask_user' ? formMessageOf(input.input) : null;
+  const cardInput = formMessage ? { ...input, input: withoutFormMessage(input.input) } : input;
+  const effectiveInput = withSeriesPlanDefaults(cardInput);
   // A shell command the owner could paste into their own terminal: the card
   // gets a third button. Checked now, not at click time only: a card must not
   // show a button its owner cannot use.
@@ -867,6 +874,13 @@ export function requestPermission(input: RequestInput): Promise<PermissionDecisi
       ...(pasteable ? { shell_command: shellCommand, choices: SHELL_CARD_CHOICES } : {}),
       ...(timeoutMs > 0 ? { expires_at: pending.created_at + timeoutMs } : {}),
     };
+    // Here and nowhere earlier: only a card that really opens gets its message,
+    // once — a refused payload or a reconnecting shim never posts it again.
+    // Written right before the card, so the thread reads message then form.
+    if (formMessage && 'text' in formMessage) {
+      const form = (effectiveInput as { form?: { kind?: unknown } } | undefined)?.form;
+      postAgentMessage(input.mission_id, formMessage.text, form?.kind === 'series_plan' ? 'kanban_plan' : 'question');
+    }
     const row = dbApi.insertEvent(input.mission_id, 'permission_request', payload);
     recordPermissionSpan(input.mission_id, row.id, row.timestamp, payload);
     bus.publish({

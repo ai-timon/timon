@@ -2,7 +2,7 @@
 title: Several accounts
 ---
 
-Timon is built for one person: Free gives every feature and plugin to **one account**, the administrator created at the first run. Letting other people sign in to the same Timon is the job of **Multi-user**, a separate plugin reserved for a **pro licence**. Timon itself does not invite, add or organise accounts.
+Timon is built for one person: Free gives every feature and plugin to **one account**, the administrator created at the first run (replacing the whole interface with a third-party layout, White Label, needs a licence that includes it). Letting other people sign in to the same Timon is the job of **Multi-user**, a separate plugin reserved for a **pro licence**. Timon itself does not invite, add or organise accounts.
 
 ## With Multi-user
 

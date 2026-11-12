@@ -1,6 +1,6 @@
 /**
- * Bumps the product version in one gesture, and closes the changelog's
- * `Unreleased` section onto it.
+ * Bumps the product version in one gesture, and writes the changelog
+ * fragments of `changes/` into the new version's section of CHANGELOG.md.
  *
  * Why a script rather than three `npm version` calls: the daemon reports its
  * own version to the licence server as `appVersion` (`timonVersion()` in
@@ -16,9 +16,10 @@
  *
  *   node scripts/bump-version.mjs patch|minor|major|<x.y.z> [--dry-run]
  */
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FRAGMENTS_DIR, readFragments, renderFragments } from './changelog-fragments.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /** Every package whose version must move as one. `app` holds no version of its
@@ -71,40 +72,29 @@ function nextVersion(current, how) {
   return fail(`unknown bump: ${how} (expected patch, minor, major or x.y.z)`);
 }
 
-/** Renames `## [Unreleased]` to the released version and reopens an empty
- *  `Unreleased` above it, so the next change has somewhere to land. */
-function releaseChangelog(source, version, date) {
-  const heading = '## [Unreleased]';
-  const at = source.indexOf(heading);
-  if (at < 0) fail(`${CHANGELOG} has no "${heading}" section`);
-
-  const body = source.slice(at + heading.length, sectionEnd(source, at + heading.length));
-  if (!body.trim()) {
-    fail(`${CHANGELOG}: the Unreleased section is empty — a version with nothing to say is a version nobody needs`);
+/** The new version's section, written from the fragments above the previous
+ *  versions. Fragments with nothing to say for this release (only known issues)
+ *  refuse the bump: a version with nothing to say is a version nobody needs. */
+function releaseChangelog(source, fragments, version, date) {
+  if (source.includes('## [Unreleased]')) {
+    fail(`${CHANGELOG} still has an "## [Unreleased]" section: move its entries into ${FRAGMENTS_DIR}/ (see ${FRAGMENTS_DIR}/README.md)`);
   }
-  // `Known issues` are not fixed by the act of releasing: they follow the new
-  // version and stay open until something actually repairs them.
-  const known = knownIssues(body);
-  const reopened = known ? `${heading}\n\n### Known issues\n\n${known}\n` : `${heading}\n`;
-  return `${source.slice(0, at)}${reopened}\n## [${version}] — ${date}${source.slice(at + heading.length)}`;
-}
-
-function sectionEnd(source, from) {
-  const next = source.indexOf('\n## ', from);
-  return next < 0 ? source.length : next;
-}
-
-function knownIssues(body) {
-  const at = body.indexOf('### Known issues');
-  if (at < 0) return '';
-  const from = at + '### Known issues'.length;
-  const next = body.indexOf('\n### ', from);
-  return body.slice(from, next < 0 ? body.length : next).replace(/^\n+/, '').replace(/\n+$/, '');
+  if (!fragments.some((fragment) => fragment.type !== 'known-issue')) {
+    fail(`${FRAGMENTS_DIR}/ holds no added, fixed or changed entry — a version with nothing to say is a version nobody needs`);
+  }
+  const section = `## [${version}] — ${date}\n\n${renderFragments(fragments)}\n\n`;
+  const at = source.search(/^## \[/m);
+  return at < 0 ? `${source.replace(/\n*$/, '\n\n')}${section}` : `${source.slice(0, at)}${section}${source.slice(at)}`;
 }
 
 const current = versionOf(read(REFERENCE), REFERENCE);
 const version = nextVersion(current, target);
 const date = new Date().toISOString().slice(0, 10);
+
+// Read and validated before anything is written: an invalid fragment stops
+// the bump with every file untouched.
+const fragments = readFragments(resolve(ROOT, FRAGMENTS_DIR));
+const changelog = releaseChangelog(read(CHANGELOG), fragments, version, date);
 
 for (const path of PACKAGES) {
   const source = read(path);
@@ -116,11 +106,20 @@ for (const path of PACKAGES) {
   console.log(`  ${path}: ${was} → ${version}`);
 }
 
-write(CHANGELOG, releaseChangelog(read(CHANGELOG), version, date));
-console.log(`  ${CHANGELOG}: Unreleased → [${version}] — ${date}`);
+write(CHANGELOG, changelog);
+console.log(`  ${CHANGELOG}: [${version}] — ${date}, from ${fragments.length} fragment(s)`);
+// Known issues are not fixed by the act of releasing: their fragments stay and
+// are listed again in the next version, until a fix deletes them.
+const released = fragments.filter((fragment) => fragment.type !== 'known-issue');
+for (const fragment of released) {
+  if (!dryRun) unlinkSync(join(ROOT, FRAGMENTS_DIR, fragment.name));
+}
+console.log(`  ${FRAGMENTS_DIR}/: ${released.length} fragment(s) released and deleted, ${fragments.length - released.length} known issue(s) kept`);
 
-console.log(dryRun ? '\nDry run: nothing written.' : `\nWritten. To publish this version:
+console.log(dryRun ? '\nDry run: nothing written.' : `\nWritten. Commit it on a release branch and open its pull request:
 
-  git commit -am "chore(release): ${version}"
-  git tag v${version}
+  git add -A CHANGELOG.md changes ${PACKAGES.join(' ')}
+  git commit -m "chore(release): ${version}"
+
+The tag v${version} goes on main once the pull request is merged.
 `);

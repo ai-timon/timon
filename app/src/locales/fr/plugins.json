@@ -1,4 +1,21 @@
 {
+  "developerMode": {
+    "label": "Mode développeur — charger les plugins non signés",
+    "description": "Laisse se charger les plugins sans signature Timon, comme celui que vous écrivez vous-même. Les plugins signés se chargent dans tous les cas.",
+    "warning": "Un plugin tourne dans le daemon Timon, avec les droits du compte système qui l’exécute. N’activez ce mode que pour du code que vous avez écrit ou que vous avez lu.",
+    "turnedOn": "Mode développeur activé : les plugins non signés se chargent.",
+    "turnedOff": "Mode développeur désactivé : les plugins non signés ne se chargent plus.",
+    "blocked": {
+      "fixed": "Votre licence fixe la composition des plugins : le mode développeur ne peut pas être activé."
+    },
+    "forbidden": "Seul le superadmin peut changer le mode développeur.",
+    "loadError": "Impossible de lire le mode développeur. Réessayez.",
+    "errors": {
+      "unauthenticated": "Votre session a expiré. Reconnectez-vous.",
+      "forbidden": "Seul le superadmin, connecté à l’application, peut changer le mode développeur.",
+      "generic": "Impossible de changer le mode développeur (HTTP {status})."
+    }
+  },
   "pluginsPage": {
     "kind": {
       "widget": "Widget",
@@ -265,6 +282,18 @@
       "manifestRefused": "Timon ne peut pas utiliser ce plugin : {reason}",
       "nodeEngineRefused": "Ce plugin ne tourne pas sur le Node qu'utilise ce Timon : {reason}",
       "tamperedHint": "Les fichiers ne correspondent plus à leur signature : ce paquet a été modifié après sa signature. Il ne peut pas être installé.",
+      "developerMode": {
+        "title": "Le mode développeur est désactivé",
+        "body": "Ce paquet n’a pas de signature Timon. Il peut être installé, mais il ne se chargera pas tant que le mode développeur n’est pas activé.",
+        "enable": "Activer le mode développeur",
+        "openSettings": "Ouvrir les réglages du mode développeur"
+      },
+      "unsignedConfirm": {
+        "title": "Installer {name} sans signature ?",
+        "body": "Ce paquet n’est pas signé et son éditeur n’est pas vérifié. Une fois installé, son code tourne dans le daemon Timon avec les droits de votre compte système.",
+        "bodyOff": "Ce paquet n’est pas signé et son éditeur n’est pas vérifié. Il ne se chargera pas tant que le mode développeur est désactivé ; une fois le mode activé, son code tourne dans le daemon Timon avec les droits de votre compte système.",
+        "confirm": "Installer quand même"
+      },
       "permissions": "Demande",
       "permissionsNone": "aucune permission",
       "webhooks": "Webhooks",

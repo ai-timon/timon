@@ -987,6 +987,12 @@ form shows who acts as a badge. Big jobs and "create the Kanban tasks" go throug
 \`question\`. **Old names**: \`mcp__timon_permission__ask_user\` and \`mcp__timon_permission__ask_series_plan\`
 are \`question\` and \`kanban_plan\`. Call the new names.
 
+**Explain in the call, not before it.** The text you write in your turn right before a tool call may
+never reach the user: it can end up in your reasoning, which is not shown. When the user needs a
+report, a comparison or a table to choose well, put it in the \`message\` field (markdown) of
+\`question\` or \`kanban_plan\`: Timon posts it as a normal chat message right above the form. To post
+one at any other time (a step report during a long turn), call \`chat_post_message\` (\`text\`).
+
 **Unattended = never ask the user.** If you were spawned by the daemon (Kanban task, wake, routine) or
 by another agent (\`mission_spawn\`, \`timon spawn\`), nobody is in front of you: a \`question\` blocks you
 until they come back, and Timon refuses it. A doubt goes to your referent — the agent that spawned you, or
@@ -5567,6 +5573,9 @@ label (an array of labels on a \`multiSelect\`), or — when the user also typed
 in that question's field — an object holding the text beside the pick:
 \`{choice, text}\`, \`{choices, text}\`, or \`{text}\` alone when they ticked
 nothing. That text can qualify or override the pick: take it into account.
+Whatever the user must read to answer (a report, a comparison table) goes in
+the tool's \`message\` field, which Timon posts as a normal chat message above
+the form: text written in the turn right before the call may never be shown.
 
 # Cross-provider continuation (fork)
 
