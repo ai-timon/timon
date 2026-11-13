@@ -1,5 +1,51 @@
 // A browser page can request a prompt; it receives no IPC object or other host capability.
-const { contextBridge, ipcRenderer } = require('electron') as typeof import('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron') as typeof import('electron');
+
+// The window.chrome shim of native-browser-chrome-shim.ts, again in the main frame: DevTools'
+// copy runs in every frame, this one covers a document Electron gives a new window.chrome after
+// it, and a popup's first document that DevTools reached too late. The shim is idempotent. A
+// sandboxed preload can require nothing but `electron`: native-browser-preload.test.ts compares the copies.
+const CHROME_SHIM_SOURCE = String.raw`(() => {
+  if (!window.chrome || typeof window.chrome !== 'object') window.chrome = {};
+  const chrome = window.chrome;
+  if (chrome.loadTimes && chrome.csi && chrome.app) return;
+  const natives = new WeakMap();
+  const native = (holder, name) => { natives.set(holder[name], 'function ' + name + '() { [native code] }'); return holder[name]; };
+  if (!chrome.loadTimes) chrome.loadTimes = native({ loadTimes() {
+    const now = Date.now() / 1000;
+    return { commitLoadTime: now, connectionInfo: 'h2', finishDocumentLoadTime: now, finishLoadTime: now,
+      firstPaintAfterLoadTime: 0, firstPaintTime: now, navigationType: 'Other', npnNegotiatedProtocol: 'h2',
+      requestTime: now, startLoadTime: now, wasAlternateProtocolAvailable: false, wasFetchedViaSpdy: true,
+      wasNpnNegotiated: true };
+  } }, 'loadTimes');
+  if (!chrome.csi) chrome.csi = native({ csi() {
+    return { onloadT: Date.now(), pageT: performance.now(), startE: Date.now(), tran: 15 };
+  } }, 'csi');
+  if (!chrome.app) {
+    const methods = {
+      getDetails() { return null; },
+      getIsInstalled() { return false; },
+      runningState() { return 'cannot_run'; },
+    };
+    chrome.app = {
+      isInstalled: false,
+      InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+      RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+      getDetails: native(methods, 'getDetails'),
+      getIsInstalled: native(methods, 'getIsInstalled'),
+      runningState: native(methods, 'runningState'),
+    };
+  }
+  const toString = new Proxy(Function.prototype.toString, {
+    apply(target, self, args) {
+      const known = natives.get(self);
+      return known === undefined ? Reflect.apply(target, self, args) : known;
+    },
+  });
+  natives.set(toString, 'function toString() { [native code] }');
+  Function.prototype.toString = toString;
+})();`;
+try { void webFrame.executeJavaScript(CHROME_SHIM_SOURCE).catch(() => {}); } catch { /* Never break the page. */ }
 contextBridge.exposeInMainWorld('__timonNativePrompt', (message: string, defaultPrompt: string): string | null =>
   ipcRenderer.sendSync('timon:native-browser-prompt', message, defaultPrompt));
 

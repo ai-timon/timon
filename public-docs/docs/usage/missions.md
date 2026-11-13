@@ -332,9 +332,9 @@ Press **✎** in the address bar, click an element of the page and write what sh
 
 ### Signing in to Google
 
-You sign in with Google in the built-in browser like anywhere else: on Google itself, or through a site's **Sign in with Google** button, in the same tab or in its popup. On Google's sign-in pages the browser presents itself as other desktop apps do (its version number hidden), so that Google accepts it, and takes its usual identity back once you leave them.
+You sign in with Google in the built-in browser like anywhere else: on Google itself, or through a site's **Sign in with Google** button, in the same tab or in its popup. The browser shows Google's pages what Chrome shows them, so Google accepts it; on its sign-in pages it presents itself as other desktop apps do (its version number hidden), and takes its usual identity back once you leave them.
 
-If Google still answers "Couldn't sign you in — This browser or app may not be secure", **Sign in with Chrome** opens by itself on top of the page:
+If Google ever answers "Couldn't sign you in — This browser or app may not be secure" all the same, **Sign in with Chrome** opens by itself on top of the page:
 
 1. Choose **Open Chrome**. A Chrome window (or Microsoft Edge, or Chromium) opens on the computer that runs Timon, with a profile of its own. It never touches your personal Chrome profile. If you were signing in to another site, the window opens on that site: sign in to it there as usual, with Google. Otherwise it opens on Google's sign-in page.
 2. Sign in there, with your password and second step as usual.
