@@ -12,7 +12,7 @@
 import type { BusEvent } from '../../bus.js';
 import { bestRateLimit } from '../../rate-limit.js';
 import { parseReviewVerdict } from '../../review-verdict.js';
-import { durationBucketOf, messageChannelOf, waitBucketOf, type Milestone } from './features.js';
+import { durationBucketOf, installAgeDaysOf, messageChannelOf, waitBucketOf, type Milestone } from './features.js';
 import type { PluginPublic } from '../../plugins/public.js';
 import {
   backendValue, licenseReasonValue, missionEndReasonValue, modelValue, originValue, taskPipelineValue,
@@ -32,6 +32,8 @@ export type CollectorDeps = {
   /** Type, pipeline and status of a task, raw; `null` when it is gone. */
   taskFacts(taskId: string): TaskFacts | null;
   now(): number;
+  /** When the installation's identity was created (ms), `null` when unknown. */
+  installCreatedAt?(): number | null;
   /** A first-time milestone was reached; the runtime keeps it from repeating. */
   milestone?(milestone: Milestone): void;
 };
@@ -250,8 +252,14 @@ export class TelemetryCollector {
     this.turns.delete(missionId);
     const f = this.factsOf(missionId);
     if (!f) return;
-    const duration = Math.max(0, this.deps.now() - turn.startedAt);
-    this.emit('turn_completed', { backend: f.backend, model: f.model, origin: f.origin, status, duration_ms: duration });
+    const at = this.deps.now();
+    const duration = Math.max(0, at - turn.startedAt);
+    const createdAt = this.deps.installCreatedAt?.() ?? null;
+    this.emit('turn_completed', {
+      backend: f.backend, model: f.model, origin: f.origin, status, duration_ms: duration,
+      // Omitted, never guessed, for an installation older than `createdAt`.
+      ...(createdAt !== null ? { install_age_days: installAgeDaysOf(createdAt, at) } : {}),
+    });
     if (status === 'completed') this.deps.milestone?.('first_turn_completed');
     for (const [tool, count] of turn.tools) this.emit('tool_used', { backend: f.backend, tool, count });
   }

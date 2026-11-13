@@ -8,6 +8,11 @@
  *
  * `lastVersion` is what this installation ran at its previous start, so an
  * update can be counted once (`app_updated`).
+ *
+ * `createdAt` is the instant `installId` was drawn, written with it and never
+ * changed. A file written before the field existed keeps `null`: the true
+ * creation date of such an installation is not known, and a guess (today, the
+ * first event) would count old installations as new ones.
  */
 import { randomUUID } from 'node:crypto';
 import { chmodSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -19,6 +24,8 @@ export const TELEMETRY_STATE_FILE = 'telemetry.json';
 
 const StateSchema = z.object({
   installId: z.uuid(),
+  /** ISO instant the identity was drawn; `null` on a file older than the field. */
+  createdAt: z.iso.datetime().nullable().default(null),
   lastVersion: z.string().max(64).nullable().default(null),
   /** UTC day (`YYYY-MM-DD`) of the last `installation_snapshot`. */
   snapshotDay: z.string().max(10).nullable().default(null),
@@ -49,14 +56,14 @@ function write(path: string, state: TelemetryState): void {
  * replaced by a fresh identity: it is anonymous, losing it costs a duplicate
  * count, never a leak.
  */
-export function loadTelemetryState(home: string = TIMON_HOME): TelemetryState {
+export function loadTelemetryState(home: string = TIMON_HOME, now: () => number = Date.now): TelemetryState {
   const path = telemetryStatePath(home);
   try {
     const parsed = StateSchema.safeParse(JSON.parse(readFileSync(path, 'utf8')));
     if (parsed.success) return parsed.data;
   } catch { /* absent or not JSON: drawn below */ }
   const fresh: TelemetryState = {
-    installId: randomUUID(), lastVersion: null, snapshotDay: null, openedDays: {},
+    installId: randomUUID(), createdAt: new Date(now()).toISOString(), lastVersion: null, snapshotDay: null, openedDays: {},
     firstSeenDay: null, running: false, lastExitCode: null, milestones: [],
   };
   try { write(path, fresh); } catch { /* read-only home: the id lives for this process */ }
