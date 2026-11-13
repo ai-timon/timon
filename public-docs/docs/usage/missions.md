@@ -340,7 +340,7 @@ If Google still answers "Couldn't sign you in — This browser or app may not be
 2. Sign in there, with your password and second step as usual.
 3. Back in Timon, choose **Done, copy the sign-in**. The window closes, the sign-in is copied into this project's built-in browser, where agents use it, and the tab goes back to the site, signed in. A sign-in popup left open is closed. Closing the Chrome window yourself does the same.
 
-The dialog opens once for each refusal: close it and it stays closed. A strip above any Google sign-in page, and the browser's options menu, open it again at any time.
+The dialog opens once for each refusal: close it and it stays closed. The strip shown above the refusal page, and the browser's options menu, open it again.
 
 Chrome has to be installed on that computer, outside a snap or flatpak package (their sandbox cannot keep a Timon profile). If none is found, the dialog says so; you can point Timon at another one with the **Chrome used to sign in** setting (`TIMON_CHROME_PATH`, in Settings under Misc, or as an environment variable). The window opens on the computer that runs Timon, so from a phone or another computer you need to be in front of it.
 
