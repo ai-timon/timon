@@ -253,9 +253,9 @@ import {
 import { estMasquee } from '@/components/chat/chat-columns';
 import {
   contextLimitFor,
+  contextNudgePct,
   fmtRelativeShort,
   fmtSize,
-  nextStandardLimit,
   paletteFor,
   shortModelSlug,
   stripTaskIdPreamble,
@@ -1272,6 +1272,9 @@ export function ChatClient({
   /** Same moment as `agentReadyRef`, for the reads that need the agent's
    *  `cwd`: firing them before it lands costs a second request. */
   const [agentSettled, setAgentSettled] = useState(false);
+  /** The agent whose details last landed. Differs from `agentId` while the
+   *  placeholder (default model, previous agent's model on a switch) stands in. */
+  const [agentDetailsFor, setAgentDetailsFor] = useState<string | null>(null);
   /** Backend catalog: carries the CAPABILITIES (account usage, permission
    *  model) the display depends on. Single request, module-cached. */
   const backendCatalog = useBackendCatalog();
@@ -1948,6 +1951,7 @@ export function ChatClient({
       } finally {
         agentReadyRef.current = true;
         setAgentSettled(true);
+        if (!cancelled) setAgentDetailsFor(agentId);
       }
     })();
     return () => { cancelled = true; };
@@ -2532,11 +2536,11 @@ export function ChatClient({
     const configured = contextLimitFor(
       backendCatalog, effBackend, effModel, liveStats.model, liveStats.contextWindows,
     );
-    // Unknown window → no percentage makes sense: we don't nudge rather
-    // than cry wolf over a made-up denominator.
-    if (!configured) return;
-    const ctxLimit = ctxUsed > configured ? nextStandardLimit(ctxUsed) : configured;
-    const ctxPct = Math.min(100, (ctxUsed / ctxLimit) * 100);
+    // Unknown window, or the placeholder agent's model instead of the agent's
+    // own → no percentage makes sense: we don't nudge rather than cry wolf
+    // over a made-up denominator.
+    const ctxPct = contextNudgePct(ctxUsed, configured, agentDetailsFor === agentId);
+    if (ctxPct === null) return;
     if (ctxPct >= 80 && lastCtxNudgePct.current < 80) {
       lastCtxNudgePct.current = ctxPct;
       const missionId = currentMissionId;
@@ -2556,7 +2560,7 @@ export function ChatClient({
     } else if (ctxPct < 70) {
       lastCtxNudgePct.current = ctxPct;
     }
-  }, [liveStats.lastContextTokens, liveStats.model, liveStats.contextWindows, backendCatalog, effBackend, effModel, currentMissionId]);
+  }, [liveStats.lastContextTokens, liveStats.model, liveStats.contextWindows, backendCatalog, effBackend, effModel, currentMissionId, agentDetailsFor, agentId]);
   useEffect(() => {
     // Waits for the agent: its cwd changes the answer, and reading once
     // without it then once with it doubled both requests on every opening.
