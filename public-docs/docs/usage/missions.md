@@ -332,15 +332,21 @@ Press **✎** in the address bar, click an element of the page and write what sh
 
 ### Signing in to Google
 
-Google refuses to sign anyone in from the built-in browser ("This browser or app may not be secure"). Use **Sign in with Chrome** in the browser's options menu instead:
+You sign in with Google in the built-in browser like anywhere else: on Google itself, or through a site's **Sign in with Google** button, in the same tab or in its popup. On Google's sign-in pages the browser presents itself as other desktop apps do (its version number hidden), so that Google accepts it, and takes its usual identity back once you leave them.
 
-1. Choose **Open Chrome**. A Chrome window (or Microsoft Edge, or Chromium) opens on the computer that runs Timon, on Google's sign-in page, with a profile of its own. It never touches your personal Chrome profile.
+If Google still answers "Couldn't sign you in — This browser or app may not be secure", **Sign in with Chrome** opens by itself on top of the page:
+
+1. Choose **Open Chrome**. A Chrome window (or Microsoft Edge, or Chromium) opens on the computer that runs Timon, with a profile of its own. It never touches your personal Chrome profile. If you were signing in to another site, the window opens on that site: sign in to it there as usual, with Google. Otherwise it opens on Google's sign-in page.
 2. Sign in there, with your password and second step as usual.
-3. Back in Timon, choose **Done, copy the sign-in**. The window closes and the sign-in is copied into this project's built-in browser, where agents use it. Closing the Chrome window yourself does the same.
+3. Back in Timon, choose **Done, copy the sign-in**. The window closes, the sign-in is copied into this project's built-in browser, where agents use it, and the tab goes back to the site, signed in. A sign-in popup left open is closed. Closing the Chrome window yourself does the same.
+
+The dialog opens once for each refusal: close it and it stays closed. A strip above any Google sign-in page, and the browser's options menu, open it again at any time.
 
 Chrome has to be installed on that computer, outside a snap or flatpak package (their sandbox cannot keep a Timon profile). If none is found, the dialog says so; you can point Timon at another one with the **Chrome used to sign in** setting (`TIMON_CHROME_PATH`, in Settings under Misc, or as an environment variable). The window opens on the computer that runs Timon, so from a phone or another computer you need to be in front of it.
 
-Chrome remembers its own sign-in, so running it again later is quick. Run it again if Google ends the session in the built-in browser. Other sites, X for instance, sign in directly in the built-in browser.
+Only cookies are copied. A site that keeps its sign-in in the page's own storage (many apps built on Firebase do) is not signed in by **Sign in with Chrome**.
+
+Chrome remembers its own sign-in, so running it again later is quick. Run it again if Google ends the session in the built-in browser.
 
 ## Choosing a model
 
