@@ -147,7 +147,7 @@
       "chromeSigninKept": "これはいつでも再実行できます。Chrome は自身のサインイン情報を記憶しています。",
       "chromeSigninRejected": "Google はこのブラウザーからのサインインを拒否しました。代わりに Chrome でサインインしてください。完了すると Timon がサインイン情報をここにコピーし、元のページに戻ります。",
       "chromeSigninRejectedSite": "Google はこのブラウザーからこのサイトへのサインインを拒否しました。Chrome を開くとサイトがそこで開きます。いつもどおりサインインしてから戻り、完了を押してください。",
-      "googleSigninBanner": "Google はこのブラウザーからのサインインを拒否する場合があります。"
+      "googleSigninBanner": "Google はこのブラウザーからのサインインを拒否しました。"
     },
     "windowTitle": "ブラウザー — {agent}",
     "recording": {

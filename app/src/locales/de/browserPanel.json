@@ -147,7 +147,7 @@
       "chromeSigninKept": "Du kannst das jederzeit wiederholen: Chrome merkt sich seine eigene Anmeldung.",
       "chromeSigninRejected": "Google verweigert die Anmeldung in diesem Browser. Melde dich stattdessen mit Chrome an: Danach kopiert Timon die Anmeldung hierher und bringt dich zur Seite zurück.",
       "chromeSigninRejectedSite": "Google verweigert die Anmeldung bei dieser Website in diesem Browser. Öffne Chrome: Die Website öffnet sich dort. Melde dich wie gewohnt an, komm dann zurück und drücke auf Fertig.",
-      "googleSigninBanner": "Google verweigert die Anmeldung in diesem Browser möglicherweise."
+      "googleSigninBanner": "Google verweigert die Anmeldung in diesem Browser."
     },
     "windowTitle": "Browser — {agent}",
     "recording": {

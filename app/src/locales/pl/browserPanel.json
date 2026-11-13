@@ -147,7 +147,7 @@
       "chromeSigninKept": "Możesz to powtórzyć w dowolnej chwili: Chrome pamięta własne logowanie.",
       "chromeSigninRejected": "Google odmawia logowania z tej przeglądarki. Zaloguj się zamiast tego w Chrome: na koniec Timon skopiuje logowanie tutaj i wróci do strony.",
       "chromeSigninRejectedSite": "Google odmawia logowania do tej witryny z tej przeglądarki. Otwórz Chrome: witryna otworzy się tam. Zaloguj się jak zwykle, a potem wróć tutaj i naciśnij Gotowe.",
-      "googleSigninBanner": "Google może odmówić logowania z tej przeglądarki."
+      "googleSigninBanner": "Google odmawia logowania z tej przeglądarki."
     },
     "windowTitle": "Przeglądarka — {agent}",
     "recording": {

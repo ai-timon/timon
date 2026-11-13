@@ -147,7 +147,7 @@
       "chromeSigninKept": "Puedes repetirlo cuando quieras: Chrome recuerda su propia sesión.",
       "chromeSigninRejected": "Google no te deja iniciar sesión desde este navegador. Inicia sesión con Chrome: al terminar, Timon copia la sesión aquí y te devuelve a la página.",
       "chromeSigninRejectedSite": "Google no te deja iniciar sesión en este sitio desde este navegador. Abre Chrome: el sitio se abre allí. Inicia sesión como siempre, vuelve aquí y pulsa Listo.",
-      "googleSigninBanner": "Es posible que Google no te deje iniciar sesión desde este navegador."
+      "googleSigninBanner": "Google no te deja iniciar sesión desde este navegador."
     },
     "windowTitle": "Navegador — {agent}",
     "recording": {

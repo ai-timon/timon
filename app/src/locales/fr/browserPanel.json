@@ -147,7 +147,7 @@
       "chromeSigninKept": "Vous pouvez recommencer à tout moment : Chrome garde sa propre connexion.",
       "chromeSigninRejected": "Google refuse de vous connecter depuis ce navigateur. Connectez-vous plutôt avec Chrome : à la fin, Timon recopie la connexion ici et vous ramène sur la page.",
       "chromeSigninRejectedSite": "Google refuse de vous connecter à ce site depuis ce navigateur. Ouvrez Chrome : le site s’y ouvre. Connectez-vous-y comme d’habitude, puis revenez ici et appuyez sur Terminé.",
-      "googleSigninBanner": "Google peut refuser de vous connecter depuis ce navigateur."
+      "googleSigninBanner": "Google refuse de vous connecter depuis ce navigateur."
     },
     "windowTitle": "Navigateur — {agent}",
     "recording": {

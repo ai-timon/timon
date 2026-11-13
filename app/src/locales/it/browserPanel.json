@@ -147,7 +147,7 @@
       "chromeSigninKept": "Puoi rifarlo in qualsiasi momento: Chrome ricorda il proprio accesso.",
       "chromeSigninRejected": "Google rifiuta l’accesso da questo browser. Accedi invece con Chrome: alla fine Timon copia l’accesso qui e ti riporta alla pagina.",
       "chromeSigninRejectedSite": "Google rifiuta l’accesso a questo sito da questo browser. Apri Chrome: il sito si apre lì. Accedi come al solito, poi torna qui e premi Fatto.",
-      "googleSigninBanner": "Google potrebbe rifiutare l’accesso da questo browser."
+      "googleSigninBanner": "Google rifiuta l’accesso da questo browser."
     },
     "windowTitle": "Browser — {agent}",
     "recording": {

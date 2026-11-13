@@ -349,6 +349,7 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
     setDrawer('chromeSignin');
   }, [activeTab]);
   // Google's refusal opens the Chrome detour by itself, once per refused page: closing it is an answer.
+  // Only the refusal shows it: a sign-in Google accepts never sees the detour.
   const autoOpened = useRef(new Set<string>());
   const refusedUrl = activeTab && isGoogleSigninRejected(activeTab.url) ? activeTab.url : null;
   useEffect(() => {
@@ -480,7 +481,7 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
       {status?.tabs.map((tab) => <div key={tab.id} className={cn('flex max-w-40 shrink-0 items-center rounded text-xs', tab.id === status.activeTabId ? 'bg-muted' : 'text-muted-foreground')}><button type="button" className="min-w-0 truncate px-2 py-1" disabled={!controlled} onClick={() => void command('activateTab', { tabId: tab.id })}>{tab.title || tab.url || t('browserPanel.native.newTab')}</button><button type="button" className={button} disabled={!controlled} aria-label={t('browserPanel.native.closeTab')} onClick={() => void command('closeTab', { tabId: tab.id })}><X className="size-3" /></button></div>)}
       <button type="button" className={button} disabled={!status?.running || !controlled} aria-label={t('browserPanel.native.newTab')} onClick={() => { tabTrail.current = noteUserTab(tabTrail.current); void command('newTab'); }}><Plus className="size-3.5" /></button>
     </div>
-    {(signinNotice || profile && status?.running && isGoogleAccountsPage(activeTab?.url) && drawer !== 'chromeSignin') && <div data-browser-chrome="signin" className="flex min-h-8 shrink-0 items-center gap-2 bg-muted px-2.5 py-1 text-xs">
+    {(signinNotice || profile && status?.running && refusedUrl && drawer !== 'chromeSignin') && <div data-browser-chrome="signin" className="flex min-h-8 shrink-0 items-center gap-2 bg-muted px-2.5 py-1 text-xs">
       {signinNotice ? <span role="status" className="min-w-0 flex-1">{signinNotice}</span> : <><LogIn className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1">{t('browserPanel.native.googleSigninBanner')}</span><button type="button" className="shrink-0 rounded px-2 py-0.5 font-medium hover:bg-background disabled:opacity-40" disabled={!controlled} onClick={openChromeSignin}>{t('browserPanel.native.chromeSignin')}</button></>}
     </div>}
     <BrowserRemoteSurface surface={surface} video={video} overlay={overlay} controlled={controlled} blocked={modal || !screenshotMode && media.phase !== 'live'} running={!!status?.running} viewport={status?.width && status?.height ? { width: status.width, height: status.height } : viewport} screenshot={shot} useScreenshot={screenshotMode} dragTouch={dragTouch} sendInput={sendInput} onClipboard={(action) => { if (action.kind === 'paste') void pasteText(action.text); else void copySelection(action.kind === 'cut'); }}>

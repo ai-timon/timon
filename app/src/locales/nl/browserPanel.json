@@ -147,7 +147,7 @@
       "chromeSigninKept": "Je kunt dit altijd opnieuw doen: Chrome onthoudt zijn eigen aanmelding.",
       "chromeSigninRejected": "Google weigert je aan te melden vanuit deze browser. Meld je in plaats daarvan aan met Chrome: daarna kopieert Timon de aanmelding hierheen en brengt je terug naar de pagina.",
       "chromeSigninRejectedSite": "Google weigert je aan te melden bij deze site vanuit deze browser. Open Chrome: de site opent daar. Meld je aan zoals altijd, kom dan terug en druk op Klaar.",
-      "googleSigninBanner": "Google kan weigeren je aan te melden vanuit deze browser."
+      "googleSigninBanner": "Google weigert je aan te melden vanuit deze browser."
     },
     "windowTitle": "Browser — {agent}",
     "recording": {
