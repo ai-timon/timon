@@ -107,3 +107,28 @@ export function identityOverride(identity: BrowserIdentity, userAgent: string, m
     ? { userAgent: versionlessUserAgent(userAgent), userAgentMetadata: withoutChromeBrand(metadata) }
     : { userAgent, userAgentMetadata: metadata };
 }
+
+/**
+ * Whether a request leaves with the sign-in identity: every request of a document already on
+ * Google's sign-in host (or a popup opened onto it), and a top-level navigation heading there,
+ * which leaves before `did-navigate` can switch the tab. A site's own frame embedding Google
+ * (a "Sign in with Google" button) keeps its page's identity, like its `navigator`.
+ */
+export function isSigninRequest(request: { url: string; resourceType?: string; onSigninPage: boolean }): boolean {
+  return request.onSigninPage || (request.resourceType === 'mainFrame' && isGoogleSigninUrl(request.url));
+}
+
+/** The identity headers a request leaves with: one coherent UA and brand list, never Electron's tokens. */
+export function identityHeaders(
+  headers: Record<string, string>, signin: boolean, metadata: BrowserUserAgentMetadata,
+): Record<string, string> {
+  const hints = signin ? withoutChromeBrand(metadata) : metadata;
+  const rewritten = { ...headers };
+  for (const name of Object.keys(rewritten)) {
+    const lower = name.toLowerCase();
+    if (lower === 'user-agent') rewritten[name] = signinUserAgent(rewritten[name]!, signin);
+    else if (lower === 'sec-ch-ua') rewritten[name] = clientHintBrands(hints.brands);
+    else if (lower === 'sec-ch-ua-full-version-list') rewritten[name] = clientHintBrands(hints.fullVersionList);
+  }
+  return rewritten;
+}

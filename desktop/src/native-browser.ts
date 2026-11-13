@@ -28,7 +28,7 @@ import { credentialScript } from './native-browser-credentials.js';
 import { describeCookieJar, persistentCopyOf } from './native-browser-cookies.js';
 import { ChromeSignin } from './native-browser-chrome-signin.js';
 import {
-  chromeVersion, clientHintBrands, desktopUserAgent, identityForUrl, identityOverride, isGoogleSigninUrl, mobileUserAgent, signinUserAgent, userAgentMetadata,
+  chromeVersion, desktopUserAgent, identityForUrl, identityHeaders, identityOverride, isGoogleSigninUrl, isSigninRequest, mobileUserAgent, userAgentMetadata,
   type BrowserIdentity,
 } from './native-browser-user-agent.js';
 import { BODY_LIMIT, DevtoolsLog, metricsDelta, NETWORK_CONDITIONS, PERFORMANCE_SCRIPT } from './native-browser-devtools.js';
@@ -1120,20 +1120,11 @@ export class NativeBrowserEngine {
     browserSession.setUserAgent(userAgent);
     const hints = userAgentMetadata(chromeVersion(userAgent), false, process.platform, process.getSystemVersion());
     browserSession.webRequest.onBeforeSendHeaders((details, callback) => {
-      // Google's sign-in keeps the brands Electron sends and gets the versionless UA: a "Google Chrome"
-      // brand, or a Chrome version this engine cannot back up, gets the sign-in refused.
-      const signin = isGoogleSigninUrl(details.url)
-        || (details.webContentsId !== undefined && this.googleSigninContents.has(details.webContentsId));
-      const headers = { ...details.requestHeaders };
-      for (const name of Object.keys(headers)) {
-        const lower = name.toLowerCase();
-        // A popup's first requests carry Electron's raw UA: the page created it, before any override.
-        if (lower === 'user-agent') headers[name] = signinUserAgent(headers[name]!, signin);
-        else if (signin) continue;
-        else if (lower === 'sec-ch-ua') headers[name] = clientHintBrands(hints.brands);
-        else if (lower === 'sec-ch-ua-full-version-list') headers[name] = clientHintBrands(hints.fullVersionList);
-      }
-      callback({ requestHeaders: headers });
+      // Google's sign-in gets the versionless UA and Chromium's brands, everything else the full
+      // Chrome identity; a popup's first requests also lose Electron's raw UA here (see above).
+      const signin = isSigninRequest({ url: details.url, resourceType: details.resourceType,
+        onSigninPage: details.webContentsId !== undefined && this.googleSigninContents.has(details.webContentsId) });
+      callback({ requestHeaders: identityHeaders(details.requestHeaders, signin, hints) });
     });
   }
 

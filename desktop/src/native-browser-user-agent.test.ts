@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  chromeVersion, desktopUserAgent, identityForUrl, identityOverride, isGoogleSigninUrl, mobileUserAgent, signinUserAgent, userAgentMetadata, versionlessUserAgent,
+  chromeVersion, desktopUserAgent, identityForUrl, identityHeaders, identityOverride, isSigninRequest, isGoogleSigninUrl, mobileUserAgent, signinUserAgent, userAgentMetadata, versionlessUserAgent,
 } from './native-browser-user-agent.js';
 
 const ELECTRON_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -67,4 +67,26 @@ test('a request header loses Electron\'s tokens, and its Chrome version only on 
   assert.equal(signinUserAgent(ELECTRON_UA, false), clean);
   assert.equal(signinUserAgent(ELECTRON_UA, true), versionlessUserAgent(clean));
   assert.equal(signinUserAgent(versionlessUserAgent(clean), true), versionlessUserAgent(clean));
+});
+
+test('a request carries one coherent identity: versionless UA with Chromium brands, or the full Chrome one', () => {
+  const metadata = userAgentMetadata('130.0.6723.191', false, 'linux', '6.14.0');
+  const google = 'https://accounts.google.com/v3/signin/identifier?continue=x';
+  // A tab sent to Google by its site: the navigation leaves before did-navigate switches the tab.
+  assert.equal(isSigninRequest({ url: google, resourceType: 'mainFrame', onSigninPage: false }), true);
+  // A site's "Sign in with Google" button frame keeps the site's identity, like its navigator.
+  assert.equal(isSigninRequest({ url: google, resourceType: 'subFrame', onSigninPage: false }), false);
+  // A popup opened onto Google, or a document already there: all of its requests.
+  assert.equal(isSigninRequest({ url: 'https://www.gstatic.com/x.js', resourceType: 'script', onSigninPage: true }), true);
+  assert.equal(isSigninRequest({ url: 'https://app.example.com/', resourceType: 'mainFrame', onSigninPage: false }), false);
+  const sent = { 'User-Agent': ELECTRON_UA, 'sec-ch-ua': '"Chromium";v="130", "Google Chrome";v="130"', 'sec-ch-ua-full-version-list': 'x', Accept: '*/*' };
+  const signin = identityHeaders(sent, true, metadata);
+  assert.equal(signin['User-Agent'], versionlessUserAgent(desktopUserAgent(ELECTRON_UA)));
+  assert.equal(signin['sec-ch-ua'], '"Chromium";v="130", "Not_A Brand";v="24"');
+  assert.doesNotMatch(signin['sec-ch-ua-full-version-list']!, /Google Chrome/);
+  assert.equal(signin.Accept, '*/*');
+  const site = identityHeaders(sent, false, metadata);
+  assert.equal(site['User-Agent'], desktopUserAgent(ELECTRON_UA));
+  assert.match(site['sec-ch-ua']!, /"Google Chrome";v="130"/);
+  assert.equal(identityHeaders({ Accept: '*/*' }, true, metadata).Accept, '*/*', 'no hint header is added where none was sent');
 });
