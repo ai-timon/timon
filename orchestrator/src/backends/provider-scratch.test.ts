@@ -219,3 +219,60 @@ test('removing a mission folder in any way removes its links, never the shared c
   intact('dispose of a legacy folder');
   assert.equal(existsSync(missionScratchPath('provider-codex', 'rm-legacy')), false);
 });
+
+test('a finished mission loses its downloadable caches at once, never its conversation; a running one keeps everything', async () => {
+  const { trimProviderCaches, missionScratchPath, providerCacheDir } = await import('./provider-scratch.js');
+  const { existsSync, lstatSync, readFileSync, utimesSync } = await import('node:fs');
+  const DAY = 86_400_000;
+  const now = Date.now();
+  // The shape of a Codex mission folder filled before the caches were shared.
+  const mission = (path: string, mtime = now): string => {
+    for (const [name, size] of [
+      [join('cache', 'remote_plugin_catalog', 'catalog.json'), 3000],
+      [join('cache', 'codex_apps_tools', 'tools.json'), 200],
+      [join('plugins', 'cache', 'openai-curated-remote', 'sites', 'plugin.json'), 500],
+      [join('sessions', '2026', 'rollout.jsonl'), 50],
+      ['state_5.sqlite', 40],
+      ['state_5.sqlite-wal', 30],
+      ['config.toml', 10],
+    ] as const) {
+      mkdirSync(join(path, name, '..'), { recursive: true });
+      writeFileSync(join(path, name), 'x'.repeat(size));
+    }
+    utimesSync(path, new Date(mtime), new Date(mtime));
+    return path;
+  };
+  const kept = [join('sessions', '2026', 'rollout.jsonl'), 'state_5.sqlite', 'state_5.sqlite-wal', 'config.toml'];
+  const ended = mission(missionScratchPath('provider-codex', 'trim-ended'));
+  const live = mission(missionScratchPath('provider-codex', 'trim-live'));
+  const unknownOld = mission(missionScratchPath('provider-codex', 'trim-unknown-old'), now - 2 * DAY);
+  const unknownFresh = mission(missionScratchPath('provider-codex', 'trim-unknown-fresh'));
+  const legacy = mission(join(TIMON, 'codex-runs', 'trim-legacy'));
+  const otherPlugin = mission(missionScratchPath('acme', 'trim-ended'));
+  // A mission already on the shared caches: its link stays, the shared folder is not counted.
+  const linked = openMissionScratch({ pluginId: 'provider-codex', missionId: 'trim-linked', seal, credentialDirs: [] }).path;
+  const sharedSentinel = join(providerCacheDir(), 'provider-codex', 'cache', 'sentinel.json');
+  writeFileSync(sharedSentinel, 'x'.repeat(10_000));
+
+  const lives: Record<string, { live: boolean; endedAt: number | null }> = {
+    'trim-ended': { live: false, endedAt: now - 60_000 },
+    'trim-live': { live: true, endedAt: null },
+    'trim-legacy': { live: false, endedAt: now - 60_000 },
+    'trim-linked': { live: false, endedAt: now - 60_000 },
+  };
+  const outcome = trimProviderCaches((id) => lives[id] ?? null, now);
+
+  for (const trimmed of [ended, unknownOld, legacy]) {
+    assert.equal(existsSync(join(trimmed, 'cache')), false, trimmed);
+    assert.equal(existsSync(join(trimmed, 'plugins', 'cache')), false, trimmed);
+    for (const name of kept) assert.equal(existsSync(join(trimmed, name)), true, `${trimmed} kept ${name}`);
+  }
+  for (const untouched of [live, unknownFresh, otherPlugin]) {
+    assert.equal(existsSync(join(untouched, 'cache', 'remote_plugin_catalog', 'catalog.json')), true, untouched);
+    assert.equal(existsSync(join(untouched, 'plugins', 'cache', 'openai-curated-remote', 'sites', 'plugin.json')), true, untouched);
+  }
+  assert.equal(lstatSync(join(linked, 'cache')).isSymbolicLink(), true);
+  assert.equal(readFileSync(sharedSentinel, 'utf8').length, 10_000);
+  assert.deepEqual(outcome, { missions: 3, bytes: 3 * (3000 + 200 + 500) });
+  assert.deepEqual(trimProviderCaches((id) => lives[id] ?? null, now), { missions: 0, bytes: 0 }, 'nothing twice');
+});

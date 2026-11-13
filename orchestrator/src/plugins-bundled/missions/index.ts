@@ -15,7 +15,7 @@ import { registerRoutes } from './routes.js';
 import { startPermissionExpiry } from '../../permissions.js';
 import { startMissionTitles } from '../../mission-titles.js';
 import { purgeChatAttachments } from '../../chat-attachments.js';
-import { purgeProviderScratch } from '../../backends/provider-scratch.js';
+import { purgeProviderScratch, trimProviderCaches } from '../../backends/provider-scratch.js';
 import { dbApi } from '../../db.js';
 import { settingNum } from '../../settings.js';
 import { startEgressProxy } from '../../egress/service.js';
@@ -78,6 +78,12 @@ function purgeOnce(): void {
  * install kept every reaped mission's folder forever.
  */
 function purgeProviderSessions(): void {
+  // Not tied to the retention: what goes is downloaded again, never the conversation.
+  const trim = trimProviderCaches(missionLifetime);
+  if (trim.missions) {
+    console.log(`[provider-scratch] ${(trim.bytes / 1_048_576).toFixed(1)} MB of CLI caches freed `
+      + `in ${trim.missions} finished mission folder(s)`);
+  }
   const ttl = settingNum('TIMON_PROVIDER_SESSION_TTL_MS');
   if (ttl <= 0) return;
   const outcome = purgeProviderScratch(missionLifetime, ttl);

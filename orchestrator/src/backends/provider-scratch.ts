@@ -15,7 +15,7 @@
  * (`BackendLaunchContext.kind === 'probe'`).
  */
 
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { protectedHomeDirProblem } from './credential-home-dirs.js';
@@ -302,6 +302,72 @@ export function purgeProviderScratch(
     }
   }
   return out;
+}
+
+/** A folder with no mission row (a one-shot launch) may belong to a CLI still running: its caches wait this long. */
+const UNKNOWN_MISSION_CACHE_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export type CacheTrimOutcome = { missions: number; bytes: number };
+
+/**
+ * Removes, from the folders of missions that are over, the caches their CLI can download again
+ * (`SHARED_CACHE_DIRS`), without waiting for the session retention: the conversation next to them
+ * stays resumable as long as before, and a resumed mission is linked to the shared caches on its
+ * next turn. A running mission is never touched. A link costs nothing and stays; what goes is a
+ * real folder a mission filled before the caches were shared, which is how an existing install
+ * gets its disk back on the first pass.
+ */
+export function trimProviderCaches(
+  lifetimeOf: (missionId: string) => ScratchMissionLifetime | null,
+  now: number = Date.now(),
+): CacheTrimOutcome {
+  const out: CacheTrimOutcome = { missions: 0, bytes: 0 };
+  for (const { root, pluginId } of missionRoots()) {
+    const dirs = pluginId ? sharedCacheDirs(pluginId) : [];
+    if (!dirs.length) continue;
+    for (const missionId of listDir(root)) {
+      const missionDir = join(root, missionId);
+      try {
+        const stat = lstatSync(missionDir);
+        if (!stat.isDirectory()) continue;
+        const life = lifetimeOf(missionId);
+        if (life?.live) continue;
+        if (!life && now - stat.mtimeMs < UNKNOWN_MISSION_CACHE_GRACE_MS) continue;
+      } catch { continue; }
+      let trimmed = false;
+      for (const dir of dirs) {
+        const at = inMission(missionDir, dir);
+        try {
+          if (isDirectoryLink(at) || !lstatSync(at).isDirectory()) continue;
+        } catch { continue; }
+        const bytes = treeBytes(at);
+        try {
+          rmSync(at, { recursive: true, force: true });
+          out.bytes += bytes;
+          trimmed = true;
+        } catch (error) {
+          console.warn(`[provider-scratch] could not trim ${at}: ${(error as Error).message}`);
+        }
+      }
+      if (trimmed) out.missions += 1;
+    }
+  }
+  return out;
+}
+
+/** The size of what is under `path`, links counted as themselves: a link to a shared folder is not this folder's. */
+function treeBytes(path: string): number {
+  let total = 0;
+  const pending = [path];
+  while (pending.length) {
+    const current = pending.pop() as string;
+    try {
+      const stat = lstatSync(current);
+      if (stat.isDirectory()) pending.push(...listDir(current).map((name) => join(current, name)));
+      else if (stat.isFile()) total += stat.size;
+    } catch { /* gone meanwhile */ }
+  }
+  return total;
 }
 
 /** Every folder that holds per-mission folders, with the plugin whose missions they are (`null`: a retired provider's). */
