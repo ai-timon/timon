@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "O Chrome está aberto no computador que executa o Timon. Entre lá, depois volte e pressione Concluído.",
       "chromeSigninDone": "Concluído, copiar a sessão",
       "chromeSigninCancel": "Fechar sem copiar",
-      "chromeSigninCopied": "Sessão iniciada: {count} cookie(s) copiado(s) para este navegador. Recarregue a página para ver.",
+      "chromeSigninCopied": "Sessão iniciada: {count} cookie(s) copiado(s) para este navegador.",
       "chromeSigninNothing": "O Chrome foi fechado sem uma sessão para copiar.",
-      "chromeSigninKept": "Você pode repetir isso a qualquer momento: o Chrome lembra a própria sessão."
+      "chromeSigninKept": "Você pode repetir isso a qualquer momento: o Chrome lembra a própria sessão.",
+      "chromeSigninRejected": "O Google recusou o login neste navegador. Entre com o Chrome: no final, o Timon copia a sessão para cá e volta para a página.",
+      "chromeSigninRejectedSite": "O Google recusou o login neste site a partir deste navegador. Abra o Chrome: o site abre lá. Entre como de costume, depois volte aqui e toque em Concluído.",
+      "googleSigninBanner": "O Google recusou o login neste navegador."
     },
     "windowTitle": "Navegador — {agent}",
     "recording": {

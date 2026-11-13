@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "Chrome ist auf dem Computer geöffnet, auf dem Timon läuft. Melde dich dort an, komm dann zurück und drücke Fertig.",
       "chromeSigninDone": "Fertig, Anmeldung kopieren",
       "chromeSigninCancel": "Ohne Kopieren schließen",
-      "chromeSigninCopied": "Angemeldet: {count} Cookie(s) in diesen Browser kopiert. Lade die Seite neu, um es zu sehen.",
+      "chromeSigninCopied": "Angemeldet: {count} Cookie(s) in diesen Browser kopiert.",
       "chromeSigninNothing": "Chrome wurde ohne zu kopierende Anmeldung geschlossen.",
-      "chromeSigninKept": "Du kannst das jederzeit wiederholen: Chrome merkt sich seine eigene Anmeldung."
+      "chromeSigninKept": "Du kannst das jederzeit wiederholen: Chrome merkt sich seine eigene Anmeldung.",
+      "chromeSigninRejected": "Google verweigert die Anmeldung in diesem Browser. Melde dich stattdessen mit Chrome an: Danach kopiert Timon die Anmeldung hierher und bringt dich zur Seite zurück.",
+      "chromeSigninRejectedSite": "Google verweigert die Anmeldung bei dieser Website in diesem Browser. Öffne Chrome: Die Website öffnet sich dort. Melde dich wie gewohnt an, komm dann zurück und drücke auf Fertig.",
+      "googleSigninBanner": "Google verweigert die Anmeldung in diesem Browser."
     },
     "windowTitle": "Browser — {agent}",
     "recording": {

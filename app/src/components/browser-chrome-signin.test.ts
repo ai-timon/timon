@@ -93,3 +93,51 @@ test('a control held by another device keeps the button off', async () => {
     assert.equal(buttons(/Open Chrome/)[0]!.disabled, true);
   });
 });
+
+test('the start carries the planned page, and a window closed by hand still leads back once', async () => {
+  await withDom(async ({ React, root, install }) => {
+    install('fetch', async () => Response.json({ available: true, chrome: { available: true, name: 'Google Chrome' } }));
+    const sent: Array<[string, Record<string, unknown> | undefined]> = [];
+    let state: Record<string, unknown> = { state: 'idle' };
+    const signedIn: unknown[] = [];
+    const { BrowserChromeSignin } = await import('./browser-chrome-signin');
+    await React.act(async () => {
+      root.render(React.createElement(BrowserChromeSignin, {
+        controlled: true, close: () => {}, startUrl: 'https://app.example.com/login', reason: 'rejectedSite', onSignedIn: (status) => { signedIn.push(status); },
+        command: (async (action: string, data?: Record<string, unknown>) => {
+          sent.push([action, data]);
+          if (action === 'chromeSigninStart') state = { state: 'open' };
+          return state;
+        }) as never,
+      }));
+    });
+    assert.match(document.body.textContent ?? '', /refused to sign you in to this site/);
+    await React.act(async () => { buttons(/Open Chrome/)[0]!.click(); });
+    assert.deepEqual(sent.find(([action]) => action === 'chromeSigninStart')?.[1], { url: 'https://app.example.com/login' });
+    // The user closes Chrome themselves: the next status reading reports the import.
+    state = { state: 'finished', imported: 4, skipped: 0 };
+    await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 2100)); });
+    assert.equal(signedIn.length, 1);
+    await React.act(async () => { root.render(React.createElement(BrowserChromeSignin, {
+      controlled: true, close: () => {}, onSignedIn: (status) => { signedIn.push(status); },
+      command: (async () => state) as never,
+    })); });
+    assert.equal(signedIn.length, 1, 'reported once');
+  });
+});
+
+test('a result left by an earlier sign-in leads nowhere when the dialog opens', async () => {
+  await withDom(async ({ React, root, install }) => {
+    install('fetch', async () => Response.json({ available: true, chrome: { available: true, name: 'Google Chrome' } }));
+    const signedIn: unknown[] = [];
+    const { BrowserChromeSignin } = await import('./browser-chrome-signin');
+    await React.act(async () => {
+      root.render(React.createElement(BrowserChromeSignin, {
+        controlled: true, close: () => {}, onSignedIn: (status) => { signedIn.push(status); },
+        command: (async () => ({ state: 'finished', imported: 9 })) as never,
+      }));
+    });
+    assert.match(document.querySelector('[role="status"]')?.textContent ?? '', /9 cookie\(s\) copied/);
+    assert.equal(signedIn.length, 0);
+  });
+});
