@@ -218,7 +218,7 @@ export const ZONES = {
   /** Exported only with `--with-archive`. */
   archive: ['archive'],
   /** Rebuildable: never exported, first candidate for cleanup. */
-  cache: ['run', 'worktrees', 'codex-runs', 'grok-runs', 'provider-runs', 'browser-profiles', 'tmp', 'tts', 'backups', 'plans', 'quarantine', '_salvage-e2e-parcours', 'appearance.json'],
+  cache: ['run', 'worktrees', 'codex-runs', 'grok-runs', 'provider-runs', 'provider-cache', 'browser-profiles', 'tmp', 'tts', 'backups', 'plans', 'quarantine', '_salvage-e2e-parcours', 'appearance.json'],
 } as const;
 
 export type Zone = keyof typeof ZONES;
