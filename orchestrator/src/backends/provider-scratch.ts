@@ -17,8 +17,10 @@
 
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, parse, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import { protectedHomeDirProblem } from './credential-home-dirs.js';
+import { isDirectoryLink, linkDirectory, removeDirectoryLink } from '../host/directory-link.js';
+import { ensurePrivateDir } from '../host/private-dir.js';
 import { TIMON_HOME } from '../paths.js';
 import type { LaunchSeal } from './launch-seal.js';
 import { forgetProviderMediaRoots } from './provider-media.js';
@@ -48,6 +50,71 @@ function adoptLegacyMissionDir(pluginId: string, missionId: string): void {
   } catch (error) {
     console.warn(`[provider-scratch] could not carry ${from} over to ${to}: ${(error as Error).message}`);
   }
+}
+
+/**
+ * Folders (relative to a mission's folder) a plugin's CLI fills with downloads it can fetch again,
+ * that every mission would otherwise keep its own copy of. Codex, given one home per mission, pulls
+ * its remote plugin catalog (~65 MB) and the curated plugins (~30 MB) into each: some 95 MB a
+ * mission, kept for the whole session retention, against ~5 MB of conversation. They point to one
+ * folder per plugin under `providerCacheDir()` instead. Sharing it is safe: Codex writes these files
+ * to a temporary name and renames it over the old one, keys its catalog by account, and installs a
+ * plugin in a private staging folder before moving it into place.
+ */
+const SHARED_CACHE_DIRS: Readonly<Record<string, readonly string[]>> = { 'provider-codex': ['cache', 'plugins/cache'] };
+
+/** Where the caches the missions of a plugin share live: outside `provider-runs/`, which the purge reads as mission folders. */
+export function providerCacheDir(): string {
+  return join(TIMON_HOME, 'provider-cache');
+}
+
+function sharedCacheDirs(pluginId: string): readonly string[] {
+  return (Object.hasOwn(SHARED_CACHE_DIRS, pluginId) ? SHARED_CACHE_DIRS[pluginId] : undefined) ?? [];
+}
+
+/** The plugin whose missions a folder of `TIMON_HOME` holds: a plugin's folder under `provider-runs/`, or one it took over. */
+function pluginOfLegacyDir(name: string): string | null {
+  return Object.entries(LEGACY_RUN_DIRS).find(([, dir]) => dir === name)?.[0] ?? null;
+}
+
+function inMission(missionDir: string, relativeDir: string): string {
+  return join(missionDir, ...relativeDir.split('/'));
+}
+
+/**
+ * Points the cache folders of a mission to the plugin's shared ones. A folder already there (a
+ * mission begun before this existed, or an earlier turn's link) is left alone; the cache trim
+ * takes a real one away once the mission is over. Best effort: a link that cannot be made leaves
+ * the CLI its own folder, as before.
+ */
+function shareMissionCaches(pluginId: string, missionDir: string): void {
+  for (const dir of sharedCacheDirs(pluginId)) {
+    const at = inMission(missionDir, dir);
+    try {
+      const shared = ensurePrivateDir(join(providerCacheDir(), pluginId, dir.split('/').join('-')));
+      // A link left dangling (the shared folder was deleted by hand, the home moved) is made again.
+      if (isDirectoryLink(at) && !existsSync(at)) removeDirectoryLink(at);
+      if (existsSync(at) || isDirectoryLink(at)) continue;
+      mkdirSync(dirname(at), { recursive: true, mode: 0o700 });
+      linkDirectory(shared, at);
+    } catch (error) {
+      console.warn(`[provider-scratch] could not share ${at}, the mission keeps its own: ${(error as Error).message}`);
+    }
+  }
+}
+
+/**
+ * Removes a mission's folder without reaching into the shared caches: their links go first, on
+ * their own, so the recursive removal that follows never meets one.
+ */
+function removeMissionDir(missionDir: string, pluginId: string | null): void {
+  if (pluginId) {
+    for (const dir of sharedCacheDirs(pluginId)) {
+      const at = inMission(missionDir, dir);
+      if (isDirectoryLink(at)) removeDirectoryLink(at);
+    }
+  }
+  rmSync(missionDir, { recursive: true, force: true });
 }
 
 const SAFE_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -109,7 +176,7 @@ export function openMissionScratch(input: {
   const { seal } = input;
   adoptLegacyMissionDir(input.pluginId, input.missionId);
   const home = input.home ?? homedir();
-  return createScratchDir({
+  const scratch = createScratchDir({
     root: missionScratchPath(input.pluginId, input.missionId),
     swap: (text, escape) => seal.swap(text, escape),
     // Second lock: a folder registration would refuse is not a root even if it got into the list another way.
@@ -118,6 +185,8 @@ export function openMissionScratch(input: {
       ...(input.extraLinkRoots ?? []),
     ],
   });
+  shareMissionCaches(input.pluginId, scratch.path);
+  return scratch;
 }
 
 /** The mission is explicitly done with: every plugin's folder for it goes, with the CLI's session store inside. */
@@ -126,12 +195,12 @@ export function disposeProviderScratch(missionId: string): void {
   forgetProviderMediaRoots(missionId);
   for (const pluginId of Object.keys(LEGACY_RUN_DIRS)) {
     const legacy = legacyMissionDir(pluginId, missionId);
-    if (legacy) try { rmSync(legacy, { recursive: true, force: true }); } catch { /* best effort */ }
+    if (legacy) try { removeMissionDir(legacy, pluginId); } catch { /* best effort */ }
   }
   const base = providerRunsDir();
   if (!existsSync(base)) return;
   for (const plugin of readdirSync(base)) {
-    try { rmSync(join(base, plugin, missionId), { recursive: true, force: true }); } catch { /* best effort, like every dispose */ }
+    try { removeMissionDir(join(base, plugin, missionId), plugin); } catch { /* best effort, like every dispose */ }
   }
 }
 
@@ -153,33 +222,37 @@ export type ParkedProviderScratch = {
 export function parkProviderScratch(missionId: string): ParkedProviderScratch {
   if (!SAFE_SEGMENT.test(missionId)) return { restore() {}, drop() {} };
   forgetProviderMediaRoots(missionId);
-  const legacy = Object.keys(LEGACY_RUN_DIRS).flatMap((pluginId) => legacyMissionDir(pluginId, missionId) ?? []);
+  const legacy = Object.keys(LEGACY_RUN_DIRS).flatMap((pluginId) => {
+    const dir = legacyMissionDir(pluginId, missionId);
+    return dir ? [{ dir, pluginId }] : [];
+  });
   const base = providerRunsDir();
-  const parked: string[] = [];
-  for (const dir of [...legacy, ...listDir(base).map((plugin) => join(base, plugin, missionId))]) {
+  const parked: Array<{ dir: string; pluginId: string }> = [];
+  for (const entry of [...legacy, ...listDir(base).map((plugin) => ({ dir: join(base, plugin, missionId), pluginId: plugin }))]) {
+    const { dir, pluginId } = entry;
     if (!existsSync(dir)) continue;
     try {
-      rmSync(`${dir}${PARKED_SUFFIX}`, { recursive: true, force: true });
+      removeMissionDir(`${dir}${PARKED_SUFFIX}`, pluginId);
       renameSync(dir, `${dir}${PARKED_SUFFIX}`);
-      parked.push(dir);
+      parked.push(entry);
     } catch {
       // A folder that cannot move (a file still held on Windows) goes the way of
       // a dispose: the new CLI must not inherit it. This session is then lost.
-      try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort, like every dispose */ }
+      try { removeMissionDir(dir, pluginId); } catch { /* best effort, like every dispose */ }
     }
   }
   return {
     restore() {
       disposeProviderScratch(missionId);
-      for (const dir of parked) {
+      for (const { dir } of parked) {
         try { renameSync(`${dir}${PARKED_SUFFIX}`, dir); } catch (error) {
           console.warn(`[provider-scratch] could not put ${dir} back: ${(error as Error).message}`);
         }
       }
     },
     drop() {
-      for (const dir of parked) {
-        try { rmSync(`${dir}${PARKED_SUFFIX}`, { recursive: true, force: true }); } catch { /* the retention purge takes it */ }
+      for (const { dir, pluginId } of parked) {
+        try { removeMissionDir(`${dir}${PARKED_SUFFIX}`, pluginId); } catch { /* the retention purge takes it */ }
       }
     },
   };
@@ -208,10 +281,7 @@ export function purgeProviderScratch(
   now: number = Date.now(),
 ): ScratchPurgeOutcome {
   const out: ScratchPurgeOutcome = { removed: [], keptLive: 0, keptRecent: 0 };
-  const roots = [...Object.values(LEGACY_RUN_DIRS), ...RETIRED_RUN_DIRS].map((name) => join(TIMON_HOME, name));
-  const base = providerRunsDir();
-  for (const plugin of listDir(base)) roots.push(join(base, plugin));
-  for (const root of roots) {
+  for (const { root, pluginId } of missionRoots()) {
     for (const missionId of listDir(root)) {
       const dir = join(root, missionId);
       let since: number | null;
@@ -223,7 +293,7 @@ export function purgeProviderScratch(
       } catch { continue; }
       if (now - since < ttlMs) { out.keptRecent += 1; continue; }
       try {
-        rmSync(dir, { recursive: true, force: true });
+        removeMissionDir(dir, pluginId);
         forgetProviderMediaRoots(missionId);
         out.removed.push(missionId);
       } catch (error) {
@@ -232,6 +302,17 @@ export function purgeProviderScratch(
     }
   }
   return out;
+}
+
+/** Every folder that holds per-mission folders, with the plugin whose missions they are (`null`: a retired provider's). */
+function missionRoots(): Array<{ root: string; pluginId: string | null }> {
+  const roots = [
+    ...Object.values(LEGACY_RUN_DIRS).map((name) => ({ root: join(TIMON_HOME, name), pluginId: pluginOfLegacyDir(name) })),
+    ...RETIRED_RUN_DIRS.map((name) => ({ root: join(TIMON_HOME, name), pluginId: null })),
+  ];
+  const base = providerRunsDir();
+  for (const plugin of listDir(base)) roots.push({ root: join(base, plugin), pluginId: plugin });
+  return roots;
 }
 
 function listDir(dir: string): string[] {
