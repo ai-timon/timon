@@ -24,7 +24,7 @@ Each event carries the Timon version, your operating system and processor type, 
 - the first time you reach a step such as your first agent, project or completed task, and how many days ago Timon was installed, in ranges;
 - that an error happened in a part of the app (for example *Agents*), never the error itself;
 - each setup step you complete or skip;
-- missions and agent turns: when they start and end, how long a turn took, whether it succeeded, how many tokens it used, which AI provider ran it;
+- missions and agent turns: when they start and end, how long a turn took, whether it succeeded, how many tokens it used, which AI provider ran it, and how many days after installation the turn ran (a number of days, never a date);
 - which **built-in** tools agents used (for example the file editor or the terminal), as counts;
 - task, plugin, licence and built-in browser actions: what kind of action, never what it acted on.
 
@@ -41,7 +41,7 @@ The AI model is sent only when it is one of the models Timon lists for that prov
 
 ## Who you are to us
 
-Nobody in particular. On its first event, Timon draws a random identifier and keeps it in `telemetry.json` in the Timon folder (see [Where Timon keeps its files](../installation/configuration.md)). It is not derived from your computer, your account or your licence. Delete the file and the next event comes from a new, unrelated identifier.
+Nobody in particular. On its first event, Timon draws a random identifier and keeps it, with the moment it was drawn, in `telemetry.json` in the Timon folder (see [Where Timon keeps its files](../installation/configuration.md)). It is not derived from your computer, your account or your licence. Delete the file and the next event comes from a new, unrelated identifier.
 
 ## Turning it off
 
