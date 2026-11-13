@@ -1910,6 +1910,7 @@ export function AgentsClient() {
           agents={graphAgents}
           poles={poles}
           hierarchy={hierarchy}
+          mainAgent={mainAgent}
           fold={foldRef.current?.info(menu.id) ?? null}
           onToggleFold={() => foldRef.current?.toggle(menu.id)}
           pinned={pinRef.current?.has(menu.id) ?? false}

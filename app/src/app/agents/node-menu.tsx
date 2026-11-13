@@ -2,8 +2,9 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, CircleUserRound, Copy, FolderInput, LocateFixed, MessageSquare, Network, Settings2, Shapes } from 'lucide-react';
+import { ArrowLeft, ChevronsDownUp, ChevronsUpDown, CircleUserRound, Copy, FolderInput, LocateFixed, MessageSquare, Network, Settings2, Shapes, Trash2 } from 'lucide-react';
 import { openAgentEditor } from '@/components/agent-editor/agent-editor-modal';
+import { deleteAgentAfterConfirm } from '@/components/agent-editor/delete-agent';
 import { useCan } from '@/hooks/use-me';
 import { ChatLink } from '@/components/chat/chat-link';
 import { chatHref } from '@/lib/chat-island-params';
@@ -17,11 +18,13 @@ export type MenuTarget = { id: string; x: number; y: number };
 type Agent = { name: string; project?: string | null };
 
 /** Right-click menu of a graph node (or of a row of the Organization tree). */
-export function NodeMenu({ target, agents, poles, hierarchy, fold, pinned, onClose, onReportsTo, onMovePole, onEditPole, onDuplicate, onToggleFold, onResetPosition }: {
+export function NodeMenu({ target, agents, poles, hierarchy, mainAgent, fold, pinned, onClose, onReportsTo, onMovePole, onEditPole, onDuplicate, onToggleFold, onResetPosition }: {
   target: MenuTarget;
   agents: readonly Agent[];
   poles: readonly PoleRecord[];
   hierarchy: Hierarchy;
+  /** The main orchestrator, which the daemon refuses to delete. */
+  mainAgent?: string | null;
   /** Null for a node without sub-agents, or outside the graph. */
   fold?: FoldInfo | null;
   /** The node was moved by hand on the graph. */
@@ -46,6 +49,9 @@ export function NodeMenu({ target, agents, poles, hierarchy, fold, pinned, onClo
   const agent = agents.find((a) => a.name === target.id) ?? null;
   const project = agent?.project ?? null;
   const leadsProject = !!project && hierarchy.leadOfProject.get(project.toLowerCase()) === agent?.name;
+  // Offered only where the daemon would accept it: deleting takes
+  // agents:manage, and the main orchestrator's seat must be handed over first.
+  const canDelete = !!agent && canEditAgents && agent.name.toLowerCase() !== mainAgent?.toLowerCase();
 
   // Keep the menu inside the window, whichever corner was clicked.
   useLayoutEffect(() => {
@@ -151,6 +157,17 @@ export function NodeMenu({ target, agents, poles, hierarchy, fold, pinned, onClo
           {pole && (
             <button type="button" className={item} onClick={() => { onEditPole(pole); onClose(); }}>
               <Shapes className="size-3.5" />{t('agentsPage.editPoleNamed', { name: pole.name })}
+            </button>
+          )}
+          {/* Last, set apart by a gap: the one entry that removes something. */}
+          {canDelete && agent && (
+            <button
+              type="button"
+              className={`${item} mt-1 text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10`}
+              data-menu-delete-agent
+              onClick={() => { onClose(); void deleteAgentAfterConfirm(agent.name); }}
+            >
+              <Trash2 className="size-3.5" />{t('agentsPage.menuDelete')}
             </button>
           )}
         </>
