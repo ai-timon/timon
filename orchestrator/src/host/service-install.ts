@@ -70,6 +70,11 @@ export type ServiceOpts = {
   /** Extra environment required by a packaged runtime (for example Electron
    *  running as Node). Generic CLI-installed services leave this empty. */
   environment?: Record<string, string>;
+  /** Linux: directories of the agent CLIs the installing shell resolved
+   *  (for example `~/.npm-global/bin`), prepended to the unit's `PATH`. The
+   *  unit's fixed `PATH` does not contain them, so the daemon would otherwise
+   *  resolve a different (older) binary than the user's shell, or none. */
+  agentBinDirs?: readonly string[];
   /** Injected: `host.exec`. Tests pass a recorder. `timeout` overrides the
    *  caller's own budget for one call (the elevated Windows batch). */
   exec: (name: string, args: string[], options?: { timeout?: number }) => ExecResult;
@@ -173,10 +178,25 @@ function templatePath(installDir: string): string {
   return join(installDir, 'scripts', `${LINUX_UNIT}.service.template`);
 }
 
+/** `PATH` entries of the shipped unit, which `agentBinDirs` must not repeat. */
+const UNIT_BASE_PATH = ['/usr/local/bin', '/usr/bin', '/bin'];
+
+/** A `PATH` prefix for the unit: absolute, systemd-safe, deduplicated. */
+export function unitPathPrefix(homeDir: string, dirs: readonly string[] | undefined): string {
+  const known = new Set([join(homeDir, '.local', 'bin'), ...UNIT_BASE_PATH]);
+  const out: string[] = [];
+  for (const dir of dirs ?? []) {
+    if (!isAbsolute(dir) || /[\r\n\0:"]/.test(dir) || known.has(dir)) continue;
+    known.add(dir);
+    out.push(dir.replaceAll('%', '%%'));
+  }
+  return out.length ? `${out.join(':')}:` : '';
+}
+
 /** Renders the shipped systemd template. Never invents a unit of its own:
  *  the template is the reference, and `install-linux.sh` renders the same one. */
 export function renderUnit(
-  opts: Pick<ServiceOpts, 'installDir' | 'userName' | 'port' | 'heapMb' | 'timonHome'>,
+  opts: Pick<ServiceOpts, 'installDir' | 'userName' | 'port' | 'heapMb' | 'timonHome'> & Partial<Pick<ServiceOpts, 'homeDir' | 'agentBinDirs'>>,
 ): string {
   if (/[\r\n\0]/.test(opts.timonHome)) throw new Error('Invalid daemon data directory');
   const template = templatePath(opts.installDir);
@@ -192,6 +212,7 @@ export function renderUnit(
     .replaceAll('@USER@', opts.userName)
     .replaceAll('@PORT@', String(opts.port))
     .replaceAll('@HEAP@', String(opts.heapMb))
+    .replace(/^Environment=PATH=/m, (line) => `${line}${unitPathPrefix(opts.homeDir ?? '', opts.agentBinDirs)}`)
     // The section header itself: the shipped template also names it in a comment,
     // above the section. Placed there, the line landed in `[Unit]`, which systemd
     // ignores, and the daemon ran on the default home.

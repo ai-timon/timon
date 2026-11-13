@@ -1,7 +1,9 @@
 /** Service options without onboarding or database imports. */
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { builtinBinaries } from '../backends/builtin-declarations.js';
+import { findExecutableBinary } from './binary-path.js';
 import type { TimonConfig } from '../config/schema.js';
 import { TIMON_HOME } from '../paths.js';
 import { packagedRuntime } from './bundled-node.js';
@@ -41,9 +43,24 @@ export function serviceOptsFromEnvironment(
     heapMb: cfg.daemon.heapMb,
     port: cfg.daemon.listen.port,
     nodePath: process.execPath,
+    ...(process.platform === 'linux' ? { agentBinDirs: agentBinDirs() } : {}),
     exec: (command, args, options) => safeExecSync(command, args, host, options?.timeout),
   };
   return serviceOptsForPlatform(base, process.env, process.execPath, cfg.app.listen.port);
+}
+
+/**
+ * Where the installing shell finds the agent CLIs. The systemd unit has a fixed
+ * `PATH`: a CLI installed under an npm prefix (`~/.npm-global/bin`) is absent
+ * from it, so the service ran an older copy from `/usr/bin`, or none at all.
+ */
+export function agentBinDirs(find: (name: string) => string | null = (name) => findExecutableBinary(name)): string[] {
+  const dirs = new Set<string>();
+  for (const binary of builtinBinaries()) {
+    const found = find(binary.names[0]!);
+    if (found) dirs.add(dirname(found));
+  }
+  return [...dirs];
 }
 
 /** `PACKAGED_DEFAULTS` of `desktop/src/config.ts`: the ports shipped to testers. */

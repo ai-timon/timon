@@ -838,6 +838,21 @@ test('linux: l\'unit porte le port et le heap de la config, pas des constantes',
   assert.doesNotMatch(unit, /Environment=PORT=3000/);
 });
 
+test('linux: the unit PATH starts with the agent CLI directories the shell found', () => {
+  const opts = fixture('linux');
+  writeFileSync(
+    join(opts.installDir, 'scripts', `${LINUX_UNIT}.service.template`),
+    '[Service]\nEnvironment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin\n',
+    'utf8',
+  );
+  const unit = renderUnit({
+    ...opts,
+    agentBinDirs: ['/home/tester/.npm-global/bin', '/usr/bin', join(opts.homeDir, '.local', 'bin'), 'relative/bin', '/odd:dir', '/home/tester/.npm-global/bin'],
+  });
+  assert.match(unit, /^Environment=PATH=\/home\/tester\/\.npm-global\/bin:%h\/\.local\/bin:\/usr\/local\/bin:\/usr\/bin:\/bin$/m);
+  assert.equal(renderUnit({ ...opts }).match(/^Environment=PATH=.*$/m)?.[0], 'Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin');
+});
+
 test('status: « enregistré » et « tourne » sont deux réponses distinctes', () => {
   // Unit écrite, mais systemd la dit inactive : installée, pas démarrée. C'est
   // l'état exact d'un premier lancement empaqueté, où le daemon embarqué tient
