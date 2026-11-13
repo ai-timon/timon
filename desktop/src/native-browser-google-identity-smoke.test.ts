@@ -40,10 +40,18 @@ process.on('unhandledRejection', fail);
 app.setPath('userData', join(home, 'shell'));
 app.on('window-all-closed', () => {});
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-const APP_PAGE = '<title>App</title><button id="go" style="position:absolute;left:0;top:0;width:400px;height:200px" '
+// What the page's own first script sees: the shim must be there before any of the page's code.
+const EARLY = '<script>window.early = Object.keys(window.chrome || {})</script>';
+// A frame tells its parent what its window.chrome holds: a cross-origin one cannot be read from outside.
+const FRAME_PAGE = '<script>parent.postMessage({ frame: location.host, keys: Object.keys(window.chrome || {}),'
+  + ' native: Function.prototype.toString.call(window.chrome.loadTimes) }, "*")</script>';
+const APP_PAGE = '<head>' + EARLY + '<title>App</title></head><button id="go" style="position:absolute;left:0;top:0;width:400px;height:200px" '
   + 'onclick="window.open(\'https://accounts.google.com/o/oauth2/v2/auth?client_id=1\', \'signin\', \'popup,width=500,height=600\')">Sign in with Google</button>'
   + '<button id="probe" style="position:absolute;left:0;top:300px;width:400px;height:200px" onclick="window.open(window.probe)">Probe</button>'
-  + '<script>window.addEventListener("message", (event) => { window.got = event.data; })</script>';
+  + '<script>window.frameKeys = {}; window.addEventListener("message", (event) => {'
+  + ' if (event.data && event.data.frame) window.frameKeys[event.data.frame] = event.data; else window.got = event.data; })</script>'
+  + '<iframe src="https://app.example.test/frame" style="position:absolute;left:500px;top:0;width:10px;height:10px"></iframe>'
+  + '<iframe src="https://frames.example.test/frame" style="position:absolute;left:500px;top:20px;width:10px;height:10px"></iframe>';
 (async () => {
   await app.whenReady();
   app.dock?.hide();
@@ -56,7 +64,8 @@ const APP_PAGE = '<title>App</title><button id="go" style="position:absolute;lef
     const url = new URL(request.url);
     seen.push({ host: url.hostname, path: url.pathname, ua: request.headers.get('user-agent'), hints: request.headers.get('sec-ch-ua') });
     const html = (body) => new Response(body, { headers: { 'content-type': 'text/html' } });
-    if (url.hostname === 'accounts.google.com') return url.pathname === '/lookup' ? new Response('ok') : html('<title>Sign in</title>');
+    if (url.pathname === '/frame') return html(FRAME_PAGE);
+    if (url.hostname === 'accounts.google.com') return url.pathname === '/lookup' ? new Response('ok') : html('<head>' + EARLY + '<title>Sign in</title></head>');
     if (url.hostname === 'app.example.test') return html(APP_PAGE);
     return new Response('not found', { status: 404 });
   });
@@ -69,12 +78,27 @@ const APP_PAGE = '<title>App</title><button id="go" style="position:absolute;lef
     throw new Error('Never reached: ' + what);
   };
   const brands = 'navigator.userAgentData ? navigator.userAgentData.brands.map((entry) => entry.brand) : []';
+  const CHROME_KEYS = ['loadTimes', 'csi', 'app'];
+  // Google refuses a sign-in when window.chrome is empty, as Electron leaves it (native-browser-chrome-shim.ts).
+  const assertChromeShim = async (where) => {
+    assert.deepEqual(await evaluate('Object.keys(window.chrome)'), CHROME_KEYS, where + ': window.chrome as Chrome has it');
+    assert.deepEqual(await evaluate('window.early'), CHROME_KEYS, where + ': before the page\'s first script');
+    assert.equal(await evaluate('chrome.loadTimes.toString()'), 'function loadTimes() { [native code] }', where);
+    assert.equal(await evaluate('Function.prototype.toString.toString()'), 'function toString() { [native code] }', where);
+    assert.equal(await evaluate('typeof chrome.csi().pageT === "number" && chrome.app.getIsInstalled() === false'), true, where);
+  };
   try {
     await command('start');
     await command('navigate', { url: 'https://app.example.test/' });
     await until('the site', async () => await evaluate('document.title') === 'App');
     assert.match(await evaluate('navigator.userAgent'), /Chrome\/\d+\./);
     assert.ok((await evaluate(brands)).includes('Google Chrome'), 'a site sees the Chrome identity');
+    await assertChromeShim('the tab');
+    await until('both frames', async () => Object.keys(await evaluate('window.frameKeys')).length === 2);
+    for (const [host, frame] of Object.entries(await evaluate('window.frameKeys'))) {
+      assert.deepEqual(frame.keys, CHROME_KEYS, 'the frame of ' + host);
+      assert.equal(frame.native, 'function loadTimes() { [native code] }', 'the frame of ' + host);
+    }
     const appTab = (await command('status')).activeTabId;
     await evaluate('window.probe = ' + JSON.stringify('http://127.0.0.1:' + server.address().port + '/probe') + '; true');
     let clicks = 0;
@@ -103,6 +127,8 @@ const APP_PAGE = '<title>App</title><button id="go" style="position:absolute;lef
     const signinBrands = await evaluate(brands);
     assert.ok(signinBrands.includes('Chromium') && !signinBrands.includes('Google Chrome'), 'Electron\'s own brands on the sign-in host: ' + signinBrands);
     assert.equal(await evaluate('!!window.opener'), true, 'the popup keeps its opener');
+    await assertChromeShim('the window.open popup');
+    assert.equal(await evaluate('typeof window.prompt'), 'function', 'the prompt bridge is still there');
     assert.equal(await evaluate('fetch("/lookup").then((response) => response.text())'), 'ok');
     const lookup = seen.filter((entry) => entry.path === '/lookup').at(-1);
     assert.doesNotMatch(lookup.ua, /Chrome\/\d/, 'requests of the sign-in page carry the versionless UA');

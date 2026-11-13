@@ -37,9 +37,12 @@ import {
   bubbleLabel, bubbleMessageOf, type AnnotationRoutes, type BubbleConversation, type BubbleHost, type BubbleScheme, type QueuedCapture,
 } from './native-browser-bubble.js';
 import { AnnotationOverlay } from './native-browser-annotation-overlay.js';
+import { CHROME_SHIM_SOURCE } from './native-browser-chrome-shim.js';
 
 interface BrowserTab {
-  id: string; view: WebContentsView; uiWaiters: Set<() => void>; prepared: boolean;
+  id: string; view: WebContentsView; uiWaiters: Set<() => void>;
+  /** The scripts every document of the tab runs first, once registered (`prepareDocuments`). */
+  prepared: Promise<void> | null;
   devtools: DevtoolsLog | null; trace: Array<{ name: string; value: number }> | null;
   /** The identity applied to the tab's current document (see `identityForUrl`). */
   identity: BrowserIdentity;
@@ -1226,7 +1229,7 @@ export class NativeBrowserEngine {
       // One bounded prompt capability; never the Timon UI preload or a CDP endpoint.
       preload: fileURLToPath(new URL('./native-browser-preload.cjs', import.meta.url)),
     } });
-    const tab: BrowserTab = { id: randomUUID(), view, uiWaiters: new Set(), prepared: false, devtools: null, trace: null, identity: 'chrome' };
+    const tab: BrowserTab = { id: randomUUID(), view, uiWaiters: new Set(), prepared: null, devtools: null, trace: null, identity: 'chrome' };
     profile.tabs.set(tab.id, tab);
     if (!profile.activeTabId) profile.activeTabId = tab.id;
     this.recordStep(profile, { t: Date.now(), type: 'newTab', tabId: tab.id, ...(openerTabId ? { openerTabId } : {}) });
@@ -1263,6 +1266,9 @@ export class NativeBrowserEngine {
           void (this.queues.get(profile.id) ?? Promise.resolve()).catch(() => {}).then(() => {
             if (!profile.stopping && profile.tabs.has(popup.id)) this.activate(profile, popup.id);
           });
+          // Not registered any earlier: DevTools misses the popup's first document then, and the
+          // runImmediately of this registration would no longer reach it. The preload gives that
+          // document's main frame the window.chrome shim before its own scripts (smoke-tested).
           popup.view.webContents.once('did-finish-load', () => {
             void this.applyViewport(profile, popup).then(() => this.presentActive(profile)).catch(() => {});
           });
@@ -1670,23 +1676,31 @@ export class NativeBrowserEngine {
     return { metrics: metricsDelta(before, after), page: page.result?.value ?? null };
   }
 
-  private async applyViewport(profile: BrowserProfile, tab: BrowserTab): Promise<void> {
-    // Electron 33 can crash in device emulation before a WebContents has its first document.
-    if (!tab.view.webContents.getURL()) await tab.view.webContents.loadURL('about:blank');
-    await this.cdp(tab, 'Page.enable');
-    await this.cdp(tab, 'Page.setInterceptFileChooserDialog', { enabled: true });
-    if (!tab.prepared) {
-      await this.cdp(tab, 'Page.addScriptToEvaluateOnNewDocument', {
-        source: `(() => {
+  /**
+   * Registers, once per tab, what each of its documents runs before its own scripts, in every
+   * frame: the prompt bridge, and the window.chrome shim that Google's sign-in checks for
+   * (`native-browser-chrome-shim.ts`). One registration, so neither runs twice in a document.
+   */
+  private prepareDocuments(tab: BrowserTab): Promise<void> {
+    tab.prepared ??= this.cdp(tab, 'Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
           const fallback = window.prompt;
           window.prompt = function(message = '', defaultValue = '') {
             if (typeof globalThis.__timonNativePrompt !== 'function') return fallback.call(window, message, defaultValue);
             return globalThis.__timonNativePrompt(String(message), String(defaultValue));
           };
-        })()`, runImmediately: true,
-      });
-      tab.prepared = true;
-    }
+        })();
+${CHROME_SHIM_SOURCE}`, runImmediately: true,
+    }).then(() => undefined, (error: unknown) => { tab.prepared = null; throw error; });
+    return tab.prepared;
+  }
+
+  private async applyViewport(profile: BrowserProfile, tab: BrowserTab): Promise<void> {
+    // Electron 33 can crash in device emulation before a WebContents has its first document.
+    if (!tab.view.webContents.getURL()) await tab.view.webContents.loadURL('about:blank');
+    await this.cdp(tab, 'Page.enable');
+    await this.cdp(tab, 'Page.setInterceptFileChooserDialog', { enabled: true });
+    await this.prepareDocuments(tab);
     const { width, height, mobile } = profile.viewport;
     tab.view.setBounds({ x: 0, y: 0, width, height });
     await this.cdp(tab, 'Emulation.setDeviceMetricsOverride', {
