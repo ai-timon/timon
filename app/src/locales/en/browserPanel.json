@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "Chrome is open on the computer running Timon. Sign in there, then come back and press Done.",
       "chromeSigninDone": "Done, copy the sign-in",
       "chromeSigninCancel": "Close without copying",
-      "chromeSigninCopied": "Signed in: {count} cookie(s) copied into this browser. Reload the page to see it.",
+      "chromeSigninCopied": "Signed in: {count} cookie(s) copied into this browser.",
       "chromeSigninNothing": "Chrome closed without a sign-in to copy.",
-      "chromeSigninKept": "You can run this again at any time: Chrome remembers its own sign-in."
+      "chromeSigninKept": "You can run this again at any time: Chrome remembers its own sign-in.",
+      "chromeSigninRejected": "Google refused to sign you in from this browser. Sign in with Chrome instead: when you are done, Timon copies the sign-in here and takes you back to the page.",
+      "chromeSigninRejectedSite": "Google refused to sign you in to this site from this browser. Open Chrome: the site opens there. Sign in to it as usual, then come back and press Done.",
+      "googleSigninBanner": "Google may refuse to sign you in from this browser."
     },
     "windowTitle": "Browser — {agent}",
     "recording": {

@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "Timon を実行しているコンピューターで Chrome が開いています。そこでサインインしてから戻り、「完了」を押してください。",
       "chromeSigninDone": "完了、サインイン情報をコピー",
       "chromeSigninCancel": "コピーせずに閉じる",
-      "chromeSigninCopied": "サインインしました: {count} 件の Cookie をこのブラウザーにコピーしました。ページを再読み込みすると反映されます。",
+      "chromeSigninCopied": "サインインしました: {count} 件の Cookie をこのブラウザーにコピーしました。",
       "chromeSigninNothing": "コピーするサインイン情報がないまま Chrome が閉じられました。",
-      "chromeSigninKept": "これはいつでも再実行できます。Chrome は自身のサインイン情報を記憶しています。"
+      "chromeSigninKept": "これはいつでも再実行できます。Chrome は自身のサインイン情報を記憶しています。",
+      "chromeSigninRejected": "Google はこのブラウザーからのサインインを拒否しました。代わりに Chrome でサインインしてください。完了すると Timon がサインイン情報をここにコピーし、元のページに戻ります。",
+      "chromeSigninRejectedSite": "Google はこのブラウザーからこのサイトへのサインインを拒否しました。Chrome を開くとサイトがそこで開きます。いつもどおりサインインしてから戻り、完了を押してください。",
+      "googleSigninBanner": "Google はこのブラウザーからのサインインを拒否する場合があります。"
     },
     "windowTitle": "ブラウザー — {agent}",
     "recording": {

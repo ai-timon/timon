@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "Chrome is geopend op de computer waarop Timon draait. Meld je daar aan, kom dan terug en druk op Klaar.",
       "chromeSigninDone": "Klaar, aanmelding kopiëren",
       "chromeSigninCancel": "Sluiten zonder kopiëren",
-      "chromeSigninCopied": "Aangemeld: {count} cookie(s) naar deze browser gekopieerd. Herlaad de pagina om het te zien.",
+      "chromeSigninCopied": "Aangemeld: {count} cookie(s) naar deze browser gekopieerd.",
       "chromeSigninNothing": "Chrome is gesloten zonder aanmelding om te kopiëren.",
-      "chromeSigninKept": "Je kunt dit altijd opnieuw doen: Chrome onthoudt zijn eigen aanmelding."
+      "chromeSigninKept": "Je kunt dit altijd opnieuw doen: Chrome onthoudt zijn eigen aanmelding.",
+      "chromeSigninRejected": "Google weigert je aan te melden vanuit deze browser. Meld je in plaats daarvan aan met Chrome: daarna kopieert Timon de aanmelding hierheen en brengt je terug naar de pagina.",
+      "chromeSigninRejectedSite": "Google weigert je aan te melden bij deze site vanuit deze browser. Open Chrome: de site opent daar. Meld je aan zoals altijd, kom dan terug en druk op Klaar.",
+      "googleSigninBanner": "Google kan weigeren je aan te melden vanuit deze browser."
     },
     "windowTitle": "Browser — {agent}",
     "recording": {

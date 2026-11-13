@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "Chrome 已在运行 Timon 的电脑上打开。请在 Chrome 中登录，然后回到这里点击完成。",
       "chromeSigninDone": "已完成，复制登录状态",
       "chromeSigninCancel": "关闭，不复制",
-      "chromeSigninCopied": "已登录：已将 {count} 个 Cookie 复制到此浏览器。重新加载页面即可查看登录状态。",
+      "chromeSigninCopied": "已登录：已将 {count} 个 Cookie 复制到此浏览器。",
       "chromeSigninNothing": "Chrome 已关闭，没有可复制的登录状态。",
-      "chromeSigninKept": "你可以随时重复此操作：Chrome 会保留自己的登录状态。"
+      "chromeSigninKept": "你可以随时重复此操作：Chrome 会保留自己的登录状态。",
+      "chromeSigninRejected": "Google 拒绝在此浏览器中登录。请改用 Chrome 登录：完成后，Timon 会把登录状态复制到这里并返回原页面。",
+      "chromeSigninRejectedSite": "Google 拒绝在此浏览器中登录此网站。打开 Chrome，网站会在那里打开。像平常一样登录，然后回到这里点“已完成”。",
+      "googleSigninBanner": "Google 可能会拒绝在此浏览器中登录。"
     },
     "windowTitle": "浏览器 — {agent}",
     "recording": {
