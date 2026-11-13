@@ -21,7 +21,7 @@ function isUrl(s: string): boolean {
 type Size = 'xs' | 'sm' | 'md';
 
 const SIZE: Record<Size, string> = {
-  xs: 'text-[9.5px] px-1 py-0 gap-0.5',
+  xs: 'text-[10.5px] px-1.5 py-0 gap-0.5',
   sm: 'text-[10.5px] px-1.5 py-0.5 gap-1',
   md: 'text-[12px] px-2 py-1 gap-1.5',
 };

@@ -166,9 +166,11 @@ export function AgentChip({
         // project list, the strip) and a scrollbar blinks in at every beat.
         'group items-stretch overflow-hidden rounded-md border text-[10.5px] transition-colors md:text-[11.5px]',
         shape === 'row' ? 'flex w-full min-w-0' : 'inline-flex shrink-0',
+        // Raised by its surface, like the rest of the chrome: a rim around
+        // every chip in the top bar read as a row of form fields.
         highlighted
-          ? 'border-foreground/30 bg-background'
-          : 'border-border bg-background/60 hover:border-foreground/20',
+          ? 'border-transparent bg-foreground/[0.1]'
+          : 'border-transparent bg-foreground/[0.05] hover:bg-foreground/[0.08]',
       )}
     >
       {link(<>

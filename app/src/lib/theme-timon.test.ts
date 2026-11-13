@@ -83,7 +83,7 @@ test('the palette: the website\'s violet-black in dark, beige in light, peach an
   assert.ok(lightness('border') > lightness('surface-4'), 'borders above the highest surface');
   assert.match(dark, /--primary: 24 90% 77\.3%;/);
   assert.match(dark, /--foreground: 30 50% 93\.7%;/);
-  assert.match(light, /--surface-0: 32 42% 93\.9%;/);
+  assert.match(light, /--surface-0: 33 32% 93\.2%;/);
   assert.match(light, /--primary: 21 48% 47\.8%;/);
   const surfaces = (block: string) => [...block.matchAll(/--surface-\d: (\d+) (\d+)%/g)].map((m) => ({ h: Number(m[1]), s: Number(m[2]) }));
   assert.ok(surfaces(dark).length >= 5 && surfaces(light).length >= 5);

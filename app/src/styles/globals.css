@@ -19,6 +19,21 @@
     U+F400-F533, U+F0001-F1AF0;
 }
 
+/*! Inter 4.1 — Copyright (c) 2016 The Inter Project Authors — SIL Open Font License 1.1
+ * https://github.com/rsms/inter (full text: src/styles/fonts/LICENSE-inter) */
+/* The face the Timon theme asks for first (`--font-sans: Inter, …`). Shipped
+ * because a stack that names it only finds it on the machines that happen to
+ * have it: elsewhere Linux drew DejaVu Sans and the interface looked like
+ * another product. One variable file covers every weight and the optical size
+ * axis; `swap` keeps text readable while it loads. */
+@font-face {
+  font-family: 'Inter';
+  src: url('./fonts/InterVariable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Palette tokens (`:root` / `.light`) live in `@timon/ui-theme`. This
  * file keeps infrastructure measures and the rules that consume tokens. */
 
@@ -282,11 +297,13 @@
   .chat-bubble :not(pre) > code {
     padding: 0.1em 0.38em;
     border-radius: calc(var(--radius) * 0.4);
-    background: hsl(var(--surface-chip));
-    border: 1px solid hsl(var(--border));
+    /* A fill, no rim: a sentence with three framed spans read like a form.
+     * Tinted from the text colour, which reads on any surface; the chip
+     * surface sat within a few points of the light island. */
+    background: hsl(var(--foreground) / 0.07);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      'Liberation Mono', 'Courier New', monospace;
-    font-size: 0.88em;
+      'Cascadia Code', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
+    font-size: 0.86em;
   }
 
   .chat-bubble pre {
@@ -294,8 +311,9 @@
     margin: 0.7em 0;
     padding: 0.85em 0.95em 0.85em;
     border-radius: calc(var(--radius) * 0.8);
+    /* Set apart by its own background, like inline code: no frame. */
     background: var(--hl-bg);
-    border: 1px solid hsl(var(--border));
+    border: 1px solid transparent;
     overflow-x: auto;
     font-size: 0.85em;
     line-height: 1.55;
@@ -305,7 +323,7 @@
     border: 0;
     padding: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      'Liberation Mono', 'Courier New', monospace;
+      'Cascadia Code', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
     color: var(--hl-fg);
   }
   /* The label adds a line: the top of the block tightens by as much. */
@@ -341,7 +359,7 @@
     background: var(--hl-bg);
     color: var(--hl-fg);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      'Liberation Mono', 'Courier New', monospace;
+      'Cascadia Code', 'JetBrains Mono', 'DejaVu Sans Mono', 'Liberation Mono', 'Courier New', monospace;
     font-size: 12px;
     line-height: 1.6;
     tab-size: 2;

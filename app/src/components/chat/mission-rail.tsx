@@ -302,7 +302,9 @@ export function MissionRail({
           className={cn(
             'flex w-full flex-col items-stretch gap-1.5 rounded-md px-2 py-2 text-left transition-colors',
             'hover:bg-muted/60',
-            on && 'border border-primary/35 bg-primary/[0.08]',
+            // Selected is a fill, not a frame: an outline here was the
+            // loudest edge of the whole rail.
+            on && 'bg-primary/[0.08]',
             needsAction && !on
               && 'border border-[hsl(var(--warning)/0.45)] bg-[hsl(var(--warning)/0.07)]',
           )}
