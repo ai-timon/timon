@@ -1,0 +1,99 @@
+{
+  "missionsPage": {
+    "title": "Missions",
+    "description": "Every task you've handed off to an agent. Tap a row for the full trace.",
+    "notFound": "Mission {id} not found",
+    "terminated": "Mission terminated",
+    "terminateFailed": "Failed to terminate mission: {status}",
+    "missionCount": "{count, plural, one {mission} other {missions}}",
+    "empty": "No missions match the current filters.",
+    "duration": {
+      "seconds": "{seconds}s",
+      "minutes": "{minutes}m",
+      "minutesSeconds": "{minutes}m {seconds}s",
+      "hoursMinutes": "{hours}h {minutes}m",
+      "compactMinutesSeconds": "{minutes}m{seconds}s",
+      "compactHoursMinutes": "{hours}h{minutes}m"
+    },
+    "stats": {
+      "totalCost": "Total cost",
+      "tokens": "Tokens consumed",
+      "inOut": "in / out",
+      "successRate": "Success rate",
+      "failed": "{count, plural, one {{formattedCount} failed} other {{formattedCount} failed}}",
+      "allGreen": "all green"
+    },
+    "filters": {
+      "project": "Project",
+      "agent": "Agent",
+      "status": "Status",
+      "all": "all",
+      "noProject": "· no project",
+      "search": "Search title or ID…",
+      "clear": "Clear"
+    },
+    "status": {
+      "running": "running",
+      "done": "done",
+      "terminated": "terminated",
+      "failed": "failed",
+      "queued": "queued",
+      "backlog": "backlog"
+    },
+    "table": {
+      "id": "ID",
+      "title": "Title",
+      "started": "Started",
+      "duration": "Duration",
+      "cost": "Cost",
+      "tokens": "Tokens (in/out)"
+    },
+    "eventType": {
+      "user": "User",
+      "assistant": "Assistant",
+      "system": "System",
+      "result": "Result",
+      "tool_use": "Tool call",
+      "tool_result": "Tool result"
+    },
+    "detail": {
+      "openChat": "Open in chat →",
+      "kill": "Kill",
+      "spawnedBy": "↑ Spawned by",
+      "task": "↑ Task",
+      "spawned": "{count, plural, one {↓ Spawned {formattedCount}:} other {↓ Spawned {formattedCount}:}}",
+      "tokensIn": "Tokens in",
+      "tokensOut": "Tokens out",
+      "events": "Events",
+      "timeline": "Timeline",
+      "output": "Output",
+      "logs": "Logs",
+      "trace": "Trace",
+      "toolUse": "Tool call ({name})",
+      "resultCost": "Result · cost={cost}",
+      "noTrace": "No trace recorded yet.",
+      "noOutput": "No assistant output recorded for this mission.",
+      "noLogs": "No raw logs recorded."
+    },
+    "dashboard": {
+      "activeMissions": "Active missions",
+      "runningCount": "{count, plural, one {{formattedCount} running} other {{formattedCount} running}}",
+      "noActiveMissions": "No active missions",
+      "kanbanActivity": "Kanban + activity",
+      "tasksLive": "tasks · live",
+      "inProgress": "In Progress",
+      "blockedCount": "{count, plural, one {blocked: {formattedCount}} other {blocked: {formattedCount}}}",
+      "pending": "Pending",
+      "completed": "completed",
+      "messagesPerSecond": "Msg/s",
+      "perSecond": "/s",
+      "rollingMinute": "rolling 60s",
+      "events24Hours": "Events 24h",
+      "hourlyPoints": "one point per hour",
+      "activityByAgent": "Activity by agent",
+      "topFiveToday": "top 5 · today",
+      "noEventsToday": "No events today",
+      "eventUnit": "ev"
+    }
+  }
+}

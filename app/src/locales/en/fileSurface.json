@@ -1,0 +1,22 @@
+{
+  "fileSurface": {
+    "loading": "Loading…",
+    "empty": "Empty folder",
+    "newFile": "New file",
+    "newFolder": "New folder",
+    "deleteEntry": "Delete {name}",
+    "listFailed": "Could not list {path}",
+    "openFailed": "Could not open {path}",
+    "requestFailed": "File request failed: {error}",
+    "createFileFailed": "Could not create the file",
+    "createFolderFailed": "Could not create the folder",
+    "deleteFailed": "Could not delete the entry",
+    "renameFailed": "Could not rename the entry",
+    "moveFailed": "Could not move the entry",
+    "loadingEditor": "Loading editor…",
+    "saveFailed": "Save failed: {error}",
+    "saved": "Saved {path}",
+    "truncated": "Truncated",
+    "binaryPreviewOmitted": "Binary file — preview omitted."
+  }
+}

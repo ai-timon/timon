@@ -19,4 +19,5 @@ export const PRODUCT_BACKEND_HOME_DIRS: Readonly<Record<string, readonly string[
   "antigravity": Object.freeze([".gemini/antigravity-cli"]),
   "kimi": Object.freeze([".kimi"]),
   "ollama-cloud": Object.freeze([".ollama"]),
+  "llmtr": Object.freeze([]),
 });

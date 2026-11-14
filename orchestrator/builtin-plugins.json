@@ -37,6 +37,10 @@
       "source": "official-providers/provider-pi"
     },
     {
+      "pkg": "@timon-ai/provider-llmtr",
+      "source": "official-providers/provider-llmtr"
+    },
+    {
       "pkg": "@timon-ai/plugin-hermes-gateway",
       "source": "../plugins/hermes-gateway",
       "enabledByDefault": false

@@ -1,0 +1,640 @@
+{
+  "settingsFields": {
+    "TIMON_TODO_OUTCOME_ENABLED": {
+      "label": "Idea outcomes",
+      "description": "Shows the Outcome block on backlog ideas and accepts resolution, public note and duplicate reference. Meant for a community-feedback setup (a bot relaying outcomes to idea authors); off by default."
+    },
+    "TIMON_CLI_UPDATE_CHECK": {
+      "label": "Check for CLI updates",
+      "description": "Asks each AI CLI's vendor (the npm registry, x.ai) for its newest version, at startup and then on the interval below, to show 'Update available' on the provider cards. Off: nothing is requested; the installed version is still read from the CLI itself."
+    },
+    "TIMON_CLI_UPDATE_INTERVAL_HOURS": {
+      "label": "CLI update check interval",
+      "description": "Hours between two checks for newer AI CLI versions. One hour at the least.",
+      "unit": "h"
+    },
+    "TIMON_UPDATES_CHECK": {
+      "label": "Check for Timon updates",
+      "description": "Reads the signed list of Timon releases on timon-ai.com at startup and every 6 hours, to show a banner when a newer version is published for this build's channel. The request carries no licence, account or machine identifier. Off: nothing is requested. A build run from the sources never checks."
+    },
+    "TIMON_MAX_LIVE_MISSIONS": {
+      "label": "Live missions (soft cap)",
+      "description": "Ceiling consulted by the autonomous spawners (dispatcher, wake). Human chat does not check it."
+    },
+    "TIMON_HARD_MAX_LIVE_MISSIONS": {
+      "label": "Live missions (hard circuit breaker)",
+      "description": "Absolute ceiling, all sources combined. 0 = automatic (2× the soft cap). Last resort against runaway."
+    },
+    "TIMON_MAX_PARALLEL": {
+      "label": "Kanban tasks dispatched in parallel",
+      "description": "Number of Kanban tasks dispatched at the same time. The global live-mission cap bounds the rest."
+    },
+    "TIMON_LOAD_THRESHOLD": {
+      "label": "Machine load threshold per core",
+      "description": "1-minute loadavg normalised per core above which spawning is slowed down."
+    },
+    "TIMON_SWITCH_TRANSCRIPT_MAX_TOKENS": {
+      "label": "Full transcript on backend switch",
+      "description": "Switching backend mid-mission starts from a blank session: below this threshold the entire transcript is resent (nothing is lost); above it we fall back to a summary, which is lossy. 0 = always summarise.",
+      "unit": "tokens"
+    },
+    "TIMON_SWITCH_KICKOFF_MARGIN_BYTES": {
+      "label": "Handover wrapping margin",
+      "description": "The handover message wraps the context in a title, an explanation and a follow-up. Reserved out of what the target CLI accepts, so the wrapping never pushes the prompt past the limit. Only bites on a CLI that reads its prompt from argv.",
+      "unit": "bytes"
+    },
+    "TIMON_MISSION_TITLE_MODEL": {
+      "label": "Title model",
+      "description": "Model that names the conversations you open, for every account that has not chosen its own in Settings. `auto`: the lightest model of the conversation's backend. `off`: no generated title. `<backend>:<model>`: that one (e.g. `claude:haiku`), on a backend that runs a local process. Each title costs one short call on that backend's quota, and the first message of the conversation is sent to it."
+    },
+    "TIMON_MISSION_TITLE_TIMEOUT_MS": {
+      "label": "Title generation timeout",
+      "description": "A conversation you open gets a short title from a one-shot model call at the end of its first turn. Past this delay the call is killed and the mission keeps the first message as its label; nothing is retried.",
+      "unit": "ms"
+    },
+    "TIMON_SUMMARY_TIMEOUT_MS": {
+      "label": "Summariser timeout",
+      "description": "Compacting a transcript spawns a one-shot CLI that no reaper watches: unbounded, a silent one would hold up whoever waits for the summary — a backend switch above all. Past this delay it is killed and the caller falls back.",
+      "unit": "ms"
+    },
+    "TIMON_SESSION_ONE_SHOT_OPEN_MS": {
+      "label": "Session one-shot opening timeout",
+      "description": "A summary, a memory pass or a Dreaming prompt on an agent that speaks a session protocol (opencode, Hermes) first opens a throwaway session with it. Past this delay without a session, the agent is stopped and the call fails, instead of waiting for the summariser timeout.",
+      "unit": "ms"
+    },
+    "TIMON_FALLBACK_ENABLED": {
+      "label": "Automatic switch on exhausted quota",
+      "description": "When a backend announces its usage limit, the missions and tasks that depend on it restart on the fallback backend instead of dying in a cascade."
+    },
+    "TIMON_PREFERRED_BACKEND": {
+      "label": "Preferred provider",
+      "description": "Provider a new agent, mission or chat runs on when nothing else names one, as long as it is active and signed in. Empty (default) = the first active provider that is signed in."
+    },
+    "TIMON_FALLBACK_BACKEND": {
+      "label": "Fallback backend (last resort)",
+      "description": "Fallback used LAST, when neither the task, nor the series, nor the model-equivalence matrix proposed a workable target. Must be the id of a provider that is installed and active (claude, codex, a provider plugin…). Empty (default) = stop at equivalence: nothing assumes a given provider exists."
+    },
+    "TIMON_FALLBACK_MODEL": {
+      "label": "Fallback model",
+      "description": "Model used when the fallback backend above is the one that answers. Empty = that backend's default model. Has no effect on fallbacks coming from the series or the equivalence matrix, which carry their own model."
+    },
+    "TIMON_FALLBACK_COOLDOWN_MS": {
+      "label": "How long a backend stays sidelined",
+      "description": "Applied only when the provider does NOT give the time its quota reopens. When it does, that time is the one that counts. Default: 5 h, Anthropic's sliding window.",
+      "unit": "ms"
+    },
+    "TIMON_BACKEND_EXHAUSTED_COOLDOWN_MS": {
+      "label": "How long a backend WITHOUT CREDIT stays sidelined",
+      "description": "Applied when the backend answers with a payment error (HTTP 402, 'balance exhausted') rather than a usage limit: no window reopens here, only a top-up brings it back. Longer than the quota cooldown on purpose, and lifted early by the first turn that succeeds on that backend. Default: 24 h.",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_ENABLED": {
+      "label": "Circuit breaker on repeated sterile turns",
+      "description": "Sidelines a backend that bounces every mission back instantly (broken auth, dead endpoint, account with no credit) without waiting to recognise its error message."
+    },
+    "TIMON_TURN_RETRIES": {
+      "label": "Automatic retries of a turn the provider dropped",
+      "description": "Unattended missions only (Kanban task, wake, routine, sub-mission): once the provider has given up its own retries on a transient failure, Timon replays the same turn in the same session this many times. 0 disables it. A human chat shows a Retry button instead."
+    },
+    "TIMON_TURN_RETRY_BASE_MS": {
+      "label": "Wait before the first automatic retry",
+      "description": "Doubled at each retry (30 s, 60 s, 120 s by default), and never shorter than the wait the provider itself announced.",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_THRESHOLD": {
+      "label": "Sterile turns before the breaker trips",
+      "description": "Consecutive bounces on the SAME backend, inside the window below. Minimum 2: a single bounce is a fluke."
+    },
+    "TIMON_BREAKER_WINDOW_MS": {
+      "label": "Window the breaker counts over",
+      "description": "Older failures are forgotten. What we look for is a burst, not a total: three bounces in ten minutes, not three in a week. Default: 10 min.",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_STERILE_MS": {
+      "label": "Below this, a failed turn is a bounce",
+      "description": "A turn that fails in under this time having produced neither a turn nor a token did not work: it bounced off the provider. Default: 2 s.",
+      "unit": "ms"
+    },
+    "TIMON_BREAKER_COOLDOWN_MS": {
+      "label": "How long the breaker sidelines a backend",
+      "description": "Shorter than the quota and no-credit cooldowns on purpose: the cause here is UNKNOWN, so it may well be transient (a service outage, an expired token that gets refreshed). Lifted early by the first turn that succeeds. Default: 30 min.",
+      "unit": "ms"
+    },
+    "TIMON_RESOURCE_GUARD_ENABLED": {
+      "label": "Confine missions (systemd scope)",
+      "description": "Launches each mission in its own systemd scope (slice timon-missions.slice) with a memory ceiling, nice and ionice inherited by all of its processes — including an ffmpeg started three levels down. Disabling it makes the machine vulnerable to a heavy generation again."
+    },
+    "TIMON_DAY_START_HOUR": {
+      "label": "Start of the day (local)",
+      "description": "Start of the window where you work on the machine: missions are throttled then. From 0 to 23.",
+      "unit": "h"
+    },
+    "TIMON_DAY_END_HOUR": {
+      "label": "End of the day (local)",
+      "description": "Outside this window the night profile applies: ceilings are relaxed. From 0 to 24 (24 = the day runs until midnight; equal to the start = always night).",
+      "unit": "h"
+    },
+    "TIMON_DAY_CPU_QUOTA_PCT": {
+      "label": "Mission CPU quota — day",
+      "description": "In % of one core, for ALL missions combined (400 = 4 cores out of 32). The rest is guaranteed to the desktop.",
+      "unit": "%"
+    },
+    "TIMON_NIGHT_CPU_QUOTA_PCT": {
+      "label": "Mission CPU quota — night",
+      "description": "1600 = 16 cores out of 32. We keep half the machine free even at night (thermals, and a remote session remains possible).",
+      "unit": "%"
+    },
+    "TIMON_DAY_MEM_MAX_GB": {
+      "label": "Memory — day hard ceiling",
+      "description": "COLLECTIVE ceiling of all missions. Past this, the kernel kills a mission process, confined to this cgroup: the machine and the desktop session are left alone. There is deliberately no soft threshold below it: throttling the missions creates memory pressure that the system OOM daemon may answer by killing the whole desktop session.",
+      "unit": "GB"
+    },
+    "TIMON_NIGHT_MEM_MAX_GB": {
+      "label": "Memory — night hard ceiling",
+      "description": "Collective night memory ceiling. The automatic default follows the detected RAM class.",
+      "unit": "GB"
+    },
+    "TIMON_MISSION_MEM_MAX_GB": {
+      "label": "Memory — per-mission ceiling",
+      "description": "Individual ceiling of a mission and its processes. This is what turns \"the machine freezes\" into \"this particular mission gets killed\": the ffmpeg of 13/08 had climbed to 35 GB.",
+      "unit": "GB"
+    },
+    "TIMON_DAY_NICE": {
+      "label": "Mission nice — day",
+      "description": "CPU priority (0 = normal, 19 = lowest). Inherited by every process of the mission."
+    },
+    "TIMON_NIGHT_NICE": {
+      "label": "Mission nice — night"
+    },
+    "TIMON_DAY_IONICE_CLASS": {
+      "label": "ionice class — day",
+      "description": "1 = real-time, 2 = best-effort, 3 = idle. The cgroup io controller is not delegated to the user manager, so disk priority goes through ionice on the process, not IOWeight."
+    },
+    "TIMON_NIGHT_IONICE_CLASS": {
+      "label": "ionice class — night"
+    },
+    "TIMON_DAY_MAX_LIVE_MISSIONS": {
+      "label": "Live missions — day ceiling",
+      "description": "Lowers the global cap during the day. Four missions each launching an encode is the crash scenario. Clamped to the global cap, never above it."
+    },
+    "TIMON_DAY_MAX_PARALLEL": {
+      "label": "Dispatched tasks — day ceiling",
+      "description": "Lowers Kanban dispatcher parallelism during the day."
+    },
+    "TIMON_RESOURCE_WATCH_MS": {
+      "label": "Watch frequency",
+      "description": "How often cgroup counters are re-read (profile switch, OOM detection). Floor at 5 s.",
+      "unit": "ms"
+    },
+    "TIMON_REAP_IDLE_MS": {
+      "label": "Idle time before reap",
+      "description": "An autonomous mission whose turn ended is terminated once nothing has been heard from it for this long, unless it still has a background process of its own running (see the next setting).",
+      "unit": "ms"
+    },
+    "TIMON_REAP_BG_MS": {
+      "label": "Idle time before reap, background job running",
+      "description": "1 h by default. An autonomous mission whose turn ended but whose CLI still has a process it started (a test suite launched in the background, waiting for its completion notice) is spared past the idle time above, up to this hard ceiling, measured from the end of its turn. Missions with no such process are unaffected.",
+      "unit": "ms"
+    },
+    "TIMON_CHAT_ATTACHMENT_TTL_MS": {
+      "label": "Chat attachments kept after a mission ends",
+      "description": "30 days by default. Files attached in chat are deleted once their mission has been finished for this long — never while it is running, and a resumed mission counts as running again. 0 disables the cleanup.",
+      "unit": "ms"
+    },
+    "TIMON_PROVIDER_SESSION_TTL_MS": {
+      "label": "Provider sessions kept after a mission ends",
+      "description": "30 days by default. A CLI that keeps its conversation in the mission's own folder (Codex) can resume it as long as that folder exists: it outlives a stop or a kill, and is deleted once its mission has been finished for this long — never while it is running, and a resumed mission counts as running again. 0 disables the cleanup.",
+      "unit": "ms"
+    },
+    "TIMON_REAP_HUNG_MS": {
+      "label": "Silent turn before reap",
+      "description": "45 min by default. A running turn is stopped as hung once its agent has produced nothing for this long — no output, no tool progress, no event. A long turn that keeps working is left alone (see the turn budget below). Also the implicit ceiling of an automatic permission timeout: a longer one is pointless.",
+      "unit": "ms"
+    },
+    "TIMON_REAP_TURN_MAX_MS": {
+      "label": "Turn budget",
+      "description": "4 h by default, 0 disables it. Hard ceiling on the duration of a single turn, even one still working: past it the turn is stopped with the cause \"turn budget reached\", never reported as hung. For an autonomous mission, the turns its CLI opens by itself (after a background job finishes) count as one, from the end of the last turn Timon started. A turn waiting on a human permission card is spared, like the hung reap.",
+      "unit": "ms"
+    },
+    "TIMON_REAP_CHAT_IDLE_MS": {
+      "label": "Idle time before reaping chats",
+      "description": "1 h by default. A human chat whose turn is finished keeps its CLI process alive: without this delay it occupies a global-cap slot for life (night of 2026-08-22: 9 idle chats until 4:45am → cap 12/12, nothing else would start). The reap only kills the PROCESS — the session stays resumable, the next message resumes the conversation. Much longer than the autonomous idle reap: someone may come back to their chat.",
+      "unit": "ms"
+    },
+    "TIMON_REAP_INTERVAL_MS": {
+      "label": "Reaper sweep frequency",
+      "description": "How often the reaper inspects live missions.",
+      "unit": "ms"
+    },
+    "TIMON_REAP_ORPHAN_GRACE_MS": {
+      "label": "Grace before reaping orphans",
+      "description": "Delay granted to a mission with no live process before it is considered orphaned. Avoids killing a mission that is still starting.",
+      "unit": "ms"
+    },
+    "TIMON_WORKTREE_GC_ENABLED": {
+      "label": "Automatic worktree cleanup",
+      "description": "Deletes the worktree and branch of a DONE task whose work is already integrated into the base. A branch that is not integrated is NEVER deleted, whatever the age of the task."
+    },
+    "TIMON_WORKTREE_GC_GRACE_MIN": {
+      "label": "Grace before cleanup",
+      "description": "Delay after a task closes before its worktree becomes a candidate. Gives the merger and the following doc task time to work in it.",
+      "unit": "min"
+    },
+    "TIMON_PERMISSION_AUTONOMOUS_TIMEOUT_MS": {
+      "label": "Delay before auto-deny (autonomous missions)",
+      "description": "SHORT delay, for an Allow / Deny card (forms have their own delay), applied when nobody could be notified on their phone (Web Push not configured, no subscription, send failed): the assumption \"nobody will click\" holds, and leaving a night agent hanging is pointless. Past this delay the request is denied with a message inviting the agent to pick an alternative. If the push was delivered, \"Delay before auto-deny (human notified)\" applies instead. Chat missions are NEVER auto-resolved.",
+      "unit": "ms"
+    },
+    "TIMON_PERMISSION_PUSHED_TIMEOUT_MS": {
+      "label": "Delay before auto-deny (human notified)",
+      "description": "LONG delay, applied as soon as a Web Push notification was delivered to at least one device: someone was notified and can answer from the lock screen, we give them time. Hard-clamped to 80 % of \"Blocked turn before reap\" (45 min): past that the reaper would kill the mission before the denial can fire, which is worse than the denial itself.",
+      "unit": "ms"
+    },
+    "TIMON_PERMISSION_FORM_TIMEOUT_MS": {
+      "label": "Delay before a form expires (autonomous missions)",
+      "description": "Applies to a form an agent opens (`question`, `kanban_plan`) instead of the delay before auto-deny: a form takes reading and choosing, not a single click. Past it the form expires and the agent is told to go on without the answer. Hard-clamped like the other delays to 80 % of \"Blocked turn before reap\". Chat missions never expire.",
+      "unit": "ms"
+    },
+    "TIMON_PERMISSION_DETACH_GRACE_MS": {
+      "label": "Grace before retiring an abandoned card",
+      "description": "When the agent stops waiting for a card (call cancelled, MCP bridge gone), the card is retired after this delay, unless the bridge reconnects to it first. Longer than the bridge's own reconnect backoff, so a dropped socket is not mistaken for a cancellation.",
+      "unit": "ms"
+    },
+    "TIMON_WAKE_SWEEP_MS": {
+      "label": "Inbox sweep frequency",
+      "description": "How often the inter-agent inbox is scanned. Determines the max delay before a message addressed to an agent wakes it.",
+      "unit": "ms"
+    },
+    "TIMON_WAKE_PAIR_MAX_MESSAGES": {
+      "label": "Agent-to-agent messages before holding",
+      "description": "Most messages two agents may exchange, both directions counted, within the window below without a human stepping in. Past it, their messages are held in the inbox, neither agent is woken by the other, and you get an alert naming the pair. Writing to either agent in the chat resumes them. Task and mission returns are never counted."
+    },
+    "TIMON_WAKE_PAIR_WINDOW_MS": {
+      "label": "Agent-to-agent window",
+      "description": "Sliding window over which the agent-to-agent messages above are counted.",
+      "unit": "ms"
+    },
+    "TIMON_MEMORY_INJECTION_ENABLED": {
+      "label": "Inject memory into prompts",
+      "description": "Injects learned rules and pitfalls into every agent's prompt at spawn. Disabling it makes agents amnesic from one mission to the next."
+    },
+    "TIMON_MEMORY_CORE_CAP": {
+      "label": "Injected core rules (ceiling)",
+      "description": "Maximum number of \"core\" rules injected at spawn. Higher = better-informed agents, but a heavier prompt on every mission."
+    },
+    "TIMON_MEMORY_RECALL_MAX_CHARS": {
+      "label": "Memory recall budget",
+      "description": "Character budget allocated to memory recall in the prompt. Caps the token cost of injection.",
+      "unit": "characters"
+    },
+    "TIMON_MEMORY_SEARCH_CAP": {
+      "label": "Max memory search results",
+      "description": "Number of results returned by a memory search."
+    },
+    "TIMON_FACT_CAPTURE_ENABLED": {
+      "label": "Capture facts at the end of a mission",
+      "description": "At the end of each mission, a small model extracts the notable facts (decisions, pitfalls, preferences). That is the source that feeds the overnight synthesis."
+    },
+    "TIMON_FACT_CAPTURE_MODEL": {
+      "label": "Capture model",
+      "description": "Model that extracts facts at the end of a mission. Deliberately small and fast: the job is simple and fires on every mission."
+    },
+    "TIMON_MEMORY_SYNTH_ENABLED": {
+      "label": "Overnight synthesis enabled",
+      "description": "Overnight pass that turns accumulated raw facts into durable rules, per project. This is what makes memory progress instead of piling up."
+    },
+    "TIMON_MEMORY_SYNTH_MODEL": {
+      "label": "Synthesis model",
+      "description": "Memory curator's model. It writes the retained rules directly, with no human validation."
+    },
+    "TIMON_MEMORY_SYNTH_AGENT": {
+      "label": "Agent that synthesises",
+      "description": "Agent under whose identity the synthesis runs (determines cwd, MCP and permissions)."
+    },
+    "TIMON_MEMORY_SYNTH_HOUR": {
+      "label": "Start hour (local)",
+      "description": "Start of the overnight synthesis window. Placed before scoring and dreaming, which consume its result.",
+      "unit": "h"
+    },
+    "TIMON_MEMORY_SYNTH_WINDOW_H": {
+      "label": "Window width",
+      "description": "How long synthesis may fire. Past this window it waits for the next night.",
+      "unit": "h"
+    },
+    "TIMON_MEMORY_SYNTH_MIN_FACTS": {
+      "label": "Minimum facts to trigger",
+      "description": "Below this number of pending facts the project is skipped: not enough material for a useful synthesis."
+    },
+    "TIMON_MEMORY_SYNTH_MAX_FACTS": {
+      "label": "Max facts per pass",
+      "description": "Ceiling of facts processed per pass, to bound the cost of a night."
+    },
+    "TIMON_MEMORY_SYNTH_SPACING_MS": {
+      "label": "Spacing between projects",
+      "description": "Spreads credit consumption over the window.",
+      "unit": "ms"
+    },
+    "TIMON_MEMORY_PROMOTION_ENABLED": {
+      "label": "Promotion of recurring facts",
+      "description": "Spots facts that come back often and proposes them as durable rules."
+    },
+    "TIMON_MEMORY_PROMOTE_THRESHOLD": {
+      "label": "Occurrences before promotion",
+      "description": "How many times a fact must reappear before it is proposed as a durable rule. Lower = more reactive memory, but noisier."
+    },
+    "TIMON_MEMORY_PROMOTE_INTERVAL_MS": {
+      "label": "Interval between passes",
+      "description": "How often the recurring-fact promoter runs.",
+      "unit": "ms"
+    },
+    "TIMON_MEMORY_DECAY_ENABLED": {
+      "label": "Gradual forgetting (decay)",
+      "description": "Archives old non-salient facts. Reversible: facts go into learnings.archive.jsonl. The curated project tier is never touched."
+    },
+    "TIMON_MEMORY_DECAY_HALFLIFE_DAYS": {
+      "label": "Forgetting half-life",
+      "description": "Forgetting speed: after one half-life, an unused fact has lost half of its score.",
+      "unit": "days"
+    },
+    "TIMON_MEMORY_DECAY_THRESHOLD": {
+      "label": "Archival threshold",
+      "description": "Score below which a fact is archived. Higher = more aggressive forgetting."
+    },
+    "TIMON_DIGEST_HOT_DAYS": {
+      "label": "\"Hot projects\" window",
+      "description": "Activity window past which a project is no longer considered \"hot\" in the global digest.",
+      "unit": "days"
+    },
+    "TIMON_DIGEST_HOT_MAX": {
+      "label": "Hot projects kept",
+      "description": "Number of \"hot\" projects kept in the digest injected into project-less agents."
+    },
+    "TIMON_DIGEST_CHAR_CAP": {
+      "label": "Max digest size",
+      "description": "Maximum size of the global digest. It is injected into the prompt, so it is paid in tokens on every concerned mission.",
+      "unit": "characters"
+    },
+    "TIMON_SCORE_ENABLED": {
+      "label": "Scoring enabled",
+      "description": "Overnight pass that grades each project (profitability × progress) to prioritise attention. Dreaming relies on it to choose what to think about."
+    },
+    "TIMON_SCORE_MODEL": {
+      "label": "Model",
+      "description": "Model used to evaluate projects."
+    },
+    "TIMON_SCORE_AGENT": {
+      "label": "Agent",
+      "description": "Agent under whose identity scoring runs."
+    },
+    "TIMON_SCORE_HOUR": {
+      "label": "Start hour (local)",
+      "description": "After memory synthesis (3 h by default).",
+      "unit": "h"
+    },
+    "TIMON_SCORE_WINDOW_H": {
+      "label": "Window width",
+      "description": "How long scoring may fire. Past this window it waits for the next night.",
+      "unit": "h"
+    },
+    "TIMON_SCORE_STALE_DAYS": {
+      "label": "Age before re-scoring",
+      "description": "A project not re-graded for this long is re-evaluated, even with no recent activity.",
+      "unit": "days"
+    },
+    "TIMON_SCORE_SPACING_MS": {
+      "label": "Spacing between projects",
+      "description": "Pause between two graded projects. Spreads credit consumption.",
+      "unit": "ms"
+    },
+    "TIMON_DREAM_ENABLED": {
+      "label": "Dreaming enabled",
+      "description": "Overnight pass where the dreaming agent explores improvement leads and opportunities. NEVER creates a task: everything lands in a review queue to be validated."
+    },
+    "TIMON_DREAM_MODEL": {
+      "label": "Model",
+      "description": "Model used to dream."
+    },
+    "TIMON_DREAM_AGENT": {
+      "label": "Agent that dreams",
+      "description": "Agent under whose identity dreaming runs (cwd, MCP, default model). Empty: the main agent."
+    },
+    "TIMON_DREAM_HOUR": {
+      "label": "Start hour (local)",
+      "description": "After synthesis (3 h) and scoring (5 h).",
+      "unit": "h"
+    },
+    "TIMON_DREAM_WINDOW_H": {
+      "label": "Window width",
+      "description": "How long dreaming may fire. Past this window it waits for the next night.",
+      "unit": "h"
+    },
+    "TIMON_DREAM_IMPROVE_TOP_N": {
+      "label": "Projects explored per night",
+      "description": "Number of projects explored per night, taken from the highest-graded. We do not dream about cold projects."
+    },
+    "TIMON_DREAM_IMPROVE_PER_PROJECT": {
+      "label": "Leads per project",
+      "description": "Number of leads proposed per explored project."
+    },
+    "TIMON_DREAM_OPP_MAX": {
+      "label": "External opportunities per night",
+      "description": "Number of external opportunities sought per night (web search). 0 disables this phase."
+    },
+    "TIMON_DREAM_MIN_PRIORITY": {
+      "label": "Minimum project priority",
+      "description": "Below this, the project is skipped."
+    },
+    "TIMON_DREAM_DEDUP_DAYS": {
+      "label": "Deduplication window",
+      "description": "A lead already proposed inside this window will not be proposed again. Without this, the same ideas would be re-suggested every night.",
+      "unit": "days"
+    },
+    "TIMON_DREAM_SPACING_MS": {
+      "label": "Spacing between dreams",
+      "description": "Pause between two dreams. Spreads credit consumption over the overnight window.",
+      "unit": "ms"
+    },
+    "TIMON_DREAM_IMPROVE_TIMEOUT_MS": {
+      "label": "Timeout of an \"improve\" dream",
+      "description": "Anti-hang guard: an improvement dream is not a tracked mission, so the reaper will not catch it.",
+      "unit": "ms"
+    },
+    "TIMON_DREAM_OPP_TIMEOUT_MS": {
+      "label": "Timeout of an \"opportunity\" dream",
+      "description": "Same for opportunity hunting, which is longer because it performs web searches.",
+      "unit": "ms"
+    },
+    "TIMON_TERMINAL_ENABLED": {
+      "label": "\"Open a terminal\" button",
+      "description": "Shows in the chat a button that opens the native terminal of the machine hosting the orchestrator, positioned on the mission folder. Disabling it hides the button AND refuses the call on the server side."
+    },
+    "TIMON_TERMINAL_COMMAND": {
+      "label": "Terminal command",
+      "description": "Executable launched with the folder as its only argument (hyper, gnome-terminal, x-terminal-emulator…). No shell is interposed."
+    },
+    "TIMON_TERMINAL_WEB_ENABLED": {
+      "label": "Built-in terminal",
+      "description": "A terminal emulator inside Timon (desktop, browser, phone) running a shell on this machine as the daemon's user. Only accounts holding the \"terminal:open\" permission can open one (the superadmin always can). Disabling it refuses new sessions and attachments."
+    },
+    "TIMON_TERMINAL_WEB_IDLE_MIN": {
+      "label": "Close a detached terminal after",
+      "description": "A built-in terminal keeps running when its window closes or the phone locks, so a long command finishes. With no window attached for this long, its shell is killed.",
+      "unit": "min"
+    },
+    "TIMON_TERMINAL_WEB_SHELL": {
+      "label": "Built-in terminal shell",
+      "description": "Executable started in each built-in terminal. Empty: your login shell (PowerShell on Windows)."
+    },
+    "TIMON_BACKUP_KEEP": {
+      "label": "Backups kept",
+      "description": "Number of nightly archives kept in the backups folder of the Timon home. Right after each backup, the oldest ones beyond this number are deleted.",
+      "unit": "archives"
+    },
+    "TIMON_BACKUP_MAX_AGE_DAYS": {
+      "label": "Delete backups older than",
+      "description": "Archives older than this are deleted right after each backup, whatever their number. The newest archive is always kept. 0 = no age limit, only the number above applies.",
+      "unit": "days"
+    },
+    "TIMON_AGENT_TRASH_ENABLED": {
+      "label": "Keep deleted agents in the trash",
+      "description": "Deleting an agent moves its folder (configuration, system prompt, identity docs, memory) to the trash of the Timon home, from which it can be restored. Off: a deletion is final."
+    },
+    "TIMON_AGENT_TRASH_RETENTION_DAYS": {
+      "label": "Empty the trash after",
+      "description": "A deleted agent is purged for good this many days after its deletion. 0 = kept until purged by hand.",
+      "unit": "days"
+    },
+    "TIMON_BRAIN_VAULT": {
+      "label": "Obsidian vault folder",
+      "description": "Empty = automatic detection in the usual locations."
+    },
+    "TIMON_VAULT_MCP_SERVER": {
+      "label": "Notes connector kept for task agents",
+      "description": "Id of one external MCP server, as the MCP page lists it (for example the account connector that serves your notes). Task agents and the librarian keep it; every other account connector stays off for them. Empty = none."
+    },
+    "TIMON_PREAPPROVED_MCP_TOOLS": {
+      "label": "MCP tools allowed without asking",
+      "description": "Comma-separated tool names (mcp__server__tool) any agent may call without an Allow/Deny card. List read-only tools only: a write stays behind a decision."
+    },
+    "TIMON_CHROME_PATH": {
+      "label": "Chrome used to sign in from the built-in browser",
+      "description": "Empty = Google Chrome, then Microsoft Edge, then Chromium, found automatically. Full path of the Chrome, Edge or Chromium to open for Sign in with Chrome (the file must be named like one of them); needed only when yours is installed somewhere unusual or as a snap or flatpak."
+    },
+    "TIMON_LOG_SYSTEM_PROMPT": {
+      "label": "Log the full system prompt",
+      "description": "Debug: very verbose. Written to prompts-<day>.log in the tmp folder of the Timon home, not to the daemon log."
+    },
+    "TIMON_ORCH_URL": {
+      "label": "Orchestrator URL for agents",
+      "description": "Injected into TIMON MCPs launched in missions."
+    },
+    "TIMON_PUBLIC_API_URL": {
+      "label": "Public API URL",
+      "description": "Base of the OAuth redirect_uri; must be reachable from the browser."
+    },
+    "TIMON_PUBLIC_APP_URL": {
+      "label": "Public app URL",
+      "description": "Where the user returns after an OAuth dance."
+    },
+    "TIMON_TRAEFIK_HOST": {
+      "label": "Traefik container name",
+      "description": "Host reachable for Traefik from the docker network."
+    },
+    "TIMON_BROWSER_IMAGE": {
+      "label": "Embedded browser image"
+    },
+    "TIMON_BROWSER_PROXY_IMAGE": {
+      "label": "CDP relay image"
+    },
+    "TIMON_BROWSER_NETWORK": {
+      "label": "Browser docker network"
+    },
+    "TIMON_BROWSER_HOSTS": {
+      "label": "Routable hosts of the browser stream",
+      "description": "Comma-separated."
+    },
+    "TIMON_BROWSER_WEB_PORT": {
+      "label": "Browser container web port"
+    },
+    "TIMON_BROWSER_IDLE_MINUTES": {
+      "label": "Auto-close the browser after inactivity",
+      "description": "≤ 0 disables automatic close.",
+      "unit": "min"
+    },
+    "TIMON_BROWSER_RECORDING_RETENTION_DAYS": {
+      "label": "Keep unlearned browser recordings",
+      "description": "Recordings not turned into a skill are deleted after this many days. ≤ 0 keeps them until deleted by hand.",
+      "unit": "days"
+    },
+    "TIMON_BROWSER_ANNOTATION_RETENTION_DAYS": {
+      "label": "Keep open browser annotations",
+      "description": "Annotations not resolved or dismissed are deleted after this many days. ≤ 0 keeps them until deleted by hand.",
+      "unit": "days"
+    },
+    "TIMON_BROWSER_ANNOTATION_RESOLVED_RETENTION_DAYS": {
+      "label": "Keep resolved browser annotations",
+      "description": "Resolved or dismissed annotations are deleted this many days after their resolution. ≤ 0 keeps them until deleted by hand.",
+      "unit": "days"
+    },
+    "TIMON_CHROME_DEVTOOLS_MCP": {
+      "label": "chrome-devtools MCP npm package"
+    },
+    "TIMON_VAPID_SUBJECT": {
+      "label": "VAPID subject (Web Push)"
+    },
+    "TIMON_VAPID_PUBLIC_KEY": {
+      "label": "VAPID public key",
+      "description": "The PRIVATE key stays out of the registry (secret, env or secrets.env only)."
+    },
+    "TIMON_ALLOW_HTTP": {
+      "label": "Allow remote access over HTTP",
+      "description": "Local development only: without HTTPS, the remote token travels in the clear. Applied when the app restarts. An app served by Docker Compose ignores this setting: it reads TIMON_ALLOW_HTTP from its .env."
+    },
+    "VF_DB_PATH": {
+      "label": "video-factory database",
+      "description": "Empty disables the Video Factory connection."
+    },
+    "DISPATCHER_INTERVAL_MS": {
+      "label": "Kanban dispatcher cadence",
+      "unit": "ms"
+    },
+    "TIMON_EVENTS_HOT_DAYS": {
+      "label": "Hot retention of the events table",
+      "description": "0 = archival disabled. Past this, older events migrate to ~/.timon/archive/events.db. They stay readable, but a default export or backup no longer includes them.",
+      "unit": "days"
+    },
+    "TIMON_TRACE_SPANS_RETENTION_DAYS": {
+      "label": "Mission timeline retention",
+      "description": "The timeline of a mission over for this long is removed, keeping its tool, error and duration totals; a button on the mission rebuilds it from its events. A workflow run's own steps are kept. 0 keeps every timeline.",
+      "unit": "days"
+    },
+    "TIMON_INTEGRATION_RECEIPT_RETENTION_DAYS": {
+      "label": "Delivered integration messages retention",
+      "description": "Messages a messaging integration delivered are kept this long to recognise a provider sending them again, then deleted. A message that ran out of retries is kept this long after its failure, for you to replay it. Messages still being processed are never deleted. 0 keeps them forever.",
+      "unit": "days"
+    },
+    "TIMON_LOG_RETENTION_DAYS": {
+      "label": "Log retention",
+      "description": "Daily log files (daemon, desktop app, prompt dumps) in the tmp folder of the Timon home older than this are deleted. 0 keeps them forever.",
+      "unit": "days"
+    },
+    "TIMON_LOG_MAX_MB": {
+      "label": "Log size ceiling",
+      "description": "Past this total, the oldest daily log files are deleted first. 0 = no ceiling.",
+      "unit": "MB"
+    },
+    "TIMON_TRACE_SPAN_MAX_BYTES": {
+      "label": "Trace span payload ceiling",
+      "description": "Maximum size of a span's input / output (tool arguments, tool result) kept in trace_spans. Larger values are truncated; the events table keeps the full payload.",
+      "unit": "bytes"
+    },
+    "TIMON_TTS_URL": {
+      "label": "External TTS service URL",
+      "description": "Empty = the local TTS service (container) is used."
+    },
+    "TIMON_GPT_LIVE_ENABLED": {
+      "label": "GPT-Live conversation mode",
+      "description": "Adds a live voice conversation button to the chat composer. Uses the OPENAI_GPT_LIVE_API_KEY secret, billed per minute by OpenAI."
+    }
+  }
+}

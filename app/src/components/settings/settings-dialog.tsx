@@ -56,8 +56,10 @@ import {
   type SettingsTab,
   type SettingsTarget,
 } from '@/lib/settings-layout';
+import { settingCopy } from '@/lib/settings-copy';
 import { searchSettings, searchTerms } from '@/lib/settings-search';
 import { SETTINGS_PARAM, useSettingsNavigation } from '@/lib/settings-navigation';
+import { pluginGalleryLabel } from '@/lib/plugin-gallery';
 import { pluginCategoryItems, type PluginCatalogRow } from '@/lib/settings-plugin-categories';
 import { sseOn } from '@/lib/sse-stream';
 import { cn } from '@/lib/utils';
@@ -201,7 +203,7 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
     rows: settings,
     includeAdvanced,
     pluginStates,
-    pluginLabels: new Map(catalog.map((row) => [row.id, row.label ?? row.id])),
+    pluginLabels: new Map(catalog.map((row) => [row.id, pluginGalleryLabel(row)])),
     plugins: pluginCategoryItems(sectionEntries, catalog).flatMap((item) => (
       item.plugin ? [{ id: item.plugin.id, origin: item.plugin.origin, label: item.plugin.label }] : []
     )),
@@ -223,6 +225,10 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
       rows: settings.filter((row) => isRowListed(row, { includeAdvanced, pluginStates })),
       categoryLabel,
       tabLabel,
+      rowCopy: (row) => ({
+        label: settingCopy(row.key, 'label', row.label),
+        description: settingCopy(row.key, 'description', row.description),
+      }),
       rowKeywords: (key) => keywordsOf(`settingsSearch.rowKeywords.${key}`),
       tabKeywords: (category, tab) => keywordsOf(`settingsSearch.tabKeywords.${category}.${tab.id}`),
     });

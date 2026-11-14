@@ -160,7 +160,8 @@ const TEXT_RULES: readonly TextRule[] = [
   },
   {
     rule: 'locale', level: 'warn',
-    re: /\b(?:Europe|America|Asia|Africa|Australia|Pacific|Atlantic|Indian|Antarctica)\/[A-Z][A-Za-z_]+|(['"`])[a-z]{2}-[A-Z]{2}\1/g,
+    // A tag used as an object key (`'zh-CN': { … }`) names a language of a createTranslator table, not one the code imposes.
+    re: /\b(?:Europe|America|Asia|Africa|Australia|Pacific|Atlantic|Indian|Antarctica)\/[A-Z][A-Za-z_]+|(['"`])[a-z]{2}-[A-Z]{2}\1(?!\s*:)/g,
     message: (hit) => `hard-coded locale or time zone ${hit}: use \`getLocale\` and a time-zone setting`,
   },
   {

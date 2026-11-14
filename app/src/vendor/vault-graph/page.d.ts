@@ -59,6 +59,9 @@ export interface VaultGraphDeps {
   Graph: unknown;
   Sigma: unknown;
   rendering?: unknown;
+  locale?: string;
+  dictionary?: Record<string, string>;
+  formatDate?: (value: string | number, kind: 'month' | 'weekday' | 'weekdayNarrow' | 'generated') => string;
   logoMask?: string;
   settingsUI?: boolean;
   folderColors?: Record<string, string>;

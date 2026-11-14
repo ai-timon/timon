@@ -41,10 +41,31 @@
  * WAS AN IIFE. Nothing about the body changed when it stopped being one: it already kept
  * every name to itself, which is what made this a signature change rather than a rewrite.
  */
+import sourceMessages from "../../locales/en/vaultGraphSurface.json";
+
 function mountVaultGraph(root, data, deps) {
   "use strict";
 
   var DATA = data;
+  var locale = deps.locale || "en";
+  var dictionary = Object.assign({}, sourceMessages.vaultGraphSurface, deps.dictionary);
+  function tr(key, vars) {
+    if (vars && vars.count === 1 && dictionary[key + "_one"]) key += "_one";
+    return dictionary[key].replace(/\{(\w+)\}/g, function (_match, name) {
+      return String(vars && vars[name] !== undefined ? vars[name] : "");
+    });
+  }
+  root.lang = locale;
+  // Standalone hosts retain the original English calendar without depending on app Intl.
+  var englishMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var englishWeekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var formatDate = deps.formatDate || function (value, kind) {
+    if (kind === "generated") return String(value);
+    var date = new Date(value);
+    if (kind === "month") return englishMonths[date.getUTCMonth()];
+    var day = englishWeekdays[date.getUTCDay()];
+    return kind === "weekdayNarrow" ? day[0] : day;
+  };
   var Graph = deps.Graph;
   var SigmaCls = deps.Sigma;
   // The programs hang off the UMD NAMESPACE object, not off the Sigma class that
@@ -221,8 +242,7 @@ function mountVaultGraph(root, data, deps) {
   // TWELVE, including two greys. The greys are ordinary slots, pickable like any hue,
   // because "this folder should recede" is a real thing to want and the palette should
   // answer it with a choice rather than only as a side effect of running out of hues.
-  var SLOT_NAMES = ["Blue", "Orange", "Aqua", "Yellow", "Green", "Magenta",
-                    "Violet", "Red", "Cyan", "Orchid", "Grey", "Slate"];
+  var SLOT_NAMES = Array.from({ length: 12 }, function (_, i) { return tr("color" + (i + 1)); });
 
   var THEME = {};
   function readTheme() {
@@ -6688,7 +6708,7 @@ function mountVaultGraph(root, data, deps) {
     var a = graph.getNodeAttributes(id), t = $("tip");
     var p = renderer.graphToViewport({ x: a.x, y: a.y });
     setHTML(t, '<div class="t">' + esc(a.label) + '</div>' +
-      '<div class="m">' + esc(groupOf(id)) + ' &middot; ' + a.deg + ' link' + (a.deg === 1 ? "" : "s") +
+      '<div class="m">' + esc(groupOf(id)) + ' &middot; ' + esc(tr("links", { count: a.deg })) +
       '<br>' + esc(a.ntype) + ' &middot; ' + esc(a.folder) +
       (a.sub ? ' / ' + esc(a.sub) : '') +
       '</div>');
@@ -6719,12 +6739,12 @@ function mountVaultGraph(root, data, deps) {
     var vault = encodeURIComponent(DATA.vault);
     var file = encodeURIComponent(a.path.replace(/\.md$/, ""));
 
-    var h = '<button class="x" title="Close">&times;</button>' +
+    var h = '<button class="x" title="' + esc(tr("close")) + '">&times;</button>' +
       '<h2>' + esc(a.label) + '</h2>' +
       '<div class="meta">' +
         '<span><b style="color:' + colorOf(groupOf(id)) + '">&#9632;</b> ' + esc(groupOf(id)) + '</span>' +
-        '<span>' + a.deg + ' link' + (a.deg === 1 ? "" : "s") + '</span>' +
-        (a.words ? '<span>' + a.words + ' words</span>' : "") +
+        '<span>' + esc(tr("links", { count: a.deg })) + '</span>' +
+        (a.words ? '<span>' + esc(tr("words", { count: a.words })) + '</span>' : "") +
         (a.created ? '<span>' + esc(a.created) + '</span>' : "") +
       '</div>' +
       '<div>' + (a.tags || []).slice(0, 8).map(function (t) {
@@ -6732,17 +6752,17 @@ function mountVaultGraph(root, data, deps) {
       }).join("") + '</div>' +
       '<div class="chip" style="border-style:dashed">' + esc(a.folder) +
         (a.sub ? ' / ' + esc(a.sub) : '') + ' / ' + esc(a.ntype) + '</div>' +
-      (a.ghost ? "" : '<div><a class="open" href="obsidian://open?vault=' + vault + '&file=' + file + '">Ouvrir la note</a></div>');
+      (a.ghost ? "" : '<div><a class="open" href="obsidian://open?vault=' + vault + '&file=' + file + '">' + esc(tr("openNote")) + '</a></div>');
 
     if (nb.length) {
-      h += '<div class="nb">Linked notes (' + nb.length + ')</div><ul>' +
+      h += '<div class="nb">' + esc(tr("linkedNotes", { count: nb.length })) + '</div><ul>' +
         nb.slice(0, 40).map(function (n) {
           return '<li><button data-go="' + n + '">' +
                  esc(graph.getNodeAttribute(n, "label")) +
                  ' <span style="color:var(--text-3)">' + graph.getNodeAttribute(n, "deg") + '</span></button></li>';
         }).join("") + '</ul>';
     } else {
-      h += '<div class="nb">No links</div>';
+      h += '<div class="nb">' + esc(tr("noLinks")) + '</div>';
     }
 
     setHTML(d, h);
@@ -6798,7 +6818,7 @@ function mountVaultGraph(root, data, deps) {
     // so it is the same 14px shape on every machine and inherits currentColor.
     var eyeBtn = function (attrs, on, what) {
       return '<button class="eye" ' + attrs + ' aria-pressed="' + on + '" title="' +
-             (on ? "Hide " : "Show ") + esc(what) + '">' + eyeSvg(on) + '</button>';
+             esc(tr(on ? "hideGroup" : "showGroup", { group: what })) + '">' + eyeSvg(on) + '</button>';
     };
     // A disclosure twisty, or an invisible placeholder so labels stay aligned.
     var twBtn = function (attrs, open) {
@@ -6827,10 +6847,10 @@ function mountVaultGraph(root, data, deps) {
           eyeBtn('data-epath="' + esc(pk) + '"', on, nm) +
           '<button class="lgs" data-hpath="' + esc(pk) + '" data-hl="' +
             (hlk ? "on" : "off") + '" aria-pressed="' + on +
-            '" title="Highlight ' + esc(nm) + '">' +
+            '" title="' + esc(tr("highlightGroup", { group: nm })) + '">' +
           '<span class="sw" style="background:' + col + ';border-radius:50%"></span>' +
           '<span class="nm">' + esc(nm) + '</span>' +
-          '<span class="only" data-only="1" title="Show only ' + esc(nm) + '">only</span>' +
+          '<span class="only" data-only="1" title="' + esc(tr("onlyGroup", { group: nm })) + '">' + esc(tr("only")) + '</span>' +
           '<span class="ct">' + m[nm] + '</span></button>' +
           '</div>' + subtree(pk, depth + 1, col);
       }).join("");
@@ -6847,7 +6867,7 @@ function mountVaultGraph(root, data, deps) {
         twBtn(hasSubs ? 'data-tw="' + esc(g) + '"' : null, open) +
         eyeBtn('data-eye="' + esc(g) + '"', vis, g) +
         '<button class="lg" data-g="' + esc(g) + '" data-hl="' + (hl ? "on" : "off") +
-          '" aria-pressed="' + vis + '" title="Highlight ' + esc(g) + '">' +
+          '" aria-pressed="' + vis + '" title="' + esc(tr("highlightGroup", { group: g })) + '">' +
         // THE SWATCH SAYS WHICH RING, by its size: a small square for the inner band and a
         // full one for the outer. The legend named a colour and a count and said nothing about
         // where on the disc to look, which is the one thing a two-ring layout needs it to say.
@@ -6855,10 +6875,10 @@ function mountVaultGraph(root, data, deps) {
         // vocabulary, and the inner ring IS the smaller ring -- so the mark and the thing it
         // stands for read the same way round.
         '<span class="sw' + (bandLock && bandLock[g] ? ' sw-in' : '') +
-          '" title="' + (bandLock && bandLock[g] ? 'Inner ring' : 'Outer ring') +
+          '" title="' + esc(tr(bandLock && bandLock[g] ? "innerRing" : "outerRing")) +
           '" style="background:' + colorOf(g) + '"></span>' +
         '<span class="nm" title="' + esc(g) + '">' + esc(g) + '</span>' +
-        '<span class="only" data-only="1" title="Show only ' + esc(g) + '">only</span>' +
+        '<span class="only" data-only="1" title="' + esc(tr("onlyGroup", { group: g })) + '">' + esc(tr("only")) + '</span>' +
         '<span class="ct">' + counts[g] + '</span></button>' +
         '</div>';
 
@@ -6883,10 +6903,10 @@ function mountVaultGraph(root, data, deps) {
             eyeBtn('data-esub="' + esc(g) + '" data-idx="' + idx.join(",") + '"', on, nm) +
             '<button class="lgs" data-hsub="' + esc(g) + '" data-idx="' + idx.join(",") +
               '" data-hl="' + (hlSub ? "on" : "off") + '" aria-pressed="' + on +
-              '" title="Highlight ' + esc(nm) + '">' +
+              '" title="' + esc(tr("highlightGroup", { group: nm })) + '">' +
             '<span class="sw" style="background:' + col + ';border-radius:50%"></span>' +
             '<span class="nm">' + esc(nm) + '</span>' +
-            '<span class="only" data-only="1" title="Show only ' + esc(nm) + '">only</span>' +
+            '<span class="only" data-only="1" title="' + esc(tr("onlyGroup", { group: nm })) + '">' + esc(tr("only")) + '</span>' +
             '<span class="ct">' + ct + '</span></button>' +
             '</div>';
         };
@@ -7245,7 +7265,7 @@ function mountVaultGraph(root, data, deps) {
       setHTML(hits, found.slice(0, 40).map(function (id) {
         return '<button data-hit="' + id + '">' + esc(graph.getNodeAttribute(id, "label")) +
                ' <span style="color:var(--text-3)">' + graph.getNodeAttribute(id, "deg") + '</span></button>';
-      }).join("") || '<div style="color:var(--text-3);font-size:11px;padding:4px">No match</div>');
+      }).join("") || '<div style="color:var(--text-3);font-size:11px;padding:4px">' + esc(tr("noMatch")) + '</div>');
       Array.prototype.forEach.call(hits.querySelectorAll("[data-hit]"), function (b) {
         b.onclick = function () {
           var id = b.getAttribute("data-hit");
@@ -7605,8 +7625,7 @@ function mountVaultGraph(root, data, deps) {
     // (github#6), which was a fair reading of a button labelled Refresh.
     var onRefresh = typeof deps.onRefresh === "function" ? deps.onRefresh : null;
     if (onRefresh) {
-      $("refresh").title = "Rebuild from the vault and replay. Picks up notes written " +
-                           "since the graph was drawn, and clears every filter.";
+      $("refresh").title = tr("rebuildHint");
     }
     $("refresh").onclick = function () {
       // The host tears this mount down and builds a new one, so there is nothing to
@@ -7634,7 +7653,7 @@ function mountVaultGraph(root, data, deps) {
       var done = function (how) {
         var b = $("dbg");
         b.textContent = how;
-        TIMER(function () { b.textContent = "Debug"; }, 1600);
+        TIMER(function () { b.textContent = tr("debug"); }, 1600);
       };
       // THE FALLBACK SAVES A FILE, it does not log.
       //
@@ -7655,14 +7674,14 @@ function mountVaultGraph(root, data, deps) {
           a.href = "data:application/json;charset=utf-8," + encodeURIComponent(txt);
           a.download = "vault-graph-debug.json";
           a.click();
-          done("Saved");
+          done(tr("saved"));
         } catch (e2) {
           // Nothing left to try, and a button that lies is worse than one that admits it.
-          done("Failed");
+          done(tr("failed"));
         }
       };
       try {
-        WIN.navigator.clipboard.writeText(txt).then(function () { done("Copied"); }, save);
+        WIN.navigator.clipboard.writeText(txt).then(function () { done(tr("copied")); }, save);
       } catch (e) {
         save();
       }
@@ -7758,7 +7777,7 @@ function mountVaultGraph(root, data, deps) {
                  ' data-fc="' + esc(g) + '" data-key="' + p.key + '"' +
                  ' aria-checked="' + on + '"' +
                  (on && !pinned ? ' data-auto="1"' : '') +
-                 ' title="' + esc(p.name) + (on ? (pinned ? " (chosen)" : " (automatic)") : "") +
+                 ' title="' + esc(p.name + (on ? tr(pinned ? "chosen" : "automatic") : "")) +
                  '" aria-label="' + esc(p.name) + '"></button>';
         }).join("");
         // AUTO SITS ON THE NAME LINE, not at the end of the swatches. As a thirteenth
@@ -7772,16 +7791,16 @@ function mountVaultGraph(root, data, deps) {
         // live filter: the legend's own eye is the live one, and this is what the disc
         // comes back to on Refresh.
         var shown = !hiddenByDefault(g);
-        return '<div class="scr" role="radiogroup" aria-label="Colour for ' + esc(g) + '">' +
+        return '<div class="scr" role="radiogroup" aria-label="' + esc(tr("colorFor", { group: g })) + '">' +
                '<div class="scrh">' +
                '<button class="eye vis" data-vis="' + esc(g) + '" aria-pressed="' + shown +
-               '" title="' + (shown ? "Shown by default" : "Hidden by default") +
-               '" aria-label="' + (shown ? "Hide" : "Show") + " " + esc(g) + '">' +
+               '" title="' + esc(tr(shown ? "shownDefault" : "hiddenDefault")) +
+               '" aria-label="' + esc(tr(shown ? "hideGroup" : "showGroup", { group: g })) + '">' +
                eyeSvg(shown) + '</button>' +
                '<span class="nm" title="' + esc(g) + '">' + esc(g) + '</span>' +
                '<button class="auto" data-fc="' + esc(g) + '" data-key=""' +
                ' aria-pressed="' + (!pinned) + '"' +
-               ' title="Back to the slot this folder gets automatically">Auto</button>' +
+               ' title="' + esc(tr("autoHint")) + '">' + esc(tr("auto")) + '</button>' +
                '</div>' +
                '<span class="sws">' + sws + '</span></div>';
       }).join("");
@@ -7982,13 +8001,11 @@ function mountVaultGraph(root, data, deps) {
 
   function buildStats() {
     var s = DATA.stats;
-    $("vname").textContent = DATA.vault + " graph";
-    setHTML($("stats"), "<b>" + s.nodes + "</b> notes &middot; <b>" + s.edges + "</b> links &middot; <b>" +
-      s.orphans + "</b> unlinked<br>" +
-      "<b>" + s.unresolved + "</b> link(s) point at notes that do not exist" +
-      (s.ghostsIncluded ? " (shown as ghosts)" : " (hidden)") + "<br>" +
-      (s.templatesExcluded ? "Templates excluded. " : "") +
-      "Generated " + esc(DATA.generated));
+    $("vname").textContent = tr("graphTitle", { vault: DATA.vault });
+    setHTML($("stats"), esc(tr("notes", { count: s.nodes })) + " &middot; " +
+      esc(tr("links", { count: s.edges })) + " &middot; " + esc(tr("unlinked", { count: s.orphans })) + "<br>" +
+      esc(tr("unresolved", { count: s.unresolved })) + esc(tr(s.ghostsIncluded ? "ghosts" : "hidden")) + "<br>" +
+      (s.templatesExcluded ? esc(tr("templatesExcluded")) : "") + esc(tr("generated", { date: formatDate(DATA.generated, "generated") })));
   }
 
   function esc(s) {
@@ -8066,8 +8083,10 @@ function mountVaultGraph(root, data, deps) {
   // tooltip; the band is for the shape of the year.
   var HEAT_EMPTY_A = 0.5;  // the unfilled lattice, so the calendar reads as a grid
   var DAY_MS = 86400000, WEEK_MS = 7 * DAY_MS;
-  var MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var WEEKDAY_INITIALS = Array.from({ length: 7 }, function (_, i) {
+    return i === 0 || i === 2 || i === 4 ? formatDate(Date.UTC(2024, 0, i + 1), "weekdayNarrow") : "";
+  });
+  var MONTH_ABBR = Array.from({ length: 12 }, function (_, i) { return formatDate(Date.UTC(2024, i, 1), "month"); });
   var heat = null;         // grid geometry + per-day buckets, rebuilt on resize
   var heatSig = "";        // last painted state, so a resting page repaints nothing
   var heatRz = null;
@@ -8227,10 +8246,10 @@ function mountVaultGraph(root, data, deps) {
     var inWin = 0;
     for (var i = 0; i < keys.length; i++) inWin += days[keys[i]].ids.length;
     $("heatnote").textContent =
-      "last " + cols + " weeks · " + inWin + " of " + graph.order + " notes" +
-      (before ? " · " + before + " earlier" : "") +
-      (after ? " · " + after + " later" : "") +
-      (undated ? " · " + undated + " undated" : "");
+      tr("heatSummary", { weeks: cols, count: inWin, total: graph.order }) +
+      (before ? tr("earlier", { count: before }) : "") +
+      (after ? tr("later", { count: after }) : "") +
+      (undated ? tr("undated", { count: undated }) : "");
 
     heatSig = "";
     heatDraw();
@@ -8367,7 +8386,7 @@ function mountVaultGraph(root, data, deps) {
 
     // Weekday initials: Mon / Wed / Fri only. Seven labels at a 9px font on a 9px
     // pitch is a grey smear, and three is enough to orient the grid.
-    var INIT = ["M", "", "W", "", "F", "", ""];
+    var INIT = WEEKDAY_INITIALS;
     ctx.fillStyle = THEME.text;
     ctx.globalAlpha = 0.45;
     for (var r = 0; r < 7; r++) {
@@ -8473,7 +8492,7 @@ function mountVaultGraph(root, data, deps) {
       ctx.restore();
     }
     cv.title = anchors.map(function (a) {
-      return a + (a === 1 ? " note" : " notes");
+      return tr("notes", { count: a });
     }).join("  ·  ");
   }
 
@@ -8505,7 +8524,7 @@ function mountVaultGraph(root, data, deps) {
     return heat.days[heatKey(heat.start + c * WEEK_MS + r * DAY_MS)] || null;
   }
 
-  var HEAT_WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  var HEAT_WD = Array.from({ length: 7 }, function (_, i) { return formatDate(Date.UTC(2024, 0, i + 1), "weekday"); });
   function heatShowTip(d) {
     var t = $("htip"), n = Math.round(d.n);
     var by = Object.create(null);
@@ -8516,14 +8535,14 @@ function mountVaultGraph(root, data, deps) {
     }
     var top = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).slice(0, 3);
     var wd = HEAT_WD[(new Date(d.ms).getUTCDay() + 6) % 7];
-    setHTML(t, '<div class="t">' + esc(d.key) + " · " + wd +
-      (d.key === TODAY ? " · today" : "") + "</div>" +
+    setHTML(t, '<div class="t">' + esc(d.key) + " · " + esc(wd) +
+      (d.key === TODAY ? esc(tr("today")) : "") + "</div>" +
       '<div class="m">' +
-      (n ? n + " note" + (n === 1 ? "" : "s") + " added" : "nothing added") +
+      esc(n ? tr("added", { count: n }) : tr("nothingAdded")) +
       (top.length ? "<br>" + top.map(function (g2) {
         return '<b style="color:' + colorOf(g2) + '">■</b> ' + esc(g2) + " " + by[g2];
       }).join("<br>") : "") +
-      (n ? "<br><i>click to mark them on the disc</i>" : "") +
+      (n ? "<br><i>" + esc(tr("markHint")) + "</i>" : "") +
       "</div>");
     t.hidden = false;
     var box = t.getBoundingClientRect();
@@ -8758,7 +8777,7 @@ function mountVaultGraph(root, data, deps) {
       b.type = "button";
       b.setAttribute("data-yr", String(yy.y));
       b.setAttribute("aria-pressed", cur === yy.y ? "true" : "false");
-      b.title = yy.y + " -- " + yy.n + " note" + (yy.n === 1 ? "" : "s");
+      b.title = yy.y + " -- " + tr("notes", { count: yy.n });
       // Dynamic by nature -- it is the year's own place on the strip -- so it stays inline.
       // setProperty rather than an assignment: the value is not static, so the rule does not
       // fire either way, and this form cannot start firing if the rule ever tightens.

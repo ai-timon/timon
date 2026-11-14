@@ -32,14 +32,17 @@ signature and licence requirements apply; see [Testing](testing.md) and
 
 ## Providers shipped with Timon
 
-Claude, Codex, Grok, Copilot, opencode, Hermes, Antigravity, Pi, Kimi and Ollama
-Cloud are provided by official plugins shipped with the app. They appear in the Plugins
+Claude, Codex, Grok, Copilot, opencode, Hermes, Antigravity, Pi, Kimi, Ollama Cloud
+and LLMTR are provided by official plugins shipped with the app. They appear in the Plugins
 gallery with a **Built-in** badge, and they are written on the same
 `ctx.provider` kit described below, so they are the reference for what a
 provider can do. Kimi is a profile on the Claude provider; Ollama Cloud is a
-profile on Codex's. Switching off the underlying provider leaves those profiles
-inactive until it is switched back on. Your saved model choices, accounts and
-fallback rules keep their provider IDs.
+profile on Codex's. LLMTR is its own remote provider: it calls Chat Completions
+at `https://llmtr.com/v1` with the vault secret `LLMTR_API_KEY`, through
+`ctx.fetch`, and only after the operator allows `llmtr.com` in
+`pluginPolicy.http`. It does not use the Responses API. It runs no local tools. Switching off the underlying provider leaves a profile
+that rides on it inactive until it is switched back on. Your saved model choices,
+accounts and fallback rules keep their provider IDs.
 
 A few helpers are kept for the providers shipped with Timon and refused to an
 installed plugin: the sealed credential store of a legacy token, a legacy

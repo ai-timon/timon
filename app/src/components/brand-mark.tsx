@@ -13,7 +13,7 @@
 import { cn } from '@/lib/utils';
 import { useBackendCatalog, type BackendCatalog } from '@/lib/backends';
 import {
-  AnthropicIcon, ClaudeIcon, DeepSeekIcon, GeminiIcon, GithubIcon, GrokIcon, MetaIcon, MistralIcon,
+  AnthropicIcon, ClaudeIcon, DeepSeekIcon, GeminiIcon, GithubIcon, GrokIcon, LlmtrIcon, MetaIcon, MistralIcon,
   MoonshotIcon, NousIcon, OllamaIcon, OpenaiIcon, OpenCodeIcon, PiIcon, QwenIcon, XaiIcon, ZhipuIcon,
 } from '@/components/brand-icons';
 
@@ -40,6 +40,7 @@ const BRAND_ICONS: Record<string, BrandIcon> = {
   opencode: OpenCodeIcon,
   nous: NousIcon,
   pi: PiIcon,
+  llmtr: LlmtrIcon,
 };
 
 /** The brands offered when illustrating a hand-added backend: everything we
