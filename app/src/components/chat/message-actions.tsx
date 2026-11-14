@@ -25,7 +25,6 @@ import { regionalTag } from '@/lib/intl';
 import { Slot } from '@/lib/plugin-host/render';
 import { declareSlot, register, slotKind } from '@/lib/plugin-host/slots';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
 
 /** What an action knows of the bubble it sits under. */
 export type ChatMessageView = {
@@ -62,6 +61,10 @@ export type ChatRewindApi = {
   agentName: string;
   /** Cuts the thread at this user message and refills the composer with it. */
   rewind: (eventId: number) => Promise<void>;
+  /** The rewind marker that can still be taken back: the thread's last row, nothing sent since. */
+  undoableId: string | null;
+  /** Takes back the rewinds made since the last message sent. */
+  undo: () => Promise<void>;
 };
 
 const ChatMessageContext = createContext<ChatMessageView | null>(null);
@@ -311,7 +314,7 @@ function ReadAloudAction() {
   );
 }
 
-/** Cuts the conversation back to this message of the user's, after a yes. A
+/** Cuts the conversation back to this message of the user's, at once. A
  *  disabled button would swallow the hover its tooltip needs: it stays
  *  focusable and says why it does nothing. */
 function RewindAction() {
@@ -322,15 +325,9 @@ function RewindAction() {
   const eventId = message.eventId;
   const off = api.busy || pending;
   const label = i18n('chatPage.rewind');
+  // No confirmation: the marker the rewind leaves offers the way back.
   const onClick = async () => {
     if (off) return;
-    const yes = await confirmAction({
-      title: i18n('chatPage.rewindConfirmTitle'),
-      description: i18n('chatPage.rewindConfirmBody'),
-      confirmLabel: i18n('chatPage.rewindConfirm'),
-      destructive: true,
-    });
-    if (!yes) return;
     setPending(true);
     try { await api.rewind(eventId); } finally { setPending(false); }
   };
@@ -356,5 +353,31 @@ function RewindAction() {
         )}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/** Where a rewind cut the thread: "Back here", and the way back while nothing
+ *  was sent since. Any other rewind marker, further up, shows nothing. */
+export function RewindMarker({ id }: { id: string }) {
+  const api = useContext(ChatRewindContext);
+  const [pending, setPending] = useState(false);
+  if (!api || api.undoableId !== id) return null;
+  const onUndo = async () => {
+    if (pending || api.busy) return;
+    setPending(true);
+    try { await api.undo(); } finally { setPending(false); }
+  };
+  return (
+    <div className="flex items-baseline gap-2 px-1 py-2 text-sm text-muted-foreground">
+      <span>{i18n('chatPage.rewindBack')}</span>
+      <button
+        type="button"
+        onClick={() => void onUndo()}
+        disabled={pending || api.busy}
+        className="underline underline-offset-4 hover:text-foreground disabled:opacity-50"
+      >
+        {i18n('chatPage.rewindUndo')}
+      </button>
+    </div>
   );
 }

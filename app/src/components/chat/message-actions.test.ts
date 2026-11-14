@@ -147,11 +147,13 @@ test('the examples/plugin-message-action template adds its button with the SDK a
   }
 });
 
-test('Rewind sits under the user\'s own messages only, waits for the turn, and asks first', async () => {
-  const { answerConfirmsForTests } = await import('@/components/confirm-dialog/confirm-dialog-context');
+test('Rewind sits under the user\'s own messages only, waits for the turn, and cuts at once', async () => {
   const USER: View = { ...AGENT, role: 'user', markdown: 'yes', html: '<p>yes</p>' };
   const cut: number[] = [];
-  const api: Rewind = { allowed: true, busy: false, agentName: 'Ada', rewind: async (id) => { cut.push(id); } };
+  const api: Rewind = {
+    allowed: true, busy: false, agentName: 'Ada', rewind: async (id) => { cut.push(id); },
+    undoableId: null, undo: async () => {},
+  };
 
   const agent = await paint(AGENT, undefined, api);
   try { assert.ok(!agent.labels().includes('Rewind to here')); } finally { await agent.done(); }
@@ -168,15 +170,10 @@ test('Rewind sits under the user\'s own messages only, waits for the turn, and a
 
   const ui = await paint(USER, undefined, api);
   try {
-    answerConfirmsForTests(() => false);
     await ui.React.act(async () => { ui.button('Rewind to here')!.click(); });
-    assert.deepEqual(cut, []);
-    answerConfirmsForTests(() => true);
-    await ui.React.act(async () => { ui.button('Rewind to here')!.click(); });
-    await ui.until(() => cut.length === 1, 'the rewind');
+    await ui.until(() => cut.length === 1, 'the rewind, with no confirmation');
     assert.deepEqual(cut, [12]);
   } finally {
-    answerConfirmsForTests(null);
     await ui.done();
   }
 });

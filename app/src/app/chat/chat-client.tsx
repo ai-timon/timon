@@ -261,7 +261,7 @@ import {
   stripTaskIdPreamble,
 } from '@/components/chat/chat-format';
 import { ChatComposerSlot } from '@/components/chat/composer';
-import { ChatRewindProvider, ComposerReplyProvider, MessageActionBar, mountMessageActionSlot, type ChatRewindApi, type ComposerReply } from '@/components/chat/message-actions';
+import { ChatRewindProvider, ComposerReplyProvider, MessageActionBar, RewindMarker, mountMessageActionSlot, type ChatRewindApi, type ComposerReply } from '@/components/chat/message-actions';
 import { ReplyQuote } from '@/components/chat/reply-quote';
 import type { SetupAvatarRequest } from '@/components/chat/setup-avatar-card';
 import type { AgentActivity } from '@/components/mascot/agent-activity';
@@ -551,6 +551,8 @@ type Msg = {
   /** A compaction of the conversation (role === 'notice', TODO #504): its
    *  command, the CLI's rows and the daemon's outcome fold into one line. */
   compaction?: CompactionTraceView;
+  /** Where a rewind cut the thread (role === 'notice', docs/specs/rewind.md). */
+  rewindMark?: boolean;
   /** A turn of a GPT-Live voice conversation: `user` = the user's words as
    *  transcribed (role `user`), `voice` = what GPT-Live said (role `agent`).
    *  Never merged with the agent's own bubbles. */
@@ -3550,6 +3552,12 @@ export function ChatClient({
       return;
     }
 
+    // A rewind's marker (docs/specs/rewind.md): one row where the thread was cut.
+    if (meta.type === 'rewind' || payload.type === 'rewind') {
+      setMessages((m) => [...m, { id: crypto.randomUUID(), role: 'notice', t: fmtTimeAt(meta.timestamp), content: '', rewindMark: true }]);
+      return;
+    }
+
     // Turn interrupted manually (STOP button → POST
     // /api/missions/:id/interrupt). The notice is essential: without it
     // the stream just stops dead, and a response truncated mid-sentence
@@ -5807,6 +5815,8 @@ export function ChatClient({
   /** Cuts the thread at a user message (docs/specs/rewind.md): the daemon hides
    *  the rows, the view reloads without them, and the message goes back into
    *  the composer. */
+  /** The text a rewind put back in the composer, until it is undone or sent. */
+  const rewoundText = useRef<string | null>(null);
   const rewindTo = useCallback(async (eventId: number) => {
     const missionId = activeMissionId.current;
     if (!missionId) return;
@@ -5826,6 +5836,7 @@ export function ChatClient({
     forgetChatMission(missionId);
     await bindMission(missionId);
     setReply(null);
+    rewoundText.current = restored.text;
     setInput(restored.text);
     setPendingImages(restored.images.map((image) => ({
       id: crypto.randomUUID(),
@@ -5835,13 +5846,35 @@ export function ChatClient({
       size: Math.floor(image.data.length * 3 / 4),
     })));
   }, [agent.name, bindMission, setInput, setReply]);
+  /** Takes the rewinds back: the thread reloads whole, and the composer is
+   *  emptied if it still holds what the rewind put there, untouched. */
+  const undoRewind = useCallback(async () => {
+    const missionId = activeMissionId.current;
+    if (!missionId) return;
+    const r = await fetch(`/api/ui/missions/${encodeURIComponent(missionId)}/rewind/undo`, { method: 'POST' }).catch(() => null);
+    if (!r?.ok) {
+      toast.error(i18n('chatPage.rewindUndoFailed'));
+      return;
+    }
+    forgetChatMission(missionId);
+    await bindMission(missionId);
+    if (rewoundText.current !== null && input === rewoundText.current) {
+      setInput('');
+      setPendingImages([]);
+    }
+    rewoundText.current = null;
+  }, [bindMission, input, setInput]);
+  const lastMsg = messages[messages.length - 1];
+  const undoableId = lastMsg?.role === 'notice' && lastMsg.rewindMark ? lastMsg.id : null;
   const rewindApi = useMemo<ChatRewindApi>(() => ({
     allowed: Boolean(currentMissionId && interactiveMission === currentMissionId
       && shownOwner && shownOwner.id === actingUser(viewer)?.id),
     busy: thinking,
     agentName: agent.name,
     rewind: rewindTo,
-  }), [currentMissionId, interactiveMission, shownOwner, viewer, thinking, agent.name, rewindTo]);
+    undoableId,
+    undo: undoRewind,
+  }), [currentMissionId, interactiveMission, shownOwner, viewer, thinking, agent.name, rewindTo, undoableId, undoRewind]);
 
   const body = (<ComposerReplyProvider value={replyApi}><ChatRewindProvider value={rewindApi}>
       {/* The Working agents widget reads this chat's agent from the address
@@ -6965,6 +6998,7 @@ function MessageBody({
   if (msg.role === 'notice' && msg.retryLine) {
     return <ProviderRetryNotice line={msg.retryLine} onRetry={onRetryTurn} />;
   }
+  if (msg.role === 'notice' && msg.rewindMark) return <RewindMarker id={msg.id} />;
   if (msg.role === 'notice' && msg.compaction) {
     return <CompactionTrace trace={msg.compaction} agentName={agentName} time={msg.t} />;
   }
