@@ -474,7 +474,24 @@
       },
       "confirmTitle": "Install {name} without a published hash?",
       "confirmBody": "The registry gives no checksum for this program. Its integrity rests on the https download alone. Install only if you trust its publisher.",
-      "confirmAction": "Install anyway"
+      "confirmAction": "Install anyway",
+      "verify": "Install verified version",
+      "unverified": "Unverified",
+      "verifiedUpdate": "{installed} was installed without a published hash. The registry now publishes a sha256 for {version}: install it to replace the unverified build.",
+      "signIn": {
+        "show": "Sign-in methods",
+        "hide": "Hide sign-in methods",
+        "loading": "Asking {name}…",
+        "none": "{name} announced no sign-in method.",
+        "recommended": "Recommended",
+        "billed": "Billed per token",
+        "billedNote": "Timon runs on subscriptions only: a method billed per token is never chosen for you.",
+        "allBilled": "Every method {name} offers is billed per token. Timon runs on subscriptions only: use another provider.",
+        "terminal": "Run in a terminal on this machine:",
+        "agentStep": "{name} runs this step itself when an ACP client asks for it, and Timon does not start it. Complete it once from a client that offers it, or use the provider of its own CLI if Timon has one.",
+        "copy": "Copy",
+        "copied": "Command copied."
+      }
     },
     "errors": {
       "forbidden": "Only a superadmin signed in to Timon can manage providers.",
@@ -493,7 +510,9 @@
       "command-missing": "The program named by the registry is not in the archive.",
       "definition-refused": "Timon refused this agent: its description contradicts itself.",
       "authorize-failed": "The program could not be authorized. The Timon log has the details.",
-      "failed": "The operation failed. The Timon log has the details."
+      "failed": "The operation failed. The Timon log has the details.",
+      "not-ready": "This agent is not ready to run: reinstall it first.",
+      "inspect-failed": "The agent did not say how it signs in."
     }
   },
   "binariesSettings": {

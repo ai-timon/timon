@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  acpAction, binaryAction, pathsToAuthorize, providerErrorMessage, type AcpAgent, type ProviderBinary,
+  acpAction, binaryAction, orderAuthMethods, pathsToAuthorize, providerErrorMessage, type AcpAgent, type AcpAuthMethod, type ProviderBinary,
 } from './providers';
 
 const binary = (over: Partial<ProviderBinary> = {}): ProviderBinary => ({
@@ -37,9 +37,26 @@ test('ACP row action: install, update, repair a tampered one, nothing when unsup
   assert.equal(acpAction(agent({ installed: installed('missing', true), supported: false })), 'none');
 });
 
+test('ACP row action: an unverified install the registry now hashes is offered the verified build, before a plain update', () => {
+  const installed = { version: '1.4.1', integrity: 'unverified' as const, updateAvailable: true, verifiedUpdate: true, state: 'ok' as const, profileId: 'acp-a' };
+  assert.equal(acpAction(agent({ installed })), 'verify');
+  assert.equal(acpAction(agent({ installed: { ...installed, verifiedUpdate: false } })), 'update');
+  assert.equal(acpAction(agent({ installed: { ...installed, state: 'tampered' } })), 'repair', 'a repair comes first');
+  assert.equal(acpAction(agent({ installed, supported: false })), 'none');
+});
+
+test('sign-in methods: the suggested one first, billed per token last', () => {
+  const method = (id: string, over: Partial<AcpAuthMethod> = {}): AcpAuthMethod => ({
+    id, name: id, description: null, kind: 'agent', billedPerToken: false, recommended: false, command: null, ...over,
+  });
+  const ordered = orderAuthMethods([method('key', { billedPerToken: true }), method('business'), method('google', { recommended: true })]);
+  assert.deepEqual(ordered.map((m) => m.id), ['google', 'business', 'key']);
+});
+
 test('daemon codes map to sentences; an unknown one keeps the daemon message', () => {
   assert.match(providerErrorMessage(403, '', ''), /superadmin/);
   assert.match(providerErrorMessage(409, 'mismatch', 'x'), /changed/);
+  assert.match(providerErrorMessage(502, 'inspect-failed', 'x'), /signs in/);
   // Only the daemon's words quote what the program printed (TODO #588).
   assert.equal(providerErrorMessage(409, 'binary-identity', 'printed "other 1.0"'), 'printed "other 1.0"');
   assert.equal(providerErrorMessage(500, 'weird', 'from the daemon'), 'from the daemon');

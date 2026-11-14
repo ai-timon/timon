@@ -1,7 +1,8 @@
 /**
  * `/api/ui/providers/*` → the daemon's `/api/plugins/-/providers/*`.
  * An allow-list, not a pass-through: the provider list, the authorization of a
- * provider's resolved binary, and the ACP registry (list / install / remove).
+ * provider's resolved binary, and the ACP registry (list / install / sign-in
+ * methods / remove).
  *
  * Auth: the `timon_session` cookie only (`proxyJson`). The daemon admits a
  * superadmin SESSION and nothing else — the daemon token never travels here.
@@ -33,6 +34,9 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   if (body === undefined) return Response.json({ error: 'invalid-body' }, { status: 400 });
   if (head === 'acp-registry' && tail === 'install' && rest.length === 0) {
     return proxyJson('POST', `${DAEMON}/acp-registry/install`, body);
+  }
+  if (head === 'acp-registry' && tail && AGENT_ID.test(tail) && rest.length === 1 && rest[0] === 'auth-methods') {
+    return proxyJson('POST', `${DAEMON}/acp-registry/${tail}/auth-methods`, body);
   }
   if (head && PLUGIN_ID.test(head) && tail === 'authorize' && rest.length === 0) {
     return proxyJson('POST', `${DAEMON}/${head}/authorize`, body);
