@@ -3,6 +3,7 @@ import test from 'node:test';
 import en from '../locales/en/systemNotifications.json';
 import zh from '../locales/zh-CN/systemNotifications.json';
 import { getLocale, registerLocale, setLocale } from './i18n';
+import { settingsPath } from './settings-path';
 import { systemNotificationText, type PresentableNotification } from './system-notifications';
 
 const notice: PresentableNotification = {
@@ -26,7 +27,7 @@ for (const [locale, dictionary] of [['en-x-system-test', en], ['zh-CN-x-system-t
       assert.ok(display.body?.includes(notice.presentation!.installCommand!));
       assert.ok(display.body?.includes(`host.binaries.${notice.presentation!.cmd}`));
       assert.doesNotMatch(`${display.title}\n${display.body}`, /\*\*|systemNotifications\./);
-      assert.ok(display.body?.includes(dictionary.systemNotifications.backendBinary.settings));
+      assert.ok(display.body?.includes(settingsPath('models', 'backends')));
       assert.ok(display.body?.includes(dictionary.systemNotifications.backendBinary.recheck));
       if (locale.startsWith('zh')) {
         assert.match(display.title, /未找到/);

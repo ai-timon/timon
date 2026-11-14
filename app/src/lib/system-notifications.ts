@@ -1,4 +1,5 @@
 import { t } from '@/lib/i18n';
+import { settingsPath } from '@/lib/settings-path';
 
 /** Metadata is supplied only for recognized, system-created backend warnings. */
 export type SystemNotificationPresentation = {
@@ -23,7 +24,8 @@ export function systemNotificationText(n: PresentableNotification): { title: str
     cmd: metadata.cmd,
     backends: metadata.backends.join(', '),
     configKey: `host.binaries.${metadata.cmd}`,
-    settings: t('systemNotifications.backendBinary.settings'),
+    // Composed from the settings tabs, so the path follows their labels in every locale.
+    settings: `${settingsPath('models', 'backends')} → ${t('binariesSettings.title')}`,
     recheck: t('systemNotifications.backendBinary.recheck'),
   };
   return {

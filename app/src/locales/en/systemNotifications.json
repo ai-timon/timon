@@ -3,7 +3,6 @@
     "backendBinary": {
       "title": "Backend {backends}: the {cmd} CLI was not found",
       "description": "Timon cannot run {cmd} on this machine, so every mission on {backends} fails as soon as it starts.",
-      "settings": "Settings › AI models › Providers › CLI binaries",
       "recheck": "Check again",
       "repairPinned": "Action needed: The path pinned for {cmd} ({configKey}) does not point to an executable file. Fix it in {settings}, or clear it to let Timon look for the CLI itself.",
       "repairMissing": "Action needed: Install it, then click {recheck} in {settings} — or pin the full path of the {cmd} binary there ({configKey}).",
