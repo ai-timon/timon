@@ -3407,13 +3407,13 @@ export async function rewindMissionTo(missionId: string, fromEventId: number): P
  * when it has one (`SessionStrategy.rewind`); otherwise, and on any failure of
  * it, a fresh session seeded with a summary of the visible thread, or the
  * message alone when nothing is left before the cut. The pending cut is spent
- * here, whatever happens next: a launch that fails leaves no session to resume.
+ * once a launch went out: one that throws keeps it, so the next message cuts
+ * again instead of starting with no context at all (the session was cleared).
  */
 async function spawnRewoundTurn(
   turn: Parameters<typeof spawnTurn>[0],
   pending: { session_id: string | null },
 ): Promise<void> {
-  dbApi.clearPendingRewind(turn.missionId);
   const m = dbApi.getMission(turn.missionId);
   const backend = m?.backend_override ?? loadConfig(turn.agentName).backend ?? defaultBackendName();
   const native = pending.session_id ? nativeRewindStrategy(backend) : null;
@@ -3427,6 +3427,7 @@ async function spawnRewoundTurn(
   }
   if (plan) await spawnTurn({ ...turn, resumeSession: plan.resume, resumeAt: plan.resumeAt });
   else await spawnRecoveredTurn(turn, undefined, undefined, 'summary');
+  dbApi.clearPendingRewind(turn.missionId);
 }
 
 /** Kills a process and waits for its exit. SIGTERM, then SIGKILL after

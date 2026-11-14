@@ -34,8 +34,9 @@ after(() => {
   for (const remove of removals) remove();
 });
 
-/** `lostAt`: a launch asked to resume at a cut point fails as the CLI does when it cannot find it. */
-function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt = false): { agent: string; launches: Launch[] } {
+/** `lostAt`: a launch asked to resume at a cut point fails as the CLI does when it cannot find it.
+ *  `crashFirst`: the first launch throws, as a missing binary does. */
+function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt = false, crashFirst = false): { agent: string; launches: Launch[] } {
   const launches: Launch[] = [];
   const dialect: Dialect = {
     defaultCmd: WITNESS_CLI, persistentProcess: false, finishMissionOnExit: false,
@@ -44,6 +45,7 @@ function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt = fa
     isSessionNotFoundError: (stderr) => stderr.includes('No message found'),
     async buildSpawn(opts) {
       launches.push({ message: opts.message, resume: opts.resumeSession, ...(opts.resumeAt ? { at: opts.resumeAt } : {}) });
+      if (crashFirst && launches.length === 1) throw new Error('binary not found');
       const lost = lostAt && opts.resumeAt;
       return {
         cmd: WITNESS_CLI,
@@ -198,4 +200,18 @@ test('no rewind while a turn is being prepared', async () => {
   await held;
   assert.equal(dbApi.getPendingRewind(id), null);
   assert.equal(dbApi.getMission(id)?.session_id, 'old-session', 'nothing was cut');
+});
+
+test('a launch that crashes keeps the cut: the next message cuts again instead of starting blank', async () => {
+  let cuts = 0;
+  const { agent, launches } = backend('rewind-crash', async () => { cuts++; return { resume: 'forked-session' }; }, false, true);
+  const { id, second } = chat(agent);
+  await rewindMissionTo(id, second);
+  await sendToAgent(id, 'crash kilo', undefined, null, null, undefined, { replayContext: true }).catch(() => null);
+  await until(() => launches.length === 1 && !isRunning(id), 'the crashed launch');
+  assert.equal(dbApi.getPendingRewind(id)?.session_id, 'old-session', 'the cut survives the crash');
+  const launch = await turn(id, launches, 'retry lima');
+  assert.equal(launch.resume, 'forked-session', 'resumed on the cut, not on a blank session');
+  assert.equal(cuts, 2);
+  assert.equal(dbApi.getPendingRewind(id), null, 'spent once a launch went out');
 });
