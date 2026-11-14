@@ -15,7 +15,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, FileCode2, Reply, Square, Undo2, Volume2 } from 'lucide-react';
+import { Check, Copy, FileCode2, Reply, RotateCcw, Square, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
@@ -344,7 +344,7 @@ function RewindAction() {
           aria-disabled={off}
           className={cn(ACTION_BUTTON, off && 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground/70')}
         >
-          <Undo2 className="size-4" />
+          <RotateCcw className="size-4" />
         </button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-64">
