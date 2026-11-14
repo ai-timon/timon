@@ -146,7 +146,7 @@ test('the list: every card, with an installer or the vendor\'s page', async () =
   const res = await call('GET', '/api/host/provider-clis', { cookie: adminCookie });
   assert.equal(res.status, 200);
   const body = res.json as { backends: Array<{ name: string; installable: boolean; installDocs: string | null; seedsMainAgent: boolean }>; updateCheck: boolean };
-  assert.deepEqual(body.backends.map((b) => b.name), ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi']);
+  assert.deepEqual(body.backends.map((b) => b.name), ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi', 'agy']);
   assert.equal(body.updateCheck, false);
   for (const card of body.backends) assert.ok(card.installable || card.installDocs, `${card.name} offers neither an installer nor a page`);
   assert.equal(body.backends.find((b) => b.name === 'opencode')?.seedsMainAgent, false);

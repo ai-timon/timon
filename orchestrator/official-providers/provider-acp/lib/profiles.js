@@ -1,9 +1,9 @@
 // @ts-check
 /**
- * The profiles of the ACP agents this plugin ships (`opencode`, `hermes`): models, `requiredBinary`,
- * `envFrom`. Moved verbatim from the product's former table (`orchestrator/src/backends/profiles.ts`);
- * the ids are unchanged, they are foreign keys of every installation (missions, roles, series
- * fallbacks, cooldowns).
+ * The profiles of the ACP agents this plugin ships (`opencode`, `hermes`, `antigravity`): models,
+ * `requiredBinary`, `envFrom`. The first two moved verbatim from the product's former table
+ * (`orchestrator/src/backends/profiles.ts`); the ids are unchanged, they are foreign keys of every
+ * installation (missions, roles, series fallbacks, cooldowns).
  *
  * `timon.provider.backends` of the manifest:
  *  - opencode: `curl -fsSL https://opencode.ai/install | bash` (opencode.ai/docs). Its Windows
@@ -24,6 +24,13 @@
  *    none`). On Linux and macOS its installer writes its wrappers in `~/.local/bin`, which every
  *    binary already gets; on Windows `searchDirs` lists `%LOCALAPPDATA%\hermes\bin` and the
  *    `hermes\hermes-agent\bin` layout some installs end up with instead of the documented one.
+ *  - antigravity: the vendor's own installers (antigravity.google/docs/getting-started, CLI tab):
+ *    `install.sh` writes `~/.local/bin/agy` on Linux and macOS, which every binary already gets;
+ *    `install.ps1` writes `%LOCALAPPDATA%\agy\bin\agy.exe` and does not touch the PATH, hence
+ *    `searchDirs`. No `updateCheck`: `agy` updates itself. `credentialDirs` is `agy`'s own folder,
+ *    not the whole `.gemini`: `~/.gemini/antigravity-acp` holds the sign-in of the ACP registry's
+ *    Antigravity agent, and masking it from that backend's missions would sign it out. The sign-in
+ *    itself lives in the system keychain (verified on Linux with an empty home folder).
  */
 import { manifestBackend } from './manifest.js';
 
@@ -86,6 +93,34 @@ export const HERMES_PROFILE = {
   // No model is named: the list depends on the account (83 entries on the
   // tested install) and comes from the agent (`Dialect.discoverModels`). An
   // empty field means "the agent's own default".
+  defaultModel: null,
+  models: [],
+};
+
+/** @type {import('@timon-ai/sdk/provider').BackendProfile} */
+export const ANTIGRAVITY_PROFILE = {
+  // Google Antigravity CLI (`agy acp`) over the Agent Client Protocol. It holds
+  // its own sign-in (`agy acp --login`, kept in the system keychain); Timon
+  // stores none, and passes none of its variables: `envFrom` is empty on
+  // purpose, the ones that would move it to per-token billing are emptied by
+  // the agent's row (`agents.js`).
+  id: 'antigravity',
+  dialect: 'antigravity',
+  label: 'Antigravity (Google)',
+  vendor: 'Google',
+  brand: 'gemini',
+  requiredBinary: manifestBackend('antigravity').binary?.names[0],
+  subscription: {
+    note: 'Calls go through the personal Google account `agy` is signed in to '
+      + '(`agy acp --login` on the host; Free, Google AI Pro or Ultra plan). '
+      + 'Antigravity asks Timon before an edit, a command or an MCP tool: the '
+      + 'request appears as an Allow / Deny card. Its own permission rules '
+      + 'decide what it never asks about, and Timon\'s permission mode does not '
+      + 'switch its modes.',
+  },
+  // No model is named: the list depends on the plan (six on the tested
+  // account, Gemini, Claude and GPT-OSS) and comes from the agent
+  // (`Dialect.discoverModels`). An empty field means "the agent's own default".
   defaultModel: null,
   models: [],
 };

@@ -42,9 +42,11 @@ const IDENTITIES: Record<string, RequestAuth> = {
 
 const archive = buildTarGzWithModes([{ path: 'agent', data: '#!/bin/sh\n', mode: 0o755 }]);
 const requested: string[] = [];
+let inspected = 0;
 const home = mkdtempSync(join(tmpdir(), 'timon-acp-routes-'));
 const service = new AcpRegistryService({
   home, platform: 'linux', arch: 'x64', register: () => () => {},
+  inspect: async () => { inspected += 1; return [{ id: 'oauth', name: 'Log in' }, { id: 'acme-api-key', name: 'API key' }]; },
   fetchFn: async (url) => {
     requested.push(url);
     if (url === REGISTRY_URL) {
@@ -90,6 +92,7 @@ async function call(method: string, path: string, body?: unknown, as: Caller = '
 const ROUTES: Array<[string, string, unknown]> = [
   ['GET', '', undefined],
   ['POST', '/install', { agentId: 'hashed' }],
+  ['POST', '/hashed/auth-methods', {}],
   ['DELETE', '/hashed', undefined],
 ];
 
@@ -100,6 +103,7 @@ test('anonymous (401), a plain session (403), the daemon token (403) and a missi
     }
   }
   assert.deepEqual(requested, [], 'not even the registry was contacted');
+  assert.equal(inspected, 0, 'no agent was started');
 });
 
 test('list shows the agents, each with how it will be verified', { skip: process.platform === 'win32' }, async () => {
@@ -136,4 +140,14 @@ test('bodies and ids are validated; unknown agents are 404', async () => {
   assert.equal((await call('POST', '/install', { agentId: 'hashed', extra: true })).status, 400);
   assert.equal((await call('POST', '/install', { agentId: 'nobody-here' })).status, 404);
   assert.equal((await call('DELETE', '/Bad%20Id')).status, 400);
+});
+
+test('auth-methods: an installed agent says how it signs in, billed methods marked; ids and bodies are validated', { skip: process.platform === 'win32' }, async () => {
+  const ok = await call('POST', '/route-agent/auth-methods', {});
+  assert.equal(ok.status, 200, ok.text);
+  const methods = ok.json.methods as Array<{ id: string; billedPerToken: boolean; recommended: boolean }>;
+  assert.deepEqual(methods.map((m) => [m.id, m.billedPerToken, m.recommended]), [['oauth', false, true], ['acme-api-key', true, false]]);
+  assert.equal((await call('POST', '/route-agent/auth-methods', { extra: 1 })).status, 400);
+  assert.equal((await call('POST', '/Bad%20Id/auth-methods', {})).status, 400);
+  assert.equal((await call('POST', '/nobody-here/auth-methods', {})).status, 404);
 });

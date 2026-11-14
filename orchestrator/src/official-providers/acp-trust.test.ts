@@ -22,7 +22,7 @@ process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 const FAKE = join(dirname(fileURLToPath(import.meta.url)), '..', 'backends', 'acp', '__fixtures__', 'fake-acp-agent.mjs');
 
 const { mountOfficialProviders, stubCliBinaries } = await import('../../tests/helpers/official-providers.js');
-await stubCliBinaries('opencode', 'hermes-acp');
+await stubCliBinaries('opencode', 'hermes-acp', 'agy');
 const { getHost } = await import('../host/index.js');
 const { spawnAgent, upsertAgent, killAgent } = await import('../agent.js');
 const { config } = await import('../config/load.js');
@@ -37,6 +37,10 @@ const VAULT_VALUE = 'vault-value-acp-witness';
   const row = dbApi.createSecret({ name: 'VAULT_ACP_WITNESS', value_enc: 'placeholder', mode: 'inject' });
   dbApi.updateSecret(row.id, { value_enc: seal(VAULT_VALUE, key, { secretId: row.id, name: 'VAULT_ACP_WITNESS' }) });
   dbApi.addSecretGrant(row.id, 'global');
+  // A Gemini key granted to every mission: Antigravity would be billed by the token with it.
+  const gemini = dbApi.createSecret({ name: 'GEMINI_API_KEY', value_enc: 'placeholder', mode: 'inject' });
+  dbApi.updateSecret(gemini.id, { value_enc: seal('AIza-vault-witness', key, { secretId: gemini.id, name: 'GEMINI_API_KEY' }) });
+  dbApi.addSecretGrant(gemini.id, 'global');
 }
 createTestAccount(dbApi, { email: 'acp-witness@example.test', name: 'Witness', passwordHash: 'unused' });
 
@@ -46,6 +50,7 @@ assert.ok((await mountOfficialProviders()).includes('provider-acp'));
 const AGENTS = [
   { backend: 'opencode', args: ['acp'] },
   { backend: 'hermes', args: [] as string[] },
+  { backend: 'antigravity', args: ['acp'] },
 ] as const;
 
 for (const { backend } of AGENTS) {
@@ -87,7 +92,7 @@ async function launch(agent: string): Promise<Launch> {
   return { missionId, ...seen, piped: () => piped, dispose: () => { killAgent(missionId, { source: 'test' }); child.kill('SIGKILL'); } };
 }
 
-test('opencode, Hermes and Pi are the release\'s own providers: official, by registration', () => {
+test('opencode, Hermes, Antigravity and Pi are the release\'s own providers: official, by registration', () => {
   for (const { backend } of AGENTS) {
     assert.ok(getDialect(backend), `${backend}: the dialect is registered by the plugin`);
     assert.equal(backendTrust(backend), 'official', backend);
@@ -103,6 +108,8 @@ for (const { backend, args } of AGENTS) {
       const token = run.env.TIMON_API_TOKEN;
       assert.ok(token && !token.startsWith('timon-seal-'), 'the mission\'s own token, in the process environment');
       assert.equal(run.env.VAULT_ACP_WITNESS, VAULT_VALUE, 'the vault slice the mission was granted');
+      if (backend === 'antigravity') assert.equal(run.env.GEMINI_API_KEY, '', 'Antigravity runs on the Google sign-in, never on a Gemini API key');
+      else assert.equal(run.env.GEMINI_API_KEY, 'AIza-vault-witness', `${backend}: a granted secret is untouched`);
       assert.equal(run.args.join(' ').includes(token), false, 'never in argv');
 
       const request = run.piped().split('\n').filter(Boolean).map((line) => JSON.parse(line) as { method?: string; params?: { mcpServers?: Array<{ name: string; env: Array<{ name: string; value: string }> }> } })

@@ -14,6 +14,11 @@
  *     profile is registered, so a file altered afterwards is never launched;
  *  5. the registry's `env` is never read.
  *
+ * An install made without a hash is never upgraded behind the person's back:
+ * when the registry later publishes a sha256 for this machine's build, the view
+ * says so (`installed.verifiedUpdate`) and an install of that build is allowed
+ * even at the same version — through the same swap as any update.
+ *
  * An update installs the new version in its own folder, verifies it, then swaps
  * the profile through `beginProviderSwap`: a mission starting during the swap
  * still finds the backend, and missions already running keep the process they
@@ -22,6 +27,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { isAbsolute, join, resolve, sep } from 'node:path';
+import { readAuthMethods, type AcpAuthMethodInfo } from '../../backends/acp/auth.js';
+import { acpTransportOver } from '../../backends/acp/conversation-transport.js';
 import { defineProvider } from '../../backends/acp/provider.js';
 import { registerLaunchProvenance } from '../../backends/launch-provenance.js';
 import { sealFor } from '../../backends/launch-seal.js';
@@ -39,6 +46,7 @@ import {
 import {
   acpRegistryPaths, hashTree, readState, writeState, type InstalledAgent,
 } from './store.js';
+import { authMethodViews, registrySignIn, type AuthMethodView } from './sign-in.js';
 
 export const ACP_REGISTRY_OWNER = 'acp-registry';
 const REGISTRY_MAX_BYTES = 5 * 1024 * 1024;
@@ -49,7 +57,8 @@ export class AcpRegistryError extends Error {
   constructor(
     readonly code:
       | 'registry-unavailable' | 'unknown-agent' | 'unsupported' | 'unverified' | 'already-installed' | 'not-installed'
-      | 'download-failed' | 'checksum' | 'archive' | 'command-missing' | 'tampered' | 'busy' | 'definition-refused',
+      | 'download-failed' | 'checksum' | 'archive' | 'command-missing' | 'tampered' | 'busy' | 'definition-refused'
+      | 'not-ready' | 'inspect-failed',
     message: string,
     readonly status: 400 | 404 | 409 | 502 = 400,
   ) {
@@ -76,6 +85,11 @@ export type AgentView = {
     version: string;
     integrity: 'sha256' | 'unverified';
     updateAvailable: boolean;
+    /**
+     * The installed build is `unverified` and the registry now publishes a sha256 for this machine's build
+     * (at the top-level `version`, which may be the same): installing it again replaces it with a verified one.
+     */
+    verifiedUpdate: boolean;
     state: InstallState;
     profileId: string;
   };
@@ -91,6 +105,8 @@ export type ServiceOptions = {
   maxDownloadBytes?: number;
   /** Tests stand in for the profile registry. */
   register?: (agent: InstalledAgent, command: string) => () => void;
+  /** Tests stand in for the agent: what its `initialize` answers as `authMethods`. */
+  inspect?: (agent: InstalledAgent, command: string) => Promise<unknown>;
 };
 
 export function profileIdOf(agentId: string): string {
@@ -157,6 +173,9 @@ function defaultRegister(agent: InstalledAgent, command: string): () => void {
     binary: { names: [dialectId] },
     // `permissionsByAgent: false` is the ACP default: the agent asks, Timon's card and classifier answer.
     permissionsByAgent: false,
+    // No `authenticateWith`: a method of an agent nobody reviewed may open a browser or pick a billed account,
+    // so Timon never starts one by itself. The sentence says which step to take, never a billed one.
+    signIn: registrySignIn(agent.name, command, agent.authMethods ?? null),
     modelProbe: 'session-new',
   });
   let offProvider: () => void;
@@ -174,6 +193,19 @@ function defaultRegister(agent: InstalledAgent, command: string): () => void {
   return () => { offProvenance(); offProfile(); offProvider(); void binary.stopAll(); };
 }
 
+/** The handshake only: no session is opened, so nothing lands in the agent's own history. */
+const INSPECT_MS = 20_000;
+
+async function defaultInspect(agent: InstalledAgent, command: string): Promise<unknown> {
+  const binary = createProviderBinary({ pluginId: ACP_REGISTRY_OWNER, trusted: true, authorizedBinaries: [command] });
+  try {
+    const channel = acpTransportOver(await binary.api.converse(command, agent.args, { timeoutMs: INSPECT_MS }), { requestTimeoutMs: INSPECT_MS - 5_000 });
+    try { return (await channel.transport.initialize()).authMethods ?? []; } finally { await channel.stop(); }
+  } finally {
+    await binary.stopAll();
+  }
+}
+
 export class AcpRegistryService {
   private readonly paths;
   private readonly fetchFn: Fetcher;
@@ -183,6 +215,7 @@ export class AcpRegistryService {
   private readonly limits: ExtractLimits;
   private readonly maxDownload: number;
   private readonly register: (agent: InstalledAgent, command: string) => () => void;
+  private readonly inspect: (agent: InstalledAgent, command: string) => Promise<unknown>;
   private readonly live = new Map<string, () => void>();
   private readonly health = new Map<string, InstallState>();
   private cache: { at: number; registry: ParsedRegistry } | null = null;
@@ -197,6 +230,7 @@ export class AcpRegistryService {
     this.limits = opts.limits ?? DEFAULT_EXTRACT_LIMITS;
     this.maxDownload = opts.maxDownloadBytes ?? DOWNLOAD_MAX_BYTES;
     this.register = opts.register ?? defaultRegister;
+    this.inspect = opts.inspect ?? defaultInspect;
   }
 
   /** One mutation at a time: two installs of one agent would race on its folder. */
@@ -237,18 +271,19 @@ export class AcpRegistryService {
       agents.push({
         id: entry.id, name: entry.name, version: entry.version, description: null, website: null, license: null,
         supported: false, reason: 'no longer listed in the registry', integrity: null,
-        installed: this.installedView(entry, null),
+        installed: this.installedView(entry, null, null),
       });
     }
     agents.sort((a, b) => Number(!!b.installed) - Number(!!a.installed) || Number(b.supported) - Number(a.supported) || a.name.localeCompare(b.name));
     return { registryVersion: registry.version, dropped: registry.dropped, stale, agents };
   }
 
-  private installedView(entry: InstalledAgent, latest: string | null): NonNullable<AgentView['installed']> {
+  private installedView(entry: InstalledAgent, latest: string | null, support: AgentSupport | null): NonNullable<AgentView['installed']> {
     return {
       version: entry.version,
       integrity: entry.integrity,
       updateAvailable: latest !== null && latest !== entry.version,
+      verifiedUpdate: entry.integrity === 'unverified' && support?.supported === true && support.integrity === 'sha256',
       state: this.health.get(entry.id) ?? 'pending',
       profileId: profileIdOf(entry.id),
     };
@@ -266,7 +301,7 @@ export class AcpRegistryService {
       supported: support.supported,
       reason: support.supported ? null : support.reason,
       integrity: support.supported ? support.integrity : null,
-      installed: entry ? this.installedView(entry, agent.version) : null,
+      installed: entry ? this.installedView(entry, agent.version, support) : null,
     };
   }
 
@@ -290,7 +325,9 @@ export class AcpRegistryService {
 
     const state = readState(this.paths);
     const current = state[agent.id];
-    if (current && current.version === agent.version && this.health.get(agent.id) === 'ok') {
+    // The same version stays installable when it can now replace an unverified install with a verified one.
+    const verifies = current?.integrity === 'unverified' && support.integrity === 'sha256';
+    if (current && current.version === agent.version && this.health.get(agent.id) === 'ok' && !verifies) {
       throw new AcpRegistryError('already-installed', `${agent.name} ${agent.version} is already installed and intact`, 409);
     }
 
@@ -328,9 +365,16 @@ export class AcpRegistryService {
       chmodSync(command.absolute, 0o755);
       const treeSha256 = await hashTree(partial);
 
-      // Promote only now that everything held: a failed install leaves the old version alone.
-      rmSync(final, { recursive: true, force: true });
-      renameSync(partial, final);
+      // The same bytes as the build in place (an unverified install the registry now hashes): the files stay where
+      // they are, so nothing a running mission holds is replaced; only the record becomes verified. The folder is
+      // hashed again here: its health dates from boot, and a file altered since then must not be blessed as verified.
+      const sameTree = current?.version === agent.version && current.treeSha256 === treeSha256 && existsSync(final)
+        && this.health.get(agent.id) === 'ok' && await hashTree(final) === treeSha256;
+      if (!sameTree) {
+        // Promote only now that everything held: a failed install leaves the old version alone.
+        rmSync(final, { recursive: true, force: true });
+        renameSync(partial, final);
+      }
 
       const next: InstalledAgent = {
         id: agent.id,
@@ -343,10 +387,17 @@ export class AcpRegistryService {
         cmd: command.relative,
         args: support.entry.args,
         installedAt: this.now(),
-        ...(current && current.version !== agent.version ? { previousVersion: current.version } : {}),
+        // Re-installing the same version keeps the generation before it.
+        ...(current && current.version !== agent.version ? { previousVersion: current.version }
+          : current?.previousVersion ? { previousVersion: current.previousVersion } : {}),
       };
+      const program = join(final, ...command.relative.split('/'));
+      // How it signs in, read before it goes live so the very first mission can say it. Best effort: an agent
+      // that does not answer is still installed, and the settings screen can ask again.
+      const methods = await this.readMethods(next, program).catch(() => null);
+      if (methods) next.authMethods = methods;
       try {
-        this.swapIn(next, join(final, ...command.relative.split('/')));
+        this.swapIn(next, program);
       } catch (err) {
         // Nothing points at the new folder: do not leave it behind.
         if (current?.version !== agent.version) rmSync(final, { recursive: true, force: true });
@@ -360,6 +411,42 @@ export class AcpRegistryService {
       rmSync(work, { recursive: true, force: true });
       rmSync(partial, { recursive: true, force: true });
     }
+  }
+
+  /* ── sign-in ───────────────────────────────────────────────────────────── */
+
+  private async readMethods(agent: InstalledAgent, program: string): Promise<AcpAuthMethodInfo[]> {
+    return readAuthMethods(await this.inspect(agent, program));
+  }
+
+  /**
+   * Asks the installed agent how it signs in (its `initialize`), keeps the answer, and re-registers the agent
+   * when it changed so that a mission's sign-in sentence follows. Starts the agent's program: a person's click,
+   * never a page load.
+   */
+  authMethods(agentId: string): Promise<{ methods: AuthMethodView[] }> {
+    return this.serial(async () => {
+      const state = readState(this.paths);
+      const agent = state[agentId];
+      if (!agent) throw new AcpRegistryError('not-installed', 'this agent is not installed', 404);
+      if (this.health.get(agentId) !== 'ok') {
+        throw new AcpRegistryError('not-ready', `${agent.name} is not ready to run: repair it first`, 409);
+      }
+      const program = join(this.paths.versionDir(agent.id, agent.version), ...agent.cmd.split('/'));
+      let methods: AcpAuthMethodInfo[];
+      try {
+        methods = await this.readMethods(agent, program);
+      } catch (err) {
+        console.warn(`[acp-registry] ${agent.id}: initialize failed: ${(err as Error).message}`);
+        throw new AcpRegistryError('inspect-failed', `${agent.name} did not say how it signs in`, 502);
+      }
+      if (JSON.stringify(methods) !== JSON.stringify(agent.authMethods ?? null)) {
+        const next: InstalledAgent = { ...agent, authMethods: methods };
+        this.swapIn(next, program);
+        writeState(this.paths, { ...state, [agent.id]: next });
+      }
+      return { methods: authMethodViews(methods, program) };
+    });
   }
 
   /** The program inside a folder, proven to be a file that stays inside it. */

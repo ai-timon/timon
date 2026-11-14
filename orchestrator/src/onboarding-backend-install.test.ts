@@ -68,13 +68,23 @@ test('opencode 2 found: the card offers neither Install nor Update, which would 
 });
 
 test('a provider without an installer is a card with its vendor\'s page, never a command', () => {
-  assert.deepEqual([...PROVIDER_CLI_NAMES], ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi']);
+  assert.deepEqual([...PROVIDER_CLI_NAMES], ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi', 'agy']);
   for (const card of setupBackends('linux', () => null, () => null, NO_VERSION)) {
     if (card.installable) assert.ok(card.installCommand, card.name);
     else assert.ok(card.installDocs?.startsWith('https://'), card.name);
   }
   const hermes = setupBackends('linux', () => null, () => null, NO_VERSION).find((b) => b.name === 'hermes-acp')!;
   assert.equal(hermes.installable, false);
+});
+
+test('Antigravity: Google\'s own installer on each system, and its sign-in on the resolved path', () => {
+  for (const [platform, installer] of [['linux', 'curl -fsSL https://antigravity.google/cli/install.sh | bash'], ['win32', 'powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://antigravity.google/cli/install.ps1 | iex"']] as const) {
+    const card = setupBackends(platform, () => null, () => null, NO_VERSION).find((b) => b.name === 'agy')!;
+    assert.equal(card.installable, true, platform);
+    assert.equal(card.installCommand, installer, platform);
+  }
+  const found = setupBackends('linux', (name) => (name === 'agy' ? '/home/ann/.local/bin/agy' : null), () => null, NO_VERSION).find((b) => b.name === 'agy')!;
+  assert.equal(found.signInCommand, '/home/ann/.local/bin/agy acp --login');
 });
 
 test('sign-in lines are built on the resolved path, quoted for the shell that will read them', () => {

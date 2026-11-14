@@ -8,8 +8,8 @@
     "id": "provider-acp",
     "apiVersion": 12,
     "kind": "provider",
-    "label": "ACP agents (opencode, Hermes)",
-    "description": "Runs missions on opencode or Hermes over the Agent Client Protocol, with the agent's own sign-in and providers.",
+    "label": "ACP agents (opencode, Hermes, Antigravity)",
+    "description": "Runs missions on opencode, Hermes or Google Antigravity over the Agent Client Protocol, with the agent's own sign-in and providers.",
     "author": "Timon",
     "permissions": ["backends:register"],
     "provider": {
@@ -22,12 +22,16 @@
         },
         {
           "name": "hermes"
+        },
+        {
+          "name": "agy"
         }
       ],
       "credentialDirs": [
         ".config/opencode",
         ".local/share/opencode",
-        ".hermes"
+        ".hermes",
+        ".gemini/antigravity-cli"
       ],
       "backends": [
         {
@@ -101,6 +105,41 @@
             "order": 6
           },
           "installDocs": "https://hermes-agent.nousresearch.com/docs/getting-started/installation"
+        },
+        {
+          "id": "antigravity",
+          "rank": 75,
+          "binary": {
+            "names": [
+              "agy"
+            ],
+            "install": {
+              "any": {
+                "kind": "script",
+                "posix": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+                "windows": "irm https://antigravity.google/cli/install.ps1 | iex"
+              }
+            },
+            "searchDirs": {
+              "win32": [
+                "${LOCALAPPDATA}/agy/bin"
+              ]
+            },
+            "standaloneInstaller": {
+              "label": "Antigravity",
+              "posix": "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+              "windows": "irm https://antigravity.google/cli/install.ps1 | iex"
+            }
+          },
+          "credentialDirs": [
+            ".gemini/antigravity-cli"
+          ],
+          "signInCommand": "agy acp --login",
+          "setupCard": {
+            "label": "Antigravity",
+            "order": 8
+          },
+          "installDocs": "https://antigravity.google/docs/getting-started?tab=cli"
         }
       ]
     },
