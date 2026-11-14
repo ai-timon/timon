@@ -2878,8 +2878,11 @@ export function ChatClient({
    * different mission in the rail.
    */
   const bindMission = useCallback(
-    async (missionId: string): Promise<boolean> => {
-      cacheShownMission();
+    async (missionId: string, fresh = false): Promise<boolean> => {
+      // `fresh`: what is on screen is stale (a rewind cut it): neither cache it
+      // nor start from a cached copy, reload the thread from the daemon.
+      if (fresh) forgetChatMission(missionId);
+      else cacheShownMission();
       cacheEpoch.current = chatCacheEpoch();
       const mine = ++bindGeneration.current;
       const clearView = () => {
@@ -2928,7 +2931,7 @@ export function ChatClient({
         // false, and the turn it leads to only reaches a stream already open.
         if (detail.running || preparing) openStream(missionId);
       };
-      const cached = getCachedChatMission<ChatCacheState>(missionId);
+      const cached = fresh ? null : getCachedChatMission<ChatCacheState>(missionId);
       if (cached) {
         restoreCachedMission(cached.state);
         lastEventId.current = cached.lastEventId;
@@ -5833,8 +5836,7 @@ export function ChatClient({
     }
     const { restored } = await r.json() as { restored: { text: string; images: Array<{ media_type: string; data: string }> } };
     // The cached copy still holds the rewound rows, and a delta only adds.
-    forgetChatMission(missionId);
-    await bindMission(missionId);
+    await bindMission(missionId, true);
     setReply(null);
     rewoundText.current = restored.text;
     setInput(restored.text);
@@ -5856,8 +5858,7 @@ export function ChatClient({
       toast.error(i18n('chatPage.rewindUndoFailed'));
       return;
     }
-    forgetChatMission(missionId);
-    await bindMission(missionId);
+    await bindMission(missionId, true);
     if (rewoundText.current !== null && input === rewoundText.current) {
       setInput('');
       setPendingImages([]);
