@@ -425,6 +425,25 @@ skill, widget, cockpit, Kanban, daemon, provider, payload.
 | steer (a running turn) | bijsturen |
 | connect / disconnect | koppelen / ontkoppelen |
 
+### 简体中文 (`zh-CN`)
+
+Address the reader as 你. Use Chinese punctuation in prose and keep command
+examples, shortcuts, paths and product names intact. Plural messages use
+`other` and any exact-number variants from English.
+
+| English | 简体中文 | English | 简体中文 |
+|---|---|---|---|
+| agent | 智能体 | orchestrator | 协调器 |
+| mission | 任务会话 | task | 任务 |
+| project | 项目 | cockpit | 控制台 |
+| island | 面板 | widget | 小组件 |
+| plugin | 插件 | skill | 技能 |
+| routine | 例行任务 | workflow | 工作流 |
+| trigger | 触发器 | memory | 记忆 |
+| workspace | 工作区 | settings | 设置 |
+| backend | 后端 | provider | 提供商 |
+| Kanban | 看板 | worktree | 工作树 |
+
 ## Tone
 
 - Plain, short and direct. A label says what happens: "Save", "Delete the

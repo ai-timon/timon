@@ -213,6 +213,12 @@ test('signing in with Chrome is the user\'s act, and the daemon alone names the 
   assert.equal(calls.at(-1)?.command.executable, undefined);
   assert.equal((await call(`${own.id}/command`, { action: 'chromeSigninStatus', clientId: pane })).status, 200);
   assert.equal((await call(`${own.id}/command`, { action: 'chromeSigninFinish', clientId: pane })).status, 200);
+  // The page becomes an argument of the launched browser: only a web address gets that far.
+  const count = calls.length;
+  for (const url of ['file:///etc/passwd', '--remote-allow-origins=*', 'javascript:alert(1)', 42, `https://example.com/${'a'.repeat(16_384)}`]) {
+    assert.equal((await call(`${own.id}/command`, { action: 'chromeSigninStart', clientId: pane, url })).status, 400, String(url).slice(0, 40));
+  }
+  assert.equal(calls.length, count, 'no refused page reaches the desktop');
 });
 
 test('without an installed Chrome the sign-in says so and launches nothing', async () => {

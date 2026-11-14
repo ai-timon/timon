@@ -8,7 +8,7 @@ import type { ExecOpts, Host } from './types.js';
 export type { Capability, ExecOpts, ExecResult, Host, RevealVia, SpawnOpts } from './types.js';
 export { chooseRevealLane, type RevealLane } from './reveal.js';
 export type { DesktopSession } from './desktop-session.js';
-export { linkDirectory } from './directory-link.js';
+export { isDirectoryLink, linkDirectory, removeDirectoryLink } from './directory-link.js';
 export { createGenericHost } from './generic.js';
 export { createLinuxHost } from './linux.js';
 export { hasSystemd, systemctlCallCount } from './systemd.js';

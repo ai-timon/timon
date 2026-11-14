@@ -1,0 +1,351 @@
+{
+  "onboarding": {
+    "back": "返回",
+    "continue": "继续",
+    "progress": "第 {current} 步，共 {total} 步",
+    "scheme": {
+      "label": "浅色或深色模式",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "splash": {
+      "title": "你的 AI 团队，\n就在你的电脑上。",
+      "subtitle": "智能体在你的设备上工作，使用你已经付费订阅的 AI 服务。",
+      "hint": "悄悄告诉你，可以抓住它们哦。"
+    },
+    "language": {
+      "title": "选择你的语言",
+      "previous": "上一种语言",
+      "next": "下一种语言"
+    },
+    "account": {
+      "title": "创建本地账号",
+      "subtitle": "你将用这个账号登录 Timon，并担任管理员。",
+      "name": "名字",
+      "nameHint": "智能体会用这个名字称呼你。",
+      "email": "电子邮箱",
+      "emailHint": "用于登录。我们会向该邮箱发送验证码。",
+      "emailPlaceholder": "you@example.com",
+      "password": "密码",
+      "confirm": "确认密码",
+      "mismatch": "两次输入的密码不一致。",
+      "tooShort": "至少输入 {min} 个字符。",
+      "create": "创建账号",
+      "privacy": "我们仅收集你的电子邮箱，以便你在需要时重置密码。创建的账号保留在本地。"
+    },
+    "legacy": {
+      "opening": "正在打开下一页…"
+    },
+    "llm": {
+      "title": "选择你的\n大语言模型。",
+      "subtitle": "Timon 使用你已有的 AI 订阅，不按词元另行计费。",
+      "plan": {
+        "title": "使用我的 AI 订阅",
+        "detailAny": "使用你已付费的 AI 工具",
+        "hint": "Timon 已查找此设备上的 AI 工具。",
+        "ready": "{names} 已就绪。",
+        "none": "请至少连接一个 AI 工具再继续。",
+        "anyway": "仍然继续"
+      },
+      "local": {
+        "title": "使用本地模型",
+        "detail": "通过 Ollama 运行，无需订阅，数据不离开你的设备",
+        "hint": "智能体使用此设备上运行的本地模型。",
+        "ollama": "在本地运行 Llama、Qwen、Mistral 等开放模型。",
+        "connect": "启动 Ollama 后，在 {settingsPath} 中将其添加为提供商。"
+      },
+      "legal": "继续即表示你同意{terms}，并确认已知悉{privacy}。",
+      "terms": "使用条款",
+      "privacy": "隐私政策"
+    },
+    "profile": {
+      "title": "你想用 Timon 做什么？",
+      "subtitle": "Timon 会根据你的选择调整默认设置和入门导览。",
+      "developer": {
+        "title": "我想编写代码",
+        "description": "让智能体在我的代码仓库中编写代码、审查和合并变更。"
+      },
+      "automation": {
+        "title": "我想自动化工作",
+        "description": "让邮件处理、日程管理、资讯追踪和例行任务自动运行。"
+      },
+      "beginner": {
+        "title": "我想先了解一下",
+        "description": "我想一步步了解 AI 智能体。"
+      },
+      "failed": "无法保存你的选择，请重试。"
+    },
+    "agent": {
+      "names": "Nova, Pixel, Ziggy, Misty, Oslo, Kiwi, Lumen, Sasha, Tempo, Pico",
+      "random": "随机",
+      "customise": "自定义",
+      "nameLabel": "智能体名称",
+      "namePlaceholder": "给它起个名字",
+      "nameRoll": "随机取名",
+      "create": "启动 {name}",
+      "createNoName": "启动你的智能体",
+      "creating": "正在启动 {name}…",
+      "configFailed": "已为 {name} 命名，但无法保存其设置。请重试。",
+      "will": "它会",
+      "loading": "正在加载你的个人资料…",
+      "profileError": "无法读取你的个人资料，现为你显示最简视图。",
+      "retry": "重试",
+      "cap": {
+        "base": "在 Timon 中与你聊天",
+        "mail": "阅读和整理邮件",
+        "agenda": "查看日历和添加日程",
+        "code": "在你的 Git 仓库中工作",
+        "watch": "每天早晨追踪新闻",
+        "write": "撰写文档和消息",
+        "research": "在网上搜索并比较信息"
+      },
+      "mission": {
+        "mail": "邮件",
+        "agenda": "日历",
+        "code": "编程",
+        "watch": "新闻追踪",
+        "write": "写作",
+        "research": "调研"
+      },
+      "views": {
+        "label": "视图",
+        "recommended": "根据你的用途推荐",
+        "templates": "入门 · 模板",
+        "interview": "自动化 · 问答",
+        "sheet": "开发者 · 配置表"
+      },
+      "templates": {
+        "title": "选择智能体的角色模板",
+        "subtitle": "从现成的模板开始。所有设置都可以稍后修改。",
+        "none": "尚未选择角色模板",
+        "empty": "在右侧选择角色模板，此处会显示对应卡片。",
+        "hint": "请先选择角色模板。",
+        "assist": {
+          "title": "个人助理",
+          "description": "处理邮件、日程和提醒。"
+        },
+        "dev": {
+          "title": "编程搭档",
+          "description": "在你的仓库中修复、审查和交付代码。"
+        },
+        "watch": {
+          "title": "资讯观察员",
+          "description": "每天早晨提供新闻摘要。"
+        },
+        "write": {
+          "title": "写作助手",
+          "description": "撰写文章、帖子和回复。"
+        },
+        "research": {
+          "title": "调研助手",
+          "description": "搜索、比较和总结信息。"
+        },
+        "blank": {
+          "title": "从零开始",
+          "description": "从通用智能体开始，按需调整。"
+        }
+      },
+      "interview": {
+        "title": "设置你的自动化",
+        "subtitle": "回答五个问题，让智能体知道何时用什么工具做什么。",
+        "role": "自动化助手",
+        "count": "{current}/{total}",
+        "edit": "编辑",
+        "finish": "完成",
+        "hint": "请回答问题（{current}/{total}）。",
+        "q1": "你想让我自动处理什么？",
+        "q2": "我可以用哪些工具？",
+        "q3": "我什么时候开始？",
+        "q4": "执行重要操作前，我该怎么做？",
+        "q5": "我该在哪里通知你？",
+        "other": "还有别的吗？请描述…",
+        "toolsHint": "接下来可以连接尚未连接的工具。",
+        "always": "始终",
+        "dailyAt": "每天的执行时间",
+        "urlProvided": "已提供 URL",
+        "tool": {
+          "gmail": "Gmail",
+          "gcal": "Google 日历",
+          "gdrive": "Google 云端硬盘",
+          "slack": "Slack",
+          "notion": "Notion",
+          "telegram": "Telegram",
+          "github": "GitHub",
+          "browser": "内置浏览器",
+          "files": "本地文件",
+          "webhook": "Webhook"
+        },
+        "trigger": {
+          "chat": "当你和我聊天时",
+          "daily": "每天 {at}",
+          "mail": "每次收到新邮件时",
+          "hook": "事件发生时（Webhook）"
+        },
+        "autonomy": {
+          "ask": {
+            "title": "先征求我的同意",
+            "description": "建议初次使用时选择：每次发送消息或执行变更前都要你批准。"
+          },
+          "report": {
+            "title": "先执行，再通知我",
+            "description": "适合日常工作：执行后向你汇报。"
+          },
+          "silent": {
+            "title": "执行但不通知",
+            "description": "仅适用于安全且经过充分验证的例行任务。"
+          }
+        },
+        "notify": {
+          "timon": "在 Timon 中",
+          "telegram": "Telegram",
+          "email": "通过邮件"
+        },
+        "sum": {
+          "tools": "工具",
+          "starts": "启动条件",
+          "autonomy": "自主程度",
+          "notifies": "通知方式"
+        }
+      },
+      "sheet": {
+        "title": "配置你的智能体",
+        "subtitle": "所有设置都可以在智能体资料中修改。",
+        "tab": {
+          "base": "角色与项目",
+          "engine": "引擎",
+          "perms": "权限",
+          "tools": "工具"
+        },
+        "roleTitle": "主要职责",
+        "roleHint": "它仍是统筹工作的主智能体；此选项只决定它主要负责什么。",
+        "role": {
+          "orchestrator": {
+            "title": "协调器 / 主控",
+            "description": "将工作拆分为任务并分派。"
+          },
+          "code": {
+            "title": "开发者",
+            "description": "编写和修改项目代码。"
+          },
+          "review": {
+            "title": "审查员",
+            "description": "在发布前审查变更。"
+          },
+          "research": {
+            "title": "调研员",
+            "description": "探索问题、查阅文档、比较方案。"
+          },
+          "chore": {
+            "title": "运维",
+            "description": "负责构建、部署和维护。"
+          }
+        },
+        "project": "项目",
+        "noFolder": "未选择文件夹",
+        "choose": "选择…",
+        "worktree": "为每个编程任务创建独立的 Git 工作树",
+        "worktreeDetail": "智能体在独立工作树中操作，不会直接修改你的分支。",
+        "engine": "引擎",
+        "permissions": "权限",
+        "perm": {
+          "default": "每次使用敏感工具前都询问",
+          "acceptEdits": "允许编辑文件，其他操作先询问",
+          "plan": "只读：仅制定计划，不做任何修改",
+          "auto": "自动：由 Timon 的分类器判断，仅在无法确定时显示审批卡片",
+          "bypassPermissions": "允许所有操作，不做任何检查"
+        },
+        "bypassWarning": "不会显示任何审批卡片：智能体可以在此设备上执行任意操作。",
+        "skills": "技能",
+        "noSkills": "尚未安装任何技能。",
+        "mcp": "MCP 服务器",
+        "noMcp": "尚未声明任何 MCP 服务器。",
+        "rules": "指令",
+        "rulesPlaceholder": "例如：用英语回答，未经确认不得推送。",
+        "sum": {
+          "project": "项目",
+          "toChoose": "待选择",
+          "permissions": "权限",
+          "skills": "技能",
+          "mcp": "MCP"
+        }
+      },
+      "style": {
+        "title": "{name} 的外观",
+        "skull": "头骨",
+        "fur": "毛发",
+        "eyes": "眼睛",
+        "accessory": "配饰",
+        "try": "预览状态",
+        "random": "随机搭配",
+        "done": "完成",
+        "close": "关闭"
+      }
+    },
+    "signin": {
+      "title": "欢迎回来",
+      "subtitle": "Timon 换上了新外观。请使用你的 Timon 账号登录后继续。"
+    },
+    "mascot": {
+      "title": "认识一下 {name} 的吉祥物",
+      "subtitle": "此版本新增了智能体吉祥物，可以显示智能体是在思考、工作，还是在等你。按你喜欢的方式装扮 {name} 吧。",
+      "keep": "保留此外观",
+      "skip": "暂不设置",
+      "later": "你随时可以在智能体的「头像」选项卡中更改外观。",
+      "failed": "无法保存外观。请重试，或选择「暂不设置」。"
+    },
+    "discover": {
+      "label": "探索 Timon",
+      "slide": "第 {current} 页，共 {total} 页",
+      "next": "下一页",
+      "skip": "全部跳过",
+      "finish": "认识 {name}",
+      "finishNoName": "开始吧",
+      "autonomous": {
+        "title": "让你的 TIM 智能体自主工作",
+        "body": "为 TIM 智能体安排任务会话、指定时间或设置触发器。它会自行选择技能和工具，记住所学内容，并在工作完成后汇报。",
+        "nodes": {
+          "skills": "技能",
+          "tools": "工具",
+          "memory": "记忆",
+          "schedule": "计划"
+        },
+        "done": "报告已发送"
+      },
+      "teams": {
+        "title": "组建 TIM 智能体团队",
+        "body": "有的制定计划，有的编写代码，还有的负责审查。任务通过看板在智能体之间流转，你也可以在群聊中同时和它们对话。",
+        "columns": {
+          "todo": "待处理",
+          "doing": "进行中",
+          "done": "已完成"
+        },
+        "card": "落地页"
+      },
+      "projects": {
+        "title": "为每个项目配备专属 TIM 智能体",
+        "body": "通用助手什么都懂一点。项目专属的 TIM 智能体则只在所属项目中工作，遵守项目自己的规则，使用独立的记忆，不会跨项目工作。",
+        "general": "你的 TIM 智能体可跨项目工作",
+        "alpha": "网站",
+        "beta": "会计",
+        "rules": "项目规则",
+        "memory": "项目记忆"
+      },
+      "connected": {
+        "title": "连接你需要的其他工具",
+        "body": "通过连接器接入邮件、日历和工具，用工作流串联各个步骤，再用插件补充所需功能，甚至扩展界面。"
+      },
+      "views": {
+        "label": "在哪里找到这些功能",
+        "canvas": "智能体画布",
+        "chat": "聊天",
+        "kanban": "看板",
+        "multichat": "群聊",
+        "projectChat": "项目聊天",
+        "widgets": "小组件",
+        "connectors": "连接器",
+        "workflows": "工作流",
+        "plugins": "插件"
+      }
+    }
+  }
+}

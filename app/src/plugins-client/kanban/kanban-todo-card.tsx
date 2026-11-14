@@ -27,9 +27,11 @@ export function KanbanTodoCard({ card }: { card: KanbanTodoCardValue }): ReactEl
     <BoardCard
       data-todo-card={item.id}
       identity={lead && (
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-[13px] font-semibold">{lead}</span>
-          {sub && <span className="truncate text-[12px] text-muted-foreground">{sub}</span>}
+        // One quiet line ("You · acme-web"): on two lines the metadata made
+        // every card open with a header taller than its title.
+        <span className="flex min-w-0 items-baseline gap-1.5 text-[12px] text-muted-foreground">
+          <span className="truncate font-medium">{lead}</span>
+          {sub && <><span aria-hidden>·</span><span className="truncate">{sub}</span></>}
         </span>
       )}
       // The id is how agents and the orchestrator name an idea ("#209"):
@@ -38,7 +40,9 @@ export function KanbanTodoCard({ card }: { card: KanbanTodoCardValue }): ReactEl
       title={item.text}
       badges={hasBadges ? <TodoBadges item={item} /> : undefined}
       meta={<TodoMeta item={item} />}
-      actions={todoHasActions(card) ? <TodoActions card={card} /> : undefined}
+      // Revealed under the pointer or the keyboard, dimmed on touch: three icons
+      // on every card of a column competed with the titles.
+      actions={todoHasActions(card) ? <TodoActions card={card} className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-60" /> : undefined}
       muted={item.status === 'done'}
       onOpen={card.open}
     />

@@ -21,7 +21,7 @@ import {
   MILESTONES, PAGE_SECTIONS, PREVIOUS_EXITS, RAM_CLASSES, UPGRADE_ACTIONS, WAIT_BUCKETS,
 } from './features.js';
 
-export const EVENT_SCHEMA_VERSION = 3;
+export const EVENT_SCHEMA_VERSION = 4;
 
 /**
  * Backends of the product's own providers, as their official manifests declare
@@ -119,6 +119,8 @@ export const EVENT_SCHEMAS = {
     backend, model, origin,
     status: z.enum(['completed', 'failed', 'cancelled', 'interrupted']),
     duration_ms: z.number().int().min(0).max(30 * 24 * 3_600_000),
+    /** Whole UTC days from the identity's creation to this turn; absent when the creation is unknown. */
+    install_age_days: z.number().int().min(0).max(36_500).optional(),
   }).strict(),
   token_usage: z.object({
     backend, model, origin,

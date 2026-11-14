@@ -1,0 +1,31 @@
+{
+  "onboarding": {
+    "preparation": {
+      "title": "正在准备 Timon",
+      "ready": "Timon 已就绪",
+      "needsYou": "Timon 需要你处理以下事项",
+      "items": {
+        "service": "后台服务",
+        "servicePortable": "便携模式：Timon 仅在应用打开时运行",
+        "serviceAccount": "后台服务将在登录后启动",
+        "database": "本地数据库",
+        "browser": "内置浏览器",
+        "browserAbsent": "此安装未包含内置浏览器",
+        "providers": "正在查找你的 AI 工具"
+      },
+      "doctorFailed": "Timon 无法读取此设备的信息，请稍后重试。",
+      "retry": "重试",
+      "retrying": "正在重试…",
+      "repair": "打开修复界面",
+      "gate": {
+        "waitTitle": "Timon 即将完成安装",
+        "waitBody": "智能体由后台服务运行，关闭此窗口后也能继续工作。服务响应后即可进入此步骤。",
+        "waitAccount": "登录账号后，后台服务将启动。",
+        "blockedTitle": "无法安装后台服务",
+        "blockedBody": "智能体需要后台服务才能在此窗口关闭后继续工作。请修复下方的问题，然后重试。",
+        "configuring": "正在保存你的配置…",
+        "configureFailed": "无法保存你的配置"
+      }
+    }
+  }
+}

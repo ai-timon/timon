@@ -1675,6 +1675,7 @@
     "menuChangeAvatar": "Changer l'avatar",
     "menuDuplicate": "Dupliquer l'agent…",
     "menuReportsTo": "Rattacher à…",
+    "menuDelete": "Supprimer l'agent…",
     "menuMovePole": "Déplacer le projet vers un pôle…",
     "menuDefault": "Par défaut (lead du projet ou agent principal)",
     "menuNoPole": "Aucun pôle",

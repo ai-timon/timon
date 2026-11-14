@@ -1902,6 +1902,7 @@
     "menuConfigure": "Configura l’agente",
     "menuDuplicate": "Duplica l’agente…",
     "menuReportsTo": "Riporta a…",
+    "menuDelete": "Elimina l’agente…",
     "menuMovePole": "Sposta il progetto nel polo…",
     "menuDefault": "Predefinito (responsabile del progetto o agente principale)",
     "menuNoPole": "Nessun polo",

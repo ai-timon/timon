@@ -39,7 +39,7 @@ test('Multichat rail: the picked head, then the historical order', () => {
   assert.match(railHead(FULL), /<img[^>]+nova\.png/);
   assert.match(railHead({ look: LOOK, emoji: '🦊' }, { slug: 'acme', icon: '/api/uploads/acme.png' }), /<img[^>]+acme\.png/);
   assert.match(railHead({ look: LOOK, emoji: '🦊' }), /data-agent-mascot/);
-  assert.match(railHead({}), /class="uppercase"[^>]*>n</);
+  assert.match(railHead({}), /class="uppercase"[^>]*>N</);
 });
 
 test('Agents graph: a node shows the picked head, its own initials when it has nothing', () => {
@@ -55,4 +55,10 @@ test('Agents graph: a node shows the picked head, its own initials when it has n
   assert.equal(graphNodeFace({ name: 'nova', look: LOOK }, null).look?.shape, 'hex');
   assert.deepEqual(graphNodeFace({ name: 'nova' }, { icon: '🚀' }), { iconUrl: null, look: null, glyph: '🚀' });
   assert.deepEqual(graphNodeFace({ name: 'nova' }, null), { iconUrl: null, look: null, glyph: null }, 'the node writes its initials');
+});
+
+test('a name with a leading underscore still gets the canvas\'s own initials', () => {
+  // `_main` falls back on "m" in a round avatar; the graph must recognise that
+  // automatic letter and write its two-letter initials ("MA") instead.
+  assert.equal(graphNodeFace({ name: '_main' }, null).glyph, null);
 });

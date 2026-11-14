@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "Chrome è aperto sul computer su cui gira Timon. Accedi lì, poi torna qui e premi Fatto.",
       "chromeSigninDone": "Fatto, copia l’accesso",
       "chromeSigninCancel": "Chiudi senza copiare",
-      "chromeSigninCopied": "Accesso eseguito: {count} cookie copiati in questo browser. Ricarica la pagina per vederlo.",
+      "chromeSigninCopied": "Accesso eseguito: {count} cookie copiati in questo browser.",
       "chromeSigninNothing": "Chrome è stato chiuso senza un accesso da copiare.",
-      "chromeSigninKept": "Puoi rifarlo in qualsiasi momento: Chrome ricorda il proprio accesso."
+      "chromeSigninKept": "Puoi rifarlo in qualsiasi momento: Chrome ricorda il proprio accesso.",
+      "chromeSigninRejected": "Google rifiuta l’accesso da questo browser. Accedi invece con Chrome: alla fine Timon copia l’accesso qui e ti riporta alla pagina.",
+      "chromeSigninRejectedSite": "Google rifiuta l’accesso a questo sito da questo browser. Apri Chrome: il sito si apre lì. Accedi come al solito, poi torna qui e premi Fatto.",
+      "googleSigninBanner": "Google rifiuta l’accesso da questo browser."
     },
     "windowTitle": "Browser — {agent}",
     "recording": {

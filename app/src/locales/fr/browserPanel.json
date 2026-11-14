@@ -142,9 +142,12 @@
       "chromeSigninOpenNow": "Chrome est ouvert sur l’ordinateur qui fait tourner Timon. Connectez-vous dedans, puis revenez ici et appuyez sur Terminé.",
       "chromeSigninDone": "Terminé, copier la connexion",
       "chromeSigninCancel": "Fermer sans copier",
-      "chromeSigninCopied": "Connecté : {count} cookie(s) copié(s) dans ce navigateur. Rechargez la page pour le voir.",
+      "chromeSigninCopied": "Connecté : {count} cookie(s) copié(s) dans ce navigateur.",
       "chromeSigninNothing": "Chrome s’est fermé sans connexion à copier.",
-      "chromeSigninKept": "Vous pouvez recommencer à tout moment : Chrome garde sa propre connexion."
+      "chromeSigninKept": "Vous pouvez recommencer à tout moment : Chrome garde sa propre connexion.",
+      "chromeSigninRejected": "Google refuse de vous connecter depuis ce navigateur. Connectez-vous plutôt avec Chrome : à la fin, Timon recopie la connexion ici et vous ramène sur la page.",
+      "chromeSigninRejectedSite": "Google refuse de vous connecter à ce site depuis ce navigateur. Ouvrez Chrome : le site s’y ouvre. Connectez-vous-y comme d’habitude, puis revenez ici et appuyez sur Terminé.",
+      "googleSigninBanner": "Google refuse de vous connecter depuis ce navigateur."
     },
     "windowTitle": "Navigateur — {agent}",
     "recording": {

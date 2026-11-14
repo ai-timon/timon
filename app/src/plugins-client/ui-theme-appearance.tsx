@@ -35,7 +35,7 @@ export function MascotAnimationSetting(): ReactElement {
   const animate = useMascotAnimation();
   return (
     <fieldset className="py-4">
-      <legend className="text-[13px] font-medium leading-snug">{t('appearance.mascotsTitle')}</legend>
+      <legend className="text-[14px] font-semibold leading-snug">{t('appearance.mascotsTitle')}</legend>
       <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">{t('appearance.mascotsHint')}</p>
       <label className="mt-3 flex cursor-pointer items-start gap-3">
         <Switch
@@ -77,7 +77,7 @@ function RadioList({
 }): ReactElement {
   return (
     <fieldset className="py-4">
-      <legend className="text-[13px] font-medium leading-snug">{legend}</legend>
+      <legend className="text-[14px] font-semibold leading-snug">{legend}</legend>
       <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">{hint}</p>
       {options.length === 0 ? (
         <p className="mt-3 text-[12px] text-muted-foreground">{empty}</p>
@@ -360,7 +360,7 @@ export function AppearanceSettings(): ReactElement {
       {/* The two switch groups sit side by side from `md`: how widgets are drawn on the left, the frosted glass on the right. */}
       <div className="grid gap-x-10 md:grid-cols-2">
       <fieldset className="min-w-0 py-4">
-        <legend className="text-[13px] font-medium leading-snug">{t('appearance.widgetsTitle')}</legend>
+        <legend className="text-[14px] font-semibold leading-snug">{t('appearance.widgetsTitle')}</legend>
         <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">{t('appearance.widgetsHint')}</p>
         <div className="mt-3 flex flex-col gap-3">
           <label className="flex cursor-pointer items-start gap-3">
@@ -374,7 +374,7 @@ export function AppearanceSettings(): ReactElement {
         </div>
       </fieldset>
       <fieldset className="min-w-0 py-4">
-        <legend className="text-[13px] font-medium leading-snug">{t('appearance.glassTitle')}</legend>
+        <legend className="text-[14px] font-semibold leading-snug">{t('appearance.glassTitle')}</legend>
         <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">{t('appearance.glassHint')}</p>
         <div className="mt-3 flex flex-col gap-3">
           <label className="flex cursor-pointer items-start gap-3">
@@ -387,7 +387,7 @@ export function AppearanceSettings(): ReactElement {
           </label>
         </div>
         {/* Where the glass sits: the default each island follows until its menu says otherwise. */}
-        <div role="radiogroup" aria-label={t('appearance.glassScope')} className={cn('mt-4 flex flex-col gap-1', (!native.glass || !variantReady) && 'pointer-events-none opacity-60')}>
+        <div role="radiogroup" aria-label={t('appearance.glassScope')} className={cn('mt-4 flex flex-col gap-1', (!native.glass || !variantReady) && 'pointer-events-none opacity-80')}>
           <span className="text-[13px] leading-snug">{t('appearance.glassScope')}<span className="mt-0.5 block text-[11px] text-muted-foreground">{t('appearance.glassScopeHint')}</span></span>
           {GLASS_SCOPES.map((scope) => {
             const checked = native.glassScope === scope;
@@ -408,7 +408,9 @@ export function AppearanceSettings(): ReactElement {
                   checked={checked}
                   disabled={!native.glass || !variantReady}
                   onChange={() => { void persistNative({ glassScope: scope }); }}
-                  className="mt-0.5 size-3.5 accent-primary"
+                  // Drawn rather than native: a disabled native radio greys its
+                  // dot to the row's own grey, and the choice vanished.
+                  className="mt-0.5 size-3.5 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-muted-foreground/60 bg-transparent transition-colors checked:border-[4px] checked:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
                 />
                 <span className={cn(checked && 'font-medium')}>{label}<span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">{hint}</span></span>
               </label>

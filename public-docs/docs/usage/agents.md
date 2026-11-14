@@ -91,7 +91,7 @@ Change the name in the **Identity** tab, or run `timon agent rename <old> <new>`
 
 ### Delete an agent
 
-**Delete** in the agent editor moves the agent to the trash: its configuration, system prompt, identity docs, memory and checked skills wait there (an agent created later under the same name starts without them), and **Restore** in the confirmation toast brings it back at once. Later, restore it from **Settings › System › Backups & trash**, or with `timon agent trash list` then `timon agent trash restore <id>`; an agent uses `agent_trash_list` and `agent_trash_restore`. The main orchestrator cannot be deleted. See [Backups and the agent trash](settings.md#backups-and-the-agent-trash-system) for how long the trash keeps them.
+**Delete** in the agent editor, or **Delete agent** when you right-click its node in the Agents graph (shown only if your account may edit agents), moves the agent to the trash: its configuration, system prompt, identity docs, memory and checked skills wait there (an agent created later under the same name starts without them), and **Restore** in the confirmation toast brings it back at once. Later, restore it from **Settings › System › Backups & trash**, or with `timon agent trash list` then `timon agent trash restore <id>`; an agent uses `agent_trash_list` and `agent_trash_restore`. The main orchestrator cannot be deleted. See [Backups and the agent trash](settings.md#backups-and-the-agent-trash-system) for how long the trash keeps them.
 
 ### Duplicate an agent
 
@@ -132,7 +132,7 @@ Imported agents are named `timon.<name>`, or `import.<name>` when agents that th
 - **Unfold and fold.** At first only the orchestrators show. Select the **+N** badge on an agent to show its sub-agents, and select it again to fold them. A folded agent lights up while one of the agents it hides is working. The graph remembers your choice.
 - **Reorganise.** Drop an agent onto another to make it report to it, or drop a project's lead onto a pole to move the whole project. Every move can be undone from its confirmation. The **Organization** panel lists the same hierarchy as a tree you can reorganise by drag and drop.
 - **Arrange.** Dragging an agent carries its sub-agents with it. A group you drag by its top agent stays where you drop it, even after a reload; right-click it and choose **Reset position** to put it back.
-- **Node menu.** Right-click a node to open its chat, configure it, duplicate it, change who it reports to, move its project to another pole or edit the pole.
+- **Node menu.** Right-click a node to open its chat, configure it, duplicate it, change who it reports to, move its project to another pole, edit the pole or delete the agent.
 
 ## See what an agent is given at start
 

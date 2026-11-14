@@ -27,7 +27,7 @@ export function SettingsSearchField({
         aria-label={t('settingsSearch.label')}
         autoComplete="off"
         spellCheck={false}
-        className="h-9 w-full rounded-lg border-0 bg-muted/70 pl-9 pr-9 text-[13px] text-foreground outline-none ring-1 ring-border/60 placeholder:text-muted-foreground focus-visible:ring-ring [&::-webkit-search-cancel-button]:hidden"
+        className="h-9 w-full rounded-lg border-0 bg-muted/70 pl-9 pr-9 text-[13px] text-foreground outline-none ring-1 ring-transparent placeholder:text-muted-foreground focus-visible:ring-ring [&::-webkit-search-cancel-button]:hidden"
       />
       {value !== '' && (
         <button

@@ -132,7 +132,7 @@ export function MessageActionBar({ message }: { message: ChatMessageView }) {
     <ChatMessageContext.Provider value={message}>
       <TooltipProvider delayDuration={300} skipDelayDuration={300}>
         <div className={cn(
-          '-mt-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100',
+          '-mt-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/msg:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-45',
           message.role === 'user' ? 'justify-end' : '-ml-1 sm:ml-2.5',
         )}>
           <Slot name={CHAT_MESSAGE_ACTION_SLOT} />

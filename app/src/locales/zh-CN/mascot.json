@@ -1,0 +1,26 @@
+{
+  "mascot": {
+    "field": {"shape": "头形", "fur": "毛色", "eyes": "眼睛", "acc": "配饰"},
+    "shape": {"squircle": "经典", "tri": "梨形", "gem": "蛋形", "round": "圆形", "bean": "宽形", "cloud": "长形", "hex": "方形"},
+    "fur": {
+      "sand": "沙色", "cinnamon": "肉桂色", "cream": "奶油色", "cocoa": "可可色", "caramel": "焦糖色", "taupe": "灰褐色",
+      "honey": "蜂蜜色", "bark": "树皮色", "wheat": "小麦色", "pink": "粉色", "blue": "蓝色", "green": "绿色", "yellow": "黄色", "orange": "橙色", "purple": "紫色", "custom": "自定义"
+    },
+    "eyes": {
+      "pill": "平静", "big": "睁大眼睛", "happy": "开心", "wink": "眨眼", "surprised": "惊讶",
+      "squint": "专注", "sleepy": "困倦", "heart": "爱心眼", "star": "星星眼", "code": "代码眼"
+    },
+    "acc": {
+      "none": "无", "loupe": "放大镜", "pen": "红笔", "quill": "羽毛笔", "hammer": "锤子", "wrench": "扳手",
+      "baton": "指挥棒", "telescope": "单筒望远镜", "envelope": "信封", "calendar": "日历", "clipboard": "写字夹板",
+      "hourglass": "沙漏", "teacher": "书本和学士帽", "calculator": "计算器", "chart": "图表", "brush": "画笔",
+      "globe": "地球仪", "megaphone": "扩音器", "shield": "盾牌", "coffee": "咖啡杯"
+    },
+    "state": {
+      "idle": "空闲", "listening": "正在听", "thinking": "思考中", "working": "工作中", "searching": "搜索中",
+      "waiting": "等你回应", "done": "已完成", "error": "出错了", "sleeping": "睡着了",
+      "happy": "开心", "celebrate": "庆祝中", "confused": "困惑", "surprised": "惊讶", "sad": "难过",
+      "angry": "生气", "love": "崇拜", "shy": "害羞", "coding": "写代码中"
+    }
+  }
+}

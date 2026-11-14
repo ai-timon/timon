@@ -64,6 +64,12 @@
     "awaitingApproval": "To approve on this computer",
     "awaitingApprovalHint": "This machine runs it, but its interface code only loads here once the same version, with the same signature, is installed and enabled on this computer.",
     "awaitingApprovalBuiltinHint": "This machine runs it, but its interface code only loads here once this computer ships the same version of this plugin, with the same interface code, and has it enabled. Two Timon releases can ship different code under one plugin version: update the older machine.",
+    "packages": {
+      "agent-import": {
+        "label": "Agent import",
+        "description": "Bring your agents from Hermes, Grok Bot, another agent tool or another Timon: preview what will be created, then import."
+      }
+    },
     "modules": {
       "@timon/db": {
         "label": "Database",

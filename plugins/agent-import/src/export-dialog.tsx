@@ -180,7 +180,13 @@ export function ExportEntry({ api }: { api: Api }) {
   const [open, setOpen] = React.useState(false);
   return (
     <>
-      <Button size="sm" variant="outline" className="h-7 shrink-0 px-2.5 text-xs font-medium" onClick={() => setOpen(true)}>
+      {/* Same size, icon and gap as the bar's own entries; the arrow leaves the tray. */}
+      <Button size="sm" variant="outline" className="h-7 shrink-0 gap-1.5 px-2.5 text-[11.5px] font-medium" onClick={() => setOpen(true)}>
+        <svg viewBox="0 0 24 24" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <path d="m17 8-5-5-5 5" />
+          <path d="M12 3v12" />
+        </svg>
         {t('export.open')}
       </Button>
       <ExportDialog api={api} open={open} onOpenChange={setOpen} />

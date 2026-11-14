@@ -1902,6 +1902,7 @@
     "menuConfigure": "Agenten konfigurieren",
     "menuDuplicate": "Agenten duplizieren…",
     "menuReportsTo": "Berichtet an…",
+    "menuDelete": "Agenten löschen…",
     "menuMovePole": "Projekt in Pol verschieben…",
     "menuDefault": "Standard (Projektleitung oder Hauptagent)",
     "menuNoPole": "Kein Pol",

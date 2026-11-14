@@ -1,5 +1,6 @@
 import { scopedDb } from '../../users/scoped-db.js';
 import type { Request, Router } from 'express';
+import { z } from 'zod';
 import { dbApi } from '../../db.js';
 import { loadConfig } from '../../agent-config.js';
 import { resolveBrowserProject } from '../../browser-project.js';
@@ -58,6 +59,11 @@ export function recordingOriginOf(req: Request): BrowserRecordingOrigin {
 }
 
 /** For the parity test with the desktop's recording rules. */
+/** The page a Chrome sign-in window opens on: it becomes a command-line argument of the launched browser. */
+const chromeSigninUrl = z.string().max(16_384).refine((value) => {
+  try { return ['http:', 'https:'].includes(new URL(value).protocol); } catch { return false; }
+}).optional();
+
 export const NATIVE_COMMAND_SETS = Object.freeze({ commands, reads, humanOnly, ownerOnly });
 
 function operatorOnly(req: Request): void {
@@ -136,6 +142,7 @@ export function registerNativeBrowserRoutes(app: Router, deps: {
     // The binary the desktop launches is named here, by the daemon, and by nobody else.
     delete command.executable;
     if (action === 'chromeSigninStart') {
+      if (!chromeSigninUrl.safeParse(command.url).success) throw new NativeBrowserError('The sign-in page must be an http or https address.', 400);
       const detection = detectChrome();
       if (!detection.found) throw new NativeBrowserError(chromeMissingMessage(detection.reason), 409);
       command.executable = detection.binary.path;

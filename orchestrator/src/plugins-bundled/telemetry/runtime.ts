@@ -211,7 +211,7 @@ export function startTelemetry(opts: TelemetryOptions = {}): TelemetryRuntime {
   let state: TelemetryState | null = null;
   const identity = (): TelemetryState => {
     if (state) return state;
-    state = loadTelemetryState(home);
+    state = loadTelemetryState(home, now);
     if (!state.firstSeenDay) {
       state = { ...state, firstSeenDay: utcDay(now()) };
       saveTelemetryState(state, home);
@@ -354,6 +354,10 @@ export function startTelemetry(opts: TelemetryOptions = {}): TelemetryRuntime {
     ...databaseDeps(),
     now,
     milestone: (m) => reachMilestone(m),
+    installCreatedAt: () => {
+      const created = Date.parse(identity().createdAt ?? '');
+      return Number.isFinite(created) ? created : null;
+    },
     ...opts.collector,
   }, (name, props) => track(name, props));
   try { collector.setInitialLicense(licenseState().status === 'valid'); } catch { /* not loaded */ }

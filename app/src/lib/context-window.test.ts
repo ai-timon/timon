@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { formatContextWindow, parseContextWindow } from '@/lib/context-window';
-import { contextLimitFor } from '@/components/chat/chat-format';
+import { contextLimitFor, contextNudgePct } from '@/components/chat/chat-format';
 import { blankForm, formErrorKey, formOf, updatePayload, type CustomBackend } from '@/plugins-client/backends/form';
 import type { BackendCatalog } from '@/lib/backends';
 
@@ -51,4 +51,23 @@ test('the form sends the typed window, never the detected one, and null to clear
   const wrong = { ...form, models: [{ ...form.models[0]!, contextWindowText: 'lots' }] };
   assert.equal(formErrorKey(wrong), 'backendsSettings.errors.contextWindowInvalid');
   assert.equal(formErrorKey({ ...blankForm(), name: 'x', baseUrl: 'https://x.test', models: [{ slug: 'm', label: 'm', contextWindowText: '64k' }] }), null);
+});
+
+test('the compaction nudge waits for the agent\'s own model', () => {
+  const cat = {
+    backends: [{ id: 'claude', label: 'Claude', defaultModel: 'sonnet', models: [
+      { slug: 'sonnet', label: 'Sonnet', contextWindow: 200_000 },
+      { slug: 'opus', label: 'Opus', contextWindow: 1_000_000 },
+    ] }],
+  } as unknown as BackendCatalog;
+  const used = 376_596;
+  // The placeholder agent carries the backend default: its window reads an
+  // Opus mission at 1M as 94 % of a 400k tier.
+  const placeholder = contextLimitFor(cat, 'claude', 'sonnet', 'claude-opus-5-5', {});
+  assert.equal(Math.round(contextNudgePct(used, placeholder, true)!), 94);
+  assert.equal(contextNudgePct(used, placeholder, false), null, 'no nudge before the agent lands');
+  const own = contextLimitFor(cat, 'claude', 'opus', 'claude-opus-5-5', {});
+  assert.equal(Math.round(contextNudgePct(used, own, true)!), 38);
+  assert.equal(contextNudgePct(used, null, true), null, 'unknown window');
+  assert.equal(contextNudgePct(0, own, true), null, 'no usage yet');
 });

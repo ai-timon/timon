@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { applyEnvOverrides } from '../config/load.js';
 import { TimonConfigSchema } from '../config/schema.js';
 import { installWithRuntime, uninstallWithRuntime } from './packaged-install.js';
-import { markPackagedCli, serviceOptsForPlatform } from './service-environment.js';
+import { agentBinDirs, markPackagedCli, serviceOptsForPlatform } from './service-environment.js';
 import { renderMacLauncher, renderWindowsLauncher, type ServiceOpts } from './service-install.js';
 
 const DESKTOP_KEYS = ['TIMON_DESKTOP_EMBEDDED', 'TIMON_DESKTOP_SERVICE', 'TIMON_DESKTOP_VERSION', 'TIMON_DESKTOP_UPGRADE'];
@@ -177,4 +177,10 @@ test('markPackagedCli: the Node the package ships marks a packaged service too',
   markPackagedCli(env, node, '0.1.3', configuredHome(), '/opt/Timon/resources/node/node'); // portability: simulated path
   assert.equal(env.TIMON_DESKTOP_SERVICE, '1');
   assert.equal(env.TIMON_DESKTOP_VERSION, '0.1.3');
+});
+
+test('agentBinDirs: one entry per directory holding a detected agent CLI', () => {
+  const dirs = agentBinDirs((name) => (name === 'codex' ? '/home/u/.npm-global/bin/codex' : name === 'claude' ? '/home/u/.local/bin/claude' : null));
+  assert.deepEqual(dirs.sort(), ['/home/u/.local/bin', '/home/u/.npm-global/bin']);
+  assert.deepEqual(agentBinDirs(() => null), []);
 });

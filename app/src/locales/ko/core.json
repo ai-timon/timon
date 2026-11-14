@@ -1902,6 +1902,7 @@
     "menuConfigure": "에이전트 구성",
     "menuDuplicate": "에이전트 복제…",
     "menuReportsTo": "보고 대상…",
+    "menuDelete": "에이전트 삭제…",
     "menuMovePole": "프로젝트를 폴로 이동…",
     "menuDefault": "기본값 (프로젝트 리드 또는 메인 에이전트)",
     "menuNoPole": "폴 없음",

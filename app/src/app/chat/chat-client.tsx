@@ -253,9 +253,9 @@ import {
 import { estMasquee } from '@/components/chat/chat-columns';
 import {
   contextLimitFor,
+  contextNudgePct,
   fmtRelativeShort,
   fmtSize,
-  nextStandardLimit,
   paletteFor,
   shortModelSlug,
   stripTaskIdPreamble,
@@ -1272,6 +1272,9 @@ export function ChatClient({
   /** Same moment as `agentReadyRef`, for the reads that need the agent's
    *  `cwd`: firing them before it lands costs a second request. */
   const [agentSettled, setAgentSettled] = useState(false);
+  /** The agent whose details last landed. Differs from `agentId` while the
+   *  placeholder (default model, previous agent's model on a switch) stands in. */
+  const [agentDetailsFor, setAgentDetailsFor] = useState<string | null>(null);
   /** Backend catalog: carries the CAPABILITIES (account usage, permission
    *  model) the display depends on. Single request, module-cached. */
   const backendCatalog = useBackendCatalog();
@@ -1948,6 +1951,7 @@ export function ChatClient({
       } finally {
         agentReadyRef.current = true;
         setAgentSettled(true);
+        if (!cancelled) setAgentDetailsFor(agentId);
       }
     })();
     return () => { cancelled = true; };
@@ -2532,11 +2536,11 @@ export function ChatClient({
     const configured = contextLimitFor(
       backendCatalog, effBackend, effModel, liveStats.model, liveStats.contextWindows,
     );
-    // Unknown window → no percentage makes sense: we don't nudge rather
-    // than cry wolf over a made-up denominator.
-    if (!configured) return;
-    const ctxLimit = ctxUsed > configured ? nextStandardLimit(ctxUsed) : configured;
-    const ctxPct = Math.min(100, (ctxUsed / ctxLimit) * 100);
+    // Unknown window, or the placeholder agent's model instead of the agent's
+    // own → no percentage makes sense: we don't nudge rather than cry wolf
+    // over a made-up denominator.
+    const ctxPct = contextNudgePct(ctxUsed, configured, agentDetailsFor === agentId);
+    if (ctxPct === null) return;
     if (ctxPct >= 80 && lastCtxNudgePct.current < 80) {
       lastCtxNudgePct.current = ctxPct;
       const missionId = currentMissionId;
@@ -2556,7 +2560,7 @@ export function ChatClient({
     } else if (ctxPct < 70) {
       lastCtxNudgePct.current = ctxPct;
     }
-  }, [liveStats.lastContextTokens, liveStats.model, liveStats.contextWindows, backendCatalog, effBackend, effModel, currentMissionId]);
+  }, [liveStats.lastContextTokens, liveStats.model, liveStats.contextWindows, backendCatalog, effBackend, effModel, currentMissionId, agentDetailsFor, agentId]);
   useEffect(() => {
     // Waits for the agent: its cwd changes the answer, and reading once
     // without it then once with it doubled both requests on every opening.
@@ -3238,6 +3242,24 @@ export function ChatClient({
       }
     });
   }, [messages, thinking]);
+
+  // The thread also grows after the autoscroll above without a new message:
+  // the web font swapping in, code blocks highlighting, a late image. Pinned
+  // to the bottom, the reader stays there; scrolled up, nothing moves.
+  // Re-armed when the thread first has content: the scroller may not be
+  // mounted while the conversation loads.
+  const hasMessages = messages.length > 0;
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    const follow = new ResizeObserver(() => {
+      if (!stickToBottom.current) return;
+      programmaticUntil.current = performance.now() + 250;
+      root.scrollTop = root.scrollHeight;
+    });
+    for (const child of Array.from(root.children)) follow.observe(child);
+    return () => follow.disconnect();
+  }, [hasMessages]);
 
   // A block that changes height on its own (a document resizing itself) does
   // not go through the autoscroll above: ADR-MCPUI D10, `chat-scroll-anchor.ts`.
@@ -6060,8 +6082,10 @@ export function ChatClient({
             // `margin` on ::-webkit-scrollbar-track is ignored, this is not.
             !dense && "border-t-[10px] border-t-transparent",
             // Never under 6px for the text itself: with no margin left, the
-            // bubbles would touch the scrollbar and the island's edge.
-            dense ? "px-0" : "px-[max(6px,var(--chat-pad))]",
+            // bubbles would touch the scrollbar and the island's edge. On a
+            // phone 6px put the text against the glass; 14px lines it up with
+            // the inset composer below.
+            dense ? "px-0" : "px-[max(14px,var(--chat-pad))] sm:px-[max(6px,var(--chat-pad))]",
             // pb-12: past the 40px bottom fade, so the last message (and its
             // copy / read-aloud row) can be scrolled up out of the gradient.
             dense ? "pt-2 pb-2" : "pt-3 pb-12 md:pt-6",
@@ -6070,7 +6094,6 @@ export function ChatClient({
             // (globals.css), so the bar stays fully visible under the gradients.
             compact ? "chat-thread-fade-top" : "chat-thread-fade",
           )}>
-            {!dense && <DayDivider label="Today" />}
             <BlockResizeContext.Provider value={blockResize}>
             <ChatDocumentHostProvider value={documentHost}>
             <div className={cn(
@@ -6358,12 +6381,13 @@ export function ChatClient({
         .chat-bubble code {
           /* code-font: inline code */
           font-family: var(--font-mono), monospace; font-size: 12px;
-          background: hsl(var(--muted) / 0.6); border: 1px solid hsl(var(--border));
+          /* A fill, no rim (globals.css says why). */
+          background: hsl(var(--foreground) / 0.07); border: 1px solid transparent;
           padding: 1px 5px; border-radius: calc(var(--radius) * 0.4);
         }
         .chat-bubble pre {
           margin: 8px 0 4px; background: hsl(var(--muted) / 0.5);
-          border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) * 0.8);
+          border: 1px solid transparent; border-radius: calc(var(--radius) * 0.8);
           padding: 10px 12px; overflow: auto;
           /* code-font: code block */
           font: 500 12px var(--font-mono), monospace; line-height: 1.5;
@@ -6785,14 +6809,6 @@ export function ChatClient({
       {body}
     </div>
     </BubbleFaceContext.Provider>
-  );
-}
-
-function DayDivider({ label }: { label: string }) {
-  return (
-    <div className="mx-auto mb-4 mt-2 max-w-[var(--chat-col,780px)] px-6 text-center text-[11px] uppercase tracking-[0.06em] text-muted-foreground/70">
-      {label}
-    </div>
   );
 }
 
@@ -7887,6 +7903,8 @@ function DeclencheurPanneau({ cible, label, ouvert, onClick, children }: {
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  // A faint chip fill, like the composer's controls: bare icons floating
+  // over the thread's last line looked stray rather than like buttons.
   return (
     <button
       type="button"
@@ -7895,7 +7913,7 @@ function DeclencheurPanneau({ cible, label, ouvert, onClick, children }: {
       aria-expanded={ouvert}
       aria-controls={cible}
       onClick={onClick}
-      className="grid size-7 shrink-0 place-items-center rounded-md border border-border/40 bg-background text-muted-foreground/70 transition-colors hover:border-muted-foreground/40 hover:bg-background hover:text-foreground"
+      className="grid size-7 shrink-0 place-items-center rounded-md bg-foreground/[0.05] text-muted-foreground/70 transition-colors hover:bg-foreground/[0.08] hover:text-foreground"
     >
       {children}
     </button>

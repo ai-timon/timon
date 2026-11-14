@@ -15,6 +15,15 @@ permissions:
   pull-requests: write
   statuses: write
 
+# Every run commits to signatures/cla.json on the same branch: two runs at
+# once race, and one of the two signatures is lost. Runs wait in the group
+# instead of being cancelled, and `queue: max` keeps them in order: none is
+# dropped while fewer than 100 are pending.
+concurrency:
+  group: cla-signatures
+  queue: max
+  cancel-in-progress: false
+
 jobs:
   cla:
     runs-on: ubuntu-latest

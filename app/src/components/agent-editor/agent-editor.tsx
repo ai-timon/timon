@@ -33,7 +33,6 @@ import { t } from '@/lib/i18n';
 import { renameFollowUps } from '@/lib/agent-rename';
 import { TRIGGERS_ROUTE } from '@/plugins-client/triggers/model';
 import { BRAND } from '@/lib/brand';
-import { settingsPath } from '@/lib/settings-path';
 import { IdentityDocs } from '@/components/agent-editor/identity-docs';
 import { ThinkingSlider, keepEffort } from '@/components/agent-editor/thinking-slider';
 import { thinkingBarFor, thinkingValues } from '@/lib/thinking-bar';
@@ -62,6 +61,7 @@ import {
   type BackendName,
 } from '@/lib/backends';
 import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
+import { deleteAgentAfterConfirm } from '@/components/agent-editor/delete-agent';
 import { apiErrorMessage } from '@/lib/api-error';
 
 type AgentSummary = {
@@ -926,49 +926,16 @@ export function AgentEditor({ agent, isNew, onClose, onDirtyChange, initialTab }
 
   async function remove() {
     if (!selected?.name) return;
-    const name = selected.name;
-    // The confirmation says where the agent goes: the trash, unless it is off.
-    const trash = await fetch('/api/ui/agent-trash', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() as Promise<{ enabled?: boolean }> : null))
-      .catch(() => null);
-    const toTrash = trash?.enabled !== false;
-    if (!(await confirmAction({ title: t(toTrash ? 'agentTrash.deleteConfirm' : 'agentTrash.deleteConfirmFinal', { name, settingsPath: settingsPath('system', 'backup') }), confirmLabel: t('confirmDialog.delete'), destructive: true }))) return;
-    try {
-      const r = await fetch('/api/ui/agents/' + encodeURIComponent(name), {
-        method: 'DELETE',
-      });
-      if (!r.ok) throw new Error(await r.text());
-      const { trash_id: trashId } = await r.json().catch(() => ({})) as { trash_id?: string | null };
-      if (trashId) {
-        toast.success(t('agentTrash.deletedToast', { name }), {
-          action: {
-            label: t('agentTrash.restore'),
-            onClick: () => {
-              void fetch(`/api/ui/agent-trash/${encodeURIComponent(trashId)}/restore`, { method: 'POST' })
-                .then(async (res) => {
-                  if (!res.ok) throw new Error(await res.text());
-                  toast.success(t('agentTrash.restored', { name }));
-                  await fetchAll();
-                })
-                .catch((e: Error) => toast.error(t('agentTrash.actionError', { error: e.message.slice(0, 80) })));
-            },
-          },
-        });
-      } else {
-        toast.success('Deleted ' + name);
-      }
-      // The host asks before discarding edits; there is nothing left to
-      // discard once the agent is gone.
-      if (onClose) { onDirtyChange?.(false); onClose(); return; }
-      const list = await fetchAll();
-      const next = list[0] || null;
-      if (next) select(next);
-      else {
-        setSelected(null);
-        setDraft(null);
-      }
-    } catch (e) {
-      toast.error('Delete failed: ' + String((e as Error).message || e).slice(0, 80));
+    if (!(await deleteAgentAfterConfirm(selected.name, { onRestored: fetchAll }))) return;
+    // The host asks before discarding edits; there is nothing left to
+    // discard once the agent is gone.
+    if (onClose) { onDirtyChange?.(false); onClose(); return; }
+    const list = await fetchAll();
+    const next = list[0] || null;
+    if (next) select(next);
+    else {
+      setSelected(null);
+      setDraft(null);
     }
   }
 
