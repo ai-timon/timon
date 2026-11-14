@@ -217,6 +217,21 @@ export async function createWorktree(
   return { taskId, path, branch, base: baseRef, sourceRepo: repoCwd };
 }
 
+/**
+ * Messages of the merge commits Timon creates or prescribes. Git's default
+ * (`Merge branch 'timon/task/<uuid>' into …`) carries a task id: a public
+ * repository's `commit-msg` hook refuses it, which leaves the merge unfinished,
+ * and a merge that does land puts internal ids into the public history. Every
+ * merge of a task chain therefore names its base only, in English.
+ */
+export function refreshMergeMessage(base: string): string {
+  return `merge: bring ${base} into the task branch`;
+}
+
+export function integrateMergeMessage(base: string): string {
+  return `merge: integrate the task branch into ${base}`;
+}
+
 /** What an attempt to bring a worktree up to date with its base gave. */
 export type RefreshOutcome =
   /** The branch already contained the whole base — nothing moved. */
@@ -227,8 +242,9 @@ export type RefreshOutcome =
    *  settle. It is not aborted — an agent coding on a stale base
    *  produces work that will overwrite the others' at the final merge. */
   | { status: 'conflict'; base: string; files: string[] }
-  /** Operation impossible (worktree missing, unknown base, git silent). Not
-   *  fatal: the caller carries on with the base as it is. */
+  /** Operation impossible (worktree missing, unknown base, merge commit refused
+   *  by a hook). Not fatal: the caller carries on with the base as it is, and
+   *  any half-done merge is aborted so the agent does not start inside it. */
   | { status: 'failed'; reason: string };
 
 /**
@@ -269,7 +285,7 @@ export async function refreshWorktreeBase(
   try {
     await exec(
       'git',
-      ['-C', worktreePath, 'merge', '--no-edit', base],
+      ['-C', worktreePath, 'merge', '--no-edit', '-m', refreshMergeMessage(base), base],
       { timeout: 120_000 },
     );
     return { status: 'merged', base };
@@ -286,9 +302,34 @@ export async function refreshWorktreeBase(
       files = r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
     } catch { /* list unavailable: the conflict is reported without detail */ }
     if (files.length === 0) {
-      return { status: 'failed', reason: (err as Error).message.slice(0, 300) };
+      // No conflict, yet no merge commit: typically a `commit-msg` hook that
+      // refused the message. Git then leaves the merge pending (MERGE_HEAD),
+      // and the agent's first `git commit` would silently become that merge.
+      // Abort it so the task starts on its base as is, and say why.
+      await abortPendingMerge(worktreePath);
+      return { status: 'failed', reason: mergeFailureReason(err) };
     }
     return { status: 'conflict', base, files };
+  }
+}
+
+/** The tail of git's output, where a hook or git itself says why it refused. */
+function mergeFailureReason(err: unknown): string {
+  const e = err as Error & { stderr?: string; stdout?: string };
+  const detail = [e.stderr, e.stdout].map((t) => (t ?? '').trim()).filter(Boolean).join('\n');
+  return (detail || e.message || 'git merge failed').slice(-600);
+}
+
+async function abortPendingMerge(worktreePath: string): Promise<void> {
+  try {
+    await exec('git', ['-C', worktreePath, 'rev-parse', '-q', '--verify', 'MERGE_HEAD'], { timeout: 10_000 });
+  } catch {
+    return; // no merge in progress
+  }
+  try {
+    await exec('git', ['-C', worktreePath, 'merge', '--abort'], { timeout: 30_000 });
+  } catch (err) {
+    console.warn(`[worktree] could not abort the pending merge in ${worktreePath}: ${(err as Error).message}`);
   }
 }
 
