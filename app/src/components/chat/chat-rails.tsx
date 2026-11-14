@@ -1478,7 +1478,9 @@ function OngletUnique({ label, accent, onMenu }: { label: string; accent: boolea
     >
       <span
         aria-hidden
-        className={cn(PILULE_FINE, accent ? 'bg-muted-foreground/30' : 'bg-muted', 'group-hover/onglet:bg-muted-foreground/25')}
+        // A short grip in the middle, not a bar across the column: full width,
+        // it read as a separator line. The whole row stays the hit area.
+        className={cn(PILULE_FINE, 'mx-auto max-w-12', accent ? 'bg-muted-foreground/30' : 'bg-foreground/[0.08]', 'group-hover/onglet:max-w-none group-hover/onglet:bg-muted-foreground/25')}
       />
     </button>
   );

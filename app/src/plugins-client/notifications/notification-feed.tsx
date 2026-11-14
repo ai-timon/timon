@@ -5,6 +5,7 @@ import { ChatLink } from '@/components/chat/chat-link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bell, Check, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { plainPreview } from '@/lib/plain-preview';
 import { t } from '@/lib/i18n';
 import { sseOn } from '@/lib/sse-stream';
 import { notificationHref } from '@/lib/notification-href';
@@ -210,13 +211,13 @@ export function NotificationFeed({
         const text = (
           <>
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 truncate text-[12.5px] font-medium leading-snug text-foreground" title={display.title}>
-                {display.title}
+              <span className="min-w-0 truncate text-[12.5px] font-medium leading-snug text-foreground" title={plainPreview(display.title)}>
+                {plainPreview(display.title)}
               </span>
               {n.urgent === 1 && <UrgentPill type={n.type} label={t('notifications.urgent')} />}
             </span>
             {display.body && (
-              <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-muted-foreground">{display.body}</p>
+              <p className="mt-0.5 line-clamp-2 text-[11.5px] leading-snug text-muted-foreground">{plainPreview(display.body)}</p>
             )}
             <p className="mt-1 flex min-w-0 items-center gap-1 text-[10.5px] text-muted-foreground/70" suppressHydrationWarning>
               <span

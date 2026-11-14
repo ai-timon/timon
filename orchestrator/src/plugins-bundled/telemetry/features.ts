@@ -186,6 +186,15 @@ export function installAgeOf(firstDay: string, today: string): (typeof INSTALL_A
   return 'gt90';
 }
 
+/**
+ * UTC calendar days from `createdAt` to `at`: 0 the same UTC day, 1 the next.
+ * A clock set before the creation reads as 0, never a negative age.
+ */
+export function installAgeDaysOf(createdAt: number, at: number): number {
+  const day = (ms: number): number => Math.floor(ms / 86_400_000);
+  return Math.max(0, day(at) - day(createdAt));
+}
+
 export const PREVIOUS_EXITS = ['first', 'clean', 'error', 'unknown'] as const;
 export const WAIT_BUCKETS = ['lt10s', '10s-1m', '1-10m', '10-60m', 'gt1h'] as const;
 export function waitBucketOf(ms: number): (typeof WAIT_BUCKETS)[number] {

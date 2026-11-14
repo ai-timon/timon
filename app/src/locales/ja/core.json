@@ -1902,6 +1902,7 @@
     "menuConfigure": "エージェントを設定",
     "menuDuplicate": "エージェントを複製…",
     "menuReportsTo": "報告先…",
+    "menuDelete": "エージェントを削除…",
     "menuMovePole": "プロジェクトをポールに移動…",
     "menuDefault": "既定 (プロジェクトリードまたはメインエージェント)",
     "menuNoPole": "ポールなし",

@@ -44,6 +44,7 @@ function recorder(): { sent: Payload[]; fetch: typeof fetch } {
 }
 
 const noMission = { missionFacts: () => null, taskFacts: () => null };
+const GLOBAL_KEYS = new Set(['surface', 'app_version', 'platform', 'arch', 'event_schema_version', 'license_tier', 'install_age', 'account_slot']);
 
 function start(opts: { now?: () => number; intervalMs?: number; stored?: () => string | null } = {}) {
   const { sent, fetch } = recorder();
@@ -435,4 +436,80 @@ test('milestones are sent once per installation; every event carries its cohort'
   assert.equal(sent.find((p) => p.name === 'app_opened')!.properties.load, '1-3s');
   assert.equal(sent.find((p) => p.name === 'ui_error')!.properties.section, 'agents');
   assert.ok(!JSON.stringify(sent).includes(MARKER));
+});
+
+/* ── v4: install_age_days on turn_completed ──────────────────────────────── */
+
+test('turn_completed carries the whole UTC days since the identity was created, and only that', async () => {
+  const { bus } = await import('../../bus.js');
+  const { loadTelemetryState } = await import('./state.js');
+  const home = mkdtempSync(join(tmpdir(), 'timon-telemetry-age-'));
+  // 23:30 UTC: the next turn, an hour later, is already day 1.
+  const created = Date.parse('2026-11-03T23:30:00Z');
+  let clock = created;
+  const { sent, fetch } = recorder();
+  const rt = startTelemetry({
+    env: { TIMON_TELEMETRY_CAPTURE_URL: CAPTURE }, packaged: false, fetch, home, now: () => clock,
+    preference: { configValue: () => undefined, stored: () => null },
+    collector: { missionFacts: () => ({ backend: 'claude', model: 'default', origin: 'user', child: false }), taskFacts: () => null },
+    intervalMs: 60_000,
+  });
+  const turnAt = (at: number, mission: string): void => {
+    clock = at;
+    bus.publish({ kind: 'turn_started', missionId: mission, at });
+    bus.publish({ kind: 'turn_complete', missionId: mission, outcome: 'completed' });
+  };
+  turnAt(created + 10 * 60_000, 'age-same-day');
+  turnAt(created + 60 * 60_000, 'age-next-day');
+  turnAt(created + 7 * 86_400_000, 'age-day-7');
+  await rt.flushNow();
+  await rt.dispose();
+  assert.equal(loadTelemetryState(home).createdAt, new Date(created).toISOString(), 'drawn with the identity (by app_started), on the injected clock');
+  const turns = sent.filter((p) => p.name === 'turn_completed').map((p) => p.properties);
+  // Created 23:30; a turn at 23:40 is day 0, at 00:30 the next UTC day 1, a week later 7.
+  assert.deepEqual(turns.map((p) => p.install_age_days), [0, 1, 7]);
+  assert.deepEqual(Object.keys(turns[0]!).filter((k) => !GLOBAL_KEYS.has(k)).sort(),
+    ['backend', 'duration_ms', 'install_age_days', 'model', 'origin', 'status'], 'no other property was added');
+});
+
+test('install_age_days is left out for an identity written before its creation date was kept', async () => {
+  const { bus } = await import('../../bus.js');
+  const { telemetryStatePath } = await import('./state.js');
+  const { writeFileSync } = await import('node:fs');
+  const home = mkdtempSync(join(tmpdir(), 'timon-telemetry-age-old-'));
+  const legacy = { installId: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b', lastVersion: '0.1.5', firstSeenDay: '2026-10-01' };
+  writeFileSync(telemetryStatePath(home), JSON.stringify(legacy));
+  const { sent, fetch } = recorder();
+  const rt = startTelemetry({
+    env: { TIMON_TELEMETRY_CAPTURE_URL: CAPTURE }, packaged: false, fetch, home,
+    preference: { configValue: () => undefined, stored: () => null },
+    collector: { missionFacts: () => ({ backend: 'claude', model: 'default', origin: 'user', child: false }), taskFacts: () => null },
+    intervalMs: 60_000,
+  });
+  bus.publish({ kind: 'turn_started', missionId: 'age-legacy', at: Date.now() });
+  bus.publish({ kind: 'turn_complete', missionId: 'age-legacy', outcome: 'completed' });
+  await rt.flushNow();
+  await rt.dispose();
+  const turn = sent.find((p) => p.name === 'turn_completed')!;
+  assert.equal(turn.profileId, legacy.installId, 'the same identity, not a new one');
+  assert.equal('install_age_days' in turn.properties, false, 'unknown, so not sent');
+  const stored = JSON.parse(readFileSync(telemetryStatePath(home), 'utf8')) as { createdAt?: unknown };
+  assert.ok(stored.createdAt === undefined || stored.createdAt === null, 'no creation date invented afterwards');
+});
+
+test('install_age_days counts UTC calendar days and refuses what is not a day count', async () => {
+  const { installAgeDaysOf } = await import('./features.js');
+  const at = Date.parse('2026-11-03T12:00:00Z');
+  assert.equal(installAgeDaysOf(at, at), 0);
+  assert.equal(installAgeDaysOf(at, Date.parse('2026-11-03T23:59:59Z')), 0);
+  assert.equal(installAgeDaysOf(at, Date.parse('2026-11-04T00:00:00Z')), 1);
+  assert.equal(installAgeDaysOf(at, at + 30 * 86_400_000), 30);
+  assert.equal(installAgeDaysOf(at, at - 86_400_000), 0, 'a clock moved back never gives a negative age');
+  const base = { backend: 'claude', model: 'default', origin: 'user', status: 'completed', duration_ms: 1 };
+  assert.ok(validateEvent('turn_completed', { ...base, install_age_days: 7 }));
+  assert.ok(validateEvent('turn_completed', base), 'the property is optional');
+  assert.equal(validateEvent('turn_completed', { ...base, install_age_days: -1 }), null);
+  assert.equal(validateEvent('turn_completed', { ...base, install_age_days: 1.5 }), null);
+  assert.equal(validateEvent('turn_completed', { ...base, install_age_days: '7' }), null);
+  assert.equal(validateEvent('turn_completed', { ...base, install_created_at: '2026-11-03' }), null, 'strict: no date property');
 });

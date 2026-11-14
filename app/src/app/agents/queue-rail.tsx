@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { sseOn } from '@/lib/sse-stream';
 import { missionActivity } from '@/lib/mission-activity';
 import { machineScopedStorage } from '@/lib/machines/machine-storage';
+import { ChevronDown } from 'lucide-react';
 
 type Mission = {
   id: string;
@@ -131,16 +132,22 @@ export function QueueRail({ poignee, className }: WidgetProps) {
   const runningShown = shown.missions;
   const empty = runningShown.length === 0 && queuedClean.length === 0;
 
+  // The browser's own arrow is hidden and drawn with the same chevron as the
+  // Kanban and Missions filters: the native one looked like an unstyled form
+  // field beside them, light mode especially.
   const picker = chatSlug ? null : (
-    <select
-      value={choice}
-      aria-label={t('agentsLayout.projectFilter')}
-      onChange={(e) => { setChoice(e.target.value); writeQueueRailProject(machineScopedStorage(window.localStorage), e.target.value); }}
-      className="pointer-events-auto w-full rounded border border-border bg-background/40 px-1.5 py-1 text-[11px] text-muted-foreground outline-none transition-colors focus:border-primary/60"
-    >
-      <option value={ALL_FILTER}>{t('agentsLayout.allProjects')}</option>
-      {projects.map((p) => <option key={p.slug} value={p.slug}>{p.name || p.slug}</option>)}
-    </select>
+    <div className="pointer-events-auto relative">
+      <select
+        value={choice}
+        aria-label={t('agentsLayout.projectFilter')}
+        onChange={(e) => { setChoice(e.target.value); writeQueueRailProject(machineScopedStorage(window.localStorage), e.target.value); }}
+        className="h-8 w-full cursor-pointer appearance-none rounded-lg border border-transparent bg-foreground/[0.06] pl-2.5 pr-8 text-[12px] text-foreground outline-none transition-colors focus:border-primary/60"
+      >
+        <option value={ALL_FILTER}>{t('agentsLayout.allProjects')}</option>
+        {projects.map((p) => <option key={p.slug} value={p.slug}>{p.name || p.slug}</option>)}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+    </div>
   );
 
   // The rail keeps its place when the queue is empty instead of unmounting:
@@ -239,11 +246,11 @@ export function QueueRail({ poignee, className }: WidgetProps) {
       )}
 
       {empty && (
-        <div className="pointer-events-auto rounded-xl border border-dashed border-border/50 bg-card/40 px-3 py-4 text-center shadow-sm backdrop-blur">
-          <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/70">
+        <div className="pointer-events-auto rounded-xl bg-card/40 px-3 py-4 text-center backdrop-blur">
+          <p className="text-[12.5px] font-medium text-foreground/80">
             {t('agentsLayout.emptyTitle')}
           </p>
-          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground/60">
+          <p className="mt-1 text-[11.5px] leading-snug text-muted-foreground">
             {t('agentsLayout.emptyBody')}
           </p>
         </div>

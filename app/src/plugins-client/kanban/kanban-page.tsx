@@ -277,7 +277,9 @@ export function KanbanClient({ defaultAgent }: { defaultAgent?: string }) {
     dragOver.current = null;
   }
 
-  const controlClass = 'flex h-9 items-center gap-2 rounded-lg bg-muted/50 px-2.5';
+  // A tint of the text colour, like the Missions filters: half of `muted`
+  // vanished into the light island, which is nearly the same beige.
+  const controlClass = 'flex h-9 items-center gap-2 rounded-lg bg-foreground/[0.06] px-2.5';
   const triggerClass = 'h-8 border-0 bg-transparent px-1 text-[13px] shadow-none focus:ring-0 focus:ring-offset-0';
 
   return (
@@ -319,7 +321,7 @@ export function KanbanClient({ defaultAgent }: { defaultAgent?: string }) {
       )}
 
       <header className="flex flex-wrap items-center gap-3 pb-3">
-        <h1 className="m-0 mr-1 text-[20px] font-semibold tracking-tight">{i18n('kanbanPage.title')}</h1>
+        <h1 className="m-0 mr-1 text-[22px] font-semibold -tracking-[0.01em]">{i18n('kanbanPage.title')}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <label className={controlClass}>
             <span className="text-[12px] text-muted-foreground">{i18n('kanbanPage.filterProject')}</span>
@@ -435,7 +437,10 @@ export function KanbanClient({ defaultAgent }: { defaultAgent?: string }) {
                 dotClass={col.dot}
                 pulse={col.key === 'IN_PROGRESS' && cards.length > 0}
               />
-              <div className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2">
+              {/* The last card fades out at the column's foot rather than being
+                  sliced through its actions, as in the to-do tile; the extra
+                  bottom padding lets the final card scroll clear of the fade. */}
+              <div className="flex flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden p-2 pb-6 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)]">
                 {allCards.length === 0 ? (
                   <KanbanColumnEmpty>{i18n(col.emptyKey)}</KanbanColumnEmpty>
                 ) : (

@@ -128,7 +128,7 @@ test('the column\'s idea is a BoardCard: task shell, identity, corner, badges, m
     const shell = card.className;
     assert.ok(shell.includes('rounded-xl') && shell.includes('shadow-elev-1'), 'the task tile\'s shell');
     assert.ok(!shell.includes('border-dashed'), 'no dashed outline any more');
-    assert.equal(card.querySelector('[data-board-card-identity]')?.textContent, 'agent.maintimon');
+    assert.equal(card.querySelector('[data-board-card-identity]')?.textContent, 'agent.main·timon');
     assert.equal(card.querySelector('[data-board-card-corner]')?.textContent, '#209');
     assert.match(card.querySelector('[data-board-card-badges]')?.textContent ?? '', /Bug.*Analyzed/);
 

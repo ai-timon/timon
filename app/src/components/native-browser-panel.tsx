@@ -16,7 +16,8 @@ import { browserInputQueue, type RemoteInput } from '@/lib/native-browser-input'
 import { useBrowserMedia } from '@/hooks/use-browser-media';
 import { BrowserRemoteSurface } from '@/components/browser-remote-surface';
 import { BrowserCredentials } from '@/components/browser-credentials';
-import { BrowserChromeSignin } from '@/components/browser-chrome-signin';
+import { BrowserChromeSignin, chromeSigninReport, type ChromeSigninReason, type ChromeSigninStatus } from '@/components/browser-chrome-signin';
+import { EMPTY_TAB_TRAIL, googleSigninPlan, isGoogleAccountsPage, isGoogleSigninRejected, noteUserTab, trackBrowserTabs, type GoogleSigninPlan } from '@/lib/google-signin';
 import { BrowserPrompts } from '@/components/browser-prompts';
 import { BROWSER_DRAWER_SLOT, BrowserChromeProvider, BrowserDrawerSlot, BrowserToolbarSlot, PLUGIN_DRAWER_PREFIX, type BrowserChrome, type PluginDrawer } from '@/components/browser-chrome';
 import { useSlotEntry } from '@/lib/plugin-host/render';
@@ -330,6 +331,32 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
 
   const activeTab = status?.tabs.find((tab) => tab.id === status.activeTabId);
   useEffect(() => { setUrl(activeTab?.url === 'about:blank' ? '' : activeTab?.url ?? ''); }, [activeTab?.url]);
+  // Which site sent a tab, or a popup, to Google: the page Chrome opens on when Google refuses this browser.
+  const tabTrail = useRef(EMPTY_TAB_TRAIL);
+  useEffect(() => { tabTrail.current = status ? trackBrowserTabs(tabTrail.current, status) : EMPTY_TAB_TRAIL; }, [status]);
+  const [signin, setSignin] = useState<{ plan: GoogleSigninPlan | null; reason: ChromeSigninReason }>({ plan: null, reason: 'manual' });
+  const [signinNotice, setSigninNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!signinNotice) return;
+    const timer = setTimeout(() => setSigninNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [signinNotice]);
+  const openChromeSignin = useCallback(() => {
+    const page = activeTab && isGoogleAccountsPage(activeTab.url) ? activeTab : null;
+    const plan = page ? googleSigninPlan(tabTrail.current, page.id, page.url) : null;
+    const reason: ChromeSigninReason = page && isGoogleSigninRejected(page.url) ? plan?.oauth ? 'rejectedSite' : 'rejected' : 'manual';
+    setSignin({ plan, reason });
+    setDrawer('chromeSignin');
+  }, [activeTab]);
+  // Google's refusal opens the Chrome detour by itself, once per refused page: closing it is an answer.
+  // Only the refusal shows it: a sign-in Google accepts never sees the detour.
+  const autoOpened = useRef(new Set<string>());
+  const refusedUrl = activeTab && isGoogleSigninRejected(activeTab.url) ? activeTab.url : null;
+  useEffect(() => {
+    if (!refusedUrl || drawer || !visible || !profile || !status?.running || autoOpened.current.has(refusedUrl)) return;
+    autoOpened.current.add(refusedUrl);
+    openChromeSignin();
+  }, [refusedUrl, drawer, visible, profile, status?.running, openChromeSignin]);
 
   const command = useCallback(async (action: string, data: Record<string, unknown> = {}) => {
     if (!profile || currentProfileId.current !== profile.id || currentBindingKey.current !== bindingKey) return;
@@ -343,6 +370,18 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
       else { const next = await browserCommand<NativeBrowserStatus>(id, 'status'); if (currentProfileId.current === id && currentBindingKey.current === bindingKey && epoch === commandEpoch.current) setStatus(next); }
     } catch (err) { if (currentProfileId.current === id && currentBindingKey.current === bindingKey && epoch === commandEpoch.current) setError((err as Error).message); }
   }, [profile, browserCommand, bindingKey, muteOwnedHostAudio]);
+  // The sign-in is in this browser now: show the site with it, from the tab that wanted it, without a popup left behind.
+  const returnFromSignin = async (result: ChromeSigninStatus) => {
+    setDrawer(null);
+    setSigninNotice(chromeSigninReport(result));
+    const plan = signin.plan;
+    const open = new Set(status?.tabs.map((tab) => tab.id) ?? []);
+    if (!plan) { await command('reload'); return; }
+    const back = plan.returnTabId && open.has(plan.returnTabId) ? plan.returnTabId : null;
+    if (back && back !== status?.activeTabId) await command('activateTab', { tabId: back });
+    if (plan.closeTabId && plan.closeTabId !== back && open.has(plan.closeTabId)) await command('closeTab', { tabId: plan.closeTabId });
+    await command('navigate', { url: plan.returnUrl });
+  };
   // No "take control" button: an open panel on a running browser takes the lease by itself.
   // The agent holds none (it drives the same browser alongside the user); only another device
   // of the user's can hold it, and a click or a key in this panel takes it over.
@@ -440,8 +479,11 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
     </form>
     <div aria-label={t('browserPanel.native.tabs')} data-browser-chrome="tabs" className="flex h-9 shrink-0 gap-1 overflow-x-auto px-1.5 py-1">
       {status?.tabs.map((tab) => <div key={tab.id} className={cn('flex max-w-40 shrink-0 items-center rounded text-xs', tab.id === status.activeTabId ? 'bg-muted' : 'text-muted-foreground')}><button type="button" className="min-w-0 truncate px-2 py-1" disabled={!controlled} onClick={() => void command('activateTab', { tabId: tab.id })}>{tab.title || tab.url || t('browserPanel.native.newTab')}</button><button type="button" className={button} disabled={!controlled} aria-label={t('browserPanel.native.closeTab')} onClick={() => void command('closeTab', { tabId: tab.id })}><X className="size-3" /></button></div>)}
-      <button type="button" className={button} disabled={!status?.running || !controlled} aria-label={t('browserPanel.native.newTab')} onClick={() => void command('newTab')}><Plus className="size-3.5" /></button>
+      <button type="button" className={button} disabled={!status?.running || !controlled} aria-label={t('browserPanel.native.newTab')} onClick={() => { tabTrail.current = noteUserTab(tabTrail.current); void command('newTab'); }}><Plus className="size-3.5" /></button>
     </div>
+    {(signinNotice || profile && status?.running && refusedUrl && drawer !== 'chromeSignin') && <div data-browser-chrome="signin" className="flex min-h-8 shrink-0 items-center gap-2 bg-muted px-2.5 py-1 text-xs">
+      {signinNotice ? <span role="status" className="min-w-0 flex-1">{signinNotice}</span> : <><LogIn className="size-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1">{t('browserPanel.native.googleSigninBanner')}</span><button type="button" className="shrink-0 rounded px-2 py-0.5 font-medium hover:bg-background disabled:opacity-40" disabled={!controlled} onClick={openChromeSignin}>{t('browserPanel.native.chromeSignin')}</button></>}
+    </div>}
     <BrowserRemoteSurface surface={surface} video={video} overlay={overlay} controlled={controlled} blocked={modal || !screenshotMode && media.phase !== 'live'} running={!!status?.running} viewport={status?.width && status?.height ? { width: status.width, height: status.height } : viewport} screenshot={shot} useScreenshot={screenshotMode} dragTouch={dragTouch} sendInput={sendInput} onClipboard={(action) => { if (action.kind === 'paste') void pasteText(action.text); else void copySelection(action.kind === 'cut'); }}>
       {(busy || !available && !capabilityError || !overlay && !screenshotMode && media.phase === 'connecting') && <div className="pointer-events-none absolute inset-0 grid place-items-center text-white/70"><Loader2 className="size-6 animate-spin" /></div>}
       {!busy && available && !profile && !error && <div className="absolute inset-0 grid place-items-center p-8 text-center text-xs text-white/70">{t('browserPanel.native.noAccessHint')}</div>}
@@ -474,7 +516,7 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
             </div>
             <div className="rounded bg-muted/30 py-1">
               <button type="button" className={menuButton} disabled={!profile} onClick={() => setDrawer('credentials')}><KeyRound className="size-4" />{t('browserPanel.native.credentials')}</button>
-              <button type="button" className={menuButton} disabled={!profile || !status?.running} onClick={() => setDrawer('chromeSignin')}><LogIn className="size-4" />{t('browserPanel.native.chromeSignin')}</button>
+              <button type="button" className={menuButton} disabled={!profile || !status?.running} onClick={openChromeSignin}><LogIn className="size-4" />{t('browserPanel.native.chromeSignin')}</button>
               <button type="button" className={menuButton} disabled={!profile} onClick={() => setDrawer('downloads')}><Download className="size-4" />{t('browserPanel.native.downloads')}</button>
               <button type="button" className={menuButton} aria-pressed={audioEnabled} onClick={() => { setAudioEnabled(!audioEnabled); setDrawer(null); }}>{audioEnabled ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}{t('browserPanel.native.audio')}</button>
             </div>
@@ -501,7 +543,7 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
         </section>
       </div>}
       {drawer === 'credentials' && profile && <BrowserCredentials key={profile.id} profileId={profile.id} url={activeTab?.url ?? ''} controlled={controlled} command={runAction} close={() => setDrawer(null)} />}
-      {drawer === 'chromeSignin' && profile && <BrowserChromeSignin key={profile.id} controlled={controlled} command={runAction} close={() => setDrawer(null)} />}
+      {drawer === 'chromeSignin' && profile && <BrowserChromeSignin key={profile.id} controlled={controlled} command={runAction} close={() => setDrawer(null)} startUrl={signin.plan?.startUrl} reason={signin.reason} onSignedIn={(result) => void returnFromSignin(result)} />}
       {drawer === 'downloads' && profile && <section role="dialog" aria-modal="true" aria-label={t('browserPanel.native.downloads')} className="absolute inset-0 z-20 space-y-3 overflow-y-auto bg-card p-3">
         <div className="flex items-center justify-between"><h2 className="text-sm font-medium">{t('browserPanel.native.downloads')}</h2><button type="button" className={button} aria-label={t('browserPanel.native.close')} onClick={() => setDrawer(null)}><X className="size-4" /></button></div>
         {!status?.downloads?.length && <p className="text-xs text-muted-foreground">{t('browserPanel.native.noDownloads')}</p>}

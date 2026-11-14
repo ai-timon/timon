@@ -28,6 +28,7 @@ await import('../../../tests/helpers/paid-license.js');
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 
 const { bus } = await import('../../bus.js');
+const GLOBAL_KEYS = new Set(['surface', 'app_version', 'platform', 'arch', 'event_schema_version', 'license_tier', 'install_age', 'account_slot']);
 const { dbApi } = await import('../../db.js');
 const { onboardingStep } = await import('../../onboarding-events.js');
 const { createDaemonAuthMiddleware } = await import('../http/auth.js');
@@ -165,6 +166,11 @@ test('nothing a person wrote reaches the analytics endpoint', async () => {
   const spawned = bodies.find((b) => b.payload.name === 'mission_spawned')!.payload.properties;
   assert.equal(spawned.model, 'other');
   assert.equal(spawned.origin, 'user');
+  // A fresh identity knows its creation: the turn reads day 0, and nothing else was added.
+  const turn = bodies.find((b) => b.payload.name === 'turn_completed')!.payload.properties;
+  assert.equal(turn.install_age_days, 0);
+  assert.deepEqual(Object.keys(turn).filter((k) => !GLOBAL_KEYS.has(k)).sort(),
+    ['backend', 'duration_ms', 'install_age_days', 'model', 'origin', 'status']);
   const installed = bodies.find((b) => b.payload.name === 'plugin_action')!.payload.properties;
   assert.deepEqual({ plugin: installed.plugin, source: installed.source }, { plugin: 'third_party', source: 'third_party' });
   assert.equal(new Set(bodies.map((b) => b.payload.profileId)).size, 1, 'one anonymous profile');

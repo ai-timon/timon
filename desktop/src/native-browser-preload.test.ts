@@ -9,6 +9,7 @@ import {
 } from './native-browser-protocol.js';
 import { BROWSER_ANNOTATE_TRACK_CHANNEL } from './native-browser-bubble.js';
 import { SECRET_AUTOCOMPLETE_PATTERN, SECRET_INPUT_TYPES } from './native-browser-recorder.js';
+import { CHROME_SHIM_SOURCE } from './native-browser-chrome-shim.js';
 
 const source = await readFile(new URL('./native-browser-preload.cts', import.meta.url), 'utf8');
 const compiled = ts.transpileModule(source, {
@@ -103,6 +104,7 @@ interface FakeEvent {
 function load(initialState: unknown = false, annotateState: unknown = false) {
   const capabilities = new Map<string, (...args: unknown[]) => unknown>();
   const syncCalls: unknown[][] = [];
+  const mainWorld: string[] = [];
   const sent: Array<Record<string, unknown>> = [];
   const annotated: Array<Record<string, unknown>> = [];
   const listeners = new Map<string, Array<{ listener: (event: unknown) => void; options: unknown }>>();
@@ -114,6 +116,7 @@ function load(initialState: unknown = false, annotateState: unknown = false) {
       assert.equal(name, 'electron');
       return {
         contextBridge: { exposeInMainWorld: (key: string, value: (...args: unknown[]) => unknown) => capabilities.set(key, value) },
+        webFrame: { executeJavaScript: (code: string) => { mainWorld.push(code); return Promise.resolve(); } },
         ipcRenderer: {
           sendSync: (...args: unknown[]) => {
             syncCalls.push(args);
@@ -159,7 +162,7 @@ function load(initialState: unknown = false, annotateState: unknown = false) {
   const annotate = (active: unknown) => ipcListeners.get(BROWSER_ANNOTATE_TOGGLE_CHANNEL)!({}, active);
   const pickAt = (request: unknown) => ipcListeners.get(BROWSER_ANNOTATE_PICK_AT_CHANNEL)!({}, request);
   const track = (anchors: unknown) => ipcListeners.get(BROWSER_ANNOTATE_TRACK_CHANNEL)!({}, anchors);
-  return { capabilities, syncCalls, sent, annotated, listeners, dispatch, toggle, annotate, pickAt, track, document };
+  return { capabilities, syncCalls, mainWorld, sent, annotated, listeners, dispatch, toggle, annotate, pickAt, track, document };
 }
 
 test('browser preload exposes only the synchronous prompt capability to the page', () => {
@@ -169,6 +172,12 @@ test('browser preload exposes only the synchronous prompt capability to the page
   assert.deepEqual(syncCalls, [[BROWSER_RECORD_STATE_CHANNEL], [BROWSER_ANNOTATE_STATE_CHANNEL], [BROWSER_PROMPT_CHANNEL, 'Question', 'Default']]);
   assert.deepEqual([...listeners.keys()].sort(), ['auxclick', 'change', 'click', 'contextmenu', 'dblclick', 'input', 'keydown', 'keyup',
     'mousedown', 'mouseup', 'pointerdown', 'pointermove', 'pointerup', 'resize', 'scroll', 'touchcancel', 'touchend', 'touchmove', 'touchstart']);
+});
+
+test('the main frame runs the window.chrome shim, the very copy of native-browser-chrome-shim.ts, once', () => {
+  const { mainWorld } = load();
+  assert.equal(mainWorld.length, 1);
+  assert.equal(mainWorld[0], CHROME_SHIM_SOURCE);
 });
 
 test('the recorder stays silent until the main process turns it on, and stops when turned off', () => {

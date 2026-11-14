@@ -99,3 +99,17 @@ test('every CLI command and flag the skills name exists in the shipped CLI', () 
   }
   assert.ok(checked >= 30, `only ${checked} commands checked`);
 });
+
+test('every merge the task and worktree skills prescribe carries the explicit message the daemon uses', async () => {
+  const { PRODUCT_SKILLS } = await import('./skills-product.js');
+  const { integrateMergeMessage, refreshMergeMessage } = await import('./worktree.js');
+  for (const id of ['timon-task', 'timon-worktree']) {
+    // Wrapped lines of the skill are joined so a command split over two lines reads whole.
+    const text = PRODUCT_SKILLS.find((s) => s.id === id)!.content.replace(/\n\s*/g, ' ');
+    const merges = [...text.matchAll(/git merge [^`]*/g)].map((m) => m[0]);
+    assert.ok(merges.length > 0, id);
+    for (const cmd of merges) assert.match(cmd, / -m "merge: /, `${id}: ${cmd}`);
+    assert.ok(text.includes(integrateMergeMessage('<base>')), id);
+    assert.ok(text.includes(refreshMergeMessage('<base>')), id);
+  }
+});

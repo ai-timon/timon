@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils';
  * pieces so heights, margins and buttons match from one card to the next.
  *
  * Buttons are ghost: no outline, a muted fill on hover. Only the widget's main
- * action (`primary`) keeps an outline, so it stands out from the icons.
+ * action (`primary`) keeps a fill of its own, so it stands out from the icons
+ * without the outline every other control has lost.
  */
 export const WIDGET_TOOLBAR = 'flex h-9 shrink-0 items-center gap-1.5 px-3';
 
@@ -19,7 +20,7 @@ export function widgetButtonClass({ primary = false, iconOnly = false }: { prima
     'focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40',
     iconOnly ? 'w-7' : 'px-2',
     primary
-      ? 'border border-border text-foreground hover:bg-muted'
+      ? 'bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.1]'
       : 'text-muted-foreground hover:bg-muted hover:text-foreground',
   );
 }

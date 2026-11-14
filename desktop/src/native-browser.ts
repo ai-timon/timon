@@ -28,7 +28,8 @@ import { credentialScript } from './native-browser-credentials.js';
 import { describeCookieJar, persistentCopyOf } from './native-browser-cookies.js';
 import { ChromeSignin } from './native-browser-chrome-signin.js';
 import {
-  chromeVersion, clientHintBrands, desktopUserAgent, mobileUserAgent, userAgentMetadata,
+  chromeVersion, desktopUserAgent, identityForUrl, identityHeaders, identityOverride, isGoogleSigninUrl, isSigninRequest, mobileUserAgent, userAgentMetadata,
+  type BrowserIdentity,
 } from './native-browser-user-agent.js';
 import { BODY_LIMIT, DevtoolsLog, metricsDelta, NETWORK_CONDITIONS, PERFORMANCE_SCRIPT } from './native-browser-devtools.js';
 import {
@@ -36,10 +37,15 @@ import {
   bubbleLabel, bubbleMessageOf, type AnnotationRoutes, type BubbleConversation, type BubbleHost, type BubbleScheme, type QueuedCapture,
 } from './native-browser-bubble.js';
 import { AnnotationOverlay } from './native-browser-annotation-overlay.js';
+import { CHROME_SHIM_SOURCE } from './native-browser-chrome-shim.js';
 
 interface BrowserTab {
-  id: string; view: WebContentsView; uiWaiters: Set<() => void>; prepared: boolean;
+  id: string; view: WebContentsView; uiWaiters: Set<() => void>;
+  /** The scripts every document of the tab runs first, once registered (`prepareDocuments`). */
+  prepared: Promise<void> | null;
   devtools: DevtoolsLog | null; trace: Array<{ name: string; value: number }> | null;
+  /** The identity applied to the tab's current document (see `identityForUrl`). */
+  identity: BrowserIdentity;
 }
 interface BrowserDialog {
   id: string; tabId: string; type: string; message: string; defaultPrompt: string; url: string;
@@ -196,6 +202,8 @@ export class NativeBrowserEngine {
   private readonly presentations = new Map<string, Presentation>();
   private closing = false;
   private readonly chromeSignin: ChromeSignin;
+  /** Contents currently on Google's sign-in host: their requests keep the client hints Electron sends. */
+  private readonly googleSigninContents = new Set<number>();
 
   constructor(private readonly home: string, private readonly options: NativeBrowserEngineOptions = {}) {
     this.chromeSignin = new ChromeSignin({ home });
@@ -1108,19 +1116,18 @@ export class NativeBrowserEngine {
 
   // Applied to the session, not per tab over CDP: an OAuth popup sends its first request before any
   // debugger command can reach it, and a request that still names Electron makes the provider's
-  // sign-in loop back instead of completing.
+  // sign-in loop back instead of completing. The session's own UA does not reach those requests
+  // (a navigation the page starts carries Electron's raw UA), so the header itself is rewritten.
   private presentAsChrome(browserSession: Session): void {
     const userAgent = desktopUserAgent(browserSession.getUserAgent());
     browserSession.setUserAgent(userAgent);
     const hints = userAgentMetadata(chromeVersion(userAgent), false, process.platform, process.getSystemVersion());
     browserSession.webRequest.onBeforeSendHeaders((details, callback) => {
-      const headers = { ...details.requestHeaders };
-      for (const name of Object.keys(headers)) {
-        const lower = name.toLowerCase();
-        if (lower === 'sec-ch-ua') headers[name] = clientHintBrands(hints.brands);
-        else if (lower === 'sec-ch-ua-full-version-list') headers[name] = clientHintBrands(hints.fullVersionList);
-      }
-      callback({ requestHeaders: headers });
+      // Google's sign-in gets the versionless UA and Chromium's brands, everything else the full
+      // Chrome identity; a popup's first requests also lose Electron's raw UA here (see above).
+      const signin = isSigninRequest({ url: details.url, resourceType: details.resourceType,
+        onSigninPage: details.webContentsId !== undefined && this.googleSigninContents.has(details.webContentsId) });
+      callback({ requestHeaders: identityHeaders(details.requestHeaders, signin, hints) });
     });
   }
 
@@ -1222,7 +1229,7 @@ export class NativeBrowserEngine {
       // One bounded prompt capability; never the Timon UI preload or a CDP endpoint.
       preload: fileURLToPath(new URL('./native-browser-preload.cjs', import.meta.url)),
     } });
-    const tab: BrowserTab = { id: randomUUID(), view, uiWaiters: new Set(), prepared: false, devtools: null, trace: null };
+    const tab: BrowserTab = { id: randomUUID(), view, uiWaiters: new Set(), prepared: null, devtools: null, trace: null, identity: 'chrome' };
     profile.tabs.set(tab.id, tab);
     if (!profile.activeTabId) profile.activeTabId = tab.id;
     this.recordStep(profile, { t: Date.now(), type: 'newTab', tabId: tab.id, ...(openerTabId ? { openerTabId } : {}) });
@@ -1252,10 +1259,16 @@ export class NativeBrowserEngine {
           // public option type). Adopting it preserves window.opener and the navigation.
           const guest = (options as typeof options & { webContents?: WebContents }).webContents;
           const popup = this.createTab(profile, options.webPreferences, guest, tab.id);
+          // Its first requests come before any DevTools command can reach it: the session's header
+          // rewrite gives them the sign-in identity already when they head for Google.
+          if (isGoogleSigninUrl(url)) this.googleSigninContents.add(popup.view.webContents.id);
           // Finish an in-flight remote gesture before hiding its originating tab.
           void (this.queues.get(profile.id) ?? Promise.resolve()).catch(() => {}).then(() => {
             if (!profile.stopping && profile.tabs.has(popup.id)) this.activate(profile, popup.id);
           });
+          // Not registered any earlier: DevTools misses the popup's first document then, and the
+          // runImmediately of this registration would no longer reach it. The preload gives that
+          // document's main frame the window.chrome shim before its own scripts (smoke-tested).
           popup.view.webContents.once('did-finish-load', () => {
             void this.applyViewport(profile, popup).then(() => this.presentActive(profile)).catch(() => {});
           });
@@ -1264,6 +1277,13 @@ export class NativeBrowserEngine {
       };
     });
     contents.on('did-navigate', (_event, url) => {
+      // Only once the navigation has committed: an identity changed during a navigation or a
+      // redirect makes Electron cancel it, which breaks the cross-site POSTs of a sign-in.
+      if (identityForUrl(url) !== tab.identity) {
+        void this.applyIdentity(profile, tab, url).catch((error: Error) => {
+          console.error(`[native-browser] Could not change the browser identity: ${error.message}`);
+        });
+      }
       this.saveTabs(profile);
       // A new document: the elements the bubble and the pins were anchored on are gone.
       profile.bubble?.navigated(tab.id);
@@ -1273,7 +1293,9 @@ export class NativeBrowserEngine {
       this.recordStep(profile, navigationStep(url, { t: Date.now(), tabId: tab.id }));
     });
     contents.on('did-navigate-in-page', () => this.saveTabs(profile));
+    const contentsId = contents.id;
     contents.on('destroyed', () => {
+      this.googleSigninContents.delete(contentsId);
       if (profile.stopping || !profile.tabs.delete(tab.id)) return;
       if (profile.annotation?.active && profile.annotation.tabId === tab.id) this.stopAnnotation(profile, 'tab-closed');
       this.recordStep(profile, { t: Date.now(), type: 'closeTab', tabId: tab.id });
@@ -1654,23 +1676,31 @@ export class NativeBrowserEngine {
     return { metrics: metricsDelta(before, after), page: page.result?.value ?? null };
   }
 
-  private async applyViewport(profile: BrowserProfile, tab: BrowserTab): Promise<void> {
-    // Electron 33 can crash in device emulation before a WebContents has its first document.
-    if (!tab.view.webContents.getURL()) await tab.view.webContents.loadURL('about:blank');
-    await this.cdp(tab, 'Page.enable');
-    await this.cdp(tab, 'Page.setInterceptFileChooserDialog', { enabled: true });
-    if (!tab.prepared) {
-      await this.cdp(tab, 'Page.addScriptToEvaluateOnNewDocument', {
-        source: `(() => {
+  /**
+   * Registers, once per tab, what each of its documents runs before its own scripts, in every
+   * frame: the prompt bridge, and the window.chrome shim that Google's sign-in checks for
+   * (`native-browser-chrome-shim.ts`). One registration, so neither runs twice in a document.
+   */
+  private prepareDocuments(tab: BrowserTab): Promise<void> {
+    tab.prepared ??= this.cdp(tab, 'Page.addScriptToEvaluateOnNewDocument', {
+      source: `(() => {
           const fallback = window.prompt;
           window.prompt = function(message = '', defaultValue = '') {
             if (typeof globalThis.__timonNativePrompt !== 'function') return fallback.call(window, message, defaultValue);
             return globalThis.__timonNativePrompt(String(message), String(defaultValue));
           };
-        })()`, runImmediately: true,
-      });
-      tab.prepared = true;
-    }
+        })();
+${CHROME_SHIM_SOURCE}`, runImmediately: true,
+    }).then(() => undefined, (error: unknown) => { tab.prepared = null; throw error; });
+    return tab.prepared;
+  }
+
+  private async applyViewport(profile: BrowserProfile, tab: BrowserTab): Promise<void> {
+    // Electron 33 can crash in device emulation before a WebContents has its first document.
+    if (!tab.view.webContents.getURL()) await tab.view.webContents.loadURL('about:blank');
+    await this.cdp(tab, 'Page.enable');
+    await this.cdp(tab, 'Page.setInterceptFileChooserDialog', { enabled: true });
+    await this.prepareDocuments(tab);
     const { width, height, mobile } = profile.viewport;
     tab.view.setBounds({ x: 0, y: 0, width, height });
     await this.cdp(tab, 'Emulation.setDeviceMetricsOverride', {
@@ -1678,12 +1708,26 @@ export class NativeBrowserEngine {
     });
     await this.cdp(tab, 'Emulation.setTouchEmulationEnabled', { enabled: mobile, maxTouchPoints: 1 });
     await this.cdp(tab, 'Emulation.setFocusEmulationEnabled', { enabled: true });
+    await this.applyIdentity(profile, tab, tab.view.webContents.getURL());
+  }
+
+  /**
+   * Applies the identity `url` calls for: the UA without its Chrome version and Electron's own
+   * brands on Google's sign-in host, the full Chrome identity everywhere else. Through DevTools,
+   * which reaches the document already loaded and its later requests at once; never through the
+   * contents' own `setUserAgent`, which reloads a page that is still loading.
+   */
+  private async applyIdentity(profile: BrowserProfile, tab: BrowserTab, url: string): Promise<void> {
+    const identity = identityForUrl(url);
     const desktopAgent = desktopUserAgent(profile.session.getUserAgent());
     const chrome = chromeVersion(desktopAgent);
-    await this.cdp(tab, 'Emulation.setUserAgentOverride', {
-      userAgent: mobile ? mobileUserAgent(chrome) : desktopAgent,
-      userAgentMetadata: userAgentMetadata(chrome, mobile, process.platform, process.getSystemVersion()),
-    });
+    const { mobile } = profile.viewport;
+    const applied = identityOverride(identity, mobile ? mobileUserAgent(chrome) : desktopAgent,
+      userAgentMetadata(chrome, mobile, process.platform, process.getSystemVersion()));
+    tab.identity = identity;
+    if (identity === 'googleSignin') this.googleSigninContents.add(tab.view.webContents.id);
+    else this.googleSigninContents.delete(tab.view.webContents.id);
+    await this.cdp(tab, 'Emulation.setUserAgentOverride', { userAgent: applied.userAgent, userAgentMetadata: applied.userAgentMetadata });
   }
 
   /**

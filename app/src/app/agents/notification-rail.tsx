@@ -7,6 +7,7 @@ import type { WidgetProps } from '@/components/widget-host/widget-props';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Bell, Trash2, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { plainPreview } from '@/lib/plain-preview';
 import { sseOn } from '@/lib/sse-stream';
 import { useActiveNotificationCount } from '@/lib/use-notification-count';
 import { notificationHref } from '@/lib/notification-href';
@@ -89,9 +90,9 @@ export function NotifCard({
           'mt-1.5 text-[12px] font-semibold leading-snug text-foreground',
           expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-2 break-words',
         )}
-        title={expanded ? undefined : display.title}
+        title={expanded ? undefined : plainPreview(display.title)}
       >
-        {display.title}
+        {plainPreview(display.title)}
       </p>
       {display.body && (
         <p
@@ -99,9 +100,9 @@ export function NotifCard({
             'mt-0.5 text-[11px] leading-snug text-muted-foreground',
             expanded ? 'select-text whitespace-pre-wrap break-words' : 'line-clamp-2',
           )}
-          title={expanded ? undefined : display.body}
+          title={expanded ? undefined : plainPreview(display.body)}
         >
-          {display.body}
+          {plainPreview(display.body)}
         </p>
       )}
       {expandable && (

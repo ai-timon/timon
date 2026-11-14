@@ -27,7 +27,7 @@ export function KanbanColumnHeader({ label, count, dotClass, pulse }: {
 /** Message of a column with nothing to show; a plain surface, no dashed frame. */
 export function KanbanColumnEmpty({ children }: { children: ReactNode }) {
   return (
-    <p className="m-0 rounded-lg bg-muted/40 px-2 py-4 text-center text-[12.5px] text-muted-foreground">
+    <p className="m-0 px-2 py-5 text-center text-[12.5px] text-muted-foreground">
       {children}
     </p>
   );

@@ -44,8 +44,12 @@ Timon keeps everything in one data directory, the *Timon home*. In these docs `~
 | Logs (one file per day: `daemon-<date>.log`, `desktop-<date>.log`) | `~/.timon/tmp/` | `~/.timon/tmp/` | `%USERPROFILE%\.timon\tmp\` |
 | Service output before the daemon starts | systemd journal: `journalctl --user -u timon-orchestrator` | `~/.timon/tmp/daemon.log` | `%USERPROFILE%\.timon\tmp\daemon.log` |
 | Backups | `~/.timon/backups/` | `~/.timon/backups/` | `%USERPROFILE%\.timon\backups\` |
+| A provider's per-conversation folders (what lets a conversation resume) | `~/.timon/provider-runs/` | `~/.timon/provider-runs/` | `%USERPROFILE%\.timon\provider-runs\` |
+| Downloads a provider's CLI shares across conversations (Codex's plugin catalog and plugins) | `~/.timon/provider-cache/` | `~/.timon/provider-cache/` | `%USERPROFILE%\.timon\provider-cache\` |
 
 Your projects' source code stays where you keep it; an agent's `cwd` is an absolute path to that folder, for example `/home/<user>/projects/<slug>` on Linux or `C:\Users\<user>\projects\<slug>` on Windows. Archives in `backups/` are written every night by the backup, on by default (see [Backups and the agent trash](../usage/settings.md#backups-and-the-agent-trash-system)). Deleted agents wait in `trash/agents/` until restored or purged.
+
+A conversation's folder in `provider-runs/` is kept for 30 days after the conversation ends, so it can be resumed (the `TIMON_PROVIDER_SESSION_TTL_MS` setting). What its CLI downloads and can download again lives once in `provider-cache/`, shared by every conversation, and is removed from the folder of a finished conversation right away. Deleting `provider-cache/` is safe: the next conversation downloads it again.
 
 Setup does not ask for a working folder. The main orchestrator and the agents created with it start in the `workspace` folder of the Timon home, which Timon creates when needed. A configuration you write yourself, as in the source installation above, can point them to another existing absolute folder with the optional `workspacesRoot` key. An agent that already has a working directory keeps it.
 

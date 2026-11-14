@@ -214,8 +214,8 @@ test('the catalogue is closed: unknown events, extra properties and free text ar
   assert.equal(validateEvent('browser_action', { kind: 'recording', action: 'Visited https://bank.example' }), null);
   assert.deepEqual(validateEvent('onboarding_step', { step: 'account', action: 'completed' }), { step: 'account', action: 'completed' });
   assert.equal(validateEvent('token_usage', { backend: 'claude', model: 'opus', origin: 'user', input_tokens: -1 }), null);
-  assert.equal(validateGlobals({ surface: 'daemon', app_version: '0.1.6', platform: 'linux', arch: 'x64', event_schema_version: 3, license_tier: 'beta' })?.surface, 'daemon');
-  assert.equal(validateGlobals({ surface: 'daemon', app_version: 'dev build', platform: 'linux', arch: 'x64', event_schema_version: 3, license_tier: 'beta' }), null);
+  assert.equal(validateGlobals({ surface: 'daemon', app_version: '0.1.6', platform: 'linux', arch: 'x64', event_schema_version: 4, license_tier: 'beta' })?.surface, 'daemon');
+  assert.equal(validateGlobals({ surface: 'daemon', app_version: 'dev build', platform: 'linux', arch: 'x64', event_schema_version: 4, license_tier: 'beta' }), null);
 });
 
 test('names that a person chose map to other', () => {

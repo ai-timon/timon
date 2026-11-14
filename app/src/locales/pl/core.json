@@ -1902,6 +1902,7 @@
     "menuConfigure": "Konfiguruj agenta",
     "menuDuplicate": "Duplikuj agenta…",
     "menuReportsTo": "Podlega…",
+    "menuDelete": "Usuń agenta…",
     "menuMovePole": "Przenieś projekt do bieguna…",
     "menuDefault": "Domyślnie (lider projektu lub główny agent)",
     "menuNoPole": "Bez bieguna",
