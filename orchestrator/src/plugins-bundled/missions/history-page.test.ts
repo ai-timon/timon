@@ -422,7 +422,7 @@ test('a stored fold survives its rows moving to the archive', async () => {
   const m = restartMission();
   const reference = (await get(`/api/missions/${m.id}?tail=3`)).json;
   const cut = reference.oldest_event_id!;
-  db.prepare(`INSERT INTO archive.events SELECT id, mission_id, type, timestamp, payload FROM events WHERE mission_id = ? AND id < ?`).run(m.id, cut);
+  db.prepare(`INSERT INTO archive.events (id, mission_id, type, timestamp, payload) SELECT id, mission_id, type, timestamp, payload FROM events WHERE mission_id = ? AND id < ?`).run(m.id, cut);
   db.prepare('DELETE FROM events WHERE mission_id = ? AND id < ?').run(m.id, cut);
   clearPreludeFolds();
   assert.deepEqual((await get(`/api/missions/${m.id}?tail=3`)).json.prelude, reference.prelude);
@@ -438,7 +438,7 @@ test('archived rows page like hot ones', async () => {
   attachEventsArchive(join(home, 'archive-events.db'));
   const cold = newMission();
   const ids = [cold.ins('user', user('old')), cold.ins('assistant', says('old answer')), cold.ins('user', user('new'))];
-  db.exec(`INSERT INTO archive.events SELECT id, mission_id, type, timestamp, payload FROM events WHERE id IN (${ids[0]}, ${ids[1]})`);
+  db.exec(`INSERT INTO archive.events (id, mission_id, type, timestamp, payload) SELECT id, mission_id, type, timestamp, payload FROM events WHERE id IN (${ids[0]}, ${ids[1]})`);
   db.exec(`DELETE FROM events WHERE id IN (${ids[0]}, ${ids[1]})`);
   const tail = (await get(`/api/missions/${cold.id}?tail=2`)).json;
   assert.deepEqual(tail.events?.map((e) => e.id), ids.slice(1));

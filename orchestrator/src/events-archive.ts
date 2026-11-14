@@ -50,8 +50,8 @@ export function archiveOldEvents(now = Date.now()): number {
   const moveBatch = db.transaction((ids: number[]) => {
     const list = ids.join(','); // integers coming from the database: nothing to escape
     db.exec(
-      `INSERT OR REPLACE INTO archive.events (id, mission_id, type, timestamp, payload)
-       SELECT id, mission_id, type, timestamp, payload FROM events WHERE id IN (${list})`,
+      `INSERT OR REPLACE INTO archive.events (id, mission_id, type, timestamp, payload, rewound_by)
+       SELECT id, mission_id, type, timestamp, payload, rewound_by FROM events WHERE id IN (${list})`,
     );
     db.exec(`DELETE FROM events WHERE id IN (${list})`);
   });

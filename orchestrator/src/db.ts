@@ -1864,6 +1864,14 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_missions_started ON missions(started_at)
 // 1M-event home, with the event loop frozen. `mission_id` makes it covering
 // for the per-agent join.
 db.exec(`CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp, mission_id)`);
+/** Id of the `rewind` event that hid this row from the thread (docs/specs/rewind.md
+ *  § 9): rows are hidden, never deleted. Added before the chat view index, whose
+ *  condition reads it. */
+function ensureRewoundByColumn(schema: 'main' | 'archive'): void {
+  const eventCols = (db.prepare(`PRAGMA ${schema}.table_info(events)`).all() as { name: string }[]).map((c) => c.name);
+  if (!eventCols.includes('rewound_by')) db.exec(`ALTER TABLE ${schema}.events ADD COLUMN rewound_by INTEGER`);
+}
+ensureRewoundByColumn('main');
 /**
  * Partial index of the chat view's rows (docs/MISSION-HISTORY-PAGES.md § 8).
  * `idx_events_mission` holds every row, and 61 % of them are per-token noise
@@ -3129,7 +3137,8 @@ const missionRunnerStmt = db.prepare(`SELECT agent_name, source_meta FROM missio
 const insertEventStmt = db.prepare(
   `INSERT INTO events (mission_id, type, timestamp, payload) VALUES (?, ?, ?, ?)`,
 );
-const listEventsStmt = db.prepare(`SELECT * FROM events WHERE mission_id = ? ORDER BY id ASC`);
+// The thread: rows a rewind hid are left out of every reader of it (docs/specs/rewind.md § 9).
+const listEventsStmt = db.prepare(`SELECT * FROM events WHERE mission_id = ? AND rewound_by IS NULL ORDER BY id ASC`);
 // The chat view of ONE mission (mission-events-view.ts): same rows minus the
 // per-token noise, filtered in SQL so it never crosses into JS.
 const listChatEventsStmt = db.prepare(
@@ -3170,11 +3179,12 @@ CREATE TABLE IF NOT EXISTS archive.events (
 );
 CREATE INDEX IF NOT EXISTS archive.idx_events_mission ON events(mission_id, id);
 `);
+  ensureRewoundByColumn('archive');
   ensureChatViewIndex('archive');
   listEventsUnionStmt = db.prepare(
-    `SELECT id, mission_id, type, timestamp, payload FROM events WHERE mission_id = ?
+    `SELECT id, mission_id, type, timestamp, payload FROM events WHERE mission_id = ? AND rewound_by IS NULL
      UNION ALL
-     SELECT id, mission_id, type, timestamp, payload FROM archive.events WHERE mission_id = ?
+     SELECT id, mission_id, type, timestamp, payload FROM archive.events WHERE mission_id = ? AND rewound_by IS NULL
      ORDER BY id ASC`,
   );
   listChatEventsUnionStmt = db.prepare(
@@ -3217,7 +3227,8 @@ const missionScanStmts = new Map<string, import('better-sqlite3').Statement>();
 export function missionScanQuery(missionId: string, scan: MissionEventScan): { sql: string; args: (string | number)[] } {
   const columns = scan.columns ?? 'id, mission_id, type, timestamp, payload';
   const archived = listEventsUnionStmt !== null;
-  const side = (table: string): string => `SELECT ${columns} FROM ${table} WHERE mission_id = ? AND (${scan.where})`;
+  // Rows a rewind hid are not part of the thread, whatever the caller scans for.
+  const side = (table: string): string => `SELECT ${columns} FROM ${table} WHERE mission_id = ? AND rewound_by IS NULL AND (${scan.where})`;
   const sql = (archived ? `${side('events')} UNION ALL ${side('archive.events')}` : side('events'))
     + ` ORDER BY id ${scan.order === 'DESC' ? 'DESC' : 'ASC'}`
     + (scan.limit === undefined ? '' : ' LIMIT ?');
@@ -3266,7 +3277,7 @@ const setSearchStateStmt = db.prepare(
    ON CONFLICT(k) DO UPDATE SET v = excluded.v`,
 );
 const eventsAfterStmt = db.prepare(
-  `SELECT id, mission_id, type, timestamp, payload FROM events WHERE id > ? ORDER BY id LIMIT ?`,
+  `SELECT id, mission_id, type, timestamp, payload FROM events WHERE id > ? AND rewound_by IS NULL ORDER BY id LIMIT ?`,
 );
 const maxEventIdStmt = db.prepare(`SELECT COALESCE(MAX(id), 0) AS id FROM events`);
 const unindexedMissionsStmt = db.prepare(
@@ -5738,6 +5749,29 @@ export const dbApi = {
       payload: json,
     };
   },
+  /**
+   * Cuts a mission's thread at `fromEventId` (docs/specs/rewind.md § 9-10): appends
+   * a `rewind` event and stamps its id on every still-visible row from
+   * `fromEventId` on, so each thread reader leaves them out. Nothing is deleted;
+   * rewinding further back stamps the earlier rewind event too. The cut rows
+   * leave `mission_search`; costs and `mission_stats` stay as they are.
+   * Returns the id of the `rewind` event.
+   */
+  rewindMission(missionId: string, fromEventId: number): number {
+    return db.transaction(() => {
+      const rewindId = dbApi.insertEvent(missionId, 'rewind', { type: 'rewind', from_event_id: fromEventId }).id;
+      for (const table of listEventsUnionStmt ? ['events', 'archive.events'] : ['events']) {
+        db.prepare(
+          `UPDATE ${table} SET rewound_by = ?
+            WHERE mission_id = ? AND id >= ? AND id < ? AND rewound_by IS NULL`,
+        ).run(rewindId, missionId, fromEventId, rewindId);
+      }
+      db.prepare(
+        `DELETE FROM mission_search WHERE mission_id = ? AND event_id >= ? AND event_id < ?`,
+      ).run(missionId, fromEventId, rewindId);
+      return rewindId;
+    })();
+  },
   listEvents(missionId: string): EventRow[] {
     if (listEventsUnionStmt) return listEventsUnionStmt.all(missionId, missionId) as EventRow[];
     return listEventsStmt.all(missionId) as EventRow[];
@@ -6411,6 +6445,8 @@ export const dbApi = {
     const spans = (cachedStmt(spanPageStmts,
       `SELECT ${columns} FROM trace_spans
         WHERE trace_id = @trace AND mission_id IN (SELECT value FROM json_each(@missions))
+          -- a rewound turn leaves the listing; the aggregates keep its cost (docs/specs/rewind.md § 10)
+          AND NOT EXISTS (SELECT 1 FROM events e WHERE e.id = trace_spans.event_id_start AND e.rewound_by IS NOT NULL)
         ORDER BY started_at DESC, seq DESC, rowid DESC LIMIT @take`,
     ).all({ trace: traceId, missions, take: opts.limit }) as Array<SpanSummary | SpanRow>).reverse();
     return { spans, aggregates, pruned: gone.spans };
@@ -6523,13 +6559,13 @@ export const dbApi = {
            ) <> 'pending'
            AND EXISTS (
              SELECT 1 FROM events
-             WHERE mission_id = @mission AND type = 'result' AND id > handover.id
+             WHERE mission_id = @mission AND type = 'result' AND id > handover.id AND rewound_by IS NULL
                AND json_extract(payload, '$.subtype') = 'success'
                AND COALESCE(json_extract(payload, '$.is_error'), 0) = 0
            )
            AND NOT EXISTS (
              SELECT 1 FROM events
-             WHERE mission_id = @mission AND type = 'system' AND id > handover.id
+             WHERE mission_id = @mission AND type = 'system' AND id > handover.id AND rewound_by IS NULL
                AND json_extract(payload, '$.subtype') = 'init'
                AND COALESCE(json_extract(payload, '$.session_id'), '') <> ''
            )`,
