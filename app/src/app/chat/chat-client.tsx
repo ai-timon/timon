@@ -261,7 +261,7 @@ import {
   stripTaskIdPreamble,
 } from '@/components/chat/chat-format';
 import { ChatComposerSlot } from '@/components/chat/composer';
-import { ComposerReplyProvider, MessageActionBar, mountMessageActionSlot, type ComposerReply } from '@/components/chat/message-actions';
+import { ChatRewindProvider, ComposerReplyProvider, MessageActionBar, mountMessageActionSlot, type ChatRewindApi, type ComposerReply } from '@/components/chat/message-actions';
 import { ReplyQuote } from '@/components/chat/reply-quote';
 import type { SetupAvatarRequest } from '@/components/chat/setup-avatar-card';
 import type { AgentActivity } from '@/components/mascot/agent-activity';
@@ -1562,6 +1562,10 @@ export function ChatClient({
   // flight, must not wear the previous mission's owner.
   const [missionOwner, setMissionOwner] = useState<{ missionId: string; owner: MissionOwner | null } | null>(null);
   const shownOwner = missionOwner && missionOwner.missionId === currentMissionId ? missionOwner.owner : null;
+  /** The bound mission is a chat a person started (not a task, a routine or a
+   *  sub-mission): the only kind a rewind is offered on. */
+  const [interactiveMission, setInteractiveMission] = useState<string | null>(null);
+  const viewer = useMe();
   /** A POST /model is in flight: we freeze the selector to avoid stacking
    *  two contradictory requests on the same turn. */
   const [modelSwitching, setModelSwitching] = useState(false);
@@ -2813,6 +2817,10 @@ export function ChatClient({
     setMissionCwd(typeof detail.cwd_override === 'string' && detail.cwd_override ? detail.cwd_override : null);
     setMissionReasoningEffort(typeof detail.reasoning_effort === 'string' ? detail.reasoning_effort : null);
     setMissionOwner({ missionId, owner: parseMissionOwner(detail.owner) });
+    // shortcut: the daemon's list of autonomous channels is not mirrored here;
+    // a chat this misses gets a 403 toast from the route.
+    const started = (key: string) => detail[key] !== null && detail[key] !== undefined;
+    setInteractiveMission(started('task_id') || started('routine_id') || started('parent_mission_id') ? null : missionId);
     return owner;
   }
 
@@ -5796,7 +5804,46 @@ export function ChatClient({
     [agent.name, face.look, liveBubble, faceState],
   );
 
-  const body = (<ComposerReplyProvider value={replyApi}>
+  /** Cuts the thread at a user message (docs/specs/rewind.md): the daemon hides
+   *  the rows, the view reloads without them, and the message goes back into
+   *  the composer. */
+  const rewindTo = useCallback(async (eventId: number) => {
+    const missionId = activeMissionId.current;
+    if (!missionId) return;
+    const r = await fetch(`/api/ui/missions/${encodeURIComponent(missionId)}/rewind`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ event_id: eventId }),
+    }).catch(() => null);
+    if (!r?.ok) {
+      toast.error(r?.status === 409
+        ? i18n('chatPage.rewindBusy', { agent: agent.name })
+        : i18n('chatPage.rewindFailed'));
+      return;
+    }
+    const { restored } = await r.json() as { restored: { text: string; images: Array<{ media_type: string; data: string }> } };
+    // The cached copy still holds the rewound rows, and a delta only adds.
+    forgetChatMission(missionId);
+    await bindMission(missionId);
+    setReply(null);
+    setInput(restored.text);
+    setPendingImages(restored.images.map((image) => ({
+      id: crypto.randomUUID(),
+      mediaType: image.media_type,
+      base64: image.data,
+      previewUrl: `data:${image.media_type};base64,${image.data}`,
+      size: Math.floor(image.data.length * 3 / 4),
+    })));
+  }, [agent.name, bindMission, setInput, setReply]);
+  const rewindApi = useMemo<ChatRewindApi>(() => ({
+    allowed: Boolean(currentMissionId && interactiveMission === currentMissionId
+      && shownOwner && shownOwner.id === actingUser(viewer)?.id),
+    busy: thinking,
+    agentName: agent.name,
+    rewind: rewindTo,
+  }), [currentMissionId, interactiveMission, shownOwner, viewer, thinking, agent.name, rewindTo]);
+
+  const body = (<ComposerReplyProvider value={replyApi}><ChatRewindProvider value={rewindApi}>
       {/* The Working agents widget reads this chat's agent from the address
           and keeps its tab on screen. Hidden in compact mode (multichat grid
           cell), and painted by the page's chrome when there is one. */}
@@ -6794,7 +6841,7 @@ export function ChatClient({
         onClose={() => setExternalLink(null)}
         onConfirm={(path) => { setExternalLink(null); void openAgentFile(agentId, path, true); }}
       />
-  </ComposerReplyProvider>);
+  </ChatRewindProvider></ComposerReplyProvider>);
   if (chrome) return <BubbleFaceContext.Provider value={bubbleFace}><WithoutChatChrome>{body}</WithoutChatChrome></BubbleFaceContext.Provider>;
   return (
     <BubbleFaceContext.Provider value={bubbleFace}>

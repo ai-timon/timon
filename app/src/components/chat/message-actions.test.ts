@@ -29,13 +29,14 @@ async function makeEnv() {
 
 type View = import('./message-actions').ChatMessageView;
 type Reply = import('./message-actions').ComposerReply;
+type Rewind = import('./message-actions').ChatRewindApi;
 
 const AGENT: View = {
   role: 'agent', eventId: 12, missionId: 'm1',
   markdown: '**Done.** The plan has three steps.', html: '<p><strong>Done.</strong> The plan has three steps.</p>',
 };
 
-async function paint(message: View, onReply: (reply: Reply | null) => void = () => {}) {
+async function paint(message: View, onReply: (reply: Reply | null) => void = () => {}, rewind: Rewind | null = null) {
   const e = await env;
   const { createRoot } = await import('react-dom/client');
   const mod = await import('./message-actions');
@@ -48,7 +49,10 @@ async function paint(message: View, onReply: (reply: Reply | null) => void = () 
   await e.React.act(async () => {
     root.render(e.React.createElement(mod.ComposerReplyProvider, {
       value: replyApi,
-      children: e.React.createElement(mod.MessageActionBar, { message }),
+      children: e.React.createElement(mod.ChatRewindProvider, {
+        value: rewind,
+        children: e.React.createElement(mod.MessageActionBar, { message }),
+      }),
     }));
   });
   const labels = () => Array.from(document.querySelectorAll('button')).map((b) => b.getAttribute('aria-label'));
@@ -140,5 +144,39 @@ test('the examples/plugin-message-action template adds its button with the SDK a
   } finally {
     await ui.done();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Rewind sits under the user\'s own messages only, waits for the turn, and asks first', async () => {
+  const { answerConfirmsForTests } = await import('@/components/confirm-dialog/confirm-dialog-context');
+  const USER: View = { ...AGENT, role: 'user', markdown: 'yes', html: '<p>yes</p>' };
+  const cut: number[] = [];
+  const api: Rewind = { allowed: true, busy: false, agentName: 'Ada', rewind: async (id) => { cut.push(id); } };
+
+  const agent = await paint(AGENT, undefined, api);
+  try { assert.ok(!agent.labels().includes('Rewind to here')); } finally { await agent.done(); }
+  const notOffered = await paint(USER, undefined, { ...api, allowed: false });
+  try { assert.ok(!notOffered.labels().includes('Rewind to here')); } finally { await notOffered.done(); }
+
+  const busy = await paint(USER, undefined, { ...api, busy: true });
+  try {
+    const button = busy.button('Rewind to here')!;
+    assert.equal(button.getAttribute('aria-disabled'), 'true');
+    await busy.React.act(async () => { button.click(); });
+    assert.deepEqual(cut, []);
+  } finally { await busy.done(); }
+
+  const ui = await paint(USER, undefined, api);
+  try {
+    answerConfirmsForTests(() => false);
+    await ui.React.act(async () => { ui.button('Rewind to here')!.click(); });
+    assert.deepEqual(cut, []);
+    answerConfirmsForTests(() => true);
+    await ui.React.act(async () => { ui.button('Rewind to here')!.click(); });
+    await ui.until(() => cut.length === 1, 'the rewind');
+    assert.deepEqual(cut, [12]);
+  } finally {
+    answerConfirmsForTests(null);
+    await ui.done();
   }
 });

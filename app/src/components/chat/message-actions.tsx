@@ -15,7 +15,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, FileCode2, Reply, Square, Volume2 } from 'lucide-react';
+import { Check, Copy, FileCode2, Reply, Square, Undo2, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ import { regionalTag } from '@/lib/intl';
 import { Slot } from '@/lib/plugin-host/render';
 import { declareSlot, register, slotKind } from '@/lib/plugin-host/slots';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
 
 /** What an action knows of the bubble it sits under. */
 export type ChatMessageView = {
@@ -52,7 +53,22 @@ export type ComposerReplyApi = {
   setReply: (reply: ComposerReply | null) => void;
 };
 
+/** What the chat lends the Rewind action (docs/specs/rewind.md). */
+export type ChatRewindApi = {
+  /** The viewer's own interactive chat: the only one a rewind is offered on. */
+  allowed: boolean;
+  /** A turn is running: rewinding waits for it. */
+  busy: boolean;
+  agentName: string;
+  /** Cuts the thread at this user message and refills the composer with it. */
+  rewind: (eventId: number) => Promise<void>;
+};
+
 const ChatMessageContext = createContext<ChatMessageView | null>(null);
+const ChatRewindContext = createContext<ChatRewindApi | null>(null);
+
+/** Mounted by the chat around the thread; without it, no Rewind button. */
+export const ChatRewindProvider = ChatRewindContext.Provider;
 const ComposerReplyContext = createContext<ComposerReplyApi | null>(null);
 
 /** The bubble an occupant of `chat.message.action` is painted under; null elsewhere. */
@@ -109,7 +125,7 @@ export function mountMessageActionSlot(): () => void {
       undo.push(declareSlot(CHAT_MESSAGE_ACTION_SLOT, 'list', 'chat-message'));
     }
     // Low orders: a plugin's button, which says nothing, lands after them.
-    for (const [order, Component] of [[10, CopyAction], [20, CopyMarkdownAction], [30, ReplyAction], [40, ReadAloudAction]] as const) {
+    for (const [order, Component] of [[10, CopyAction], [20, CopyMarkdownAction], [30, ReplyAction], [40, ReadAloudAction], [50, RewindAction]] as const) {
       undo.push(register({ slot: CHAT_MESSAGE_ACTION_SLOT, pluginId: '@timon/missions', order }, Component));
     }
   }
@@ -292,5 +308,53 @@ function ReadAloudAction() {
     >
       {speaking ? <Square className="size-3.5 fill-current" /> : <Volume2 className="size-4" />}
     </MessageActionButton>
+  );
+}
+
+/** Cuts the conversation back to this message of the user's, after a yes. A
+ *  disabled button would swallow the hover its tooltip needs: it stays
+ *  focusable and says why it does nothing. */
+function RewindAction() {
+  const message = useChatMessage();
+  const api = useContext(ChatRewindContext);
+  const [pending, setPending] = useState(false);
+  if (!message || message.role !== 'user' || message.eventId === null || !api?.allowed) return null;
+  const eventId = message.eventId;
+  const off = api.busy || pending;
+  const label = i18n('chatPage.rewind');
+  const onClick = async () => {
+    if (off) return;
+    const yes = await confirmAction({
+      title: i18n('chatPage.rewindConfirmTitle'),
+      description: i18n('chatPage.rewindConfirmBody'),
+      confirmLabel: i18n('chatPage.rewindConfirm'),
+      destructive: true,
+    });
+    if (!yes) return;
+    setPending(true);
+    try { await api.rewind(eventId); } finally { setPending(false); }
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => void onClick()}
+          aria-label={label}
+          aria-disabled={off}
+          className={cn(ACTION_BUTTON, off && 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground/70')}
+        >
+          <Undo2 className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-64">
+        {api.busy ? i18n('chatPage.rewindBusy', { agent: api.agentName }) : (
+          <>
+            <span className="font-medium">{label}</span>
+            <span className="block opacity-80">{i18n('chatPage.rewindHint')}</span>
+          </>
+        )}
+      </TooltipContent>
+    </Tooltip>
   );
 }
