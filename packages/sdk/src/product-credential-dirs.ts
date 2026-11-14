@@ -16,6 +16,7 @@ export const PRODUCT_BACKEND_HOME_DIRS: Readonly<Record<string, readonly string[
   "opencode": Object.freeze([".config/opencode", ".local/share/opencode"]),
   "hermes": Object.freeze([".hermes"]),
   "pi": Object.freeze([".pi"]),
+  "antigravity": Object.freeze([".gemini/antigravity-cli"]),
   "kimi": Object.freeze([".kimi"]),
   "ollama-cloud": Object.freeze([".ollama"]),
 });
