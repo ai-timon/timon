@@ -24,6 +24,7 @@ const { registerRoutes: registerMissionRoutes } = await import('./routes.js');
 const { dbApi } = await import('../../db.js');
 const { whileTurnPrepares } = await import('../../agent.js');
 const { SESSION_COOKIE } = await import('../../users/session.js');
+const { issueMissionApiToken } = await import('../../users/api-tokens.js');
 
 const TOKEN = 'rewind-daemon-token';
 const app = express();
@@ -187,4 +188,22 @@ test('undo during a turn answers 409', async () => {
   await held;
   assert.equal(res.status, 409);
   assert.equal(res.json.code, 'turn_in_progress');
+});
+
+test('a mission token is refused, its own mission\'s and another\'s, for rewind and undo alike', async () => {
+  // Live tokens: a mission's token only lives while it runs.
+  const token = (id: string) => { dbApi.reopenMission(id); return issueMissionApiToken(id); };
+  const m = chat();
+  const own = token(m.id);
+  const foreign = token(chat().id);
+  for (const bearer of [own, foreign]) {
+    assert.equal((await rewind(m.id, m.second, { bearer })).status, 403);
+  }
+  assert.equal(dbApi.getPendingRewind(m.id), null, 'nothing was cut');
+
+  assert.equal((await rewind(m.id, m.second)).status, 200);
+  for (const bearer of [own, foreign]) {
+    assert.equal((await undo(m.id, { bearer })).status, 403);
+  }
+  assert.ok(dbApi.getPendingRewind(m.id), 'nothing was taken back');
 });
