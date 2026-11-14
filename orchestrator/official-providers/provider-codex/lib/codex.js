@@ -40,6 +40,7 @@ import { codexAccountLevels, codexAccountSlugs } from './models-cache.js';
 import { createCodexUsage } from './usage.js';
 import { codexLoginDriver } from './login.js';
 import { manifestBackend } from './manifest.js';
+import { rewindCodexThread } from './rewind.js';
 
 /** What the core reads about this provider (C1, C2): the manifest's entry, the one place it is
  *  written (`manifest.js`; why its values are what they are: `profile.js`). */
@@ -497,6 +498,10 @@ export function createCodexProvider(services, log) {
              *  `thread/resume failed: no rollout found for thread id <id> (code -32600)`. */
             notFound(stderr) {
                 return /no rollout found for thread id/i.test(stderr);
+            },
+            /** A chat rewind forks the thread at the last kept turn through `codex app-server` (`rewind.js`). */
+            rewind(ctx) {
+                return rewindCodexThread(services.binary, ctx);
             },
         },
         // `codex exec` is one-way: no approval round trip during the turn. Rights are

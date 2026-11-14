@@ -4,8 +4,13 @@
  * they can never disagree on what a backend can do.
  */
 import { BACKEND_CAPABILITIES, DEFAULT_BACKEND_CAPABILITIES, type BackendCapabilities, type BackendProfile, type Dialect } from './types.js';
-import { getDialect, installedProfiles } from './registry.js';
+import { existsSync } from 'node:fs';
+import { getDialect, installedProfiles, registeredBackendOwners } from './registry.js';
 import { baseBackendId } from './instance-id.js';
+import { missionScratchPath } from './provider-scratch.js';
+
+type NativeRewind = NonNullable<Dialect['nativeRewind']>;
+type RewindContext = Parameters<NativeRewind>[0];
 
 /** Dialect AND profile, every key absent = true: a profile narrows, it never
  *  gives back what its dialect declared it cannot do. */
@@ -34,11 +39,20 @@ export function backendCapabilities(id: string | null | undefined): BackendCapab
 
 /** How backend `id` cuts its own session at a rewind (`SessionStrategy.rewind`),
  *  or null: the rewind then goes through summary mode. Read off the dialect,
- *  like `nativeCompactCommand`. */
-export function nativeRewindStrategy(id: string | null | undefined): Dialect['nativeRewind'] | null {
+ *  like `nativeCompactCommand`. The strategy gets the mission's folder of the
+ *  plugin that registered the dialect, never another plugin's. */
+export function nativeRewindStrategy(
+  id: string | null | undefined,
+): ((ctx: Omit<RewindContext, 'scratch'>) => ReturnType<NativeRewind>) | null {
   if (!id) return null;
   const profile = installedProfiles().find((entry) => entry.id === baseBackendId(id));
-  return (profile ? getDialect(profile.dialect)?.nativeRewind : undefined) ?? null;
+  const rewind = profile ? getDialect(profile.dialect)?.nativeRewind : undefined;
+  if (!profile || !rewind) return null;
+  const owner = registeredBackendOwners().dialects[profile.dialect];
+  return (ctx) => {
+    const scratch = owner ? missionScratchPath(owner, ctx.missionId) : null;
+    return rewind({ ...ctx, scratch: scratch && existsSync(scratch) ? scratch : null });
+  };
 }
 
 /**
