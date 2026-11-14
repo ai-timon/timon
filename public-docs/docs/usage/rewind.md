@@ -7,19 +7,20 @@ Rewinding takes a conversation back to one of your own messages, as if you had n
 
 ## Rewind to a message
 
-Hover one of your messages and click **Rewind to here**, then confirm. The button exists only under messages you typed, not under an agent's answer, a tool result or a card.
+Hover one of your messages and click **Rewind to here**. The button exists only under messages you typed, not under an agent's answer, a tool result or a card. There is no confirmation: the conversation is cut at once, and **Back here · Undo the rewind** appears where it now ends.
 
 - The message and everything after it leave the conversation, in the chat and in what the agent remembers.
 - Its text and images are put back in the message box. Edit them, or clear them, and send.
 - The conversation stays the same mission: same name, same place in the missions list.
-- You can rewind again, further back. There is no undo: a part you rewound does not come back.
+- You can rewind again, further back.
+- **Undo the rewind** brings everything back as it was, the agent's memory included, as long as you have not sent anything since. Several rewinds in a row are undone together. Once you send a message, the conversation goes on from the rewind and the rewound part does not come back.
 
 ## What a rewind does not undo
 
 A rewind changes the **conversation only**.
 
 - **Files are not restored.** What the agent wrote, edited or deleted on disk stays as it is. Use [git](./git.md) or the task's worktree to go back on files.
-- **Actions already done are not undone.** Kanban tasks it created, missions it started, messages it sent, commands it ran: they all stay. The confirmation reminds you of it.
+- **Actions already done are not undone.** Kanban tasks it created, missions it started, messages it sent, commands it ran: they all stay.
 - **Money spent stays spent.** The mission's cost and statistics still count the rewound turns. The context gauge starts again at the next answer.
 
 Rewound turns no longer appear in the mission's history, its trace, its export or in mission search.
