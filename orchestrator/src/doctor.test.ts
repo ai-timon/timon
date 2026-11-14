@@ -40,7 +40,7 @@ test('a pinned binary short-circuits PATH, and a dead pin is not caught', () => 
  */
 test('the no-backend blocker keeps the wording the first-run screen matches', () => {
   const backends = BINARIES.filter((b) => 'backend' in b && b.backend).map((b) => b.name);
-  assert.deepEqual(backends, ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi']);
+  assert.deepEqual(backends, ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi', 'agy']);
   const blocker = `no LLM backend installed (${backends.join(', ')})`;
   assert.ok(blocker.startsWith('no LLM backend installed'),
     'app/src/lib/setup-plan.ts matches this prefix');

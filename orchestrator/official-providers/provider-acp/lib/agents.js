@@ -8,8 +8,8 @@
  *
  * One provider per agent, and its id is the profile's: the folders an agent signs in to and the
  * program it runs are declared by that provider, so two agents on one dialect would share one
- * declaration of them. The profiles themselves (`opencode`, `hermes`: models, `requiredBinary`,
- * `envFrom`) are in `profiles.js`. Pi left this table for its own plugin (`provider-pi`, driven
+ * declaration of them. The profiles themselves (`opencode`, `hermes`, `antigravity`: models,
+ * `requiredBinary`, `envFrom`) are in `profiles.js`. Pi left this table for its own plugin (`provider-pi`, driven
  * over Pi's RPC mode, no `pi-acp` adapter). Each agent's `binary` and `credentialDirs` are its
  * entry of the manifest's `timon.provider.backends` (`manifest.js`), the one place they are
  * written: the daemon reads it before this plugin runs (the doctor, the binary search, the mission
@@ -23,6 +23,24 @@ import { oneShotOverlay } from './opencode-config.js';
 
 const OPENCODE = manifestBackend('opencode');
 const HERMES = manifestBackend('hermes');
+const ANTIGRAVITY = manifestBackend('antigravity');
+
+/**
+ * The sign-in Timon runs Antigravity on: a personal Google account (`oauth-personal`, the Free, Pro
+ * and Ultra plans). The other methods `agy` announces are billed by the token (`gemini-api-key`,
+ * `agent-platform`) or tie it to an organisation's project (`oauth-business`), and Timon runs CLI
+ * subscriptions only.
+ */
+const ANTIGRAVITY_SIGN_IN = 'run `agy acp --login` in a terminal on this machine and sign in with your personal Google account, then retry';
+
+/**
+ * Emptied in the agent's environment, over the vault and the daemon's own (`secrets.inheritEnv`):
+ * the two switches that move `agy` off the Google sign-in onto per-token billing. Verified on 1.5.9:
+ * `AGY_ADC_AUTH=1` makes it sign in with Application Default Credentials (Agent Platform), and an
+ * empty value keeps the Google sign-in; `GEMINI_API_KEY` is read once its own settings select the
+ * API key, and an empty one falls back to the saved sign-in (its 1.5.9 release notes).
+ */
+const ANTIGRAVITY_BILLED_SWITCHES = Object.freeze({ AGY_ADC_AUTH: '', GEMINI_API_KEY: '' });
 
 /**
  * What opencode may do in a daemon one-shot (summary, title, memory pass): it decides its tool uses
@@ -109,5 +127,27 @@ export const ACP_AGENTS = Object.freeze([
     },
     binary: HERMES.binary,
     declares: { credentialDirs: HERMES.credentialDirs },
+  },
+  {
+    // Google Antigravity CLI (`agy`) 1.5.9 verified against the real agent: a stdio MCP server handed in
+    // `session/new` is started and its tool called; a session is found again by `session/resume` and by
+    // `session/load` after the process died.
+    id: 'antigravity',
+    // A whole CLI whose `acp` subcommand speaks the protocol. No `--dangerously-skip-permissions`: the
+    // session stays in agy's `default` mode, which asks before every edit, command and MCP tool, so each
+    // one reaches Timon's card and classifier (agy's own permission rules still decide what it never asks
+    // about). `AcpAgentSpec` has no hook to pick another of agy's session modes from `permission_mode`.
+    args: ['acp'],
+    permissionsByAgent: false,
+    env: () => ({ ...ANTIGRAVITY_BILLED_SWITCHES }),
+    modelProbe: 'session-new',
+    // Tried once, only when `session/new` answers `auth_required`: it reuses the sign-in `agy` saved.
+    authenticateWith: 'oauth-personal',
+    signIn: {
+      byMethod: { 'oauth-personal': ANTIGRAVITY_SIGN_IN },
+      fallback: ANTIGRAVITY_SIGN_IN,
+    },
+    binary: ANTIGRAVITY.binary,
+    declares: { credentialDirs: ANTIGRAVITY.credentialDirs },
   },
 ]);

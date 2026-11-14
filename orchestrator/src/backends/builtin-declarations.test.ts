@@ -39,17 +39,17 @@ test('the binaries are listed once, canonical name first', () => {
 
 test('the doctor lists the AI CLIs the providers declare, in the product order', () => {
   const backends = BINARIES.filter((binary) => binary.backend).map((binary) => binary.name);
-  assert.deepEqual(backends, ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi']);
+  assert.deepEqual(backends, ['claude', 'codex', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi', 'agy']);
   assert.ok(BINARY_NAMES.includes('pi'));
   assert.ok(!BINARY_NAMES.includes('pi-acp'), 'Pi runs without the pi-acp adapter');
 });
 
 test('only providers that declared a standalone installer can be installed from the onboarding', () => {
-  assert.deepEqual([...INSTALLABLE_BACKENDS], ['claude', 'codex', 'grok', 'copilot', 'opencode', 'pi']);
+  assert.deepEqual([...INSTALLABLE_BACKENDS], ['claude', 'codex', 'grok', 'copilot', 'opencode', 'pi', 'agy']);
   // A plugin declaring an installer for its own program never joins the list.
   setDeclaredBinariesSource(() => [{ names: ['acme-agent'], install: { any: { kind: 'script', posix: 'curl https://acme.invalid | sh' } } }]);
   try {
-    assert.deepEqual([...INSTALLABLE_BACKENDS], ['claude', 'codex', 'grok', 'copilot', 'opencode', 'pi']);
+    assert.deepEqual([...INSTALLABLE_BACKENDS], ['claude', 'codex', 'grok', 'copilot', 'opencode', 'pi', 'agy']);
     assert.ok(!BINARY_NAMES.includes('acme-agent'));
   } finally {
     setDeclaredBinariesSource(() => []);
@@ -72,14 +72,21 @@ test('a plugin cannot narrow what counts as a build of a desktop app: that is th
 
 test('the sign-in folder of every provider is masked from the others (TODO #402)', () => {
   const { deny } = resolveIsolation(cfg(), { home: HOME, backend: 'claude' });
-  for (const dir of ['.copilot', '.config/opencode', '.local/share/opencode', '.hermes', '.pi', '.codex', '.grok', '.kimi', '.ollama']) {
+  for (const dir of ['.copilot', '.config/opencode', '.local/share/opencode', '.hermes', '.gemini/antigravity-cli', '.pi', '.codex', '.grok', '.kimi', '.ollama']) {
     assert.ok(deny.includes(`${HOME}/${dir}`), `~/${dir} must be masked from a claude mission`);
     assert.ok(DEFAULT_DENY_HOME_DIRS.includes(dir), dir);
   }
 });
 
+test('Antigravity masks its own folder only: the sign-in of the ACP registry\'s Antigravity agent stays visible to it', () => {
+  const { deny } = resolveIsolation(cfg(), { home: HOME, backend: 'acp-antigravity-acp' });
+  assert.ok(deny.includes(`${HOME}/.gemini/antigravity-cli`));
+  assert.ok(!deny.includes(`${HOME}/.gemini`), 'the whole `.gemini` would take `antigravity-acp` with it');
+  assert.ok(!deny.some((path) => path.startsWith(`${HOME}/.gemini/antigravity-acp`)));
+});
+
 test('a mission keeps the folders of its own provider, and only those', () => {
-  for (const [backend, dirs] of [['opencode', ['.config/opencode', '.local/share/opencode']], ['copilot', ['.copilot']], ['hermes', ['.hermes']], ['pi', ['.pi']]] as const) {
+  for (const [backend, dirs] of [['opencode', ['.config/opencode', '.local/share/opencode']], ['copilot', ['.copilot']], ['hermes', ['.hermes']], ['antigravity', ['.gemini/antigravity-cli']], ['pi', ['.pi']]] as const) {
     const { deny } = resolveIsolation(cfg(), { home: HOME, backend });
     for (const dir of dirs) assert.ok(!deny.includes(`${HOME}/${dir}`), `${backend} must keep ~/${dir}`);
     assert.ok(deny.includes(`${HOME}/.claude`), `${backend} must not see ~/.claude`);
