@@ -1352,6 +1352,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS mission_remote_resume (
   updated_at INTEGER NOT NULL
 )`);
 
+// A rewind waiting for the mission's next spawn (docs/specs/rewind.md § 8): the
+// provider session the cut part was spoken in, and the `rewind` event. Its own
+// table for the reason above: it never reaches an API answer.
+db.exec(`CREATE TABLE IF NOT EXISTS mission_rewind_pending (
+  mission_id TEXT PRIMARY KEY REFERENCES missions(id) ON DELETE CASCADE,
+  session_id TEXT,
+  rewind_event_id INTEGER NOT NULL
+)`);
+
 // What the opening of a mission's chat has folded so far (mission-history-page.ts).
 // Derived from `events` and rebuilt from them when absent, so nothing backfills
 // it. Written when a chat opens rather than per inserted event: the insert path
@@ -6141,6 +6150,25 @@ export const dbApi = {
   },
   setMissionSession(id: string, sessionId: string): void {
     updateSessionStmt.run(sessionId, id);
+    // A new session started after a rewind was built from the visible thread:
+    // the pending cut is spent, whichever path opened it (a backend switch…).
+    db.prepare(`DELETE FROM mission_rewind_pending WHERE mission_id = ?`).run(id);
+  },
+  /** Records a rewind for the next spawn; a further rewind replaces it but keeps
+   *  the session the first one cut (the one the conversation was spoken in). */
+  setPendingRewind(id: string, sessionId: string | null, rewindEventId: number): void {
+    db.prepare(
+      `INSERT INTO mission_rewind_pending (mission_id, session_id, rewind_event_id) VALUES (?, ?, ?)
+       ON CONFLICT(mission_id) DO UPDATE SET rewind_event_id = excluded.rewind_event_id,
+         session_id = COALESCE(mission_rewind_pending.session_id, excluded.session_id)`,
+    ).run(id, sessionId, rewindEventId);
+  },
+  getPendingRewind(id: string): { session_id: string | null; rewind_event_id: number } | null {
+    return (db.prepare(`SELECT session_id, rewind_event_id FROM mission_rewind_pending WHERE mission_id = ?`)
+      .get(id) as { session_id: string | null; rewind_event_id: number } | undefined) ?? null;
+  },
+  clearPendingRewind(id: string): void {
+    db.prepare(`DELETE FROM mission_rewind_pending WHERE mission_id = ?`).run(id);
   },
   /** Detach the mission from its provider session. Called on backend switch: the
    *  id belongs to the old CLI and means nothing to the new one — leaving it in

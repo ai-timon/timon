@@ -10,7 +10,7 @@
  */
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { BackendExhaustedError, ContextTooLargeError, TurnInFlightError, clientTurnState, getTurnState, interruptAgent, isRunning, killAgent, listAgents, loadConfig, respawnWithResume, sendToAgent, steerMission, planSwitchContext, setMissionModel, stderrExcerpt, switchMissionBackend, turnPreparing, whileTurnPrepares } from '../../agent.js';
+import { BackendExhaustedError, ContextTooLargeError, TurnInFlightError, clientTurnState, getTurnState, interruptAgent, isAutonomousMission, isRunning, rewindMissionTo, killAgent, listAgents, loadConfig, respawnWithResume, sendToAgent, steerMission, planSwitchContext, setMissionModel, stderrExcerpt, switchMissionBackend, turnPreparing, whileTurnPrepares } from '../../agent.js';
 import { sendAgentMessage, CrossTeamError, UnknownAgentError, UnknownMissionError, InvalidReplyError } from '../../agent-messages.js';
 import { cooldownReason, fallbackFor } from '../../backend-fallback.js';
 import { messageDateTime } from '../../message-dates.js';
@@ -66,10 +66,39 @@ import type { PromptPresentation } from '../../prompt-presentation.js';
 import { servedIconUrl } from '../../uploads.js';
 import { TitleModelBodySchema, effectiveTitleModel, instanceTitleModel, parseTitleModelChoice, serializeTitleModelChoice, titleBackends, titleChoiceRefusal } from '../../mission-title-model.js';
 import { apiError } from '../../api-error.js';
-import { findReplyTarget, resolveReplyTo } from '../../reply-to.js';
+import { findReplyTarget, messageTextOf, resolveReplyTo } from '../../reply-to.js';
 
 const TitleBodySchema = z.object({ title: z.string().max(200).nullable().optional() });
 const PermissionModeBodySchema = z.object({ mode: z.string().trim().min(1).max(40) }).strict();
+const RewindBodySchema = z.object({ event_id: z.number().int().positive() }).strict();
+
+type RestoredMessage = { text: string; images: Array<{ media_type: string; data: string }> };
+
+/**
+ * What a rewind to `eventId` gives back to the composer, or null when that row
+ * is not a visible message the user typed in this mission: another agent's or
+ * the daemon's input carries an `origin.kind`, a tool result carries other
+ * blocks (docs/specs/rewind.md § 3-4).
+ */
+function rewindableUserMessage(missionId: string, eventId: number): RestoredMessage | null {
+  const row = (dbApi.scanMissionEvents(missionId, {
+    where: `id = ? AND type = 'user'`, params: [eventId], order: 'ASC', limit: 1,
+  }) as Array<{ type: string; payload: string }>)[0];
+  if (!row) return null;
+  let payload: { message?: { content?: unknown }; origin?: { kind?: unknown } };
+  try { payload = JSON.parse(row.payload) as typeof payload; } catch { return null; }
+  if (payload.origin?.kind !== undefined) return null;
+  const content = payload.message?.content;
+  const blocks = typeof content === 'string' ? [] : Array.isArray(content) ? content as Array<Record<string, unknown>> : null;
+  if (!blocks || blocks.some((b) => b?.type !== 'text' && b?.type !== 'image')) return null;
+  const images = blocks.flatMap((b) => {
+    const src = b.source as { type?: unknown; media_type?: unknown; data?: unknown } | undefined;
+    return b.type === 'image' && src?.type === 'base64' && typeof src.media_type === 'string' && typeof src.data === 'string'
+      ? [{ media_type: src.media_type, data: src.data }] : [];
+  });
+  const text = messageTextOf(row.type, row.payload);
+  return text || images.length ? { text, images } : null;
+}
 
 function extractFromMission(
   req: express.Request,
@@ -1250,6 +1279,52 @@ export function registerRoutes(
     const owned = ownedMissionOr404(req, res);
     if (!owned) return;
     res.json({ operation: compactOperation(owned.id) });
+  });
+
+  /**
+   * Rewind a chat to one of its user messages (docs/specs/rewind.md): that
+   * message and everything after it leave the thread, the agent forgets them at
+   * its next turn, and the message comes back for the composer. A person's own
+   * interactive chat only: never the daemon token nor a mission token, never a
+   * mission the daemon or an agent started, never someone else's (403 rather
+   * than the usual 404: the spec's contract, and the caller already holds an
+   * event id of it).
+   */
+  app.post('/api/missions/:id/rewind', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    if (!isPersonAuth(req.auth) || !req.auth.user) {
+      forbidden(req, res, { kind: 'scope', reason: 'only the mission owner can rewind it, from a signed-in session' });
+      return;
+    }
+    const parsed = RewindBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json(apiError('invalid_body', 'expected { event_id: number }'));
+      return;
+    }
+    const m = dbApi.getMission(req.params.id as string);
+    if (!m) {
+      res.status(404).json(apiError('mission_not_found', 'mission not found'));
+      return;
+    }
+    if (m.owner_user_id !== req.auth.user.id || isAutonomousMission(m) || m.parent_mission_id) {
+      forbidden(req, res, { kind: 'scope', reason: 'only your own interactive chats can be rewound' });
+      return;
+    }
+    const restored = rewindableUserMessage(m.id, parsed.data.event_id);
+    if (!restored) {
+      res.status(400).json(apiError('message_not_found', 'event_id is not a visible user message of this mission'));
+      return;
+    }
+    try {
+      const rewindEventId = await rewindMissionTo(m.id, parsed.data.event_id);
+      res.json({ rewind_event_id: rewindEventId, restored });
+    } catch (err) {
+      if (err instanceof TurnInFlightError) {
+        res.status(409).json({ error: err.message, code: 'turn_in_progress' });
+        return;
+      }
+      res.status(500).json({ error: (err as Error).message });
+    }
   });
 
   /**

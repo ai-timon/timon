@@ -2138,6 +2138,7 @@
         "appliesPermissionMode?": "boolean | undefined",
         "thinkingControls?": "readonly (\"levels\" | \"budget\" | \"toggle\")[] | undefined",
         "nativeCompact?": "{ readonly command: string; } | undefined",
+        "nativeRewind?": "((ctx: { readonly missionId: string; readonly sessionId: string; readonly events: readonly { readonly id: number; readonly type: string; readonly payload: string; }[]; }) => Promise<{ readonly resume: string | null; }>) | undefined",
         "buildSpawn": "(opts: BuildSpawnOpts, profile: ProfileRuntime) => Promise<SpawnResult>",
         "writeUserInput": "(proc: ChildProcessWithoutNullStreams, text: string, images?: ImageAttachment[]) => void",
         "parseLine": "(line: string) => NormalizedEvent[]",
@@ -2359,6 +2360,7 @@
         "appliesPermissionMode?": "boolean | undefined",
         "thinkingControls?": "readonly (\"levels\" | \"budget\" | \"toggle\")[] | undefined",
         "nativeCompact?": "{ readonly command: string; } | undefined",
+        "nativeRewind?": "((ctx: { readonly missionId: string; readonly sessionId: string; readonly events: readonly { readonly id: number; readonly type: string; readonly payload: string; }[]; }) => Promise<{ readonly resume: string | null; }>) | undefined",
         "extractSessionId": "(ev: NormalizedEvent) => string | null",
         "spans?": "((ev: NormalizedEvent, state: SpanState, eventId: number) => SpanOp[]) | undefined",
         "dispose?": "((missionId: string) => void) | undefined",
@@ -3135,7 +3137,8 @@
         "notFound?": "((stderr: string) => boolean) | undefined",
         "maxPromptBytes?": "number | undefined",
         "setModel?": "((io: SessionStdio, model: string) => Promise<boolean>) | undefined",
-        "compact?": "{ readonly command: string; } | undefined"
+        "compact?": "{ readonly command: string; } | undefined",
+        "rewind?": "((ctx: { readonly missionId: string; readonly sessionId: string; readonly events: readonly { readonly id: number; readonly type: string; readonly payload: string; }[]; }) => Promise<{ readonly resume: string | null; }>) | undefined"
       }
     },
     "PermissionStrategy": {

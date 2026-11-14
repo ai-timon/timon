@@ -86,6 +86,19 @@ export type SessionStrategy = {
    * plain text by default (Grok's `--verbatim`) can let the command through.
    */
   readonly compact?: { readonly command: string };
+  /**
+   * Cuts the provider session where a chat rewind cut the thread
+   * (docs/specs/rewind.md), at the mission's next spawn, before its prompt is
+   * sent. `sessionId` is the session the cut part was spoken in; `events` is the
+   * thread as it stands after the cut. Resolves the session the turn resumes, or
+   * null for a fresh one. Absent, or on any throw, Timon starts a fresh session
+   * seeded with a summary of the visible thread.
+   */
+  readonly rewind?: (ctx: {
+    readonly missionId: string;
+    readonly sessionId: string;
+    readonly events: readonly { readonly id: number; readonly type: string; readonly payload: string }[];
+  }) => Promise<{ readonly resume: string | null }>;
 };
 
 /** How tool uses are arbitrated. */

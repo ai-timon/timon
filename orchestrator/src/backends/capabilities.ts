@@ -32,6 +32,15 @@ export function backendCapabilities(id: string | null | undefined): BackendCapab
   return resolveCapabilities(getDialect(profile.dialect), profile);
 }
 
+/** How backend `id` cuts its own session at a rewind (`SessionStrategy.rewind`),
+ *  or null: the rewind then goes through summary mode. Read off the dialect,
+ *  like `nativeCompactCommand`. */
+export function nativeRewindStrategy(id: string | null | undefined): Dialect['nativeRewind'] | null {
+  if (!id) return null;
+  const profile = installedProfiles().find((entry) => entry.id === baseBackendId(id));
+  return (profile ? getDialect(profile.dialect)?.nativeRewind : undefined) ?? null;
+}
+
 /**
  * The message that makes backend `id` compact its own session
  * (`SessionStrategy.compact`), or null when it cannot. Read off the dialect,

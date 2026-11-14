@@ -1023,6 +1023,8 @@ export interface Dialect {
   /** Cf. `SessionStrategy.compact`: the message that makes the agent compact
    *  its own session. Absent = no native compaction. */
   readonly nativeCompact?: { readonly command: string };
+  /** Cf. `SessionStrategy.rewind`. Absent = summary mode. */
+  readonly nativeRewind?: NonNullable<import('./engine/definition.js').SessionStrategy['rewind']>;
   buildSpawn(opts: BuildSpawnOpts, profile: ProfileRuntime): Promise<SpawnResult>;
   writeUserInput(
     proc: ChildProcessWithoutNullStreams,

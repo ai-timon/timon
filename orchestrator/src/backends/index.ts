@@ -38,7 +38,7 @@ export {
   backendCatalog, primeModelDiscovery, catalogBackend, backendIdForModel,
   catalogClaimsModel,
 } from './catalog.js';
-export { backendCapabilities, canReadSkillOnDemand, nativeCompactCommand, resolveCapabilities } from './capabilities.js';
+export { backendCapabilities, canReadSkillOnDemand, nativeCompactCommand, nativeRewindStrategy, resolveCapabilities } from './capabilities.js';
 export { activeProfiles, getDialect, inactiveProfiles, onBackendsChanged, type ResolvedProfile } from './registry.js';
 export { ProfileEnvError } from './credentials.js';
 
