@@ -5,6 +5,7 @@ import { useCallback, useState, type DragEvent, type ReactNode } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Columns2, Pin, PinOff, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
+import { formatNumber, numberFormat } from '@/lib/intl';
 import {
   STATE_VISUALS,
   type ActiveAgent,
@@ -29,10 +30,13 @@ import { FileContextMenu, type FileMenuItem } from '@/components/chat/file-conte
  */
 function fmtElapsed(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return s + 's';
+  const number = numberFormat();
+  if (s < 60) return t('missionsPage.duration.seconds', { seconds: number.format(s) });
   const m = Math.floor(s / 60);
-  if (m < 60) return m + 'm' + (s % 60 ? (s % 60) + 's' : '');
-  return Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+  if (m < 60) return s % 60
+    ? t('missionsPage.duration.compactMinutesSeconds', { minutes: number.format(m), seconds: number.format(s % 60) })
+    : t('missionsPage.duration.minutes', { minutes: number.format(m) });
+  return t('missionsPage.duration.compactHoursMinutes', { hours: number.format(Math.floor(m / 60)), minutes: number.format(m % 60) });
 }
 
 /** The strip's avatar: the shared active face, at the tab's size. */
@@ -94,6 +98,8 @@ export function AgentChip({
   drag?: TabDrag | null;
 }) {
   const vis = STATE_VISUALS[agent.state];
+  const stateLabel = t(`chatSurface.activeState.${agent.state}`);
+  const pendingLabel = agent.pending_count > 0 ? t('chatSurface.pendingCount', { count: agent.pending_count }) : '';
   // An idle chip is synthetic (current or pinned agent with no mission
   // running): its `at` measures nothing, so no counter.
   const elapsed = agent.state === 'idle' ? null : fmtElapsed(now - agent.at);
@@ -113,7 +119,7 @@ export function AgentChip({
     ...chatSplitActions(bus, agent.name, missionId).map((a) => ({ ...a, icon: <Columns2 className="size-3.5" /> })),
     ...tabMenuItems({ agent, pinned, onTogglePin, onDismiss, shape, pinMove }),
   ];
-  const title = `${agent.name} — ${vis.label}${agent.pending_count ? ` (${agent.pending_count} pending)` : ''}`;
+  const title = `${agent.name} — ${stateLabel}${pendingLabel ? ` (${pendingLabel})` : ''}`;
   const link = (children: ReactNode, className: string) => (
     <ChatLink
       href={href}
@@ -190,15 +196,17 @@ export function AgentChip({
               <span
                 className="shrink-0 rounded px-0.5 text-[8.5px] font-semibold md:px-1 md:text-[9.5px]"
                 style={{ background: vis.colorVar, color: '#0c0c0c' }}
+                title={pendingLabel}
+                aria-label={pendingLabel}
               >
-                {agent.pending_count}
+                {formatNumber(agent.pending_count)}
               </span>
             )}
           </span>
           <span className="flex items-center gap-1">
-            <span className={cn('text-[9.5px] md:text-[10.5px]', vis.textClass)}>{vis.label}</span>
+            <span className={cn('text-[9.5px] md:text-[10.5px]', vis.textClass)}>{stateLabel}</span>
             {elapsed && (
-              <span className="text-[9.5px] tabular-nums text-muted-foreground/70 md:text-[10.5px]">
+              <span className="text-[9.5px] tabular-nums text-muted-foreground/70 md:text-[10.5px]" title={t('chatSurface.elapsed', { duration: elapsed })}>
                 {elapsed}
               </span>
             )}

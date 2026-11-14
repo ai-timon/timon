@@ -1,0 +1,12 @@
+{
+  "systemNotifications": {
+    "backendBinary": {
+      "title": "后端 {backends}：未找到 {cmd} 命令行工具",
+      "description": "Timon 无法在此设备上运行 {cmd}，因此使用 {backends} 的所有任务会话都会在启动时立即失败。",
+      "recheck": "重新检查",
+      "repairPinned": "需要处理：为 {cmd} 指定的路径（{configKey}）未指向可执行文件。请在{settings}中修正路径，或清除该路径，让 Timon 自动查找命令行工具。",
+      "repairMissing": "需要处理：安装后，点击{settings}中的“{recheck}”；也可以在那里指定 {cmd} 可执行文件的完整路径（{configKey}）。",
+      "installCommand": "适用于此设备的安装命令：{command}"
+    }
+  }
+}

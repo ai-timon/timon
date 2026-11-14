@@ -1,0 +1,22 @@
+{
+  "fileSurface": {
+    "loading": "加载中…",
+    "empty": "空文件夹",
+    "newFile": "新建文件",
+    "newFolder": "新建文件夹",
+    "deleteEntry": "删除 {name}",
+    "listFailed": "无法列出 {path} 中的内容",
+    "openFailed": "无法打开 {path}",
+    "requestFailed": "文件请求失败：{error}",
+    "createFileFailed": "无法创建文件",
+    "createFolderFailed": "无法创建文件夹",
+    "deleteFailed": "无法删除此文件或文件夹",
+    "renameFailed": "无法重命名此文件或文件夹",
+    "moveFailed": "无法移动此文件或文件夹",
+    "loadingEditor": "正在加载编辑器…",
+    "saveFailed": "保存失败：{error}",
+    "saved": "已保存 {path}",
+    "truncated": "已截断",
+    "binaryPreviewOmitted": "二进制文件，无法预览。"
+  }
+}

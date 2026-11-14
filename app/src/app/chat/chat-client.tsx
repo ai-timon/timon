@@ -772,10 +772,10 @@ function toolDetail(b: { name: string; input?: Record<string, unknown> }): strin
       detail = pick('file_path');
       break;
     case 'Grep':
-      detail = pick('pattern') + (pick('path') ? ' in ' + pick('path') : '');
+      detail = pick('path') ? i18n('chatSurface.patternInPath', { pattern: pick('pattern'), path: pick('path') }) : pick('pattern');
       break;
     case 'Glob':
-      detail = pick('pattern') + (pick('path') ? ' under ' + pick('path') : '');
+      detail = pick('path') ? i18n('chatSurface.patternUnderPath', { pattern: pick('pattern'), path: pick('path') }) : pick('pattern');
       break;
     case 'WebFetch':
     case 'WebSearch':
@@ -985,17 +985,17 @@ function renderToolResult(
 ): string {
   const jsonHtml = tryRenderToolJson(text);
   if (jsonHtml !== null) {
-    return `<div class="tool-result${isError ? ' tool-result-error' : ''}">${isError ? '<span class="tool-result-badge">error</span>' : ''}${jsonHtml}</div>`;
+    return `<div class="tool-result${isError ? ' tool-result-error' : ''}">${isError ? `<span class="tool-result-badge">${escapeHtml(i18n('chatSurface.toolError'))}</span>` : ''}${jsonHtml}</div>`;
   }
   const MAX = TOOL_RESULT_MAX;
   const truncated = text.length > MAX;
   const display = truncated ? text.slice(0, MAX) + '\n…' : text;
   const cls = 'tool-result' + (isError ? ' tool-result-error' : '');
   const badge = isError
-    ? '<span class="tool-result-badge">error</span>'
+    ? `<span class="tool-result-badge">${escapeHtml(i18n('chatSurface.toolError'))}</span>`
     : '';
   if (!display) {
-    return `<div class="${cls}">${badge}<pre><span class="tool-result-empty">(empty)</span></pre></div>`;
+    return `<div class="${cls}">${badge}<pre><span class="tool-result-empty">${escapeHtml(i18n('chatSurface.toolEmpty'))}</span></pre></div>`;
   }
   // Guesses the language. Read/Edit/Write carry a file_path → reliable.
   // Bash → 'bash'. The rest stays plain text (highlight useless, often
@@ -1598,7 +1598,7 @@ export function ChatClient({
         // phone photo comes out at a few hundred KB (TIM-0125).
         const { blob, mediaType } = await compressForChat(file);
         if (blob.size > MAX_IMAGE_UPLOAD_BYTES) {
-          toast.error(`image too large (${fmtBytes(blob.size)}, max 8 MB)`);
+          toast.error(i18n('chatSurface.imageTooLarge', { size: fmtBytes(blob.size), max: '8 MB' }));
           continue;
         }
         if (used + blob.size > MAX_TURN_BYTES) {
@@ -1615,7 +1615,7 @@ export function ChatClient({
           size: blob.size,
         });
       } catch (err) {
-        toast.error('attach failed: ' + (err as Error).message);
+        toast.error(i18n('chatSurface.attachFailed', { error: (err as Error).message }));
       }
     }
     if (overBudget) toastOverBudget(overBudget);
@@ -1647,7 +1647,7 @@ export function ChatClient({
     }
     const sized = others.filter((file) => {
       if (file.size <= MAX_ATTACHMENT_BYTES) return true;
-      toast.error(`${file.name} — file too large (${fmtAttachmentSize(file.size)}, max ${fmtAttachmentSize(MAX_ATTACHMENT_BYTES)})`);
+      toast.error(i18n('chatSurface.fileTooLarge', { name: file.name, size: fmtAttachmentSize(file.size), max: fmtAttachmentSize(MAX_ATTACHMENT_BYTES) }));
       return false;
     });
     const used = turnAttachmentBytes(pendingImagesRef.current, pendingFilesRef.current) + imageBytes;
@@ -1665,7 +1665,7 @@ export function ChatClient({
           size: file.size,
         });
       } catch (err) {
-        toast.error('attach failed: ' + (err as Error).message);
+        toast.error(i18n('chatSurface.attachFailed', { error: (err as Error).message }));
       }
     }
     if (additions.length) setPendingFiles((s) => [...s, ...additions]);
@@ -1754,7 +1754,7 @@ export function ChatClient({
         body: JSON.stringify({ effort }),
       },
     );
-    if (!response.ok) throw new Error('Could not change the reasoning level');
+    if (!response.ok) throw new Error(i18n('chatSurface.reasoningChangeFailed'));
     setMissionReasoningEffort(effort);
   }, [currentMissionId, missionReasoningEffort]);
   /** Actual folder of the open mission when it differs from the agent's
@@ -2599,16 +2599,16 @@ export function ChatClient({
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        toast.error('save failed: ' + (apiErrorMessage(j, r.statusText)));
+        toast.error(i18n('chatSurface.saveFailed', { error: apiErrorMessage(j, r.statusText) }));
         setAgent(prev);
       } else {
         const j = await r.json().catch(() => ({}));
         if (j._killed > 0) {
-          toast.success('config saved · agent will respawn at next message');
+          toast.success(i18n('chatSurface.configSavedRespawn'));
         }
       }
     } catch (e) {
-      toast.error('save failed: ' + String((e as Error).message || e));
+      toast.error(i18n('chatSurface.saveFailed', { error: String((e as Error).message || e) }));
       setAgent(prev);
     }
   }
@@ -2743,7 +2743,7 @@ export function ChatClient({
 
   const killMission = useCallback(async (id: string) => {
     const r = await fetch('/api/ui/missions/' + encodeURIComponent(id), { method: 'DELETE' });
-    if (!r.ok) { toast.error('Kill failed: ' + r.status); return; }
+    if (!r.ok) { toast.error(i18n('chatSurface.killFailed', { status: r.status })); return; }
     await refreshMissions();
     // If we killed the current mission, clear the view.
     if (activeMissionId.current === id) newConversation();
@@ -5524,7 +5524,7 @@ export function ChatClient({
     liveDelegations.current.shift();
     undelegatedTurn.current = null;
     const text = spokenAnswer(answerSince(messages, head.before), (fragment) => new DOMParser().parseFromString(fragment, 'text/html').body.textContent ?? '');
-    gptLiveReply(head.id, text || 'The agent finished without a written answer.', !!text);
+    gptLiveReply(head.id, text || i18n('chatSurface.noWrittenAnswer'), !!text);
   }, [thinking, messages, gptLiveReply]);
 
   useEffect(() => {
@@ -6103,8 +6103,8 @@ export function ChatClient({
               {messages.length === 0 && !thinking && (
                 <p className="my-12 text-center text-[12.5px] text-muted-foreground/70">
                   {freshStart.current
-                    ? 'New conversation. Type a message to start.'
-                    : `No messages in this mission — start the conversation with ${agent.name}.`}
+                    ? i18n('chatSurface.newConversationEmpty')
+                    : i18n('chatSurface.missionEmpty', { agent: agent.name })}
                 </p>
               )}
               {(threadStart > 0 || hasOlderHistory) && (
@@ -7105,7 +7105,7 @@ function MessageBody({
                   : 'border-[hsl(var(--info)/0.3)] bg-[hsl(var(--info)/0.06)] text-[hsl(var(--info))]',
               )}
             >
-              {msg.tag}
+              {i18n(`chatSurface.messageTag.${msg.tag}`)}
             </span>
           )}
           <span className="text-[10.5px] tabular-nums text-muted-foreground/60">
@@ -7400,12 +7400,12 @@ function PermissionCard({
         // The card is a ghost; flip it locally so the user sees what
         // happened without a generic error toast.
         setLocalState('expired');
-        toast.info('This request has expired (orchestrator restarted or mission ended).');
+        toast.info(i18n('chatSurface.requestExpired'));
         return false;
       }
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        toast.error('resolve failed: ' + (apiErrorMessage(j, r.statusText)));
+        toast.error(i18n('chatSurface.resolveFailed', { error: apiErrorMessage(j, r.statusText) }));
         return false;
       }
       // The orchestrator will emit a permission_resolved event over SSE
@@ -7487,7 +7487,7 @@ function PermissionCard({
           <span className="tabular-nums text-[11.5px] font-medium text-foreground">{agentName}</span>
           {!hideToolNoise && (
             <span className="rounded border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning)/0.08)] px-1.5 py-0.5 tabular-nums text-[10px] lowercase text-[hsl(var(--warning))]">
-              permission
+              {i18n('chatSurface.permission')}
             </span>
           )}
           <span className="text-[10.5px] tabular-nums text-muted-foreground/60">{msg.t}</span>
@@ -7560,7 +7560,7 @@ function PermissionCard({
                 </div>
               ) : (
                 <span className="w-fit rounded border border-muted-foreground/30 bg-muted/50 px-2 py-0.5 tabular-nums text-[10.5px] text-muted-foreground">
-                  {effectiveState}
+                  {i18n(`chatSurface.permissionState.${effectiveState}`)}
                 </span>
               )}
             </div>
@@ -7594,7 +7594,7 @@ function PermissionCard({
             />
           ) : (
             <>
-              <div className="font-medium">The agent is requesting permission to run:</div>
+              <div className="font-medium">{i18n('chatSurface.permissionToRun')}</div>
               {/* code-font: the tool id */}
               <code className="mt-1.5 inline-block break-all rounded border border-border bg-muted/40 px-2 py-1 font-mono text-[11.5px]">
                 {perm.tool_name}
@@ -7665,7 +7665,7 @@ function PermissionCard({
                           : 'border-destructive/30 bg-destructive/10 text-destructive',
                     )}
                   >
-                    {effectiveState === 'pasted' ? i18n('terminal.request.state.paste') : effectiveState}
+                    {effectiveState === 'pasted' ? i18n('terminal.request.state.paste') : i18n(`chatSurface.permissionState.${effectiveState}`)}
                   </span>
                 )}
               </div>
@@ -7968,11 +7968,11 @@ function fileToBase64(file: Blob): Promise<string> {
     const fr = new FileReader();
     fr.onload = () => {
       const r = fr.result;
-      if (typeof r !== 'string') return reject(new Error('unexpected reader result'));
+      if (typeof r !== 'string') return reject(new Error(i18n('chatSurface.unexpectedReaderResult')));
       const comma = r.indexOf(',');
       resolve(comma >= 0 ? r.slice(comma + 1) : r);
     };
-    fr.onerror = () => reject(fr.error ?? new Error('read failed'));
+    fr.onerror = () => reject(fr.error ?? new Error(i18n('chatSurface.readFailed')));
     fr.readAsDataURL(file);
   });
 }

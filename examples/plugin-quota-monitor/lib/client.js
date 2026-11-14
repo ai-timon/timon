@@ -11,7 +11,7 @@
 import React from 'react'
 import {
   Tile, BrandMark, Input, Switch, AnchoredPopover,
-  cn, createTranslator,
+  cn, createTranslator, getLocale,
 } from '@timon/ui'
 
 const t = createTranslator({
@@ -47,6 +47,17 @@ const t = createTranslator({
     critical: 'Critical (%)',
     saveFailed: 'Could not save the setting',
     windows: 'window',
+    windowFiveHour: '5 hours',
+    windowSevenDay: '7 days',
+    windowDaily: 'Daily',
+    windowWeekly: 'Weekly',
+    windowMonthly: 'Monthly',
+    windowSevenDayOpus: '7 days · Opus',
+    windowSevenDaySonnet: '7 days · Sonnet',
+    networkFailed: 'Network request failed',
+    networkTimeout: 'Network request timed out',
+    networkAborted: 'Network request was interrupted',
+    networkDetail: '{summary} — {message}',
   },
   fr: {
     title: 'Quotas LLM',
@@ -80,6 +91,61 @@ const t = createTranslator({
     critical: 'Critique (%)',
     saveFailed: 'Réglage non enregistré',
     windows: 'fenêtre',
+    windowFiveHour: '5 heures',
+    windowSevenDay: '7 jours',
+    windowDaily: 'Quotidien',
+    windowWeekly: 'Hebdomadaire',
+    windowMonthly: 'Mensuel',
+    windowSevenDayOpus: '7 jours · Opus',
+    windowSevenDaySonnet: '7 jours · Sonnet',
+    networkFailed: 'La requête réseau a échoué',
+    networkTimeout: 'La requête réseau a expiré',
+    networkAborted: 'La requête réseau a été interrompue',
+    networkDetail: '{summary} — {message}',
+  },
+  'zh-CN': {
+    title: 'LLM 配额',
+    open: '打开 LLM 配额',
+    refresh: '刷新',
+    loading: '加载中…',
+    loadFailed: '用量暂不可用',
+    unknown: '未知',
+    unsupported: '此提供商暂无用量探测功能',
+    unavailable: '用量探测暂不可用',
+    notSignedIn: '未登录',
+    connectClaude: '请在 CLI 中登录 Claude Code：运行 claude，然后输入 /login。',
+    connectGrok: '请在 CLI 中登录 Grok：运行 grok login。',
+    connectCopilot: '请在 CLI 中登录 GitHub Copilot：运行 copilot login。',
+    connectCodex: '请在 CLI 中登录 Codex：运行 codex login。',
+    connect: '请通过此提供商的 CLI 登录。',
+    stale: '上次已知用量 — 暂时无法刷新',
+    errorDetail: '{message}',
+    percentUsed: '已用 {value}%',
+    providersAvailable: '已测量 {value} 个提供商',
+    history: '趋势',
+    lastSevenDays: '最近 7 天',
+    historyLabel: '最近七天的用量',
+    extraCredits: '额外额度',
+    resetUnknown: '重置时间未知',
+    providers: '提供商',
+    providersHint: '隐藏的提供商不会出现在配额环、卡片或趋势图中。',
+    thresholds: '阈值',
+    thresholdsHint: '低于警告阈值时，配额环保持中性色；超过严重阈值时会变红。',
+    warning: '警告（%）',
+    critical: '严重（%）',
+    saveFailed: '无法保存设置',
+    windows: '时间窗口',
+    windowFiveHour: '5 小时',
+    windowSevenDay: '7 天',
+    windowDaily: '每日',
+    windowWeekly: '每周',
+    windowMonthly: '每月',
+    windowSevenDayOpus: '7 天 · Opus',
+    windowSevenDaySonnet: '7 天 · Sonnet',
+    networkFailed: '网络请求失败',
+    networkTimeout: '网络请求超时',
+    networkAborted: '网络请求已中断',
+    networkDetail: '{summary} — {message}',
   },
 })
 
@@ -272,18 +338,45 @@ function QuotaRing({ value, outerValue = null, size = 34, brand, stale = false, 
     'aria-label': t('stale'),
   }, h(RefreshIcon)) : null)
 }
+const WINDOW_LABELS = {
+  five_hour: 'windowFiveHour',
+  seven_day: 'windowSevenDay',
+  daily: 'windowDaily',
+  weekly: 'windowWeekly',
+  monthly: 'windowMonthly',
+  seven_day_opus: 'windowSevenDayOpus',
+  seven_day_sonnet: 'windowSevenDaySonnet',
+}
+
+function windowLabel(name) {
+  const key = Object.hasOwn(WINDOW_LABELS, name) ? WINDOW_LABELS[name] : null
+  return key ? t(key) : name.replace(/_/g, ' ')
+}
+
+/** Add a translated explanation without losing the provider's diagnostic text. */
+function errorLabel(error) {
+  const message = String(error)
+  const key = /\b(?:timeout|timed?\s*out|ETIMEDOUT|UND_ERR_CONNECT_TIMEOUT)\b/i.test(message)
+    ? 'networkTimeout'
+    : /\b(?:AbortError|aborted|abort|interrupted)\b/i.test(message)
+      ? 'networkAborted'
+      : /failed to fetch|fetch failed|failed to perform fetch|NetworkError|network (?:request|connection|error)|(?:ECONNRESET|ECONNREFUSED|ENOTFOUND|EAI_AGAIN)|load failed/i.test(message)
+        ? 'networkFailed' : null
+  return key ? t('networkDetail', { summary: t(key), message }) : message
+}
+
 
 function resetLabel(iso) {
   const date = new Date(iso)
   if (!Number.isFinite(date.getTime())) return t('resetUnknown')
-  return new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(date)
+  return new Intl.DateTimeFormat(getLocale(), { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(date)
 }
 
 // The usage endpoint reports credits in minor units (900 = 9.00 EUR).
 function money(minorUnits, currency) {
   const value = minorUnits / 100
   const whole = Number.isInteger(value)
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat(getLocale(), {
     style: 'currency', currency: currency || 'USD',
     minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2,
   }).format(value)
@@ -319,10 +412,8 @@ function QuotaRows({ entries, compact = false, warning = 70, critical = 90 }) {
           ? h('div', { className: 'mt-1.5 space-y-1.5' },
             windows.map(([windowName, window]) => h('div', { key: windowName },
               h('div', { className: 'mb-0.5 flex justify-between gap-2 text-muted-foreground', style: SMALL },
-                // The window vocabulary belongs to the provider (`five_hour`,
-                // `seven_day`, …): show it as it comes rather than translate a
-                // list we do not control.
-                h('span', null, windowName.replace(/_/g, ' ')),
+                // Known provider windows are localized; unfamiliar names stay readable.
+                h('span', null, windowLabel(windowName)),
                 h('span', null, resetLabel(window.resets_at))),
               h(Bar, { value: window.utilization, warning, critical }))),
             extra && extra.is_enabled
@@ -347,7 +438,7 @@ function QuotaRows({ entries, compact = false, warning = 70, critical = 90 }) {
               : h('p', null, entry.state === 'unsupported' ? t('unsupported') : t('unavailable')),
             entry.error && entry.state !== 'disconnected'
               ? h('p', { className: 'mt-0.5 break-words text-destructive' },
-                t('errorDetail', { message: entry.error }))
+                t('errorDetail', { message: errorLabel(entry.error) }))
               : null)))
   }))
 }
@@ -459,7 +550,7 @@ function makeCompact(store) {
         failed && !data
           ? h('div', { className: 'py-5 text-center text-xs' },
             h('p', { className: 'text-muted-foreground' }, t('loadFailed')),
-            h('p', { className: 'mt-1 break-words text-destructive' }, failed))
+            h('p', { className: 'mt-1 break-words text-destructive' }, errorLabel(failed)))
           : h(QuotaRows, { entries, compact: true, warning: thresholds.warning, critical: thresholds.critical }),
         h(QuotaHistory, { history, visibleBackends: new Set(entries.map((entry) => entry.backend)) })))
   }
@@ -494,7 +585,7 @@ function makeWidget(store) {
     }, failed && !data
       ? h('div', { className: 'm-auto px-3 text-center text-xs' },
         h('p', { className: 'text-muted-foreground' }, t('loadFailed')),
-        h('p', { className: 'mt-1 break-words text-destructive' }, failed))
+        h('p', { className: 'mt-1 break-words text-destructive' }, errorLabel(failed)))
       : h(React.Fragment, null,
         h(QuotaRows, { entries, warning: thresholds.warning, critical: thresholds.critical }),
         h(QuotaHistory, { history, visibleBackends: new Set(entries.map((entry) => entry.backend)) })))

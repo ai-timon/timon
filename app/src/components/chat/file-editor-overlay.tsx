@@ -24,7 +24,7 @@ const CodeEditor = dynamic(() => import('@/components/code-editor'), {
   ssr: false,
   loading: () => (
     <div className="grid flex-1 place-items-center text-[12px] text-muted-foreground">
-      loading editor…
+      {i18n('fileSurface.loadingEditor')}
     </div>
   ),
 });
@@ -52,10 +52,10 @@ export async function saveAgentFile(agentId: string, file: FileBody, draft: stri
   );
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
-    toast.error('save failed: ' + (apiErrorMessage(j, r.statusText)));
+    toast.error(i18n('fileSurface.saveFailed', { error: apiErrorMessage(j, r.statusText) }));
     return false;
   }
-  toast.success('saved ' + file.path);
+  toast.success(i18n('fileSurface.saved', { path: file.path }));
   return true;
 }
 
@@ -124,12 +124,12 @@ export function FileEditorPane({
         )}
         {file.truncated && (
           <span className="shrink-0 rounded bg-[hsl(var(--warning)/0.1)] px-1.5 py-0.5 text-[10px] text-[hsl(var(--warning))]">
-            truncated
+            {i18n('fileSurface.truncated')}
           </span>
         )}
         {dirty && (
           <span className="shrink-0 rounded bg-[hsl(var(--primary)/0.1)] px-1.5 py-0.5 text-[10px] text-[hsl(var(--primary))]">
-            modified
+            {i18n('fileEditor.modified')}
           </span>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -171,7 +171,7 @@ export function FileEditorPane({
       </div>
       {file.binary ? (
         <div className="flex-1 overflow-auto p-8 text-center text-[12.5px] text-muted-foreground">
-          Binary file — preview omitted.
+          {i18n('fileSurface.binaryPreviewOmitted')}
         </div>
       ) : activeMode === 'view' && isMarkdown ? (
         <div

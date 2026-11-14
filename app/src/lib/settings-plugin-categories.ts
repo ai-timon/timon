@@ -17,6 +17,8 @@ export type PluginCatalogRow = {
   id: string;
   label: string | null;
   state: string;
+  source?: 'bundled' | 'third-party';
+  builtin?: boolean;
   settings?: readonly unknown[];
   webhooks?: readonly string[];
 };
@@ -53,7 +55,7 @@ function pluginLabel(row: PluginCatalogRow | undefined, fallbackId: string): str
   // catalogue may not even know the module.
   if (fallbackId === MACHINES_MODULE) return t('machines.title');
   if (fallbackId === TELEMETRY_MODULE) return t('telemetrySettings.tab');
-  if (row) return pluginGalleryLabel({ id: row.id, label: row.label });
+  if (row) return pluginGalleryLabel(row);
   return fallbackId;
 }
 

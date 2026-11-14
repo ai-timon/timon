@@ -213,7 +213,7 @@ test('machine paths, repository files, personal emails and literal secret names 
 test('localhost, a hard-coded zone or locale and a dev hook are warnings', async () => {
   const dir = pkg({
     files: {
-      'lib/index.js': "const a = 'http://localhost:8080';\nconst z = 'Europe/Paris';\nconst l = d.toLocaleString('fr-FR');\nwindow.__demoBoot = 1;\n",
+      'lib/index.js': "const a = 'http://localhost:8080';\nconst z = 'Europe/Paris';\nconst l = d.toLocaleString('fr-FR');\nwindow.__demoBoot = 1;\nconst t = createTranslator({ 'zh-CN': { title: 'x' } });\n",
     },
   });
   const report = await checkPluginFolder(dir, { keys: KEYS, pack: DEFAULT_PACK });

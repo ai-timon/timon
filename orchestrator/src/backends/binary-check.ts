@@ -115,31 +115,81 @@ export function backendBinaryAnchor(cmd: string): string {
   return `backend-binary:${cmd}`;
 }
 
-/** Where the CLI paths are pinned in the app. */
-const BINARIES_SETTINGS = '**Settings › AI models › Providers › CLI binaries**';
+export type BackendBinaryPresentation = {
+  kind: 'backend-binary';
+  cmd: string;
+  backends: string[];
+  pinned: boolean;
+  installCommand: string | null;
+};
 
-/** What the human is told, and how to repair it. Built here so the same words
- *  can be asserted by a test without going through the notification centre. */
-export function backendBinaryNotice(status: BackendBinaryStatus): { title: string; body: string } {
-  const backends = status.backends.join(', ');
+function backendInstallCommand(cmd: string): string | null {
   const linux = process.platform === 'linux' ? linuxRelease(readOsRelease()) : null;
-  const install = installCommandFor(status.cmd, {
+  return installCommandFor(cmd, {
     platform: process.platform, packageManager: linux?.packageManager ?? null,
   });
-  // Settings first: a tester who cannot edit JSON can still pin the path
-  // there, and it applies without restarting the daemon (TODO #413).
+}
+
+/** English remains the stored diagnostic for the daemon and non-UI channels. */
+function binaryNotice(
+  status: BackendBinaryStatus,
+  install: string | null,
+  legacyMarkdown = false,
+): { title: string; body: string } {
+  const backends = status.backends.join(', ');
+  const settings = 'Settings › AI models › Providers › CLI binaries';
+  const emphasize = (text: string) => legacyMarkdown ? `**${text}**` : text;
   const repair = status.pinned
-    ? `The path pinned for \`${status.cmd}\` (\`host.binaries.${status.cmd}\`) does not point to an executable file. Fix it in ${BINARIES_SETTINGS}, or clear it to let Timon look for the CLI itself.`
-    : `Install it, then click **Check again** in ${BINARIES_SETTINGS} — or pin the full path of the \`${status.cmd}\` binary there (\`host.binaries.${status.cmd}\`).`;
+    ? `The path pinned for \`${status.cmd}\` (\`host.binaries.${status.cmd}\`) does not point to an executable file. Fix it in ${emphasize(settings)}, or clear it to let Timon look for the CLI itself.`
+    : `Install it, then click ${emphasize('Check again')} in ${emphasize(settings)} — or pin the full path of the \`${status.cmd}\` binary there (\`host.binaries.${status.cmd}\`).`;
   return {
     title: `Backend ${backends}: the \`${status.cmd}\` CLI was not found`,
     body: [
       `Timon cannot run \`${status.cmd}\` on this machine, so every mission on ${backends} fails as soon as it starts.`,
       '',
-      `**Action needed:** ${repair}`,
+      `${emphasize('Action needed:')} ${repair}`,
       ...(install ? ['', `- Install command on this machine: \`${install}\``] : []),
     ].join('\n'),
   };
+}
+
+/** What the human is told, and how to repair it. */
+export function backendBinaryNotice(status: BackendBinaryStatus): { title: string; body: string } {
+  return binaryNotice(status, backendInstallCommand(status.cmd));
+}
+
+/** Only recognized daemon diagnostics get UI metadata. An anchor alone is not
+ *  provenance: agents and users can also choose their notification's anchor.
+ *  Exact canonical comparisons support stored pre-localization warnings without
+ *  interpreting or rewriting arbitrary notification text. */
+export function backendBinaryPresentation(
+  notification: {
+    type: string; title: string; body: string | null; anchor: string | null;
+    source: string | null; task_id: string | null; mission_id: string | null;
+    owner_user_id: string | null;
+  },
+  statuses: readonly BackendBinaryStatus[],
+): BackendBinaryPresentation | undefined {
+  // Ownership scopes visibility, not authorship: first-run attribution can
+  // assign an existing daemon warning to the administrator.
+  if (notification.type !== 'alert' || notification.source != null
+    || notification.task_id != null || notification.mission_id != null) return undefined;
+  const status = statuses.find((s) => backendBinaryAnchor(s.cmd) === notification.anchor);
+  if (!status) return undefined;
+  const install = backendInstallCommand(status.cmd);
+  // The pin may have changed since this warning was stored; preserve the
+  // diagnosis the card actually contains, even in the dismissed archive.
+  for (const pinned of [status.pinned, !status.pinned]) {
+    for (const installCommand of install ? [install, null] : [null]) {
+      for (const legacyMarkdown of [false, true]) {
+        const notice = binaryNotice({ ...status, pinned }, installCommand, legacyMarkdown);
+        if (notification.title === notice.title && notification.body === notice.body) {
+          return { kind: 'backend-binary', cmd: status.cmd, backends: status.backends, pinned, installCommand };
+        }
+      }
+    }
+  }
+  return undefined;
 }
 
 /**

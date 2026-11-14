@@ -28,6 +28,7 @@ export type SettingsSearchInput = {
   rows: readonly SearchableRow[];
   categoryLabel: (category: SettingsCategoryId) => string;
   tabLabel: (category: SettingsCategoryId, tab: SettingsTab) => string;
+  rowCopy?: (row: SearchableRow) => Pick<SearchableRow, 'label' | 'description'>;
   rowKeywords: (key: string) => readonly string[];
   tabKeywords: (category: SettingsCategoryId, tab: SettingsTab) => readonly string[];
 };
@@ -76,14 +77,15 @@ export function searchSettings(input: SettingsSearchInput): SettingsSearchResult
     const place = placeSetting(row);
     const home = tabOf.get(`${place.category}/${place.tab}`);
     if (!home) continue;
-    const fields = [row.label, row.key, row.description, row.group, ...input.rowKeywords(row.key)];
+    const copy = input.rowCopy?.(row) ?? row;
+    const fields = [copy.label, copy.description, row.label, row.description, row.key, row.group, ...input.rowKeywords(row.key)];
     if (!matchesAll(terms, fields)) continue;
     const tabKey = `${home.category}/${home.tab.id}`;
     if (home.tab.kind === 'rows') {
       rowHits.set(tabKey, [...(rowHits.get(tabKey) ?? []), { category: home.category, tab: home.tab, key: row.key }]);
     } else {
       // A native pane paints its own rows: the way to them is the pane.
-      viaByTab.set(tabKey, [...(viaByTab.get(tabKey) ?? []), row.label]);
+      viaByTab.set(tabKey, [...(viaByTab.get(tabKey) ?? []), copy.label]);
     }
   }
 
@@ -96,6 +98,7 @@ export function searchSettings(input: SettingsSearchInput): SettingsSearchResult
       const named = matchesAll(terms, [
         input.categoryLabel(category.id),
         input.tabLabel(category.id, tab),
+        category.id === 'plugins' ? tab.id : undefined,
         ...input.tabKeywords(category.id, tab),
       ]);
       if (named || via.length > 0) tabs.push({ category: category.id, tab, via });

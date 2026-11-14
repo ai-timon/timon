@@ -9,6 +9,8 @@ Open **Settings** from the navigation rail: it opens as a dialog over the page y
 
 The search field under the title looks through every setting at once: names, descriptions, setting keys and a few hidden keywords (searching `dark` finds Appearance, `concurrency` finds the live missions limit). Accents and case do not matter, and every word you type has to match. Results come in two groups: **Sections**, which open the tab that holds the setting (a setting painted by a special pane, such as the fallback cooldowns, leads to that pane), and **Settings**, which you can edit right in the list, with the category and tab above each one. Clear the field with its **×**, or pick a category, to go back to the tabs.
 
+In Simplified Chinese, built-in setting names and descriptions can be searched in Chinese or in English. Setting keys such as `TIMON_MAX_LIVE_MISSIONS` and plugin IDs are unchanged.
+
 Every setting is always listed: nothing hides behind a "show advanced" button, and the search covers all of them (an installation configured with the lite preset still leaves its advanced settings out). A setting that belongs to a disabled plugin is not listed, and neither is it found.
 
 **Environment → configuration file → saved UI value → default** is the precedence order. If an environment or file value controls a setting, changing the saved value does not override it. See [Configuration](../installation/configuration.md).
@@ -238,6 +240,8 @@ The desktop app remembers its windows: each reopens at the size and position you
 Timon is available in English, French, German, Spanish, Italian, Dutch, Polish, Portuguese (Brazil), Japanese, Korean and Simplified Chinese. By default it follows the language of your browser, or of your computer in the desktop app: a regional variant reads the closest language available (French for `fr-CA`, Brazilian Portuguese for `pt-PT`), and any other language falls back to English. Simplified Chinese is selected automatically for Simplified Chinese locales, not for Traditional Chinese locales. **Settings → Interface → Language** lists **System language** first, which shows the language it detected, then every language Timon ships, each in its own name; choose **简体中文** to pin Simplified Chinese. A text not yet translated in that language shows in English. Dates, times, numbers, sizes and relative times (« 3 min ago ») follow the chosen language too, in the time zone of your computer. Changing the language reloads the page. The choice is kept by this browser (or by the desktop app), not by your account, so the sign-in screen already uses it.
 
 In the desktop app, the application's own menus, the tray icon menu, the Dock menu on macOS, the taskbar jump list on Windows, the startup and update windows and Timon's dialogs follow the same choice. Menus switch as soon as you pick a language; a window already open keeps its words until it is opened again.
+
+The vault disc and its calendar, mission history and statistics, chat empty states and file controls, and the bundled quota monitor also follow the chosen language. Recognized system warnings about missing backend CLIs are translated in the notification list and archive; their stored diagnostic and command examples are unchanged. User-written messages, note names, paths, provider names and unknown diagnostic details are not translated.
 
 ## Voice conversation (GPT-Live)
 
