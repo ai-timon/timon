@@ -18,4 +18,5 @@ export const PRODUCT_BACKEND_HOME_DIRS: Readonly<Record<string, readonly string[
   "pi": Object.freeze([".pi"]),
   "kimi": Object.freeze([".kimi"]),
   "ollama-cloud": Object.freeze([".ollama"]),
+  "llmtr": Object.freeze([]),
 });
