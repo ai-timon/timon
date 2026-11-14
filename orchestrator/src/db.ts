@@ -6568,11 +6568,16 @@ export const dbApi = {
       tools: live.tools + gone.tools, errors: live.errors + gone.errors,
     };
     const columns = opts.payload ? '*' : SPAN_SUMMARY_COLUMNS;
+    // The event that opened a rewound turn may have moved to the archive since.
+    const archivedRewound = listEventsUnionStmt
+      ? `AND NOT EXISTS (SELECT 1 FROM archive.events e WHERE e.id = trace_spans.event_id_start AND e.rewound_by IS NOT NULL)`
+      : '';
     const spans = (cachedStmt(spanPageStmts,
       `SELECT ${columns} FROM trace_spans
         WHERE trace_id = @trace AND mission_id IN (SELECT value FROM json_each(@missions))
           -- a rewound turn leaves the listing; the aggregates keep its cost (docs/specs/rewind.md § 10)
           AND NOT EXISTS (SELECT 1 FROM events e WHERE e.id = trace_spans.event_id_start AND e.rewound_by IS NOT NULL)
+          ${archivedRewound}
         ORDER BY started_at DESC, seq DESC, rowid DESC LIMIT @take`,
     ).all({ trace: traceId, missions, take: opts.limit }) as Array<SpanSummary | SpanRow>).reverse();
     return { spans, aggregates, pruned: gone.spans };

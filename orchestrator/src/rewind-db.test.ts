@@ -108,3 +108,24 @@ test('an archived thread is cut too', async () => {
   assert.deepEqual(dbApi.listEvents(mission).map((e) => e.id), [ids[0], rewindId]);
   assert.deepEqual(dbApi.listChatEvents(mission).map((e) => e.id), [ids[0], rewindId]);
 });
+
+test('a rewound span stays out of the listing once its event is archived, its cost stays in the aggregates', async () => {
+  const { attachEventsArchive } = await import('./db.js');
+  attachEventsArchive(join(process.env.TIMON_HOME!, 'archive-events.db'));
+  const { mission, ids } = seed();
+  const span = (id: string, eventId: number) => ({
+    op: 'open' as const, id, trace_id: mission, mission_id: mission, workflow_run_id: null, seq: eventId,
+    kind: 'tool' as const, name: 'Read', started_at: eventId, status: 'ok' as const, ended_at: eventId + 1, duration_ms: 1,
+    cost_usd: 0.5, event_id_start: eventId,
+  });
+  dbApi.upsertSpans([span(`kept-${mission}`, ids[1]!), span(`cut-${mission}`, ids[3]!)]);
+  dbApi.rewindMission(mission, ids[2]!);
+  db.transaction(() => {
+    db.exec(`INSERT INTO archive.events (id, mission_id, type, timestamp, payload, rewound_by)
+             SELECT id, mission_id, type, timestamp, payload, rewound_by FROM events WHERE mission_id = '${mission}'`);
+    db.exec(`DELETE FROM events WHERE mission_id = '${mission}'`);
+  })();
+  const view = dbApi.summarizeTraceSpans(mission, [mission], { limit: 50, payload: false });
+  assert.deepEqual(view.spans.map((s) => s.id), [`kept-${mission}`]);
+  assert.equal(view.aggregates.cost_usd, 1);
+});
