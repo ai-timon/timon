@@ -14,6 +14,7 @@ export const LLMTR_PROFILE = {
   dialect: 'llmtr',
   label: 'LLMTR',
   vendor: 'LLMTR',
+  brand: 'llmtr',
   custom: true,
   // No sign-in folder. The empty list is the manifest entry, not a second copy.
   credentialDirs: manifestBackend('llmtr').credentialDirs,
