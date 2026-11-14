@@ -366,8 +366,10 @@ export class AcpRegistryService {
       const treeSha256 = await hashTree(partial);
 
       // The same bytes as the build in place (an unverified install the registry now hashes): the files stay where
-      // they are, so nothing a running mission holds is replaced; only the record becomes verified.
-      const sameTree = current?.version === agent.version && current.treeSha256 === treeSha256 && existsSync(final);
+      // they are, so nothing a running mission holds is replaced; only the record becomes verified. The folder is
+      // hashed again here: its health dates from boot, and a file altered since then must not be blessed as verified.
+      const sameTree = current?.version === agent.version && current.treeSha256 === treeSha256 && existsSync(final)
+        && this.health.get(agent.id) === 'ok' && await hashTree(final) === treeSha256;
       if (!sameTree) {
         // Promote only now that everything held: a failed install leaves the old version alone.
         rmSync(final, { recursive: true, force: true });

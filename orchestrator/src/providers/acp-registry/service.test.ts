@@ -248,6 +248,7 @@ test('restore registers an intact install and refuses one whose files changed', 
   // Reinstalling repairs it.
   await tampered.install('rest');
   assert.equal(isBackendName(profileIdOf('rest')), true);
+  assert.equal(readFileSync(join(home, 'providers', 'acp-registry', 'agents', 'rest', '1.0.0', 'dist', 'agent'), 'utf8'), '#!/bin/sh\necho one\n');
   tampered.dispose();
 });
 
@@ -310,6 +311,25 @@ test('an unverified install is offered the verified build once the registry hash
     assert.equal(statSync(program).ino, before, 'identical files are not replaced under a running mission');
     assert.equal(isBackendName(profileIdOf('ver')), true);
     await assert.rejects(() => service.install('ver'), (e: unknown) => e instanceof AcpRegistryError && e.code === 'already-installed');
+  } finally { service.dispose(); }
+});
+
+test('an unverified install altered after boot is replaced, not blessed, when the registry starts hashing it', { skip: !posix }, async () => {
+  const archive = tarOf('#!/bin/sh\necho one\n');
+  const url = 'https://downloads.example.com/alt.tar.gz';
+  const served: Served = new Map([[REGISTRY_URL, registryDoc([agentEntry({ id: 'alt', archive: url })])], [url, archive]]);
+  let clock = 0;
+  const { service, home } = newService(served, { now: () => (clock += 11 * 60_000) });
+  try {
+    await service.install('alt', { acceptUnverified: true });
+    const program = join(home, 'providers', 'acp-registry', 'agents', 'alt', '1.0.0', 'dist', 'agent');
+    // Altered while the daemon runs: the health recorded at install still says ok.
+    writeFileSync(program, '#!/bin/sh\nevil\n');
+    served.set(REGISTRY_URL, registryDoc([agentEntry({ id: 'alt', archive: url, sha256: sha(archive) })]));
+    const verified = await service.install('alt');
+    assert.equal(verified.installed?.integrity, 'sha256');
+    assert.equal(readFileSync(program, 'utf8'), '#!/bin/sh\necho one\n', 'the verified bytes replace the altered ones');
+    assert.equal(isBackendName(profileIdOf('alt')), true);
   } finally { service.dispose(); }
 });
 
