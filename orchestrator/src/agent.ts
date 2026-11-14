@@ -1988,6 +1988,8 @@ async function spawnTurn(args: {
   message: string;
   images?: ImageAttachment[];
   resumeSession: string | null;
+  /** A rewind's cut point in `resumeSession` (`BuildSpawnOpts.resumeAt`). */
+  resumeAt?: string;
   logUser: boolean;
   /** Persist only the new input when the actual prompt also replays history. */
   logMessage?: string;
@@ -2170,6 +2172,7 @@ async function spawnTurn(args: {
     message,
     images,
     resumeSession,
+    ...(resumeSession && args.resumeAt ? { resumeAt: args.resumeAt } : {}),
     cfg,
     missionId,
     memoryDir,
@@ -2412,7 +2415,9 @@ async function spawnTurn(args: {
     // message was already logged on the first attempt. The new session
     // id will be persisted via the init event.
     if (failed && resumeSession && agent.sessionNotFound) {
-      console.warn(
+      // A rewind's cut point the provider cannot find: summary mode, as when its strategy throws.
+      if (args.resumeAt) console.warn(`[rewind] mission ${missionId.slice(0, 8)} on ${backend.name}: cannot resume at ${logField(args.resumeAt)} — summary mode`);
+      else console.warn(
         `[${backend.name}:${missionId.slice(0, 8)}] session ${resumeSession.slice(0, 8)} ` +
           `not found — replaying mission context on a fresh session`,
       );
@@ -2420,7 +2425,10 @@ async function spawnTurn(args: {
       // events yet, its conversation lives on the mission the session came from.
       const sourceMissionId = dbApi.getMissionBySessionId(resumeSession)?.id;
       dbApi.clearMissionSession(missionId);
-      spawnRecoveredTurn({ ...args, logUser: false }, historyEventId, sourceMissionId).catch((err) => {
+      const recovered = args.resumeAt
+        ? spawnRecoveredTurn({ ...args, resumeAt: undefined, logUser: false }, undefined, undefined, 'summary')
+        : spawnRecoveredTurn({ ...args, logUser: false }, historyEventId, sourceMissionId);
+      recovered.catch((err) => {
         process.stderr.write(
           `[${backend.name}:${missionId.slice(0, 8)}] fresh-fallback failed: ${(err as Error).message}\n`,
         );
@@ -3409,16 +3417,15 @@ async function spawnRewoundTurn(
   const m = dbApi.getMission(turn.missionId);
   const backend = m?.backend_override ?? loadConfig(turn.agentName).backend ?? defaultBackendName();
   const native = pending.session_id ? nativeRewindStrategy(backend) : null;
-  let resume: { session: string | null } | null = null;
+  let plan: { readonly resume: string | null; readonly resumeAt?: string } | null = null;
   if (native && pending.session_id) {
     try {
-      const plan = await native({ missionId: turn.missionId, sessionId: pending.session_id, events: dbApi.listEvents(turn.missionId) });
-      resume = { session: plan.resume };
+      plan = await native({ missionId: turn.missionId, sessionId: pending.session_id, events: dbApi.listEvents(turn.missionId) });
     } catch (err) {
       console.warn(`[rewind] mission ${turn.missionId.slice(0, 8)} on ${backend}: ${logField((err as Error).message)} — summary mode`);
     }
   }
-  if (resume) await spawnTurn({ ...turn, resumeSession: resume.session });
+  if (plan) await spawnTurn({ ...turn, resumeSession: plan.resume, resumeAt: plan.resumeAt });
   else await spawnRecoveredTurn(turn, undefined, undefined, 'summary');
 }
 

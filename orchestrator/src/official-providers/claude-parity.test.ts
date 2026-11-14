@@ -14,6 +14,8 @@ const cases = [
   { name: 'resume', cfg: { model: 'opus', permission_mode: 'plan' }, resumeSession: 'session-old', memoryDir: join(cwd, 'memory') },
   { name: 'bypass', cfg: { permission_mode: 'bypassPermissions' } },
   { name: 'no-timon', cfg: {}, timonMcp: false },
+  // A chat rewind: the session up to that message, forked (docs/specs/rewind.md).
+  { name: 'rewind', cfg: { model: 'opus' }, resumeSession: 'session-old', resumeAt: 'message-uuid' },
 ] as const;
 // Captured from the compiled-in dialect before extraction; never refresh to absorb a regression.
 test('Claude launch preserves arguments, stdin and the system prompt of the old dialect', async () => {

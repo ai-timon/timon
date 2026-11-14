@@ -70,3 +70,31 @@ test('a claude api_retry is a provider retry with its attempt, ceiling, delay an
   }));
   assert.equal((network!.payload as { kind: string }).kind, 'transport');
 });
+
+test('a rewind resumes the session at the last message the CLI wrote before the cut', async () => {
+  const rewind = definition.session.rewind!;
+  const row = (id: number, type: string, payload: object) => ({ id, type, payload: JSON.stringify(payload) });
+  const sessionId = 'session-a';
+  const thread = [
+    row(1, 'user', { type: 'user', message: { role: 'user', content: 'Timon logs this one, no uuid' } }),
+    row(2, 'system', { type: 'system', subtype: 'init', uuid: 'init-uuid', session_id: sessionId }),
+    row(3, 'assistant', { type: 'assistant', uuid: 'tool-call', session_id: sessionId }),
+    row(4, 'user', { type: 'user', uuid: 'tool-result', session_id: sessionId }),
+    row(5, 'assistant', { type: 'assistant', uuid: 'answer', session_id: sessionId }),
+    row(6, 'result', { type: 'result', uuid: 'result-uuid', session_id: sessionId }),
+    row(7, 'rewind', { type: 'rewind', from_event_id: 8 }),
+  ];
+  assert.deepEqual(await rewind({ missionId: 'm', sessionId, events: thread }), { resume: sessionId, resumeAt: 'answer' });
+  // Rewound to the first message: nothing left to resume, a fresh session.
+  assert.deepEqual(await rewind({ missionId: 'm', sessionId, events: [thread[6]!] }), { resume: null });
+  // A message of an older session lacks what came after it: summary mode.
+  await assert.rejects(rewind({ missionId: 'm', sessionId: 'session-b', events: thread }), /another session/);
+  // The user spoke, the CLI wrote nothing that can be resumed at: summary mode, not a blank session.
+  await assert.rejects(rewind({ missionId: 'm', sessionId, events: [thread[0]!, thread[1]!] }), /no message/);
+});
+
+test('an unknown resume point reads as a session not found, which the daemon turns into summary mode', () => {
+  assert.equal(definition.session.notFound!('No message found with message.uuid of: 00000000-0000-0000-0000-000000000000\n'), true);
+  assert.equal(definition.session.notFound!('No conversation found with session ID: x\n'), true);
+  assert.equal(definition.session.notFound!('some other failure\n'), false);
+});

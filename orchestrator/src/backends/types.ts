@@ -120,6 +120,10 @@ export type BuildSpawnOpts = {
   images?: ImageAttachment[];
   /** Provider session id to resume, or null for a fresh start. */
   resumeSession: string | null;
+  /** A rewind (`SessionStrategy.rewind`): resume `resumeSession` only up to
+   *  this provider message, into a new session that leaves the original whole.
+   *  Absent = resume all of it. */
+  resumeAt?: string;
   cfg: ProviderAgentConfig;
   missionId: string;
   /** Resolved memory directory to inject via --add-dir, or undefined if

@@ -24,7 +24,7 @@ const { upsertAgent, sendToAgent, killAgent, isRunning, rewindMissionTo, whileTu
 const { dbApi } = await import('./db.js');
 const { registerDialect, registerProfile } = await import('./backends/registry.js');
 
-type Launch = { message: string; resume: string | null };
+type Launch = { message: string; resume: string | null; at?: string };
 const SUCCESS = { type: 'result', payload: { subtype: 'success', is_error: false, result: 'done' } };
 
 const removals: (() => void)[] = [];
@@ -34,17 +34,21 @@ after(() => {
   for (const remove of removals) remove();
 });
 
-function backend(id: string, nativeRewind?: Dialect['nativeRewind']): { agent: string; launches: Launch[] } {
+/** `lostAt`: a launch asked to resume at a cut point fails as the CLI does when it cannot find it. */
+function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt = false): { agent: string; launches: Launch[] } {
   const launches: Launch[] = [];
   const dialect: Dialect = {
     defaultCmd: WITNESS_CLI, persistentProcess: false, finishMissionOnExit: false,
     sessionResumable: true, sessionStore: 'per-mission', permissionModel: 'none', rateLimitReporting: 'none', hostedConnectors: false,
     ...(nativeRewind ? { nativeRewind } : {}),
+    isSessionNotFoundError: (stderr) => stderr.includes('No message found'),
     async buildSpawn(opts) {
-      launches.push({ message: opts.message, resume: opts.resumeSession });
+      launches.push({ message: opts.message, resume: opts.resumeSession, ...(opts.resumeAt ? { at: opts.resumeAt } : {}) });
+      const lost = lostAt && opts.resumeAt;
       return {
         cmd: WITNESS_CLI,
-        args: ['-e', `console.log(JSON.stringify(${JSON.stringify(SUCCESS)}));`],
+        args: ['-e', lost ? `process.stderr.write('No message found\\n'); process.exit(1);`
+          : `console.log(JSON.stringify(${JSON.stringify(SUCCESS)}));`],
         cwd: opts.cfg.cwd, initialStdin: null,
       };
     },
@@ -158,6 +162,30 @@ test('a native cut that fails falls back to summary mode, and the turn still goe
   assert.equal(launch.resume, null);
   assert.match(launch.message, /alpha|bravo/);
   assert.doesNotMatch(launch.message, /charlie|delta/);
+});
+
+test('a cut point carried by the backend reaches the launch of the next turn', async () => {
+  const { agent, launches } = backend('rewind-at', async (ctx) => ({ resume: ctx.sessionId, resumeAt: 'message-uuid' }));
+  const { id, second } = chat(agent);
+  await rewindMissionTo(id, second);
+  const launch = await turn(id, launches, 'resume at india');
+  assert.deepEqual(launch, { message: 'resume at india', resume: 'old-session', at: 'message-uuid' });
+});
+
+test('a cut point the provider cannot find falls back to summary mode, and the turn still goes through', async () => {
+  const { agent, launches } = backend('rewind-at-lost', async (ctx) => ({ resume: ctx.sessionId, resumeAt: 'gone-uuid' }), true);
+  const { id, second } = chat(agent);
+  await rewindMissionTo(id, second);
+  assert.equal(await sendToAgent(id, 'lost juliet', undefined, null, null, undefined, { replayContext: true }), 'delivered');
+  await until(() => launches.length === 2 && !isRunning(id), 'the summary-mode retry');
+  const [first, retry] = launches;
+  assert.deepEqual(first, { message: 'lost juliet', resume: 'old-session', at: 'gone-uuid' });
+  assert.equal(retry!.resume, null);
+  assert.equal(retry!.at, undefined);
+  assert.match(retry!.message, /alpha|bravo/);
+  assert.doesNotMatch(retry!.message, /charlie|delta/);
+  assert.match(retry!.message, /lost juliet/);
+  assert.deepEqual(logged(id), ['first question alpha', 'lost juliet'], 'the message is logged once');
 });
 
 test('no rewind while a turn is being prepared', async () => {
