@@ -193,7 +193,9 @@ LLMTR is a Chat Completions gateway, not an Anthropic or OpenAI Responses endpoi
 The chat call is allowed only when the operator names `llmtr.com`. The manifest lists that host; it does not grant it. In `timon.config.json`:
 
 ```json
-"pluginPolicy": { "http": { "byPlugin": { "provider-llmtr": ["llmtr.com"] } } }
+{
+  "pluginPolicy": { "http": { "byPlugin": { "provider-llmtr": ["llmtr.com"] } } }
+}
 ```
 
 `pluginPolicy.http.allow` with `"llmtr.com"` works too, and opens the host to every plugin that may call out. With neither entry, a turn fails and Timon does not send the request.
