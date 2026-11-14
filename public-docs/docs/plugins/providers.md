@@ -310,6 +310,20 @@ operating system can be installed; those that need a package runner (`npx`,
 - **Updates.** A newer version appears on the row; installing it keeps the
   working version until the new one is verified, then swaps them. The previous
   version is kept until the next update.
+- **From unverified to verified.** An agent installed without a published hash
+  is marked *Unverified*. When the registry later publishes a `sha256` for your
+  machine's build, the row says so and offers **Install verified version**,
+  even when the version number did not change. Nothing is replaced until you
+  click it, and the swap is the same as for any update.
+- **Signing in.** Timon never signs an agent in for you. **Sign-in methods** on
+  an installed agent asks the agent how it signs in and lists its methods. The
+  suggested one comes first, with the command to run in a terminal when the
+  agent gives one. Methods billed per token (an API key, a pay-per-use cloud
+  platform such as Vertex AI) are marked *Billed per token* and never
+  suggested: Timon runs on subscriptions only. Telling them apart relies on
+  the method's name, as the protocol does not say how a method is paid for.
+  A mission that starts before the agent is signed in stops with the same
+  advice.
 
 ## Add code for dynamic credentials
 

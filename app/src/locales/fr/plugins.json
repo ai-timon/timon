@@ -464,7 +464,24 @@
       },
       "confirmTitle": "Installer {name} sans hash publié ?",
       "confirmBody": "Le registre ne donne aucune somme de contrôle pour ce programme. Son intégrité repose sur le seul téléchargement https. N'installez que si vous faites confiance à son éditeur.",
-      "confirmAction": "Installer quand même"
+      "confirmAction": "Installer quand même",
+      "verify": "Installer la version vérifiée",
+      "unverified": "Non vérifié",
+      "verifiedUpdate": "{installed} a été installé sans hash publié. Le registre publie maintenant un sha256 pour {version} : installez-la pour remplacer la version non vérifiée.",
+      "signIn": {
+        "show": "Méthodes de connexion",
+        "hide": "Masquer les méthodes de connexion",
+        "loading": "Interrogation de {name}…",
+        "none": "{name} n'annonce aucune méthode de connexion.",
+        "recommended": "Recommandée",
+        "billed": "Facturée au token",
+        "billedNote": "Timon ne fonctionne qu'avec des abonnements : une méthode facturée au token n'est jamais choisie pour vous.",
+        "allBilled": "Toutes les méthodes de {name} sont facturées au token. Timon ne fonctionne qu'avec des abonnements : utilisez un autre fournisseur.",
+        "terminal": "À lancer dans un terminal sur cette machine :",
+        "agentStep": "{name} mène cette étape lui-même quand un client ACP la lui demande, et Timon ne la lance pas. Faites-la une fois depuis un client qui la propose, ou utilisez le fournisseur de sa propre CLI si Timon en a un.",
+        "copy": "Copier",
+        "copied": "Commande copiée."
+      }
     },
     "errors": {
       "forbidden": "Seul un superadmin connecté à Timon peut gérer les fournisseurs.",
@@ -483,7 +500,9 @@
       "command-missing": "Le programme nommé par le registre n'est pas dans l'archive.",
       "definition-refused": "Timon a refusé cet agent : sa description se contredit.",
       "authorize-failed": "Le programme n'a pas pu être autorisé. Le journal de Timon donne le détail.",
-      "failed": "L'opération a échoué. Le journal de Timon donne le détail."
+      "failed": "L'opération a échoué. Le journal de Timon donne le détail.",
+      "not-ready": "Cet agent n'est pas prêt : réinstallez-le d'abord.",
+      "inspect-failed": "L'agent n'a pas dit comment il se connecte."
     }
   },
   "binariesSettings": {

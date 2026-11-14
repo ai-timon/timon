@@ -46,9 +46,24 @@ export type AcpAgent = {
     version: string;
     integrity: 'sha256' | 'unverified';
     updateAvailable: boolean;
+    /** Unverified install, and the registry now publishes a sha256 for this machine's build (at `version`). */
+    verifiedUpdate?: boolean;
     state: 'ok' | 'tampered' | 'missing' | 'pending';
     profileId: string;
   };
+};
+
+/** How an installed agent signs in, as it told the daemon. */
+export type AcpAuthMethod = {
+  id: string;
+  name: string;
+  description: string | null;
+  kind: 'agent' | 'terminal' | 'env_var';
+  /** Paid per token, not through a subscription: never suggested. */
+  billedPerToken: boolean;
+  recommended: boolean;
+  /** The terminal command that signs in, when the agent gave one. */
+  command: string | null;
 };
 
 export type AcpRegistry = { registryVersion: string; dropped: number; stale: boolean; agents: AcpAgent[] };
@@ -82,7 +97,8 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 export function providerErrorMessage(status: number, code: string, message: string): string {
   if (status === 401 || status === 403) return t('providersSettings.errors.forbidden');
   const known = ['mismatch', 'refused', 'unverified', 'already-installed', 'not-installed', 'unknown-agent', 'unsupported',
-    'registry-unavailable', 'download-failed', 'checksum', 'archive', 'command-missing', 'definition-refused', 'authorize-failed', 'failed'];
+    'registry-unavailable', 'download-failed', 'checksum', 'archive', 'command-missing', 'definition-refused', 'authorize-failed', 'failed',
+    'not-ready', 'inspect-failed'];
   if (known.includes(code)) return t(`providersSettings.errors.${code}`);
   return message || t('providersSettings.errors.generic', { status });
 }
@@ -93,6 +109,15 @@ export const fetchAcpRegistry = (refresh = false): Promise<AcpRegistry> => call(
 export const installAcpAgent = (agentId: string, acceptUnverified = false): Promise<unknown> =>
   call('POST', 'acp-registry/install', { agentId, ...(acceptUnverified ? { acceptUnverified: true } : {}) });
 export const removeAcpAgent = (agentId: string): Promise<void> => call('DELETE', `acp-registry/${agentId}`);
+/** Starts the agent's program on the daemon to read its handshake: on a click only. */
+export const fetchAcpAuthMethods = async (agentId: string): Promise<AcpAuthMethod[]> =>
+  (await call<{ methods: AcpAuthMethod[] }>('POST', `acp-registry/${agentId}/auth-methods`, {})).methods;
+
+/** The suggested method first, the subscription ones next, those billed per token last. */
+export function orderAuthMethods(methods: readonly AcpAuthMethod[]): AcpAuthMethod[] {
+  const rank = (m: AcpAuthMethod): number => (m.recommended ? 0 : m.billedPerToken ? 2 : 1);
+  return [...methods].sort((a, b) => rank(a) - rank(b));
+}
 
 /** What the person must do next about one provider binary. */
 export type BinaryAction = 'authorize' | 'ready' | 'install' | 'refused';
@@ -126,11 +151,13 @@ export function pathsToAuthorize(binaries: readonly ProviderBinary[]): string[] 
 }
 
 /** The button of an ACP agent row. */
-export type AcpAgentAction = 'install' | 'update' | 'repair' | 'none';
+export type AcpAgentAction = 'install' | 'update' | 'verify' | 'repair' | 'none';
 
 export function acpAction(agent: AcpAgent): AcpAgentAction {
   if (agent.installed) {
     if (agent.installed.state === 'tampered' || agent.installed.state === 'missing') return agent.supported ? 'repair' : 'none';
+    // Offered, never applied by itself: the person replaces an unverified build with the verified one.
+    if (agent.installed.verifiedUpdate === true && agent.supported) return 'verify';
     return agent.installed.updateAvailable && agent.supported ? 'update' : 'none';
   }
   return agent.supported ? 'install' : 'none';
