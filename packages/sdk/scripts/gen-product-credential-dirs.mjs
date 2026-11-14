@@ -24,7 +24,11 @@ const PACKAGE = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ORCHESTRATOR = resolve(PACKAGE, '..', '..', 'orchestrator');
 export const TARGET = join(PACKAGE, 'src', 'product-credential-dirs.ts');
 
-/** `{ backendId: folders }` in the product's order (`rank`), backends without a folder left out. */
+/**
+ * `{ backendId: folders }` in the product's order (`rank`). A backend whose manifest declares an
+ * empty list keeps its entry: the daemon's table (`BACKEND_HOME_DIRS`) lists it too, and the two
+ * must match key for key.
+ */
 export function productCredentialDirs(root = ORCHESTRATOR) {
   const { plugins } = JSON.parse(readFileSync(join(root, 'builtin-plugins.json'), 'utf8'));
   const entries = [];
@@ -38,7 +42,7 @@ export function productCredentialDirs(root = ORCHESTRATOR) {
     const backends = manifest?.timon?.provider?.backends;
     if (!Array.isArray(backends)) continue;
     for (const { id, rank, credentialDirs } of backends) {
-      if (Array.isArray(credentialDirs) && credentialDirs.length > 0) entries.push({ id, rank, credentialDirs });
+      if (Array.isArray(credentialDirs)) entries.push({ id, rank, credentialDirs });
     }
   }
   entries.sort((a, b) => a.rank - b.rank);
