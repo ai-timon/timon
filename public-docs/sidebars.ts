@@ -40,6 +40,7 @@ const sidebars: SidebarsConfig = {
         "usage/missions",
         "usage/browser-recording",
         "usage/browser-annotations",
+        "usage/rewind",
         "usage/html-cards",
         "usage/kanban",
         "usage/triggers",
