@@ -32,8 +32,8 @@ signature and licence requirements apply; see [Testing](testing.md) and
 
 ## Providers shipped with Timon
 
-Claude, Codex, Grok, Copilot, opencode, Hermes, Pi, Kimi and Ollama Cloud are
-provided by official plugins shipped with the app. They appear in the Plugins
+Claude, Codex, Grok, Copilot, opencode, Hermes, Antigravity, Pi, Kimi and Ollama
+Cloud are provided by official plugins shipped with the app. They appear in the Plugins
 gallery with a **Built-in** badge, and they are written on the same
 `ctx.provider` kit described below, so they are the reference for what a
 provider can do. Kimi is a profile on the Claude provider; Ollama Cloud is a
