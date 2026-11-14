@@ -25,7 +25,7 @@ const { registerRoutes: registerMissionRoutes } = await import('./plugins-bundle
 const { registerRoutes: registerUserRoutes } = await import('./plugins-bundled/users/routes.js');
 const { SESSION_COOKIE } = await import('./users/session.js');
 
-createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: hashPassword('admin-secret'), isSuperadmin: true });
+createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: await hashPassword('admin-secret'), isSuperadmin: true });
 
 const orchestrator = randomUUID();
 const child = randomUUID();

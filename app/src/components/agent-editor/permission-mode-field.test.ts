@@ -47,6 +47,28 @@ test('the mode is frozen with a warning only when the backend ignores it', async
     // The saved choice stays visible, so switching backend restores it.
     const checked = document.querySelector('[aria-checked="true"]');
     assert.equal(checked?.textContent, 'auto');
+
+    // A backend that honours only some modes offers only those…
+    const show = (value: string, supported: readonly string[] | null) => React.act(async () => {
+      root.render(React.createElement(PermissionModeField, { value, onChange: (m: string) => picked.push(m), ignored: false, supported }));
+    });
+    const offered = () => Array.from(document.querySelectorAll('button')).map((b) => b.textContent);
+    await show('auto', ['plan', 'bypassPermissions']);
+    assert.deepEqual(offered(), ['plan', 'bypassPermissions']);
+    // …and a stored mode outside them says what it runs as, with nothing checked.
+    const runsAs = document.querySelector('[data-permission-mode-runs-as="plan"]');
+    assert.ok(runsAs, 'the runs-as note is shown');
+    assert.match(runsAs.textContent ?? '', /cannot run auto/);
+    assert.match(runsAs.textContent ?? '', /read-only/);
+    assert.ok(!document.querySelector('[aria-checked="true"]'), 'no mode is checked');
+    await React.act(async () => { Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'bypassPermissions')!.click(); });
+    assert.equal(picked.at(-1), 'bypassPermissions');
+    await show('bypassPermissions', ['plan', 'bypassPermissions']);
+    assert.ok(!document.querySelector('[data-permission-mode-runs-as]'), 'a supported mode needs no note');
+    // No list (claude): every mode, no note.
+    await show('auto', null);
+    assert.deepEqual(offered(), ['auto', 'acceptEdits', 'plan', 'bypassPermissions']);
+    assert.ok(!document.querySelector('[data-permission-mode-runs-as]'));
   } finally {
     await React.act(async () => { root.unmount(); });
     for (const [key, descriptor] of saved) {

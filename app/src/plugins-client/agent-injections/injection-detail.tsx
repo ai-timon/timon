@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { Copy, Pencil } from 'lucide-react';
+import { toast } from 'sonner';
 
 import {
   formatTokens,
+  freshConversationAgents,
   maskingNotice,
   neverReadSkills,
   saveRequest,
@@ -184,6 +186,10 @@ export function Body({ content, note, editableText, target, onSaved, fill = fals
       const req = saveRequest(editing.target, editing.text);
       const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
       if (!res.ok) { setError(await readError(res)); return; }
+      if (editing.target.kind === 'memory_rule') {
+        const fresh = freshConversationAgents(await res.json().catch(() => null));
+        if (fresh.length > 0) toast.info(t('agentInjections.freshConversation', { agents: fresh.join(', ') }));
+      }
       setDraft(null);
       onSaved();
     } catch (err) {

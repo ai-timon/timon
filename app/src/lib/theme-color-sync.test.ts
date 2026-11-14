@@ -31,7 +31,7 @@ test('the meta follows --primary when a theme claims the slot and when it leaves
   installGlobals(dom.window);
 
   const React = (await import('react')).default;
-  const { act } = await import('react-dom/test-utils');
+  const { act } = await import('react');
   const { createRoot } = await import('react-dom/client');
   const { register, resetSlotsForTests } = await import('@/lib/plugin-host/slots');
   const { declareLayoutSlots } = await import('@/lib/plugin-host/client-plugin-host');

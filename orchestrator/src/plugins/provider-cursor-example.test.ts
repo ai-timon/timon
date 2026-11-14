@@ -15,6 +15,7 @@
  */
 import { createTestAccount } from '../../tests/helpers/accounts.js';
 import '../test-home.js';
+import { withoutFence } from '../../tests/helpers/unfenced.js';
 import '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -123,7 +124,7 @@ test('REFUSAL: no mission token, no vault slice, no daemon env reaches the Curso
     config: { backend: 'cursor', cwd: tmpdir(), skills: [], mcp_servers: [], memory_scope: 'NONE' },
   });
   const previous = config();
-  setConfig({ ...previous, secrets: { ...previous.secrets, inheritEnv: true } });
+  setConfig(withoutFence({ ...previous, secrets: { ...previous.secrets, inheritEnv: true } }));
   const host = getHost();
   const original = host.spawn;
   let child: ReturnType<typeof nodeSpawn> | null = null;

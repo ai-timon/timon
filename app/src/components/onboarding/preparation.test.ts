@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { OnboardingAnswer, ServiceStatusRead, SetupDoctor } from '@/lib/setup-plan';
 import { createPreparation, FAILURE_KEY, viewOf, type PreparationApi } from './preparation';
+import { keepSessionChoice, SESSION_CHOICE_KEY, skipsSessionChoice } from './service-session-choice';
 
 const DOCTOR: SetupDoctor = { platform: 'linux', supervisor: 'systemd-user', linux: null, binaries: [], blockers: [], desktop: true };
 
@@ -19,6 +20,8 @@ type Machine = {
   refusal: OnboardingAnswer | null;
   supervisor: string | null;
   calls: string[];
+  /** The `mode` each `install-service` carried. */
+  modes: Array<string | undefined>;
   writes: Array<{ endpoint: string; body: Record<string, unknown> }>;
   handOver: boolean;
   existing: boolean;
@@ -28,13 +31,14 @@ type Machine = {
 function fake(over: Partial<Machine> = {}): { machine: Machine; api: PreparationApi } {
   const machine: Machine = {
     installed: false, running: false, firstRun: true, refusal: null, supervisor: 'systemd-user',
-    calls: [], writes: [], handOver: false, existing: false, navigated: [], ...over,
+    calls: [], modes: [], writes: [], handOver: false, existing: false, navigated: [], ...over,
   };
   const api: PreparationApi = {
     firstRun: async () => machine.firstRun,
     doctor: async () => ({ ...DOCTOR, supervisor: machine.supervisor }),
-    onboarding: async (action): Promise<ServiceStatusRead> => {
+    onboarding: async (action, mode): Promise<ServiceStatusRead> => {
       machine.calls.push(action);
+      if (action === 'install-service') machine.modes.push(mode);
       if (!machine.firstRun) return { kind: 'closed' };
       if (action === 'install-service') {
         if (machine.refusal) return { kind: 'answer', answer: machine.refusal };
@@ -197,4 +201,31 @@ test('a refused configuration is shown and can be tried again', async () => {
   await store.configure('/onboarding?step=agent');
   assert.equal(store.getState().configureError, null);
   assert.equal(viewOf(store.getState()).gate, 'open');
+});
+
+test('the install carries the answer of the background step; none chosen, none sent', async () => {
+  const chosen = fake();
+  const storage = memoryStorage();
+  keepSessionChoice(storage, 'always');
+  await createPreparation(chosen.api, storage).start();
+  assert.deepEqual(chosen.machine.modes, ['always']);
+
+  const unchosen = fake();
+  await createPreparation(unchosen.api, memoryStorage()).start();
+  assert.deepEqual(unchosen.machine.modes, [undefined], 'the daemon keeps the session default');
+
+  const garbled = fake();
+  const odd = memoryStorage();
+  odd.setItem(SESSION_CHOICE_KEY, 'enable-linger');
+  await createPreparation(garbled.api, odd).start();
+  assert.deepEqual(garbled.machine.modes, [undefined], 'only one of the two answers ever travels');
+});
+
+test('the background question steps aside when there is nothing to ask', () => {
+  assert.equal(skipsSessionChoice({ kind: 'closed' }), true, 'onboarding over');
+  assert.equal(skipsSessionChoice({ kind: 'answer', answer: { ok: true, installed: true, sessionModeSupported: true } }), true, 'already installed: Settings holds it');
+  assert.equal(skipsSessionChoice({ kind: 'answer', answer: { ok: false, installed: false, sessionModeSupported: false } }), true, 'a Linux without systemd: no supervisor');
+  assert.equal(skipsSessionChoice({ kind: 'answer', answer: { ok: false, installed: false, sessionModeSupported: true } }), false);
+  assert.equal(skipsSessionChoice({ kind: 'unauthorized' }), false, 'asked anyway before the account');
+  assert.equal(skipsSessionChoice({ kind: 'answer', answer: { ok: false, installed: false } }), false, 'an older daemon: asked, the answer is ignored');
 });

@@ -14,7 +14,10 @@
  *    who is not the operator (a mission may only touch an agent it orchestrates,
  *    at or below its own level);
  *  - global / project / role: these reach agents the caller may not even see,
- *    so the operator or a holder of `agents:privileged-config` only.
+ *    so the operator or a holder of `agents:privileged-config` only;
+ *  - whatever the scope, an agent's token never makes a skill that
+ *    pre-authorises tools reach an agent that does not already hold them
+ *    (`skillReachRefusal`): that takes a person.
  *
  * The target must exist (agent, project, agent role): a mistyped one would
  * store an attachment that never reaches anyone.
@@ -37,7 +40,8 @@ import { auditRequest } from '../../users/audit-actor.js';
 import { skillReadStats } from '../../skill-reads.js';
 import { rejectIfDenied, rejectUnlessAny, viewerFromRequest } from '../../users/identity.js';
 import {
-  agentConfigRefusal, isPrivilegedCaller, overrideAuthority, PRIVILEGED_CONFIG_PERMISSION, promptRewriteRefusal, rejectOverride,
+  agentConfigRefusal, isAgentToken, isPrivilegedCaller, overrideAuthority, PRIVILEGED_CONFIG_PERMISSION, promptRewriteRefusal, rejectOverride,
+  skillWideningDenied, skillWideningRefusal,
 } from '../../users/privileged-overrides.js';
 
 const AGENT_READ = ['agents:read', 'agents:manage'] as const;
@@ -88,6 +92,26 @@ function writeRefusal(req: Request, scope: SkillAttachment['scope'], target: str
   return `a ${scope} attachment changes the prompt of every agent it reaches: that needs the ${PRIVILEGED_CONFIG_PERMISSION} permission`;
 }
 
+/**
+ * Why an agent's token may not make `skill` reach the agents of `scope` /
+ * `target` (an attachment, or the removal of an exclusion), or null. A skill
+ * that pre-authorises tools adds them to every agent it reaches: on one agent,
+ * it passes when that agent already holds them; on a project, a role or every
+ * agent, it reaches agents nobody named, so any declared tool is refused unless
+ * the same attachment is already in force (a change of mode grants nothing).
+ * Judged before the privileged exemption of `writeRefusal`: no account lifts it.
+ */
+function skillReachRefusal(req: Request, skill: string, scope: SkillAttachment['scope'], target: string): string | null {
+  if (!isAgentToken(req)) return null;
+  if (scope === 'agent') {
+    const cfg = (() => { try { return loadConfig(target); } catch { return null; } })();
+    return skillWideningDenied(req, [skill], target, cfg, 'skill');
+  }
+  const inForce = listSkillAttachments({ scope, target, skill }).some((a) => !a.exclude);
+  if (inForce) return null;
+  return skillWideningRefusal([skill], [], { label: 'skill', reach: scope === 'global' ? 'of every agent' : `of ${scope} ${target}` });
+}
+
 export function registerSkillAttachmentRoutes(app: express.IRouter): void {
   app.get('/api/skill-attachments', (req, res) => {
     if (anonymous(req, res)) return;
@@ -116,7 +140,8 @@ export function registerSkillAttachmentRoutes(app: express.IRouter): void {
       res.status(404).json({ error: `skill not found: ${body.skill} (see skill_list)` });
       return;
     }
-    const refusal = writeRefusal(req, body.scope, target);
+    const refusal = (body.exclude ? null : skillReachRefusal(req, body.skill, body.scope, target))
+      ?? writeRefusal(req, body.scope, target);
     if (refusal) { rejectOverride(req, res, 'skill.attach_denied', `skill:${body.skill}@${body.scope}:${target}`, refusal); return; }
     // After the refusal, so a caller who may not write here learns nothing of
     // which projects exist; a mistyped slug or role id would otherwise store an
@@ -143,7 +168,9 @@ export function registerSkillAttachmentRoutes(app: express.IRouter): void {
     const id = Number(req.params.id);
     const row = Number.isInteger(id) && id > 0 ? getSkillAttachment(id) : null;
     if (!row) { res.status(404).json({ error: 'skill attachment not found' }); return; }
-    const refusal = writeRefusal(req, row.scope, row.target);
+    // Removing an exclusion hands the agents it covered the skill it held back.
+    const refusal = (row.exclude ? skillReachRefusal(req, row.skill, row.scope, row.target) : null)
+      ?? writeRefusal(req, row.scope, row.target);
     if (refusal) { rejectOverride(req, res, 'skill.detach_denied', `skill:${row.skill}@${row.scope}:${row.target}`, refusal); return; }
     deleteSkillAttachment(id);
     auditRequest(req, 'skill.detach', `skill:${row.skill}@${row.scope}:${row.target}`);

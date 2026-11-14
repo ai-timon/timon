@@ -242,8 +242,8 @@ export type RefreshOutcome =
    *  settle. It is not aborted — an agent coding on a stale base
    *  produces work that will overwrite the others' at the final merge. */
   | { status: 'conflict'; base: string; files: string[] }
-  /** Operation impossible (worktree missing, unknown base, merge commit refused
-   *  by a hook). Not fatal: the caller carries on with the base as it is, and
+  /** Operation impossible (worktree missing, unknown base, merge refused by git
+   *  without a conflict). Not fatal: the caller carries on with the base as it is, and
    *  any half-done merge is aborted so the agent does not start inside it. */
   | { status: 'failed'; reason: string };
 
@@ -302,9 +302,10 @@ export async function refreshWorktreeBase(
       files = r.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
     } catch { /* list unavailable: the conflict is reported without detail */ }
     if (files.length === 0) {
-      // No conflict, yet no merge commit: typically a `commit-msg` hook that
-      // refused the message. Git then leaves the merge pending (MERGE_HEAD),
-      // and the agent's first `git commit` would silently become that merge.
+      // No conflict, yet no merge commit: an untracked file the base would
+      // overwrite, or a merge git stopped half-way. A pending merge
+      // (MERGE_HEAD) would make the agent's first `git commit` that merge.
+      // The repository's hooks never run here (`host/git-neutral.ts`).
       // Abort it so the task starts on its base as is, and say why.
       await abortPendingMerge(worktreePath);
       return { status: 'failed', reason: mergeFailureReason(err) };

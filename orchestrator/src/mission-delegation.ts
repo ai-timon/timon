@@ -18,7 +18,7 @@ import { delegationRefusal } from './delegation-guard.js';
 import { idempotencyKey, idempotentMission, rememberIdempotentMission } from './http-helpers.js';
 import { loadConfig } from './agent-config.js';
 import { agentCommunicationAllowed, isDeveloperAccount } from './users/agent-permissions.js';
-import { overrideAuthority, rejectOverride, spawnOverrideRefusal } from './users/privileged-overrides.js';
+import { overrideAuthority, rejectOverride, spawnOverrideRefusal, spawnWideningDenied } from './users/privileged-overrides.js';
 
 const Ids = z.array(z.string().min(1).max(200)).max(50);
 const Body = z.object({
@@ -80,7 +80,8 @@ export function createDelegationHandler(launch: typeof spawnAgent = spawnAgent) 
       ...(data.extra_allowed_tools !== undefined ? { extra_allowed_tools: data.extra_allowed_tools } : {}),
     };
     const targetConfig = (() => { try { return loadConfig(target.name); } catch { return null; } })();
-    const overrideRefusal = spawnOverrideRefusal(overrides, targetConfig, overrideAuthority(req));
+    const overrideRefusal = spawnWideningDenied(req, { ...overrides, extra_skills: data.extra_skills }, targetConfig, target.name)
+      ?? spawnOverrideRefusal(overrides, targetConfig, overrideAuthority(req));
     if (overrideRefusal) {
       rejectOverride(req, res, 'spawn.override_denied', `agent:${target.name}`, overrideRefusal);
       return;

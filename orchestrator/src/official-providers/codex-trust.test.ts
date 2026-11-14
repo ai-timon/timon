@@ -9,6 +9,7 @@
  */
 import { createTestAccount } from '../../tests/helpers/accounts.js';
 import '../test-home.js';
+import '../../tests/helpers/unfenced.js';
 import '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -113,7 +114,7 @@ test('a mission on codex starts the CLI with the default policy, its own token a
     // The file names the token's variable, never the token: codex hands it to its MCP servers by name (`env_vars`).
     assert.equal(toml.includes('timon-seal-'), false, 'no reference left in the file');
     assert.equal(toml.includes(run.env.TIMON_API_TOKEN), false, 'the token is not in the file');
-    assert.match(toml, /env_vars = \["TIMON_API_TOKEN"\]/);
+    assert.match(toml, /env_vars = \["TIMON_API_TOKEN", "npm_config_cache"/);
     assert.match(toml, /\[mcp_servers\.timon\]/);
     assert.equal(readFileSync(join(home, 'auth.json'), 'utf8'), readFileSync(join(AUTH, 'auth.json'), 'utf8'), 'the sign-in is exposed to the mission');
     assert.equal(run.args.join(' ').includes(run.env.TIMON_API_TOKEN!), false, 'never in argv');
@@ -136,6 +137,11 @@ test('the per-mission folder lives under the daemon\'s provider-runs, not in the
 test('Codex profile belongs to its plugin and keeps its historical catalogue position', async () => {
   const { installedProfiles, activeProfiles } = await import('../backends/registry.js');
   assert.equal(registeredBackendOwners().profiles['codex'], 'provider-codex');
+  // The fence opens that plugin's scratch and caches, an account's instance included.
+  const { backendOwnerPlugin } = await import('../backends/registry.js');
+  assert.equal(backendOwnerPlugin('codex'), 'provider-codex');
+  assert.equal(backendOwnerPlugin('codex@abcdef12'), 'provider-codex');
+  assert.equal(backendOwnerPlugin('no-such-backend'), null);
   assert.deepEqual(installedProfiles().slice(0, 2).map((profile) => profile.id), ['claude', 'codex']);
   assert.deepEqual(activeProfiles().slice(0, 2).map(({ profile }) => profile.id), ['claude', 'codex']);
 });

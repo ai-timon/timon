@@ -1,0 +1,44 @@
+{
+  "chatSurface": {
+    "activeState": {
+      "thinking": "réfléchit",
+      "needs_action": "vous attend",
+      "done": "terminé",
+      "idle": "inactif"
+    },
+    "pendingCount": "{count, plural, one {# demande en attente} other {# demandes en attente}}",
+    "elapsed": "Écoulé : {duration}",
+    "today": "Aujourd'hui",
+    "newConversationEmpty": "Nouvelle conversation. Écrivez un message pour commencer.",
+    "missionEmpty": "Aucun message dans cette mission : lancez la conversation avec {agent}.",
+    "patternInPath": "{pattern} dans {path}",
+    "patternUnderPath": "{pattern} sous {path}",
+    "toolError": "erreur",
+    "toolEmpty": "(vide)",
+    "imageTooLarge": "Image trop lourde ({size}, max {max})",
+    "fileTooLarge": "{name} : fichier trop lourd ({size}, max {max})",
+    "attachFailed": "Échec de la pièce jointe : {error}",
+    "reasoningChangeFailed": "Impossible de changer le niveau de réflexion",
+    "saveFailed": "Échec de l'enregistrement : {error}",
+    "configSavedRespawn": "Configuration enregistrée · l'agent redémarrera au prochain message",
+    "killFailed": "Impossible d'arrêter la mission : {status}",
+    "noWrittenAnswer": "L'agent a terminé sans réponse écrite.",
+    "requestExpired": "Cette demande a expiré (orchestrateur redémarré ou mission terminée).",
+    "resolveFailed": "Impossible de traiter la demande : {error}",
+    "messageTag": {
+      "mission": "mission",
+      "routine": "routine"
+    },
+    "permission": "autorisation",
+    "permissionToUse": "L'agent demande l'autorisation d'utiliser {tool}",
+    "permissionState": {
+      "pending": "en attente",
+      "allowed": "autorisé",
+      "denied": "refusé",
+      "expired": "expiré",
+      "pasted": "collé"
+    },
+    "unexpectedReaderResult": "Résultat de lecture de fichier inattendu",
+    "readFailed": "Impossible de lire le fichier"
+  }
+}

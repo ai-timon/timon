@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { prepareSkillWrite } from './skill-save';
+import { loadRequestScope } from './next-request-scope-test';
 
 // Exercise the two independently packaged applications over their real JSON boundary.
 test('form payload crosses the Next proxy and daemon and creates the skill', async (ctx) => {
@@ -27,7 +28,7 @@ test('form payload crosses the Next proxy and daemon and creates the skill', asy
   ctx.after(() => server.close());
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   (globalThis as unknown as { AsyncLocalStorage: unknown }).AsyncLocalStorage = AsyncLocalStorage;
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { POST: routePost } = await import('../app/api/ui/skills/route');
   const POST = (req: Request) => requestAsyncStorage.run(
     { headers: req.headers, cookies: { get: () => undefined } } as never, () => routePost(req),

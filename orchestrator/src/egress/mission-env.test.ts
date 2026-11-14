@@ -119,7 +119,9 @@ test('no account yet: the proxy URL carries a dedicated credential, never the da
   const { missionId, token } = credentialsOf(env.HTTPS_PROXY);
   issued.push(token);
   assert.equal(missionId, id);
-  assert.equal(env.TIMON_API_TOKEN, ensureDaemonToken());
+  // Its API credential is its own mission token, not the operator's, and not the proxy's.
+  assert.notEqual(env.TIMON_API_TOKEN, ensureDaemonToken());
+  assert.notEqual(env.TIMON_API_TOKEN, token);
   assert.notEqual(token, ensureDaemonToken());
   for (const name of PROXY_VARS) assert.equal(env[name], env.HTTPS_PROXY, name);
   assert.equal(new URL(env.HTTPS_PROXY!).host, `127.0.0.1:${proxyAddress!.port}`);
@@ -153,7 +155,7 @@ function fakeChild(): FakeChild {
 }
 
 test('a spawned mission reaches the web through the proxy, journaled under its own id', async () => {
-  adaId = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false }).id;
+  adaId = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false }).id;
   upsertAgent({
     name: 'egress-witness',
     system_prompt: 'egress witness — does nothing.',

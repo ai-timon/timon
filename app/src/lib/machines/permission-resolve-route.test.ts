@@ -9,6 +9,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { loadRequestScope, type RequestScopeRunner } from '../next-request-scope-test';
 
 const LOCAL = 'http://local-daemon.test';
 const REMOTE = 'https://vps.example';
@@ -21,7 +22,7 @@ type RouteModule = typeof import('../../app/api/ui/permissions/[id]/resolve/rout
 
 let home = '';
 let route!: RouteModule;
-let storage!: { run<T>(store: unknown, fn: () => T): T };
+let storage!: RequestScopeRunner;
 const calls: Call[] = [];
 const previousFetch = globalThis.fetch;
 
@@ -31,7 +32,7 @@ test.before(async () => {
   process.env.TIMON_HOME = home;
   process.env.ORCHESTRATOR_URL = LOCAL;
   (globalThis as unknown as { AsyncLocalStorage: unknown }).AsyncLocalStorage = AsyncLocalStorage;
-  ({ requestAsyncStorage: storage } = await import('next/dist/client/components/request-async-storage.external') as unknown as { requestAsyncStorage: typeof storage });
+  storage = await loadRequestScope();
   route = await import('../../app/api/ui/permissions/[id]/resolve/route');
   globalThis.fetch = async (input, init) => {
     const url = String(input);

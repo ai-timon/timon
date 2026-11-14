@@ -241,6 +241,8 @@ for (const platform of ['win32', 'darwin', 'linux']) {
       installWindowPermissions: () => {}, session: { defaultSession: {} }, microphone: {}, installAppMenu: () => {}, installJumpList: () => {},
         // The per-window machine header (multi-window V3) is a session hook: nothing to observe here.
         installMachineHeader: () => {}, interfaceUrl: '',
+        // Spell-check dictionaries stay local: a session setting, nothing to observe here.
+        keepDictionariesLocal: () => {},
         // P3: the approval screen counts missions; the new AppImage drops the previous one.
         localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {},
     };
@@ -419,6 +421,8 @@ for (const platform of ['win32', 'darwin', 'linux']) {
         installWindowPermissions: () => {}, session: { defaultSession: {} }, microphone: {}, installAppMenu: () => {}, installJumpList: () => {},
         // The per-window machine header (multi-window V3) is a session hook: nothing to observe here.
         installMachineHeader: () => {}, interfaceUrl: '',
+        // Spell-check dictionaries stay local: a session setting, nothing to observe here.
+        keepDictionariesLocal: () => {},
         // P3: the approval screen counts missions; the new AppImage drops the previous one.
         localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {},
       };

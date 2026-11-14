@@ -82,6 +82,8 @@ test('--dry-run : clone, builds, unit avec installDir, linger, enable --now, doc
     assert.match(out, new RegExp(`\\+ \\(cd ${h}/timon/orchestrator && npm run build\\)`));
     assert.match(out, new RegExp(`\\+ \\(cd ${h}/timon/app && npm ci\\)`));
     assert.match(out, new RegExp(`\\+ \\(cd ${h}/timon/app && npm run build\\)`));
+    // The mission launcher, optional: a VPS without a compiler still installs.
+    assert.match(out, new RegExp(`\\+ \\(cd ${h}/timon && node native/timon-fence/build\\.mjs --optional\\)`));
     assert.match(out, /WorkingDirectory=.*\/timon\/orchestrator/);
     assert.match(out, /ExecStart=.*dist\/index\.js/);
     assert.doesNotMatch(out, /^Environment=TIMON_/m);

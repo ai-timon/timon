@@ -1,7 +1,7 @@
 import { createTestAccount, grantTestPermissions } from '../tests/helpers/accounts.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -210,6 +210,37 @@ test('ordinary agents communicate without grants or reporting lines, delegation 
     assert.match(refusal.reason, /explicitly denied agents:communicate or messages:read/);
     assert.ok(refusal.hint);
   } finally { grantTestPermissions(dbApi, employee.id, []); }
+});
+
+test("adding a tool or a stdio MCP server needs a person: a superadmin's mission and a developer-owner one are refused", async () => {
+  const count = launches;
+  const body = { agent_name: 'independent', mission: 'Peer work', extra_allowed_tools: ['Bash'] };
+  const relaxed = await post('/api/missions/delegate', body);
+  assert.equal(relaxed.status, 403);
+  assert.match((await relaxed.json()).reason, /extra_allowed_tools adds Bash.*whatever its account holds/);
+  const viaMcp = await tool('mission_spawn', body);
+  assert.equal(viaMcp.result?.isError, true);
+  assert.match(viaMcp.result!.content[0]!.text, /extra_allowed_tools adds Bash/);
+  const patch = (bearer: string) => fetch(base + '/api/agents/independent/config', {
+    method: 'PATCH', headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` }, body: JSON.stringify({ allowed_tools: ['Bash'] }),
+  });
+  const { licenseState, setLicenseState } = await import('./license/runtime.js');
+  const original = licenseState();
+  try {
+    setLicenseState({ ...original, status: 'valid' as const, reason: null, plan: 'Renamed label', planId: 'internal', expiresAt: new Date(Date.now() + 60000).toISOString() });
+    // The developer-owner mission is superadmin in every other respect…
+    assert.equal(dbApi.getLiveApiToken((await import('./users/api-tokens.js')).hashApiToken(main.bearer))!.isSuperadmin, true);
+    // …and still not a person.
+    assert.equal((await post('/api/missions/delegate', body)).status, 403);
+    const widened = await patch(main.bearer);
+    assert.equal(widened.status, 403);
+    assert.match((await widened.json()).reason, /allowed_tools adds Bash.*Agents page/);
+    const stdio = await post('/api/mcp', { id: 'dev-shell', transport: { type: 'stdio', command: 'sh' } });
+    assert.equal(stdio.status, 403);
+    assert.match((await stdio.json()).reason, /command on the host.*MCP servers page/);
+  } finally { setLicenseState(original); }
+  assert.equal(launches, count);
+  assert.equal(JSON.parse(readFileSync(join(agentDir('independent'), 'config.json'), 'utf8')).allowed_tools, undefined);
 });
 
 test('verified developer-owner missions inherit full rights; ordinary users and expired licences do not', async () => {

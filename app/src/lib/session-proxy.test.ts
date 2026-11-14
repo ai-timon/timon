@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { loadRequestScope } from './next-request-scope-test';
 
 (globalThis as unknown as { AsyncLocalStorage: unknown }).AsyncLocalStorage = AsyncLocalStorage;
 
 test('login and binary proxy relay only the browser user-agent alongside session auth', async (ctx) => {
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { POST } = await import('../app/api/ui/auth/login/route');
   const { proxyBinary } = await import('./ui/proxy');
   const calls: RequestInit[] = [];

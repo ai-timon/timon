@@ -63,12 +63,16 @@ test('claude and copilot: --mcp-config JSON', async () => {
   assert.equal(await buildMcpConfig(['does-not-exist']), null);
 });
 
+/** What every codex stdio server asks for: the package cache a fenced mission carries. */
+const CACHE_ENV_VARS = 'env_vars = ["npm_config_cache", "npm_config_cache_dir", "npm_config_store_dir", "UV_CACHE_DIR"]';
+
 test('codex: config.toml blocks, approval mode before any sub-table', async () => {
   const toml = await buildCodexMcpToml(IDS);
   assert.equal(toml, [
     '[mcp_servers.plain]',
     'command = "node"',
     'args = ["srv.mjs", "--flag"]',
+    CACHE_ENV_VARS,
     'default_tools_approval_mode = "approve"',
     '',
     '[mcp_servers.plain.env]',
@@ -77,6 +81,7 @@ test('codex: config.toml blocks, approval mode before any sub-table', async () =
     '',
     '[mcp_servers.bare]',
     'command = "bare-cmd"',
+    CACHE_ENV_VARS,
     'default_tools_approval_mode = "approve"',
     '',
     '[mcp_servers.web]',
@@ -170,7 +175,20 @@ test('codex forwards a variable by NAME to the servers that ask for it, before t
     { type: 'http', name: 'remote', url: 'https://x.test/mcp', headers: {} },
   ] as const;
   const toml = serializeCodexMcpToml(list, { forward: (server) => (server.name === 'timon' ? ['TIMON_API_TOKEN'] : []) }) ?? '';
-  assert.match(toml, /\[mcp_servers\.timon\]\ncommand = "node"\nargs = \["t\.mjs"\]\nenv_vars = \["TIMON_API_TOKEN"\]\ndefault_tools_approval_mode = "approve"\n\n\[mcp_servers\.timon\.env\]/);
-  assert.equal(toml.match(/env_vars/g)?.length, 1, 'only the server that asked');
+  const caches = '"npm_config_cache", "npm_config_cache_dir", "npm_config_store_dir", "UV_CACHE_DIR"';
+  assert.ok(toml.includes(`[mcp_servers.timon]\ncommand = "node"\nargs = ["t.mjs"]\nenv_vars = ["TIMON_API_TOKEN", ${caches}]\ndefault_tools_approval_mode = "approve"\n\n[mcp_servers.timon.env]`), toml);
+  assert.equal(toml.match(/TIMON_API_TOKEN/g)?.length, 1, 'only the server that asked');
   assert.equal(serializeCodexMcpToml(list), serializeCodexMcpToml(list, {}), 'no option, no change');
+});
+
+test('codex hands every stdio server the package cache variables a fenced mission carries, by name', async () => {
+  const { serializeCodexMcpToml } = await import('./backends/mcp-serialize.js');
+  const toml = serializeCodexMcpToml([
+    { type: 'stdio', name: 'everything', command: 'npx', args: ['-y', '@modelcontextprotocol/server-everything'], env: {} },
+    { type: 'http', name: 'remote', url: 'https://x.test/mcp', headers: {} },
+  ], { forward: () => ['npm_config_cache'] }) ?? '';
+  assert.ok(toml.includes('[mcp_servers.everything]\ncommand = "npx"\nargs = ["-y", "@modelcontextprotocol/server-everything"]\n'
+    + 'env_vars = ["npm_config_cache", "npm_config_cache_dir", "npm_config_store_dir", "UV_CACHE_DIR"]\n'), toml);
+  assert.equal(toml.match(/env_vars/g)?.length, 1, 'an HTTP server starts no process');
+  assert.ok(!toml.includes('.agents'), 'a name, never a path');
 });

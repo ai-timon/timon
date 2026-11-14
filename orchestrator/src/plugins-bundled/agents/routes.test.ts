@@ -519,6 +519,67 @@ test('role prompt writes and reset reject anonymous and unauthorized users', asy
 });
 
 
+test('a custom role icon is a closed set of shapes: script-bearing markup is refused on write and dropped on read', async () => {
+  const { ROLE_REGISTRY, getRole, deleteRole, createRole, updateRole, roleIconSvgProblem } = await import('../../agent-roles.js');
+  const { CUSTOM_ROLES_FILE } = await import('../../paths.js');
+  for (const role of ROLE_REGISTRY) assert.equal(roleIconSvgProblem(role.iconSvg), null, `built-in ${role.id} icon stays valid`);
+  // As captured by the picker from the rendered DOM (end tags, a group).
+  const lucide = '<path d="M12 7v14"></path><circle cx="12" cy="12" r="3"></circle><g transform="translate(1 1)"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/></g>';
+  const role = { id: 'icon-role', label: 'Icon', iconName: 'BookOpen', iconSvg: lucide, color: '#123456' };
+  const createdRole = await call('POST', '/api/agent-roles', { cookie: adminCookie, body: role });
+  assert.equal(createdRole.status, 201);
+  assert.equal(getRole('icon-role')?.iconSvg, lucide);
+
+  const trapped = [
+    '<image href="x" onerror="alert(1)"/>',
+    '<script>alert(1)</script>',
+    '<path d="M1 1" onload="alert(1)"/>',
+    '<path d="M1 1" style="fill:red"/>',
+    '<path fill="currentColor"/>',
+    '<path d="M1 1" fill="url(#x)"/>',
+    '<circle r="3" stroke="url(evil)"/>',
+    '<path xlink:href="#a"/>',
+    '<foreignObject><div>x</div></foreignObject>',
+    '<use href="#a"/>',
+    '<path d="&#97;"/>',
+    '<![CDATA[x]]><path/>',
+    '<path d="M1 1"/>text',
+    '<path d="url(javascript:alert(1))"/>',
+    '<path d="M1 1"><path/></path>',
+    '<path d="M1 1">',
+    '<svg><path/></svg>',
+    `<path d="${'1 '.repeat(2100)}"/>`,
+    '',
+  ];
+  for (const iconSvg of trapped) {
+    const label = JSON.stringify(iconSvg.slice(0, 40));
+    assert.equal((await call('POST', '/api/agent-roles', { cookie: adminCookie, body: { ...role, id: 'icon-bad', iconSvg } })).status, 400, `POST ${label}`);
+    assert.equal((await call('PUT', '/api/agent-roles/icon-role', { cookie: adminCookie, body: { iconSvg } })).status, 400, `PUT ${label}`);
+    assert.throws(() => createRole({ ...role, id: 'icon-direct', iconSvg }), undefined, `createRole ${label}`);
+    assert.throws(() => updateRole('icon-role', { iconSvg }), undefined, `updateRole ${label}`);
+  }
+  assert.equal(getRole('icon-bad'), null);
+  assert.equal(getRole('icon-direct'), null);
+  assert.equal(getRole('icon-role')?.iconSvg, lucide, 'a refused update leaves the stored icon untouched');
+
+  assert.equal((await call('POST', '/api/agent-roles', { body: { ...role, id: 'icon-anon' } })).status, 401);
+  assert.equal((await call('PUT', '/api/agent-roles/icon-role', { body: { iconSvg: lucide } })).status, 401);
+
+  // A roles.json armed before the grammar existed is disarmed at read time.
+  const stored = JSON.parse(readFileSync(CUSTOM_ROLES_FILE, 'utf8')) as Array<Record<string, unknown>>;
+  stored.push({ ...role, id: 'icon-armed', iconSvg: '<image href="x" onerror="alert(1)"/>' });
+  writeFileSync(CUSTOM_ROLES_FILE, JSON.stringify(stored));
+  const later = Date.now() / 1000 + 120;
+  utimesSync(CUSTOM_ROLES_FILE, later, later);
+  const listed = await call('GET', '/api/agent-roles', { cookie: adminCookie });
+  assert.equal(listed.status, 200);
+  const roles = (listed.json as { roles: Array<{ id: string; iconSvg: string }> }).roles;
+  assert.equal(roles.find((r) => r.id === 'icon-armed')?.iconSvg, '');
+  assert.equal(roles.find((r) => r.id === 'icon-role')?.iconSvg, lucide);
+  deleteRole('icon-armed');
+  deleteRole('icon-role');
+});
+
 test('unreadable prompt overrides fall back to shipped defaults and recover after repair', async () => {
   const { getRole, ROLE_REGISTRY, updateRole, resetRoleDirectives } = await import('../../agent-roles.js');
   const { BUILTIN_ROLE_OVERRIDES_FILE } = await import('../../paths.js');

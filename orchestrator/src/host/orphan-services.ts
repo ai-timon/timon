@@ -74,11 +74,18 @@ export function homeOfPlist(text: string): string | null {
   return match ? unescapeXml(match[1]!) : null;
 }
 
-/** The home of the scheduled task: its launcher is `<home>\run\timon-service.cmd` (`windowsTaskCommand`). */
+/**
+ * The home of the scheduled task: its launcher is `<home>\run\timon-service.cmd`,
+ * between double quotes for cmd (`windowsTaskCommand`, the boot task) or in a
+ * PowerShell literal, its quotes doubled (`windowsSessionTaskArguments`, the
+ * logon task).
+ */
 export function homeOfTask(xml: string): string | null {
   const args = unescapeXml(xml);
-  const match = /"([^"]+?)[\\/]run[\\/]timon-service\.(?:cmd|vbs)"/i.exec(args);
-  return match ? match[1]! : null;
+  const quoted = /"([^"]+?)[\\/]run[\\/]timon-service\.(?:cmd|vbs)"/i.exec(args);
+  if (quoted) return quoted[1]!;
+  const literal = /'((?:[^']|'')+?)[\\/]run[\\/]timon-service\.cmd'/i.exec(args);
+  return literal ? literal[1]!.replace(/''/g, "'") : null;
 }
 
 function shellQuote(value: string): string {

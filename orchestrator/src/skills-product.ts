@@ -664,9 +664,8 @@ timon mcp rm <id>
 \`server.json\` holds \`{ "name", "description", "transport" }\`, where
 \`transport\` is \`{ "type": "http", "url": "https://…", "headers": {…} }\` for a
 remote server or \`{ "type": "stdio", "command": "…", "args": […] }\` for a
-local one. A stdio server runs a command on the host: from a mission it needs
-the \`agents:privileged-config\` permission, otherwise the user adds it in the
-app.
+local one. A stdio server runs a command on the host: a mission never declares
+or attaches one, whatever its account holds; the user adds it in the app.
 
 ## Rules
 

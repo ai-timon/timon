@@ -26,7 +26,7 @@
         "args = [\"<TIMON_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon.env": [
         "TIMON_AGENT = \"parity.agent\"",
@@ -38,7 +38,7 @@
         "args = [\"<FORMS_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon_ask.env": [
         "TIMON_AGENT = \"parity.agent\"",
@@ -49,12 +49,14 @@
       "mcp_servers.grepai": [
         "args = [\"mcp-serve\"]",
         "command = \"grepai\"",
-        "default_tools_approval_mode = \"approve\""
+        "default_tools_approval_mode = \"approve\"",
+        "env_vars = [\"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.probe_stdio": [
         "args = [\"/tmp/probe.mjs\"]",
         "command = \"node\"",
-        "default_tools_approval_mode = \"approve\""
+        "default_tools_approval_mode = \"approve\"",
+        "env_vars = [\"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.probe_stdio.env": [
         "PROBE_TOKEN = \"x\""
@@ -98,7 +100,7 @@
         "args = [\"<TIMON_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon.env": [
         "TIMON_AGENT = \"parity.agent\"",
@@ -110,7 +112,7 @@
         "args = [\"<FORMS_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon_ask.env": [
         "TIMON_AGENT = \"parity.agent\"",
@@ -121,7 +123,8 @@
       "mcp_servers.grepai": [
         "args = [\"mcp-serve\"]",
         "command = \"grepai\"",
-        "default_tools_approval_mode = \"approve\""
+        "default_tools_approval_mode = \"approve\"",
+        "env_vars = [\"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ]
     },
     "authJson": "link",
@@ -154,7 +157,8 @@
       "mcp_servers.grepai": [
         "args = [\"mcp-serve\"]",
         "command = \"grepai\"",
-        "default_tools_approval_mode = \"approve\""
+        "default_tools_approval_mode = \"approve\"",
+        "env_vars = [\"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ]
     },
     "authJson": "link",
@@ -186,7 +190,7 @@
         "args = [\"<TIMON_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon.env": [
         "TIMON_AGENT = \"parity.keyed\"",
@@ -198,7 +202,7 @@
         "args = [\"<FORMS_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon_ask.env": [
         "TIMON_AGENT = \"parity.keyed\"",
@@ -209,7 +213,8 @@
       "mcp_servers.grepai": [
         "args = [\"mcp-serve\"]",
         "command = \"grepai\"",
-        "default_tools_approval_mode = \"approve\""
+        "default_tools_approval_mode = \"approve\"",
+        "env_vars = [\"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ]
     },
     "authJson": "absent",
@@ -245,7 +250,7 @@
         "args = [\"<TIMON_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon.env": [
         "TIMON_AGENT = \"parity.agent\"",
@@ -257,7 +262,7 @@
         "args = [\"<FORMS_MCP>\"]",
         "command = \"node\"",
         "default_tools_approval_mode = \"approve\"",
-        "env_vars = [\"TIMON_API_TOKEN\"]"
+        "env_vars = [\"TIMON_API_TOKEN\", \"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.timon_ask.env": [
         "TIMON_AGENT = \"parity.agent\"",
@@ -268,12 +273,14 @@
       "mcp_servers.grepai": [
         "args = [\"mcp-serve\"]",
         "command = \"grepai\"",
-        "default_tools_approval_mode = \"approve\""
+        "default_tools_approval_mode = \"approve\"",
+        "env_vars = [\"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.probe_stdio": [
         "args = [\"/tmp/probe.mjs\"]",
         "command = \"node\"",
-        "default_tools_approval_mode = \"approve\""
+        "default_tools_approval_mode = \"approve\"",
+        "env_vars = [\"npm_config_cache\", \"npm_config_cache_dir\", \"npm_config_store_dir\", \"UV_CACHE_DIR\"]"
       ],
       "mcp_servers.probe_stdio.env": [
         "PROBE_TOKEN = \"x\""

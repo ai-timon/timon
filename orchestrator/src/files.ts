@@ -76,17 +76,51 @@ function loadAgentCwd(agentName: string): string {
 }
 
 /** Verify the requested relative path stays inside the sandboxed root.
- *  Returns the resolved absolute path on success. */
-function safeResolve(root: string, rel: string): string {
-  // On Windows a leading `\` is drive-rooted, not relative: strip it like `/`.
-  const cleaned = (rel || '').replace(sep === '\\' ? /^[\\/]+/ : /^\/+/, '');
-  const abs = resolve(root, cleaned);
-  // realpath after we know the target exists to follow symlinks too.
-  const real = existsSync(abs) ? realpathSync(abs) : abs;
+ *  Returns the resolved absolute path on success. `root` must already be a
+ *  real path. Shared with the script preview of permission cards.
+ *
+ *  The path need not exist (a write or a mkdir creates it): the deepest
+ *  ancestor that does exist is resolved through its symlinks and the missing
+ *  components are re-attached to it. Resolving only an existing target let
+ *  `link/new.txt`, with `link` pointing outside, pass as an inside path, and
+ *  the write then followed the link out of the root. */
+export function safeResolve(root: string, rel: string): string {
+  const abs = lexicalResolve(root, rel);
+  const missing: string[] = [];
+  let existing = abs;
+  // `lstat`, not `existsSync`: a broken link exists as an entry, and writing
+  // through it would create its target wherever that is.
+  while (!lstatSync(existing, { throwIfNoEntry: false })) {
+    const parent = dirname(existing);
+    if (parent === existing) break;
+    missing.unshift(basename(existing));
+    existing = parent;
+  }
+  let real: string;
+  try {
+    real = realpathSync(existing);
+  } catch {
+    // A broken or looping link: where it leads cannot be proven inside.
+    throw new Error('path escapes agent cwd');
+  }
   if (real !== root && !real.startsWith(root + sep)) {
     throw new Error('path escapes agent cwd');
   }
-  return real;
+  return missing.length ? join(real, ...missing) : real;
+}
+
+function lexicalResolve(root: string, rel: string): string {
+  // On Windows a leading `\` is drive-rooted, not relative: strip it like `/`.
+  return resolve(root, (rel || '').replace(sep === '\\' ? /^[\\/]+/ : /^\/+/, ''));
+}
+
+/** Resolves the parent of an entry and keeps the entry's own name, so an
+ *  operation on a symlink (delete, move, rename) acts on the link itself while
+ *  an aliased parent is still followed to where it really is. */
+function resolveEntry(root: string, rel: string): string {
+  const lexical = lexicalResolve(root, rel);
+  if (lexical === root || !lexical.startsWith(root + sep)) throw new Error('path escapes agent cwd');
+  return join(safeResolve(root, relFrom(root, dirname(lexical))), basename(lexical));
 }
 
 /** Where `target` (inside `root`) sits, in the forward-slash form the API
@@ -99,7 +133,7 @@ function isHidden(name: string): boolean {
   return HIDDEN_PREFIXES.includes(name) || name.startsWith('.DS_Store');
 }
 
-function sniffBinary(buf: Buffer): boolean {
+export function sniffBinary(buf: Buffer): boolean {
   // First 8 KB sample — NUL byte is a strong signal.
   const sample = buf.subarray(0, Math.min(buf.length, 8192));
   for (let i = 0; i < sample.length; i++) {
@@ -173,7 +207,7 @@ export function browseAgentFiles(agentName: string, relPath: string): ReadResult
  *  lockfiles auto-managed by package managers. The list is conservative —
  *  expand if real cases come up. */
 const WRITE_DENY = [
-  /(^|\/)\.git\//i,        // git internals
+  /(^|\/)\.git(\/|$)/i,     // git internals, and `.git` itself
   /(^|\/)node_modules\//i, // npm install would rewrite anyway
 ];
 
@@ -183,6 +217,12 @@ const WRITE_DENY = [
 function writeDenied(rel: string): boolean {
   const probe = '/' + rel.replaceAll('\\', '/');
   return WRITE_DENY.some((re) => re.test(probe));
+}
+
+/** The deny list read on the requested path AND on where it really lands: an
+ *  alias of `.git` spells nothing the list knows. */
+function writeDeniedAt(root: string, rel: string, target: string): boolean {
+  return writeDenied(rel) || writeDenied(relFrom(root, target));
 }
 
 export type WriteResult = {
@@ -208,6 +248,9 @@ export function writeAgentFile(
   }
   const root = loadAgentCwd(agentName);
   const target = safeResolve(root, relPath);
+  if (writeDeniedAt(root, relPath, target)) {
+    throw new Error(`writes refused under this path: ${relPath}`);
+  }
   // If the target exists and is a directory, refuse — otherwise we'd
   // turn `src/` into a regular file containing the user's blob.
   if (existsSync(target)) {
@@ -216,9 +259,8 @@ export function writeAgentFile(
       throw new Error(`refusing to overwrite non-file: ${relPath}`);
     }
   } else {
-    // Allow creating new files. Make the parent dir if it doesn't exist
-    // yet (also sandbox-checked because safeResolve already vetted the
-    // full path's resolution stays inside root).
+    // The components safeResolve re-attached do not exist yet, so the
+    // folders made here are real ones under an ancestor proven inside root.
     mkdirSync(dirname(target), { recursive: true });
   }
   writeFileSync(target, content, 'utf8');
@@ -239,11 +281,13 @@ export function deleteAgentPath(
   if (!relPath) throw new Error('path required');
   if (writeDenied(relPath)) throw new Error(`deletes refused under this path: ${relPath}`);
   const root = loadAgentCwd(agentName);
-  const target = safeResolve(root, relPath);
-  if (target === root) throw new Error('cannot delete the agent root');
-  if (!existsSync(target)) throw new Error(`not found: ${relPath}`);
-  const st = statSync(target);
-  if (st.isDirectory()) {
+  if (lexicalResolve(root, relPath) === root) throw new Error('cannot delete the agent root');
+  const target = resolveEntry(root, relPath);
+  if (writeDeniedAt(root, relPath, target)) throw new Error(`deletes refused under this path: ${relPath}`);
+  const st = lstatSync(target, { throwIfNoEntry: false });
+  if (!st) throw new Error(`not found: ${relPath}`);
+  // A link is removed itself, never the folder it points to.
+  if (st.isDirectory() || st.isSymbolicLink()) {
     rmSync(target, { recursive: true, force: true });
   } else {
     unlinkSync(target);
@@ -259,6 +303,7 @@ export function mkdirAgentPath(
   if (writeDenied(relPath)) throw new Error(`mkdir refused under this path: ${relPath}`);
   const root = loadAgentCwd(agentName);
   const target = safeResolve(root, relPath);
+  if (writeDeniedAt(root, relPath, target)) throw new Error(`mkdir refused under this path: ${relPath}`);
   if (existsSync(target)) {
     const st = statSync(target);
     if (!st.isDirectory()) throw new Error(`a file already exists at: ${relPath}`);
@@ -282,10 +327,7 @@ export function moveAgentPath(
   const from = (fromRel || '').replace(/^\/+/, '').replace(/\/+$/, '');
   if (!from) throw new Error('path required');
   const root = loadAgentCwd(agentName);
-  const src = resolve(root, from);
-  if (src === root || !src.startsWith(root + sep)) throw new Error('path escapes agent cwd');
-  // A symlinked parent could still lead out of the root.
-  safeResolve(root, relFrom(root, dirname(src)));
+  const src = resolveEntry(root, from);
   if (!lstatSync(src, { throwIfNoEntry: false })) throw new Error(`not found: ${from}`);
   const destDir = safeResolve(root, toDirRel || '');
   if (!existsSync(destDir) || !statSync(destDir).isDirectory()) {
@@ -293,7 +335,7 @@ export function moveAgentPath(
   }
   const dest = join(destDir, basename(src));
   const destRel = relFrom(root, dest);
-  if (writeDenied(from) || writeDenied(destRel)) {
+  if (writeDeniedAt(root, from, src) || writeDenied(destRel)) {
     throw new Error(`moves refused under this path: ${from}`);
   }
   if (dest === src) throw new Error('already in this folder');
@@ -320,14 +362,12 @@ export function renameAgentPath(
   const from = (relPath || '').replace(/^\/+/, '').replace(/\/+$/, '');
   if (!from) throw new Error('path required');
   const root = loadAgentCwd(agentName);
-  const src = resolve(root, from);
-  if (src === root || !src.startsWith(root + sep)) throw new Error('path escapes agent cwd');
-  safeResolve(root, relFrom(root, dirname(src)));
+  const src = resolveEntry(root, from);
   const srcStat = lstatSync(src, { throwIfNoEntry: false });
   if (!srcStat) throw new Error(`not found: ${from}`);
   const dest = join(dirname(src), name);
   const destRel = relFrom(root, dest);
-  if (writeDenied(from) || writeDenied(destRel)) {
+  if (writeDeniedAt(root, from, src) || writeDenied(destRel)) {
     throw new Error(`renames refused under this path: ${from}`);
   }
   if (dest === src) throw new Error('same name');

@@ -24,8 +24,8 @@ const { hashPassword } = await import('../users/password.js');
 const { registerProfile } = await import('../backends/registry.js');
 const { verifyRemoteMcpToken } = await import('./tokens.js');
 
-const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
-const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword('bob-secret'), isSuperadmin: false });
+const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
+const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword('bob-secret'), isSuperadmin: false });
 
 const request = (user: { id: string; email: string; name: string }) => ({
   viewer: { id: user.id, isSuperadmin: false, permissions: dbApi.listPermissionsForUser(user.id) },

@@ -186,6 +186,10 @@ How sign-in works, who may use which account, instance accounts, assigning an ac
 - **Paths**: the installation folder, the data folder, the configuration file, the logs folder (one file per day) and the daemon's service output — a file for the Windows and macOS services, the system journal for the Linux service (with the `journalctl` command to read it), the app's or the terminal's output otherwise.
 - **Export and import**: **Export my data** writes a portable archive to the data folder (secrets are never included) and shows its path. Importing replaces the database, so it cannot run while Timon runs: quit the app, then run the commands the tab lists, with your data folder filled in (replace `ARCHIVE.tar.gz` with your archive). See [Upgrading](../installation/upgrading.md) for what an import restores.
 
+## Security (System)
+
+**System › Security** shows whether missions run inside the operating system's fence on this computer, and sets the isolation mode (**Automatic**, **Required** or **Off**), Unix sockets, and exceptions for one agent or project. Only the superadmin sees this tab. See [Mission isolation](mission-isolation.md).
+
 ## Backups and the agent trash (System)
 
 **System › Backups & trash** holds the safety net of your data.

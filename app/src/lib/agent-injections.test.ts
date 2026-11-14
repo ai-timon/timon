@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatTokens, maskingNotice, neverReadSkills, parseSkillReads, saveRequest, skillReadState, tokensByOrigin, whyNotEditable } from './agent-injections';
+import { formatTokens, freshConversationAgents, maskingNotice, neverReadSkills, parseSkillReads, saveRequest, skillReadState, tokensByOrigin, whyNotEditable } from './agent-injections';
 
 test('an agent file is written as text/plain through the files route', () => {
   const req = saveRequest({ kind: 'agent_file', agent: 'timon.coder', path: 'system-prompt.md' }, '# new\n');
@@ -108,4 +108,11 @@ test('skill reads: never read only when missions ran, and only for catalogue ski
   // An imported body is always in the prompt: it is never "not read".
   assert.deepEqual(neverReadSkills(block, reads), ['cold']);
   assert.deepEqual(neverReadSkills(block, null), []);
+});
+
+test('a rule edit names the agents sent to a fresh conversation, anything else names none', () => {
+  assert.deepEqual(freshConversationAgents({ id: 3, text: 'x', fresh_conversation: ['coder', 7, 'lead'] }), ['coder', 'lead']);
+  assert.deepEqual(freshConversationAgents({ id: 3, text: 'x' }), []);
+  assert.deepEqual(freshConversationAgents({ fresh_conversation: 'coder' }), []);
+  assert.deepEqual(freshConversationAgents(null), []);
 });

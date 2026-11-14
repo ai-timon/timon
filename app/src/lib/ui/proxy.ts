@@ -14,7 +14,7 @@
  * remote-machine policy (identity, `Set-Cookie`, auth routes, origin) is
  * applied there, not here.
  */
-import { cookies, headers as requestHeaders } from 'next/headers';
+import { cookies, headers as requestHeaders, type UnsafeUnwrappedCookies, type UnsafeUnwrappedHeaders } from 'next/headers';
 import { machineTarget, relayFetch, targetFor, type RelayOptions } from '../machines/target';
 import { browserOriginHeaders, proxyAuthHeaders, SESSION_COOKIE } from './proxy-auth';
 import { htmlFailureAsJson } from './proxy-errors';
@@ -34,9 +34,11 @@ function originHeadersFromRequest(): Record<string, string> {
   return incoming ? browserOriginHeaders(incoming) : {};
 }
 
-function incomingHeaders(): ReturnType<typeof requestHeaders> | null {
+// Synchronous reads on purpose: Next 15 still unwraps `headers()` and
+// `cookies()` in place, and these helpers feed synchronous callers.
+function incomingHeaders(): UnsafeUnwrappedHeaders | null {
   try {
-    return requestHeaders();
+    return requestHeaders() as unknown as UnsafeUnwrappedHeaders;
   } catch {
     // Outside a request scope (build, tests): nothing to relay.
     return null;
@@ -64,7 +66,7 @@ function browserProxyHeaders(): Record<string, string> {
   const headers = sessionProxyHeaders();
   // Session metadata must describe the browser, not Node's fetch client.
   try {
-    const userAgent = requestHeaders().get('user-agent');
+    const userAgent = (requestHeaders() as unknown as UnsafeUnwrappedHeaders).get('user-agent');
     if (userAgent) headers['user-agent'] = userAgent;
   } catch {
     // Outside a request scope (build, tests): skip user-agent relay.
@@ -74,7 +76,7 @@ function browserProxyHeaders(): Record<string, string> {
 
 function sessionTokenFromCookies(): string | undefined {
   try {
-    return cookies().get(SESSION_COOKIE)?.value;
+    return (cookies() as unknown as UnsafeUnwrappedCookies).get(SESSION_COOKIE)?.value;
   } catch {
     return undefined;
   }

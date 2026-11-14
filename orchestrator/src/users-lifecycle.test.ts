@@ -19,13 +19,13 @@ const { dbApi, LastSuperadminError } = await import('./db.js');
 const rom = createTestAccount(dbApi, {
   email: 'robin@example.com',
   name: 'Robin',
-  passwordHash: hashPassword('super-secret'),
+  passwordHash: await hashPassword('super-secret'),
   isSuperadmin: true,
 });
 const ada = createTestAccount(dbApi, {
   email: 'ada@example.com',
   name: 'Ada',
-  passwordHash: hashPassword('employee-secret'),
+  passwordHash: await hashPassword('employee-secret'),
 });
 
 test('generateTemporaryPassword is unique and long enough', () => {
@@ -35,12 +35,12 @@ test('generateTemporaryPassword is unique and long enough', () => {
   assert.ok(a.length >= 16);
 });
 
-test('setUserPassword replaces the hash; the old password no longer verifies', () => {
+test('setUserPassword replaces the hash; the old password no longer verifies', async () => {
   const next = generateTemporaryPassword();
-  dbApi.setUserPassword(ada.id, hashPassword(next));
+  dbApi.setUserPassword(ada.id, await hashPassword(next));
   const row = dbApi.getUserById(ada.id)!;
-  assert.equal(verifyPassword(next, row.password_hash), true);
-  assert.equal(verifyPassword('employee-secret', row.password_hash), false);
+  assert.equal(await verifyPassword(next, row.password_hash), true);
+  assert.equal(await verifyPassword('employee-secret', row.password_hash), false);
 });
 
 test('disabling a user makes getLiveSession miss even if the row is still there', () => {

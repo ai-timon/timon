@@ -30,7 +30,7 @@ const { issueRemoteMcpToken, revokeRemoteMcpToken } = await import('./tokens.js'
 
 const DAEMON_TOKEN = 'd'.repeat(64);
 const ada = createTestAccount(dbApi, {
-  email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false,
+  email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false,
 });
 
 type Seen = { kind?: string; missionId?: string | null; headerMission?: string };

@@ -33,13 +33,13 @@ import type { RequestAuth } from './users/identity.js';
 const admin = createTestAccount(dbApi, {
   email: 'admin@example.com',
   name: 'Admin',
-  passwordHash: hashPassword('admin-secret'),
+  passwordHash: await hashPassword('admin-secret'),
   isSuperadmin: true,
 });
 const ada = createTestAccount(dbApi, {
   email: 'ada@example.com',
   name: 'Ada',
-  passwordHash: hashPassword('ada-secret'),
+  passwordHash: await hashPassword('ada-secret'),
   isSuperadmin: false,
 });
 
@@ -371,7 +371,7 @@ test('HTTP: anonymous loopback is 401 once a user exists', async () => {
 test('plugin realtime reaches only its owner on a global stream', async () => {
   const { publishPluginRealtime } = await import('./plugins/realtime.js');
   const other = createTestAccount(dbApi, { email: 'other@example.com', name: 'Other',
-    passwordHash: hashPassword('other-secret'), isSuperadmin: false });
+    passwordHash: await hashPassword('other-secret'), isSuperadmin: false });
   const streams = [
     fakeStream({ auth: { kind: 'session', user: other, isSuperadmin: false } }),
     fakeStream({ auth: adminAuth }),

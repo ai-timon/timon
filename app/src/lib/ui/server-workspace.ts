@@ -15,7 +15,7 @@
  * before this module existed. A slow daemon must cost a flash, never a page.
  */
 
-import { headers } from 'next/headers';
+import { headers, type UnsafeUnwrappedHeaders } from 'next/headers';
 import { relayFetch, targetFor, type Target } from '@/lib/machines/target';
 import { sessionProxyHeaders } from '@/lib/ui/proxy';
 import { workspaceKeys } from '@/lib/workspace-scope';
@@ -50,7 +50,8 @@ async function fetchJson(path: string): Promise<unknown | null> {
 
 /** The URL the browser asked for, as the middleware forwarded it. */
 function requestedUrl(): { view: string; params: URLSearchParams } | null {
-  const raw = headers().get(URL_HEADER);
+  // Synchronous on purpose: Next 15 still unwraps `headers()` in place.
+  const raw = (headers() as unknown as UnsafeUnwrappedHeaders).get(URL_HEADER);
   if (!raw) return null;
   const [view, query = ''] = raw.split('?');
   return { view: view || '/', params: new URLSearchParams(query) };

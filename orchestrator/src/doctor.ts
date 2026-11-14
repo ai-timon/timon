@@ -30,7 +30,11 @@ import {
 import { getHost } from './host/index.js';
 import { hasSystemd } from './host/systemd.js';
 import { windowsServiceFiles } from './host/service-install.js';
-import { resolveIsolation, sandboxSupported } from './host/isolation.js';
+import { resolveIsolation } from './host/isolation.js';
+import { fenceLaunchDecision, type FenceStatus } from './host/fence.js';
+import type { FenceMechanism } from './host/types.js';
+import { hostFenceStatus } from './resources.js';
+import type { TimonConfig } from './config/schema.js';
 import { TIMON_HOME } from './paths.js';
 import { formatBytes, freeBytes, LOW_DISK_BYTES } from './storage-failure.js';
 import { CATALOG } from './kernel/catalog.js';
@@ -187,16 +191,7 @@ export function diagnose(): DoctorReport {
   const capabilities: string[] = getHost().capabilities();
   const modules = moduleNotes(capabilities);
 
-  // Read off the host adapter, never off `host/linux.ts`: `doctor` runs on
-  // every platform, and a host that declares no `isolation` enforces none.
-  const launcher = getHost().isolation?.launcher ?? null;
-  const configured = cfg.host.isolation.filesystem;
-  const missionIsolation = {
-    configured,
-    enforced: configured !== 'off' && launcher !== null && sandboxSupported(launcher),
-    launcher,
-    maskedPaths: configured === 'off' ? 0 : resolveIsolation(cfg, { timonHome: TIMON_HOME }).deny.length,
-  };
+  const { report: missionIsolation, blocker: isolationBlocker } = missionIsolationNow(cfg);
 
   const free = freeBytes(TIMON_HOME);
   const storage = { path: TIMON_HOME, freeBytes: free, low: free !== null && free < LOW_DISK_BYTES };
@@ -212,6 +207,9 @@ export function diagnose(): DoctorReport {
   if (!remoteBackend && !backends.some((n) => found(n)) && usableProviders().length === 0) {
     blockers.push(`no LLM backend installed (${backends.join(', ')})`);
   }
+  // `enforce` refuses every mission it cannot fence: nothing works until fixed.
+  // In `auto` it is a warning, never a blocker.
+  if (isolationBlocker) blockers.push(isolationBlocker);
   if (cfg.host.docker === 'required' && !docker.usable) {
     blockers.push(`host.docker is "required" but Docker is unusable (${docker.detail})`);
   }
@@ -247,6 +245,25 @@ export function diagnose(): DoctorReport {
   };
 }
 
+/**
+ * The isolation report of this daemon, now. Read off the host adapter, never
+ * off `host/linux.ts`: `doctor` runs on every platform, and a host that
+ * declares no fence fences nothing.
+ */
+export function missionIsolationNow(cfg: TimonConfig = config()): ReturnType<typeof missionIsolationReport> {
+  const host = getHost();
+  const configured = cfg.host.isolation.filesystem;
+  return missionIsolationReport({
+    configured,
+    status: configured === 'off' ? null : hostFenceStatus(host.fence),
+    mechanism: host.fence?.mechanism ?? null,
+    platform: process.platform,
+    isolation: cfg.host.isolation,
+    launcher: host.isolation?.launcher ?? null,
+    maskedPaths: configured === 'off' ? 0 : resolveIsolation(cfg, { timonHome: TIMON_HOME }).deny.length,
+  });
+}
+
 /** What the missing capabilities cost, module by module (see `DoctorReport.modules`). */
 export function moduleNotes(capabilities: readonly string[]): string[] {
   const have = new Set(capabilities);
@@ -266,18 +283,136 @@ function mainSeatLine(seat: NonNullable<DoctorReport['mainSeat']>): string {
   return `NONE — recaps and notifications have no recipient (${who})`;
 }
 
+export type MissionIsolationInput = {
+  configured: 'auto' | 'enforce' | 'off';
+  /** What `hostFenceStatus` says of the host's fence; null when the configuration turned it off. */
+  status: FenceStatus | null;
+  /** The host's fence mechanism; null on an OS without one. */
+  mechanism: FenceMechanism | null;
+  platform: NodeJS.Platform;
+  isolation: Pick<TimonConfig['host']['isolation'], 'unixSockets' | 'writable' | 'exceptions'>;
+  launcher: string | null;
+  maskedPaths: number;
+};
+
+/** What every unfenced mission can reach, said the same way wherever it applies. */
+const UNFENCED_CONSEQUENCE = "A mission can read Timon's private files, including the operator token and the vault key: "
+  + 'on a multi-account install, account permissions do not hold against a mission.';
+
+/** Landlock confines signals from ABI 6: before it, a mission may signal any process of the user. */
+const LANDLOCK_SIGNAL_SCOPE_ABI = 6;
+
+/** Why a mission is not fenced on this OS when the host has no fence at all. */
+function noFenceReason(platform: NodeJS.Platform, status: FenceStatus): string {
+  return platform === 'win32' ? 'no mission fence on Windows yet' : status.state === 'ready' ? 'no mission fence on this OS' : status.reason;
+}
+
 /**
- * The masking, in one line an operator can act on. It must never read as
- * protection when nothing is emitted: `auto` on a `scope` launcher resolves a
- * policy and drops it, so the line says INERT and counts the paths that are
- * NOT protected rather than staying silent.
+ * What the fence leaves open, one line each. Only meaningful while missions
+ * are fenced: an unfenced mission reaches everything and the warning says so.
  */
-function isolationLine(iso: DoctorReport['missionIsolation']): string {
-  if (iso.configured === 'off') return 'off (host.isolation.filesystem: "off")';
+function fenceGaps(input: MissionIsolationInput, mechanism: 'landlock' | 'seatbelt', abi: number): string[] {
+  const gaps: string[] = [];
+  if (mechanism === 'landlock' && abi === 2) gaps.push('partial: kernel ABI 2 — a mission can truncate files it cannot read.');
+  if (mechanism === 'landlock' && abi < LANDLOCK_SIGNAL_SCOPE_ABI) {
+    gaps.push(`partial: kernel ABI ${abi} — a mission can send signals to processes outside its fence (ABI ${LANDLOCK_SIGNAL_SCOPE_ABI} confines them).`);
+  }
+  const iso = input.isolation;
+  if (iso.unixSockets === 'allow') {
+    gaps.push('unix sockets allowed for every mission (host.isolation.unixSockets): a mission reaches Docker, ssh-agent and the session bus, which act outside the fence.');
+  }
+  if (iso.writable.length > 0) {
+    gaps.push(`${iso.writable.length} extra writable path(s) in the home for every mission (host.isolation.writable).`);
+  }
+  for (const [kind, entries] of [['agent', iso.exceptions.agents], ['project', iso.exceptions.projects]] as const) {
+    for (const name of Object.keys(entries).sort()) {
+      const entry = entries[name]!;
+      const opened: string[] = [];
+      if (entry.unixSockets === 'allow' && iso.unixSockets !== 'allow') opened.push('unix sockets allowed');
+      if (entry.writable.length > 0) opened.push(`${entry.writable.length} extra writable path(s)`);
+      if (opened.length > 0) gaps.push(`exception for ${kind} "${name}": ${opened.join(', ')}.`);
+    }
+  }
+  return gaps;
+}
+
+/**
+ * The isolation part of the report, and the blocker it raises. Never reads
+ * as protection when there is none: a mission launched unfenced is a NOT
+ * enforced line with its cause and what it exposes; `enforce` without a
+ * fence is a blocker, `auto` a warning; an altered launcher is said apart.
+ */
+export function missionIsolationReport(input: MissionIsolationInput): {
+  report: DoctorReport['missionIsolation'];
+  blocker: string | null;
+} {
+  const { configured, status } = input;
+  const exceptions = {
+    agents: Object.keys(input.isolation.exceptions.agents).sort(),
+    projects: Object.keys(input.isolation.exceptions.projects).sort(),
+  };
+  const base = {
+    configured,
+    unixSockets: input.isolation.unixSockets,
+    exceptions,
+    launcher: input.launcher,
+    maskedPaths: input.maskedPaths,
+  };
+  if (configured === 'off' || status === null) {
+    return {
+      report: {
+        ...base, mechanism: 'none', abi: 0, enforced: false, state: 'off', launch: 'unfenced', gaps: [],
+        reason: 'turned off by host.isolation.filesystem',
+        message: `NOT enforced — turned off (host.isolation.filesystem: "off"). ${UNFENCED_CONSEQUENCE} Set host.isolation.filesystem to "auto" to fence missions where this machine can.`,
+      },
+      blocker: null,
+    };
+  }
+  if (status.state === 'ready' && input.mechanism) {
+    const mechanism = input.mechanism;
+    const how = mechanism === 'landlock'
+      ? `landlock ABI ${status.abi}${input.isolation.unixSockets === 'deny' ? ' + unix-socket filter' : ''}`
+      : 'seatbelt';
+    return {
+      report: {
+        ...base, mechanism, abi: mechanism === 'landlock' ? status.abi : 0, enforced: true, state: 'ready', launch: 'fenced',
+        reason: null,
+        message: `enforced (${how}): missions cannot read Timon's private files.`,
+        gaps: fenceGaps(input, mechanism, status.abi),
+      },
+      blocker: null,
+    };
+  }
+  // `hostFenceStatus` never says ready without a fence; read such a case as none.
+  const unready: Exclude<FenceStatus, { state: 'ready' }> = status.state === 'ready'
+    ? { state: 'unsupported', reason: noFenceReason(input.platform, status), abi: 0 }
+    : input.mechanism === null ? { ...status, reason: noFenceReason(input.platform, status) } : status;
+  const { reason } = unready;
+  const tampered = unready.state === 'tampered';
+  const decision = fenceLaunchDecision(configured, unready);
+  const cause = tampered ? `ALTERED: ${reason}. The Timon package may have been altered: reinstall it.` : `${reason}.`;
+  const refused = decision.action === 'refuse';
+  const message = refused
+    ? `NOT enforced — ${cause} host.isolation.filesystem is "enforce": every mission is refused until this is fixed.`
+    : `NOT enforced — ${cause} ${UNFENCED_CONSEQUENCE} Set host.isolation.filesystem to "enforce" to refuse launching unconfined missions.`;
+  return {
+    report: {
+      ...base, mechanism: 'none', abi: unready.abi, enforced: false, state: tampered ? 'tampered' : 'unsupported',
+      launch: refused ? 'refused' : 'unfenced', reason, message, gaps: [],
+    },
+    blocker: refused ? decision.error : null,
+  };
+}
+
+/**
+ * The older systemd masking, shown only while no fence applies: there it is
+ * the one thing configured, and it must read INERT when the launcher emits
+ * nothing. Where the fence applies the line goes away, the fence covers it.
+ */
+function maskingLine(iso: DoctorReport['missionIsolation']): string | null {
+  if (iso.enforced || iso.configured === 'off') return null;
   const where = iso.launcher ? `${iso.launcher} launcher` : 'no launcher isolation on this host';
-  if (iso.enforced) return `enforced — ${iso.maskedPaths} path(s) masked (${where})`;
-  return `INERT — ${iso.maskedPaths} path(s) in the policy, NONE masked today `
-    + `(${where}; docs/SECURITY.md §9.1)`;
+  return `INERT — ${iso.maskedPaths} path(s) in the policy, NONE masked today (${where}; docs/SECURITY.md §9.1)`;
 }
 
 /** Text rendering of the diagnostic — the output of `timon doctor` without `--json`. */
@@ -309,7 +444,12 @@ export function formatDoctor(r: DoctorReport): string {
     `distribution     ${r.linux ? `${r.linux.prettyName ?? r.linux.id ?? 'unknown'} (${r.linux.packageManager ?? 'no known package manager'})` : 'n/a'}`,
     `docker           ${r.docker.usable ? `usable — ${r.docker.detail}` : `unusable — ${r.docker.detail}`}`,
     `graphical session ${r.display ?? 'none (DISPLAY/WAYLAND_DISPLAY empty)'}`,
-    `mission FS masking ${isolationLine(r.missionIsolation)}`,
+    `mission isolation ${r.missionIsolation.message}`,
+    ...r.missionIsolation.gaps.map((gap) => `  ${gap}`),
+  );
+  const masking = maskingLine(r.missionIsolation);
+  if (masking) lines.push(`mission FS masking ${masking}`);
+  lines.push(
     `free disk space  ${r.storage.freeBytes === null ? 'unknown' : formatBytes(r.storage.freeBytes)}${r.storage.low ? ' — LOW: the database may fail to write' : ''}`,
     '',
     `capabilities     ${r.capabilities.join(', ') || 'none'}`,
@@ -318,6 +458,10 @@ export function formatDoctor(r: DoctorReport): string {
   if (r.modules.length) {
     lines.push('', 'modules limited by this machine:');
     for (const note of r.modules) lines.push(`  - ${note}`);
+  }
+  // Not a blocker in `auto` or `off`, but never a line lost in the middle.
+  if (!r.missionIsolation.enforced && r.missionIsolation.launch !== 'refused') {
+    lines.push('', 'WARNING:', `  - mission isolation ${r.missionIsolation.message}`);
   }
   if (r.blockers.length) {
     lines.push('', 'BLOCKING:');

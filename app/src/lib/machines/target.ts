@@ -244,12 +244,12 @@ export function machineIdFromCookieHeader(header: string | null | undefined): st
  */
 async function requestCookie(name: string): Promise<string | undefined> {
   const { cookies } = await import('next/headers');
-  return cookies().get(name)?.value;
+  return (await cookies()).get(name)?.value;
 }
 
 async function requestHeader(name: string): Promise<string | null> {
   const { headers } = await import('next/headers');
-  return headers().get(name);
+  return (await headers()).get(name);
 }
 
 /** `machineIdFromRequest` for the current Next request scope (server render,

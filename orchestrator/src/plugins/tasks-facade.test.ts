@@ -33,9 +33,9 @@ await mountOfficialProviders();
 
 const PLUGIN_ID = 'acme-sync';
 
-const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
-const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword('bob-secret'), isSuperadmin: false });
-const root = createTestAccount(dbApi, { email: 'root@example.com', name: 'Root', passwordHash: hashPassword('root-secret'), isSuperadmin: true });
+const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
+const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword('bob-secret'), isSuperadmin: false });
+const root = createTestAccount(dbApi, { email: 'root@example.com', name: 'Root', passwordHash: await hashPassword('root-secret'), isSuperadmin: true });
 
 function identityOf(user: { id: string; email: string; name: string }, superadmin = false) {
   return {

@@ -1127,6 +1127,20 @@ export function authStatusNow(id: string, env: Readonly<Record<string, string>> 
   return status instanceof Promise ? null : status;
 }
 
+/**
+ * The plugin that brought backend `id` (an account instance included): the
+ * owner of its profile, else of the dialect it runs on. Null for a backend
+ * no plugin registered. The fence grants a mission that plugin's scratch and
+ * cache folders, never another's.
+ */
+export function backendOwnerPlugin(id: string): string | null {
+  const base = baseBackendId(id);
+  const profileOwner = profileOwners.get(base);
+  if (profileOwner) return profileOwner;
+  const dialect = activeProfiles().find((entry) => entry.profile.id === base)?.profile.dialect;
+  return dialect === undefined ? null : dialectOwners.get(dialect) ?? null;
+}
+
 /** What a plugin brought, for the gallery and the tests. */
 export function registeredBackendOwners(): { profiles: Record<string, string>; dialects: Record<string, string> } {
   return {

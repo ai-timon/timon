@@ -59,13 +59,13 @@ test('an unsigned plugin, or one without the permission, never adds an account',
   assert.equal(accountProviderHolder(), null, 'a refused call does not claim the provider');
 });
 
-test('the core creates the account: hashed password, never a superadmin, audited', () => {
+test('the core creates the account: hashed password, never a superadmin, audited', async () => {
   const { provider, unload } = facade('team-plugin');
   const account = provider.provision({ email: ' Ada@Example.com ', name: 'Ada', password: 'ada-password' });
   assert.deepEqual({ email: account.email, status: account.status }, { email: 'ada@example.com', status: 'active' });
   const row = dbApi.getUserById(account.id)!;
   assert.equal(row.is_superadmin, false);
-  assert.ok(verifyPassword('ada-password', row.password_hash), 'hashed by the core');
+  assert.ok(await verifyPassword('ada-password', row.password_hash), 'hashed by the core');
   assert.ok(dbApi.listAuditLog(20).some((a) => a.actor === 'plugin:team-plugin' && a.action === 'user.create' && a.target === `user:${account.id}`));
   assert.throws(() => provider.provision({ email: 'ada@example.com', name: 'Ada again', password: 'ada-password' }),
     (err: unknown) => err instanceof AccountProviderError && err.code === 'duplicate');
@@ -172,7 +172,7 @@ test('the holder reads the accounts, superadmins included, but never a credentia
   assert.throws(() => unsigned.provider.list(), (err: unknown) => err instanceof AccountProviderError && err.code === 'not_trusted');
 });
 
-test('the holder renames, disables, enables and sets a password, never on a superadmin', () => {
+test('the holder renames, disables, enables and sets a password, never on a superadmin', async () => {
   const { provider, unload } = facade('directory-writer');
   const member = provider.provision({ email: 'writer-member@example.com', name: 'Writer', password: 'first-password' });
   const res = fakeRes();
@@ -181,7 +181,7 @@ test('the holder renames, disables, enables and sets a password, never on a supe
 
   assert.equal(provider.update(member.id, { name: '  Renamed  ' }).name, 'Renamed');
   provider.update(member.id, { password: 'second-password' });
-  assert.ok(verifyPassword('second-password', dbApi.getUserById(member.id)!.password_hash));
+  assert.ok(await verifyPassword('second-password', dbApi.getUserById(member.id)!.password_hash));
   assert.equal(dbApi.getSessionByTokenHash(hashSessionToken(token)), undefined, 'a new password closes the old sessions');
 
   assert.equal(provider.update(member.id, { status: 'disabled' }).status, 'disabled');

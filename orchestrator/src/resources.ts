@@ -75,11 +75,18 @@
  * `IOWeight=` on a user unit is therefore silently inert: the
  * disk priority goes through `ionice` on the process, not through the cgroup.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { cpus, homedir, loadavg } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { config } from './config/load.js';
+import { apiError } from './api-error.js';
 import { getHost } from './host/index.js';
-import type { IsolationTarget } from './host/isolation.js';
+import { FENCE_EXIT, fenceLaunchDecision, type FenceStatus } from './host/fence.js';
+import {
+  agentPackageCacheDir, isFenceSegment, missionTmpDir, resolveFence, type FenceMode, type FenceTarget, type IsolationTarget,
+} from './host/isolation.js';
+import type { FenceMechanism, HostFence, HostFenceWitness } from './host/types.js';
+import { argsUnderFence, type NestedSandboxDeclaration } from './backends/permission-models.js';
 import { hasSystemd, systemctl, systemctlCallCount } from './host/systemd.js';
 import {
   instancePrefix,
@@ -404,28 +411,437 @@ export function missionScopeUnit(missionId: string, home?: string): string {
   return `${instancePrefix(home)}-mission-${missionId.slice(0, 8)}-${scopeSeq.toString(36)}`;
 }
 
+/* ── The mission fence (GHSA-f58g) ───────────────────────────────────────── */
+
+/**
+ * What a launch learnt about the fence. `null` on a launch that carries no
+ * mission target (the wrapper's own probe): there is nothing to fence.
+ */
+export type MissionFenceOutcome =
+  | {
+    readonly state: 'fenced';
+    readonly mechanism: FenceMechanism;
+    readonly policyFile: string;
+    /** The mission's own temporary folder, to hand the CLI as `TMPDIR`; null when it could not be made. */
+    readonly tmpDir: string | null;
+    /** `ro` when the fence applies a read-only level in place of the CLI's own sandbox. */
+    readonly workspace: 'rw' | 'ro';
+    /** The agent's package cache (`agentPackageCacheDir`), for the package managers; null without one. */
+    readonly packageCacheDir: string | null;
+  }
+  /** `warning` is null only when the configuration turned the fence off. */
+  | { readonly state: 'unfenced'; readonly warning: string | null; readonly tampered: boolean };
+
+export type MissionLaunch = { cmd: string; args: string[]; fence: MissionFenceOutcome | null };
+
+/** `host.isolation.filesystem` is `enforce` and this mission cannot be fenced. */
+export class MissionFenceRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MissionFenceRefusedError';
+  }
+}
+
+/**
+ * The body a route answers for a launch that failed. A fence refusal keeps a
+ * code the interface translates, so the person reads why Timon refused, in
+ * their language, rather than a launch error like any other; anything else
+ * keeps its message, as before.
+ */
+/**
+ * 503 for a fence refusal: this machine cannot serve the launch until its
+ * kernel or its setting changes. Never 409, which the chat reads as "the
+ * agent is still talking" and answers by queueing the message.
+ */
+export function launchErrorStatus(err: unknown, otherwise: number): number {
+  return err instanceof MissionFenceRefusedError ? 503 : otherwise;
+}
+
+export function missionLaunchErrorBody(err: unknown): { error: string; code?: string } {
+  if (err instanceof MissionFenceRefusedError) return { ...apiError('mission_fence_refused', err.message) };
+  return { error: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * Set when the launcher, run again as a witness after a launch that looked
+ * like it failed, could not apply the fence either (no fence on this kernel
+ * after all, a step the kernel refused, a profile this OS rejects). Never set
+ * from what a mission's process printed alone (`watchFencedLaunch`). Until
+ * the daemon restarts, missions are not handed to a launcher that cannot
+ * apply the fence, and the cause is reported instead of every turn failing
+ * the same way.
+ */
+let fenceBrokenAtLaunch: string | null = null;
+
+export function noteFenceLaunchFailure(reason: string): void {
+  if (fenceBrokenAtLaunch === null) console.error(`[resources] mission fence disabled until the daemon restarts: ${reason}`);
+  fenceBrokenAtLaunch = reason;
+}
+
+/** Test-only. */
+export function resetFenceLaunchFailureForTest(): void {
+  fenceBrokenAtLaunch = null;
+}
+
+/** The host's fence as the launch decision reads it (`host/fence.ts`). */
+export function hostFenceStatus(fence: HostFence | undefined): FenceStatus {
+  if (!fence) return { state: 'unsupported', reason: 'no mission fence on this OS', abi: 0 };
+  if (fenceBrokenAtLaunch) return { state: 'unsupported', reason: fenceBrokenAtLaunch, abi: 0 };
+  const probe = fence.probe();
+  const abi = probe.abi ?? 0;
+  if (probe.available) return { state: 'ready', binary: fence.mechanism, abi, seccomp: true };
+  const reason = probe.reason ?? `the ${fence.mechanism} fence is unavailable`;
+  return probe.tampered ? { state: 'tampered', reason, abi } : { state: 'unsupported', reason, abi };
+}
+
+/** Where the launcher reads the policy: under `run/`, which no mission ever reaches (`MISSION_TIMON_ZONES.refused`). */
+export function fencePolicyFile(timonHome: string, unit: string): string {
+  return join(timonHome, 'run', 'fence', `${unit}.policy`);
+}
+
+/**
+ * The launcher reads its policy once, before it executes the CLI: a policy
+ * left by an earlier daemon is never read again. Swept once per Timon home and
+ * daemon life, before this life writes its first one.
+ */
+const sweptFencePolicies = new Set<string>();
+
+function sweepFencePolicies(timonHome: string): void {
+  if (sweptFencePolicies.has(timonHome)) return;
+  sweptFencePolicies.add(timonHome);
+  try {
+    rmSync(join(timonHome, 'run', 'fence'), { recursive: true, force: true });
+  } catch (err) {
+    console.warn(`[resources] stale fence policies left in place: ${(err as Error).message}`);
+  }
+}
+
+/** Removes the policy of a launch whose process is over. */
+export function releaseFencePolicy(outcome: MissionFenceOutcome | null): void {
+  if (outcome?.state !== 'fenced') return;
+  try {
+    rmSync(outcome.policyFile, { force: true });
+  } catch { /* swept at the next daemon start */ }
+}
+
+/** Last fence state told to the log: a working fence is said once, not at every turn. */
+let reportedFence: string | null = null;
+
+/** Causes of an unfenced launch already told to the log in this daemon life. */
+const warnedUnfenced = new Set<string>();
+
+function reportFenceReady(mechanism: FenceMechanism, abi: number): void {
+  const key = `${mechanism}:${abi}`;
+  if (reportedFence === key) return;
+  reportedFence = key;
+  console.log(`[resources] missions run inside the ${mechanism} fence${abi ? ` (ABI ${abi})` : ''}`);
+}
+
+/**
+ * The folders the fence grants a mission from its identity, made before the
+ * policy is resolved: a grant on a folder that does not exist is dropped, and
+ * the CLI would then find neither its temporary folder nor its agent's memory.
+ * Created owner-only, like the rest of the Timon home.
+ */
+function prepareFencedFolders(target: FenceTarget): { tmpDir: string | null; packageCacheDir: string | null } {
+  const make = (dir: string): boolean => {
+    try {
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      return true;
+    } catch (err) {
+      console.warn(`[resources] cannot create ${dir} for a fenced mission: ${(err as Error).message}`);
+      return false;
+    }
+  };
+  let tmpDir: string | null = null;
+  if (target.missionId && isFenceSegment(target.missionId)) {
+    const dir = missionTmpDir(target.timonHome, target.missionId);
+    if (make(dir)) tmpDir = dir;
+  }
+  // Only for an agent folder that exists: a name alone never creates an agent.
+  let packageCacheDir: string | null = null;
+  if (target.agent && isFenceSegment(target.agent)) {
+    const agentDir = join(target.timonHome, 'agents', target.agent);
+    if (existsSync(agentDir)) {
+      make(join(agentDir, 'memory'));
+      const cache = agentPackageCacheDir(target.timonHome, target.agent);
+      if (make(cache)) packageCacheDir = cache;
+    }
+  }
+  return { tmpDir, packageCacheDir };
+}
+
+/**
+ * A missing folder grants nothing, which is the safe side and the common
+ * case (a provider without a scratch folder, an agent without per-mission
+ * memory): not worth a line at every turn. The other reasons are.
+ */
+const UNRESOLVED_GRANT = 'the path does not resolve to an existing file or folder';
+
+export type FenceMissionOptions = {
+  mode?: FenceMode;
+  fence?: HostFence | undefined;
+  /**
+   * How the CLI's own sandbox turns off (`PermissionStrategy.nestedSandbox`):
+   * applied to a fenced launch only. An unfenced one keeps the arguments the
+   * provider built, its own sandbox included.
+   */
+  nestedSandbox?: NestedSandboxDeclaration | undefined;
+  /** Where the decision and the dropped grants are reported. */
+  warn?: (line: string) => void;
+};
+
+/**
+ * The fence layer of a mission launch: the command wrapped by the host's
+ * fence, or left as is with a warning, or refused. Never silent: outside
+ * `off`, a mission that runs unfenced says why, and an altered package is
+ * worded apart from a machine that lacks the mechanism.
+ */
+export function fenceMissionCommand(
+  cmd: string,
+  args: string[],
+  unit: string,
+  target: FenceTarget,
+  options: FenceMissionOptions = {},
+): MissionLaunch {
+  const cfg = config();
+  const mode = options.mode ?? cfg.host.isolation.filesystem;
+  const warn = options.warn ?? ((line: string) => console.warn(line));
+  const label = `[resources] mission ${target.missionId?.slice(0, 8) ?? unit}:`;
+  const fence = 'fence' in options ? options.fence : getHost().fence;
+
+  const unfenced = (status: FenceStatus): MissionLaunch => {
+    const decision = fenceLaunchDecision(mode, status);
+    if (decision.action === 'refuse') throw new MissionFenceRefusedError(decision.error);
+    if (decision.action === 'fence') throw new Error('a fence that cannot be applied was reported ready');
+    // Once per cause in the log (a machine without the mechanism would say it
+    // at every turn of every mission); an altered package, at every launch.
+    if (decision.warning && (options.warn || decision.tampered || !warnedUnfenced.has(decision.warning))) {
+      warnedUnfenced.add(decision.warning);
+      warn(`${label} ${decision.warning}`);
+    }
+    return { cmd, args, fence: { state: 'unfenced', warning: decision.warning, tampered: decision.tampered } };
+  };
+
+  if (mode === 'off') return unfenced({ state: 'unsupported', reason: 'off', abi: 0 });
+  const status = hostFenceStatus(fence);
+  if (status.state !== 'ready' || !fence) {
+    reportedFence = null;
+    return unfenced(status);
+  }
+
+  sweepFencePolicies(target.timonHome);
+  const { tmpDir, packageCacheDir } = prepareFencedFolders(target);
+  // The CLI's own sandbox cannot run inside the fence: it is turned off, and
+  // the fence takes over the level it would have applied. Only here, once the
+  // fence is known to apply: an unfenced launch keeps the CLI's sandbox.
+  const nested = argsUnderFence(args, options.nestedSandbox);
+  if (nested.levelMissing) {
+    warn(`${label} the CLI's sandbox level option (${options.nestedSandbox?.level?.flag ?? ''}) is not in its launch: its own sandbox may fail inside the fence`);
+  }
+  const workspace = nested.readOnly || target.workspace === 'ro' ? 'ro' : 'rw';
+  const policy = resolveFence(
+    { ...cfg, host: { ...cfg.host, isolation: { ...cfg.host.isolation, filesystem: mode } } },
+    { ...target, workspace },
+  );
+  for (const { path, reason } of policy.ignored) {
+    if (reason !== UNRESOLVED_GRANT) warn(`${label} fence grant on ${path} dropped: ${reason}`);
+  }
+  const policyFile = fencePolicyFile(target.timonHome, unit);
+  try {
+    const wrapped = fence.wrap(policy, cmd, nested.args, policyFile);
+    reportFenceReady(fence.mechanism, status.abi);
+    return { ...wrapped, fence: { state: 'fenced', mechanism: fence.mechanism, policyFile, tmpDir, workspace, packageCacheDir } };
+  } catch (err) {
+    return unfenced({ state: 'unsupported', reason: `the fence policy cannot be applied (${(err as Error).message})`, abi: status.abi });
+  }
+}
+
+/**
+ * Whether a fenced launch's end LOOKS like the launcher gave up because this
+ * machine cannot apply the fence: the launcher's words on stderr, with a code
+ * it uses for "cannot fence here". Never proof on its own: the CLI writes on
+ * the same stderr and picks its own exit code, so a mission can print these
+ * words. It only decides whether the launcher is asked again
+ * (`confirmFenceLaunchFailure`).
+ */
+export function fenceLaunchFailure(mechanism: FenceMechanism, code: number | null, stderr: string): string | null {
+  const prefix = mechanism === 'landlock' ? 'timon-fence: ' : 'sandbox-exec: ';
+  const line = stderr.split('\n').find((l) => l.startsWith(prefix));
+  if (!line) return null;
+  if (mechanism === 'landlock' && code !== FENCE_EXIT.unavailable && code !== FENCE_EXIT.osError) return null;
+  if (mechanism === 'seatbelt' && (code === 0 || code === null)) return null;
+  return line.trim();
+}
+
+/** The launcher's own line, kept short: it ends up in the log and in refusals. */
+function launcherLine(stderr: string, prefix: string): string | null {
+  const line = stderr.split('\n').find((l) => l.startsWith(prefix))?.trim();
+  return line ? line.slice(0, 300) : null;
+}
+
+/**
+ * The spawn errors that say the launcher itself cannot run: missing, not
+ * executable, not a binary this machine runs, or refused by the OS. Any other
+ * (EAGAIN, EMFILE, ENFILE, ENOMEM…) is the machine short of resources for a
+ * moment, which says nothing about the fence and must not turn it off.
+ */
+const LAUNCHER_SPAWN_FAILURES: ReadonlySet<string> = new Set(['ENOENT', 'EACCES', 'ENOEXEC', 'EPERM']);
+
+/**
+ * What a witness run of the launcher (`HostFence.witness`) proves: the reason
+ * the fence cannot be applied on this machine, or null when it proves nothing
+ * of the kind — the launcher applied it, or gave no conclusive answer (no
+ * answer in time, a spawn error that is not the launcher's, an end by a
+ * signal). The payload prints nothing and exits 0, so a failure here is the
+ * launcher's. Under Landlock, 127 means every fence step succeeded and only
+ * the payload could not run; 78 and 64 are the daemon's bugs, not the
+ * machine's (as for a launch). Under Seatbelt, only a numeric non-zero exit
+ * is a failure: `sandbox-exec` reports a refused profile that way, while a
+ * signal comes from outside it (the OS, an out-of-memory kill).
+ */
+export function fenceWitnessFailure(mechanism: FenceMechanism, witness: HostFenceWitness): string | null {
+  if (!witness.ran) {
+    if (witness.timedOut || witness.code === undefined || !LAUNCHER_SPAWN_FAILURES.has(witness.code)) return null;
+    return `the fence launcher cannot run (${witness.reason})`;
+  }
+  if (mechanism === 'landlock') {
+    if (witness.status !== FENCE_EXIT.unavailable && witness.status !== FENCE_EXIT.osError) return null;
+    return launcherLine(witness.stderr, 'timon-fence: ') ?? `timon-fence exited with ${witness.status}`;
+  }
+  if (witness.status === 0 || witness.status === null) return null;
+  return launcherLine(witness.stderr, 'sandbox-exec: ') ?? `sandbox-exec exited with ${witness.status}`;
+}
+
+/**
+ * Asks the launcher itself whether the fence still applies, after a launch
+ * that looked like it did not. Only the launcher's answer can turn the fence
+ * off for the next launches; what the mission printed never can.
+ */
+async function confirmFenceLaunchFailure(fence: HostFence | undefined, outcome: Extract<MissionFenceOutcome, { state: 'fenced' }>): Promise<void> {
+  const unit = basename(outcome.policyFile);
+  try {
+    if (!fence || fence.mechanism !== outcome.mechanism) return;
+    // A launcher gone or unusable since the launch: the next launch reads the
+    // probe itself, and a launcher put back is trusted again.
+    if (!fence.probe().available) return;
+    const witness = await fence.witness(outcome.policyFile);
+    const failure = fenceWitnessFailure(outcome.mechanism, witness);
+    if (failure) {
+      noteFenceLaunchFailure(failure);
+      return;
+    }
+    if (!witness.ran) {
+      console.warn(`[resources] the fence launcher gave no answer to its witness run (${witness.reason}) after ${unit}: the fence stays on`);
+      return;
+    }
+    if (witness.status === null) {
+      console.warn(`[resources] the fence launcher's witness run was ended by a signal after ${unit}: the fence stays on`);
+      return;
+    }
+    // The mission's text is not repeated: it is the mission's, not the launcher's.
+    console.warn(`[resources] ${unit}: a fenced launch ended like a fence launcher failure, but the launcher applies the fence: the fence stays on`);
+  } catch (err) {
+    console.warn(`[resources] the fence launcher could not be checked after ${unit}: ${(err as Error).message}; the fence stays on`);
+  }
+}
+
+/** The witness run under way: one at a time, the others would only repeat it. */
+let fenceWitnessInFlight: Promise<void> | null = null;
+
+/** The first bytes of stderr are enough: the launcher speaks before anything else does. */
+const FENCE_STDERR_PEEK = 4096;
+
+/**
+ * Watches a fenced launch for a launcher that could not apply the fence. When
+ * its end looks like one, the launcher is run again as a witness on the same
+ * policy (`HostFence.witness`); only if that fails too is the fence turned off
+ * for the next launches (`noteFenceLaunchFailure`), so that `auto` launches
+ * with a warning and `enforce` refuses, instead of every turn dying the same
+ * way. Removes the launch's policy once all is done; the promise settles then.
+ */
+export function watchFencedLaunch(
+  proc: { stderr: NodeJS.ReadableStream | null; once(event: 'close', listener: (code: number | null) => void): unknown },
+  outcome: MissionFenceOutcome | null,
+  options: { fence?: HostFence | undefined } = {},
+): Promise<void> {
+  if (outcome?.state !== 'fenced') return Promise.resolve();
+  const stderr = proc.stderr;
+  let head = '';
+  const peek = (chunk: Buffer | string): void => {
+    head += chunk.toString();
+    if (head.length >= FENCE_STDERR_PEEK) stderr?.removeListener('data', peek);
+  };
+  // Read alongside the mission's own reader, never before it: a `data`
+  // listener switches the stream to flowing, and what is emitted before the
+  // backend attaches its reader (after an await) would be lost to it.
+  const arm = (event: string | symbol): void => {
+    if (event !== 'data') return;
+    stderr?.removeListener('newListener', arm);
+    stderr?.on('data', peek);
+  };
+  stderr?.on('newListener', arm);
+  return new Promise((resolve) => {
+    proc.once('close', (code) => {
+      stderr?.removeListener('newListener', arm);
+      stderr?.removeListener('data', peek);
+      const done = (): void => {
+        releaseFencePolicy(outcome);
+        resolve();
+      };
+      const suspected = fenceLaunchFailure(outcome.mechanism, code, head.slice(0, FENCE_STDERR_PEEK)) !== null;
+      if (!suspected || fenceBrokenAtLaunch !== null || fenceWitnessInFlight) {
+        done();
+        return;
+      }
+      const fence = 'fence' in options ? options.fence : getHost().fence;
+      const witness = confirmFenceLaunchFailure(fence, outcome);
+      fenceWitnessInFlight = witness;
+      void witness.finally(() => {
+        if (fenceWitnessInFlight === witness) fenceWitnessInFlight = null;
+        done();
+      });
+    });
+  });
+}
+
+/** A launch target: what the resource scope reads, and what the fence needs once `timonHome` is known. */
+export type MissionLaunchTarget = IsolationTarget & Partial<FenceTarget> & {
+  /** Cf. `FenceMissionOptions.nestedSandbox`. */
+  nestedSandbox?: NestedSandboxDeclaration | undefined;
+};
+
 /** Wraps a spawn command in a confined systemd scope + nice +
- *  ionice. Returns the command as is if the guard is disabled or
- *  if systemd is missing — the spawn must NEVER fail because of this.
+ *  ionice, around the mission fence. The fence is applied whenever the
+ *  target names the Timon home; the scope only when the guard is enabled
+ *  and systemd present — the spawn must NEVER fail because of the latter.
  *
- *  `nice`/`ionice` are wrappers that `exec()`: the pid node sees stays
- *  that of the backend CLI, so `proc.kill()` and process tracking are
- *  unchanged (checked empirically). `systemd-run --scope` execs too.
+ *  Every layer `exec()`s the next one: `systemd-run --scope`, `nice`,
+ *  `ionice`, then the fence launcher (`timon-fence`, `sandbox-exec`), which
+ *  is the innermost so that the scope and the priorities cover it and it
+ *  covers only the CLI. The pid node sees stays that of the backend CLI,
+ *  so `proc.kill()` and process tracking are unchanged (checked
+ *  empirically, and by `resources-fence.test.ts`).
  *
  *  The confinement covers ALL the descendants: that is what catches the
  *  `ffmpeg` an agent launches three levels further down.
  *
- *  `target` carries the FILE confinement (audit finding #4): the mission's cwd
- *  and the backend actually used, the two things a masking must
- *  never swallow. Inert on a systemd scope (`host/isolation.ts`). */
+ *  Throws `MissionFenceRefusedError` when `host.isolation.filesystem` is
+ *  `enforce` and the mission cannot be fenced. */
 export function wrapMissionLaunch(
   cmd: string,
   args: string[],
   missionId: string,
-  target?: IsolationTarget,
-): { cmd: string; args: string[] } {
-  if (!guardEnabled() || !hasSystemd() || wrapUsable === false) return { cmd, args };
-  return getHost().confine(cmd, args, missionScopeUnit(missionId), target);
+  target?: MissionLaunchTarget,
+): MissionLaunch {
+  const unit = missionScopeUnit(missionId);
+  const fenced: MissionLaunch = target?.timonHome
+    ? fenceMissionCommand(cmd, args, unit, { ...target, timonHome: target.timonHome, missionId: target.missionId ?? missionId }, {
+      ...(target.nestedSandbox ? { nestedSandbox: target.nestedSandbox } : {}),
+    })
+    : { cmd, args, fence: null };
+  if (!guardEnabled() || !hasSystemd() || wrapUsable === false) return fenced;
+  return { ...getHost().confine(fenced.cmd, fenced.args, unit, target), fence: fenced.fence };
 }
 
 /** Probes the wrapper at start by launching `true` through it.

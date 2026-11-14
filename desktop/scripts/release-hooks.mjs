@@ -147,6 +147,21 @@ export function assertPackagedNode(resources, platform, spec = nodeRuntimeSpec()
   if (version !== spec.version) throw new Error(`${node} is Node ${version}, expected ${spec.version}`);
 }
 
+/**
+ * A Linux package carries the mission launcher (`orchestrator/native/
+ * timon-fence`, signed with the daemon): without it every mission would run
+ * unfenced. Executed when the pack targets the build machine.
+ */
+export function assertPackagedFence(resources, platform) {
+  if (platform !== 'linux') return;
+  const fence = join(resources, 'orchestrator', 'native', 'timon-fence');
+  if (!existsSync(fence)) throw new Error(`${fence} is missing: Linux missions would run unfenced (prepare-daemon-release builds it)`);
+  if ((statSync(fence).mode & 0o111) === 0) throw new Error(`${fence} is not executable`);
+  if (platform !== process.platform) return;
+  const version = execFileSync(fence, ['--version'], { encoding: 'utf8' }).trim();
+  if (!version.startsWith('timon-fence ')) throw new Error(`${fence} is not the mission launcher (answered ${JSON.stringify(version)})`);
+}
+
 export async function afterPack(context) {
   const name = context.packager.appInfo.productFilename;
   const platform = context.electronPlatformName;
@@ -164,6 +179,7 @@ export async function afterPack(context) {
   assertPackagedPublicKey(resources, keys.publicKey);
   assertPackagedReleaseCheck(resources);
   assertPackagedNode(resources, platform);
+  assertPackagedFence(resources, platform);
   assertPackagedThirdPartyNotices(resources, readFileSync(new URL(`../${THIRD_PARTY_NOTICES}`, import.meta.url)));
   assertPackagedShellLocales(resources);
   // Built by `npm run dist` before electron-builder runs: the shell's own table.

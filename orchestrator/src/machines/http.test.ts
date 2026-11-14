@@ -121,7 +121,7 @@ async function issueCode(cookie: string): Promise<string> {
 
 const setup = await call('POST', '/api/auth/setup', { body: { email: 'alice@example.com', name: 'Alice', password: PASSWORD } });
 assert.equal(setup.status, 201);
-createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword(PASSWORD), status: 'active' });
+createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword(PASSWORD), status: 'active' });
 const aliceCookie = await login('alice@example.com');
 const bobCookie = await login('bob@example.com');
 

@@ -3,6 +3,7 @@ import { getSigningKey } from './key';
 import { getDb, type RemoteTokenRow } from './db';
 import type { Statement } from 'better-sqlite3';
 import { TOKEN_TTL_SECONDS } from '../paths';
+import { secretEquals } from './constant-time';
 
 const b64url = (b: Buffer): string =>
   b.toString('base64').replace(/=+$/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -76,7 +77,7 @@ export function verifyAndLoad(token: string): VerifiedToken | null {
   if (!payload) return null;
   const row = S().findById.get(payload.jti) as RemoteTokenRow | undefined;
   if (!row || row.revoked) return null;
-  if (hash(token) !== row.token_hash) return null;
+  if (!secretEquals(hash(token), row.token_hash)) return null;
   return { row, payload };
 }
 

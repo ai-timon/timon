@@ -5,6 +5,7 @@ import { isAbsolute, join, posix, win32 } from 'node:path';
 import { TIMON_HOME } from '../paths.js';
 import { installedByNpm } from './machine.js';
 import { windowsShimLaunch } from './windows-shell.js';
+import { missionWritableProblem } from './mission-writable.js';
 import { declaredBinary } from './declared-binaries.js';
 import type { BuiltinDesktopBuild } from '../backends/builtin-declarations.js';
 import { expandDirectory, INSTALL_PLATFORMS, type InstallPlatform } from '../backends/provider-declarations.js';
@@ -30,6 +31,8 @@ export type BinarySearchOptions = {
   directoryReader?: DirectoryReader;
   /** Global npm prefix (`npm config get prefix`), injectable for tests. */
   npmPrefix?: () => string | null;
+  /** Stands in for `TIMON_HOME` when telling the folders a mission can write. */
+  timonHome?: string;
 };
 
 export type DirectoryReader = {
@@ -391,8 +394,15 @@ export function npmPrefixCandidates(name: string, options: BinarySearchOptions =
   return ['.exe', '.cmd', '.bat', ''].map((ext) => pathJoin(prefix, name + ext));
 }
 
-function firstExecutable(candidates: string[], platform: NodeJS.Platform): string | null {
+/**
+ * A candidate in a folder a mission can write is never chosen, pinned or not:
+ * the daemon would run it outside any fence, and so would every mission that
+ * launches it (GHSA-f58g). The next known location is tried instead, so a
+ * `git` planted ahead of the real one on PATH loses to it.
+ */
+function firstExecutable(candidates: string[], platform: NodeJS.Platform, timonHome?: string): string | null {
   for (const candidate of candidates) {
+    if (missionWritableProblem(candidate, { platform, ...(timonHome ? { timonHome } : {}) })) continue;
     try {
       if (!statSync(candidate).isFile()) continue;
       accessSync(candidate, platform === 'win32' ? constants.F_OK : constants.X_OK);
@@ -408,8 +418,8 @@ function firstExecutable(candidates: string[], platform: NodeJS.Platform): strin
 export function findExecutableBinary(name: string, options: BinarySearchOptions = {}): string | null {
   const platform = options.platform ?? process.platform;
   // npm is asked only once every known location has failed: it costs a process.
-  return firstExecutable(binaryCandidates(name, options), platform)
-    ?? firstExecutable(npmPrefixCandidates(name, options), platform);
+  return firstExecutable(binaryCandidates(name, options), platform, options.timonHome)
+    ?? firstExecutable(npmPrefixCandidates(name, options), platform, options.timonHome);
 }
 
 /**

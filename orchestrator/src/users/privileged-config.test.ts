@@ -12,9 +12,9 @@ import assert from 'node:assert/strict';
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-privconf-'));
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 
-const { agentConfigRefusal, llmChoiceRefusal, spawnOverrideRefusal, taskOverrideRefusal, RESTRICTED } = await import('./privileged-overrides.js');
+const { agentConfigRefusal, llmChoiceRefusal, permissionModeRefusal, spawnOverrideRefusal, taskOverrideRefusal, RESTRICTED } = await import('./privileged-overrides.js');
 const { MISSION_TOKEN_PERMISSIONS } = await import('./permissions.js');
-const { catalogBackend } = await import('../backends/catalog.js');
+const { catalogBackend, resolvedPermissionModeFor } = await import('../backends/catalog.js');
 
 
 {
@@ -45,6 +45,84 @@ test('relaxed: the level never exceeds the caller\'s own', () => {
   assert.equal(agentConfigRefusal({ permission_mode: 'auto' }, null, relaxed('auto')), null);
   assert.match(agentConfigRefusal({ permission_mode: 'auto' }, null, relaxed('default')) ?? '', /above the caller's own level/);
   assert.match(agentConfigRefusal({ permission_mode: 'bypassPermissions' }, null, relaxed('acceptEdits')) ?? '', /above/);
+});
+
+test('supportedModes: a backend that declares them runs every other mode in plan, and only there', () => {
+  assert.deepEqual(catalogBackend('grok')?.supportedPermissionModes, ['plan', 'bypassPermissions']);
+  for (const mode of ['default', 'auto', 'acceptEdits', 'dontAsk', 'read-only', 'workspace-write', 'typo', undefined]) {
+    assert.equal(resolvedPermissionModeFor('grok', mode), 'plan', String(mode));
+  }
+  assert.equal(resolvedPermissionModeFor('grok', 'bypassPermissions'), 'bypassPermissions');
+  assert.equal(resolvedPermissionModeFor('grok', 'danger-full-access'), 'bypassPermissions');
+  // The other providers declare nothing: the mode goes through untouched.
+  for (const backend of ['claude', 'codex', 'copilot', 'unknown-backend']) {
+    assert.equal(catalogBackend(backend)?.supportedPermissionModes, undefined, backend);
+    for (const mode of ['default', 'auto', 'acceptEdits', 'bypassPermissions']) {
+      assert.equal(resolvedPermissionModeFor(backend, mode), mode, `${backend} ${mode}`);
+    }
+  }
+});
+
+test('supportedModes: the ceiling judges the mode asked for, never lowered by the backend that resolves it', () => {
+  const onGrok = { backend: 'grok' } as const;
+  // Without the bypass right: a guarded mode passes, as on any backend…
+  for (const mode of ['default', 'acceptEdits', 'auto']) {
+    assert.equal(agentConfigRefusal({ permission_mode: mode }, onGrok, RESTRICTED), null, mode);
+    assert.equal(spawnOverrideRefusal({ permission_mode: mode }, onGrok, RESTRICTED), null, mode);
+    assert.equal(taskOverrideRefusal({ permission_mode_override: mode }, onGrok, RESTRICTED), null, mode);
+    assert.equal(permissionModeRefusal(mode, RESTRICTED, 'grok'), null, mode);
+  }
+  // …and what it would refuse elsewhere stays refused, even though grok runs it read-only.
+  for (const mode of ['dontAsk', 'bypassPermissions']) {
+    assert.match(agentConfigRefusal({ permission_mode: mode }, onGrok, RESTRICTED) ?? '', /not allowed/, mode);
+    assert.match(spawnOverrideRefusal({ permission_mode: mode }, onGrok, RESTRICTED) ?? '', /not allowed/, mode);
+    assert.match(taskOverrideRefusal({ permission_mode_override: mode }, onGrok, RESTRICTED) ?? '', /not allowed/, mode);
+    assert.match(permissionModeRefusal(mode, RESTRICTED, 'grok') ?? '', /not allowed/, mode);
+  }
+  // The message still says what the agent would really get.
+  assert.match(agentConfigRefusal({ permission_mode: 'dontAsk' }, onGrok, RESTRICTED) ?? '', /dontAsk \(runs as plan on backend grok\)/);
+  // A caller that runs read-only hands out read-only, whatever the backend makes of more.
+  assert.match(agentConfigRefusal({ permission_mode: 'default' }, onGrok, relaxed('plan')) ?? '', /above/);
+  assert.match(agentConfigRefusal({ permission_mode: 'default' }, { backend: 'claude' }, relaxed('plan')) ?? '', /above/);
+  assert.equal(agentConfigRefusal({ permission_mode: 'plan' }, onGrok, relaxed('plan')), null);
+  assert.match(agentConfigRefusal({ permission_mode: 'bypassPermissions' }, onGrok, relaxed('default')) ?? '', /above/);
+  assert.match(spawnOverrideRefusal({ permission_mode: 'bypassPermissions', backend_override: 'grok' }, null, relaxed('auto')) ?? '', /above/);
+  // The right holder gets it.
+  assert.equal(agentConfigRefusal({ permission_mode: 'bypassPermissions' }, onGrok, relaxed('bypassPermissions')), null);
+  assert.equal(agentConfigRefusal({ backend: 'grok', permission_mode: 'bypassPermissions' }, null, relaxed(null)), null);
+  // A name nobody knows is still refused: once stored it would reach the next backend.
+  assert.match(agentConfigRefusal({ permission_mode: 'typo' }, onGrok, relaxed(null)) ?? '', /not a known permission mode/);
+  assert.match(agentConfigRefusal({ permission_mode: 'typo' }, onGrok, RESTRICTED) ?? '', /not allowed/);
+});
+
+test('supportedModes: a stored override is judged as asked, since a backend fallback runs it unjudged', () => {
+  // A spawn or task override is stored as asked, and the mission or task can
+  // later fall back to another backend (quota run dry) without a new judgement:
+  // judged as the `plan` grok would run it, this `auto` would run as `auto` on claude.
+  const onGrok = { backend: 'grok' } as const;
+  assert.match(spawnOverrideRefusal({ permission_mode: 'auto' }, onGrok, relaxed('plan')) ?? '', /above/);
+  assert.match(taskOverrideRefusal({ permission_mode_override: 'auto' }, onGrok, relaxed('plan')) ?? '', /above/);
+});
+
+test('supportedModes: moving an agent off grok judges the mode it will then run as written', () => {
+  // `dontAsk` ran read-only on grok; on claude it runs as itself.
+  assert.match(agentConfigRefusal({ backend: 'claude' }, { backend: 'grok', permission_mode: 'dontAsk' }, RESTRICTED) ?? '', /not allowed/);
+  assert.match(agentConfigRefusal({ backend: 'claude' }, { backend: 'grok', permission_mode: 'auto' }, relaxed('default')) ?? '', /above/);
+  assert.equal(agentConfigRefusal({ backend: 'claude' }, { backend: 'grok', permission_mode: 'auto' }, RESTRICTED), null);
+  // Moving onto grok lowers the level: nothing to judge.
+  assert.equal(agentConfigRefusal({ backend: 'grok' }, { backend: 'claude', permission_mode: 'auto' }, relaxed('plan')), null);
+});
+
+test('supportedModes: claude and codex keep the grid they had', () => {
+  assert.equal(agentConfigRefusal({ backend: 'claude', permission_mode: 'default' }, null, RESTRICTED), null);
+  assert.match(agentConfigRefusal({ backend: 'claude', permission_mode: 'dontAsk' }, null, RESTRICTED) ?? '', /not allowed/);
+  assert.equal(agentConfigRefusal({ backend: 'claude', permission_mode: 'acceptEdits' }, null, relaxed('acceptEdits')), null);
+  assert.match(agentConfigRefusal({ backend: 'claude', permission_mode: 'bypassPermissions' }, null, relaxed('default')) ?? '', /above/);
+  assert.equal(agentConfigRefusal({ backend: 'codex', permission_mode: 'auto' }, null, relaxed('auto')), null);
+  assert.match(agentConfigRefusal({ backend: 'codex', permission_mode: 'auto' }, null, relaxed('default')) ?? '', /above/);
+  assert.equal(permissionModeRefusal('auto', RESTRICTED, 'claude'), null);
+  // A backend change between two providers that honour every mode judges nothing new.
+  assert.equal(agentConfigRefusal({ backend: 'codex' }, { backend: 'claude', permission_mode: 'bypassPermissions' }, relaxed('default')), null);
 });
 
 test('relaxed: the codex sandbox names share the ladder with the claude modes', () => {

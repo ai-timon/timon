@@ -4,7 +4,7 @@ import type {
   SpawnSyncOptionsWithStringEncoding,
 } from 'node:child_process';
 import type { DetachedResult, DetachedSpec } from './detached.js';
-import type { IsolationTarget, LauncherKind } from './isolation.js';
+import type { FencePolicy, IsolationTarget, LauncherKind } from './isolation.js';
 import type { ListenPortState } from './listen-port.js';
 import type { DesktopSession } from './desktop-session.js';
 
@@ -38,6 +38,61 @@ export interface Keyring {
   set(account: string, value: string): void;
   del(account: string): void;
 }
+
+export type FenceMechanism = 'seatbelt' | 'landlock';
+
+export type HostFenceProbe = {
+  available: boolean;
+  /** Why missions cannot be fenced here, in English, for doctor and the logs. */
+  reason?: string;
+  /** The kernel interface version, where the mechanism has one (Landlock ABI). */
+  abi?: number;
+  /**
+   * The release ships a fence that is no longer usable (launcher missing,
+   * replaced, not executable): a sign the package was altered, worded apart
+   * from a machine that lacks the mechanism (`host/fence.ts`).
+   */
+  tampered?: boolean;
+};
+
+/**
+ * Applies a fence policy to one mission launch. The wrapper it returns is the
+ * INNERMOST layer of the launch chain and exec()s the command, so the pid the
+ * daemon spawns stays the backend CLI's; resource wrappers go around it.
+ */
+export interface HostFence {
+  readonly mechanism: FenceMechanism;
+  /**
+   * Asked before every fenced launch. An adapter whose answer cannot change
+   * while the daemon runs caches it (Seatbelt); one whose launcher ships with
+   * the package asks again, so an alteration shows at the next launch (Landlock).
+   */
+  probe(): HostFenceProbe;
+  /**
+   * Writes what the launcher reads to `policyFile` — a path no mission can
+   * write — and returns the wrapped command. Throws when the policy cannot be
+   * rendered faithfully; the caller then decides between `auto` and `enforce`.
+   */
+  wrap(policy: FencePolicy, cmd: string, args: readonly string[], policyFile: string): { cmd: string; args: string[] };
+  /**
+   * Runs the launcher once more on `policyFile`, with a system command that
+   * prints nothing and exits 0 in place of the CLI. What it reports is the
+   * launcher's own doing: a mission's CLI can print the launcher's words and
+   * exit with its codes, so a launch that looks like a launcher failure is
+   * only believed once this witness fails the same way.
+   */
+  witness(policyFile: string): Promise<HostFenceWitness>;
+}
+
+/** One witness run of the fence launcher (`HostFence.witness`). */
+export type HostFenceWitness =
+  | { readonly ran: true; readonly status: number | null; readonly stderr: string }
+  /**
+   * The launcher could not be started, or gave no answer in time. `code` is
+   * the spawn error's errno code (`ENOENT`, `EAGAIN`…) when there was one: it
+   * tells a launcher that is not there from a machine short of resources.
+   */
+  | { readonly ran: false; readonly reason: string; readonly timedOut: boolean; readonly code?: string };
 
 export interface Host {
   inspectPort?: (address: string, port: number) => ListenPortState | Promise<ListenPortState>;
@@ -95,6 +150,13 @@ export interface Host {
     desktopSession?(): Promise<DesktopSession>;
   };
   keyring?: Keyring;
+  /**
+   * The mission fence this OS can apply (`host/isolation.ts`, `resolveFence`):
+   * Seatbelt on macOS (`host/darwin.ts`), Landlock on Linux. Absent where the
+   * adapter has no mechanism at all (Windows); present but not `available`
+   * when the OS refuses it on this machine.
+   */
+  fence?: HostFence;
   /**
    * Starts a process that outlives the daemon AND the service manager
    * stopping it — the terminal host keeps the web shells across a restart.

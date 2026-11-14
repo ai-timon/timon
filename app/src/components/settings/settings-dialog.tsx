@@ -5,7 +5,7 @@
  * `?settings=<category>[/<tab>]` parameter (see `settings-navigation.ts`);
  * the filing of rows, grafts and plugin panes lives in `settings-layout.ts`.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type RefObject } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Brain, ChevronLeft, Cpu, Gauge, Globe, KeyRound, LayoutPanelLeft, Puzzle, Rocket, ScrollText, Wrench, type LucideIcon,
@@ -22,6 +22,7 @@ import { PluginWebhooksPane } from '@/components/plugin-webhooks-pane';
 import { PluginConnectionsSettings } from '@/components/settings/plugin-connections';
 import { DevicesSettings } from '@/components/settings/devices-settings';
 import { DeveloperModeSettings } from '@/components/settings/developer-mode-settings';
+import { MissionIsolationSettings } from '@/components/settings/mission-isolation-settings';
 import { LanguageSettings } from '@/components/settings/language-settings';
 import { PushToggle } from '@/components/push-toggle';
 import { VoiceDictationSettings } from '@/components/voice-dictation-settings';
@@ -109,7 +110,7 @@ export function SettingsDialog(): ReactElement | null {
   );
 }
 
-function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRef: MutableRefObject<boolean> }): ReactElement {
+function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRef: RefObject<boolean> }): ReactElement {
   const searchParams = useSearchParams();
   const target = parseSettingsParam(searchParams.get(SETTINGS_PARAM)) ?? { category: 'interface', tab: null };
   const { select: navigate, selectAccount } = useSettingsNavigation();
@@ -546,6 +547,8 @@ function TabContent({
         return <DevicesSettings />;
       case 'developer':
         return <DeveloperModeSettings />;
+      case 'isolation':
+        return <MissionIsolationSettings />;
     }
   }
   return (

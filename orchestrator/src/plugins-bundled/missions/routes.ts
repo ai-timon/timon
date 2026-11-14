@@ -60,12 +60,14 @@ import { buildTraceView } from '../../trace-view.js';
 import { forbidden, rejectUnlessAny, requireAuth } from '../../users/identity.js';
 import { RESTRICTED, canonicalPermissionMode, isKnownPermissionMode, overrideAuthority, permissionModeRefusal, rejectOverride } from '../../users/privileged-overrides.js';
 import { missionPermissionState, missionPermissionSwitchable } from '../../mission-permission-mode.js';
+import { resolvedPermissionModeFor } from '../../backends/catalog.js';
 import type { UserEventOrigin } from '../../user-origin.js';
 import type { MissionTitleOrigin } from '../../mission-title-source.js';
 import type { PromptPresentation } from '../../prompt-presentation.js';
 import { servedIconUrl } from '../../uploads.js';
 import { TitleModelBodySchema, effectiveTitleModel, instanceTitleModel, parseTitleModelChoice, serializeTitleModelChoice, titleBackends, titleChoiceRefusal } from '../../mission-title-model.js';
 import { apiError } from '../../api-error.js';
+import { launchErrorStatus, missionLaunchErrorBody } from '../../resources.js';
 import { findReplyTarget, messageTextOf, resolveReplyTo } from '../../reply-to.js';
 
 const TitleBodySchema = z.object({ title: z.string().max(200).nullable().optional() });
@@ -471,7 +473,7 @@ async function deliverMissionTurn(
         },
       };
     }
-    return { status: 500, body: { error: (err as Error).message } };
+    return { status: launchErrorStatus(err, 500), body: { ...missionLaunchErrorBody(err) } };
   } finally {
     if (!delivered) discardChatAttachments(persisted);
   }
@@ -1451,8 +1453,11 @@ export function registerRoutes(
       res.status(400).json({ error: `unknown permission mode: ${wanted}` });
       return;
     }
-    const mode = canonicalPermissionMode(wanted);
-    const refusal = permissionModeRefusal(mode, overrideAuthority(req));
+    // Judged and stored as the backend serving the mission runs it: one that
+    // declares its supported modes runs any other in `plan`.
+    const backend = missionPermissionState(owned.id, RESTRICTED)?.backend;
+    const mode = resolvedPermissionModeFor(backend, canonicalPermissionMode(wanted)) ?? canonicalPermissionMode(wanted);
+    const refusal = permissionModeRefusal(mode, overrideAuthority(req), backend);
     if (refusal) {
       rejectOverride(req, res, 'mission.permission_mode_denied', `mission:${owned.id}`, refusal);
       return;
@@ -1546,8 +1551,8 @@ export function registerRoutes(
       // backend/model refused.
       const status = err instanceof TurnInFlightError ? 409
         : err instanceof ContextTooLargeError ? 413
-          : 400;
-      res.status(status).json({ error: (err as Error).message });
+          : launchErrorStatus(err, 400);
+      res.status(status).json(missionLaunchErrorBody(err));
     }
   });
 
@@ -1813,6 +1818,34 @@ export function registerRoutes(
       res.status(400).json({ error: 'behavior must be "allow", "deny" or "paste"' });
       return;
     }
+    // A card exists because a person has to decide. An api-token is an agent
+    // (or a plugin job) acting on its own: letting it answer "allow" lets a
+    // prompt-injected mission approve, or rewrite through `updatedInput`, the
+    // very command it was stopped on, or a sibling mission's. Refused before
+    // the card lookup, so the answer says nothing about which cards exist.
+    // Deny stays open: cancelling its own request is always safe.
+    if (req.auth?.kind === 'api-token' && decision.behavior !== 'deny') {
+      forbidden(req, res, {
+        kind: 'scope',
+        reason: 'a mission token cannot approve a permission request; only a person can',
+        hint: 'Wait for the user to answer the card, or answer "deny" to cancel it.',
+      });
+      return;
+    }
+    // No identity at all only gets this far before the first account, on the
+    // loopback. That caller may be the mission itself having dropped its token
+    // (a `curl`, or its browser driving the app): it cannot approve either.
+    // The interface creates the account before any agent exists, so no card
+    // waits on a person there; the operator's daemon-token still can. 401, as
+    // for any anonymous caller once an account exists: no identity was given.
+    if (!req.auth && decision.behavior !== 'deny') {
+      res.status(401).json({
+        error: 'unauthorized',
+        reason: 'an anonymous caller cannot approve a permission request; only a person can',
+        hint: 'Create the first account and answer the card from it, or answer "deny" to cancel it.',
+      });
+      return;
+    }
     // Resolving someone else's Allow/Deny card would approve a tool use in a
     // mission the caller cannot even read: unknown card and foreign card
     // answer the same 404.
@@ -1829,8 +1862,8 @@ export function registerRoutes(
       return;
     }
     // A wider Allow is a standing grant over the owner's missions: given by the
-    // owner, from their browser. Not by an agent's own token (it would approve
-    // itself for good), nor the daemon token, nor an admin reading the mission.
+    // owner, from their browser. Not by an agent's own token (refused above for
+    // any allow), nor the daemon token, nor an admin reading the mission.
     if (scope) {
       const owner = governed.owner_user_id;
       const viewer = isPersonAuth(req.auth) ? req.auth.user : null;

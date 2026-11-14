@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { loadRequestScope } from './next-request-scope-test';
 
 test('native browser proxy forwards only the authenticated session cookie', async () => {
   // Next initializes its request storage from this global in the server runtime.
   const oldAsync = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
   Object.defineProperty(globalThis, 'AsyncLocalStorage', { value: AsyncLocalStorage, configurable: true });
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { GET, POST, DELETE } = await import('../app/api/ui/native-browser/[...path]/route');
   const previousFetch = globalThis.fetch;
   const oldToken = process.env.TIMON_DAEMON_TOKEN;
@@ -51,7 +52,7 @@ test('native browser proxy forwards only the authenticated session cookie', asyn
 test('native browser proxy relays the recording routes (TODO #461) with the session only', async () => {
   const oldAsync = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
   Object.defineProperty(globalThis, 'AsyncLocalStorage', { value: AsyncLocalStorage, configurable: true });
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { GET, POST, PATCH, DELETE } = await import('../app/api/ui/native-browser/[...path]/route');
   const previousFetch = globalThis.fetch;
   const oldToken = process.env.TIMON_DAEMON_TOKEN;
@@ -96,7 +97,7 @@ test('native browser proxy relays the recording routes (TODO #461) with the sess
 test('native browser proxy relays the annotation routes (TODO #468) with the session only', async () => {
   const oldAsync = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
   Object.defineProperty(globalThis, 'AsyncLocalStorage', { value: AsyncLocalStorage, configurable: true });
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { GET, POST, PATCH, DELETE } = await import('../app/api/ui/native-browser/[...path]/route');
   const previousFetch = globalThis.fetch;
   const oldToken = process.env.TIMON_DAEMON_TOKEN;

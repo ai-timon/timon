@@ -58,6 +58,7 @@ import { requestAppRearm } from './app-rearm.js';
 import { reportDesktopOpened } from './telemetry-ping.js';
 import { reloadShortcut } from './reload-shortcuts.js';
 import { externalUrl, navigationAction } from './external-links.js';
+import { keepDictionariesLocal } from './spellcheck.js';
 import {
   clearServiceRefused, declineServiceRepair, markServiceRefusedNotice, recordServiceRefused, serviceRefusedMessage, serviceRefusedNoticeDue,
   serviceRepairFailureMessage, serviceRepairPrompt, serviceRepairVerdict,
@@ -1325,6 +1326,8 @@ function installMachineHeader(): void {
 }
 
 async function main(): Promise<void> {
+  // Also here: whether `session-created` reports the default session is not documented.
+  keepDictionariesLocal(session.defaultSession, process.platform);
   // Before any window: without handlers Electron grants every request.
   installWindowPermissions(session.defaultSession, {
     windowOrigin: () => windowOrigin,
@@ -2020,6 +2023,8 @@ if (!app.requestSingleInstanceLock({ build: ownBuild } satisfies LaunchData)) {
     return { opened };
   });
 
+  // Every session, before any page loads: no spell-check dictionary from Google.
+  app.on('session-created', (created) => keepDictionariesLocal(created, process.platform));
   app.whenReady().then(main).catch(async (e: unknown) => {
     console.error('[desktop] startup failed', e);
     // Quit only once the box is closed: on Linux the copied report would go with the app.

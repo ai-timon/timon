@@ -340,6 +340,8 @@ test('the agent step is the service step, and only it: the welcome that follows 
 
 test('the preparation starts past the welcome, and the card steps aside on the service steps', () => {
   assert.equal(preparationStarts('splash', true), false);
+  assert.equal(preparationStarts('background', true), false, 'the install carries the answer of this step: it waits for it');
+  assert.equal(preparationVisible('background', true, true), false, 'reached again through « Back »: no card over the question');
   assert.equal(preparationStarts('account', true), true);
   for (const step of ['signin', 'mascot']) assert.equal(preparationStarts(step, true), false, `${step}: an install that already runs`);
   assert.equal(preparationVisible('account', false, true), false, 'not before it started');

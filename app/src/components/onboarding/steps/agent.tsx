@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { useDirectoryPicker } from '@/components/directory-browser';
 import { isAgentLook, normalizeAgentLook } from '@/components/mascot/agent-look';
 import { usePrefersReducedMotion } from '@/components/mascot/agent-mascot';
-import { useBackendCatalog } from '@/lib/backends';
+import { supportedPermissionModesFor, useBackendCatalog } from '@/lib/backends';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
@@ -179,6 +179,7 @@ export function AgentStep(): ReactElement {
             skills={catalogs?.skills ?? []}
             mcp={catalogs?.mcp ?? []}
             onPickFolder={() => { void pickFolder(); }}
+            supportedModes={supportedPermissionModesFor(catalog, model?.backend)}
           />
         );
 

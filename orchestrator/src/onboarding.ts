@@ -34,27 +34,32 @@ import { BUILTIN_DECLARATIONS } from './backends/builtin-declarations.js';
 import { cliVersionInfo, type CliVersionInfo } from './provider-cli-versions.js';
 import { authStatusNow, installedProfiles } from './backends/registry.js';
 import { refreshProviderSignIn } from './backends/sign-in-state.js';
-import { BINARY_NAMES, mainAgentAuthEnv, whichBin } from './doctor.js';
+import { BINARY_NAMES, mainAgentAuthEnv, systemdPresent, whichBin } from './doctor.js';
 import { getHost } from './host/index.js';
 import {
   installBackendPlanFor,
   installPlanFor,
   linuxRelease,
   readOsRelease,
+  supervisorFor,
   type InstallableBackend,
   type Machine,
 } from './host/machine.js';
 import { isDesktopBuildPath } from './host/binary-path.js';
 import { installMacNodeUserLocal } from './host/macos-node-install.js';
 import { rememberWindowsNpmBinary } from './host/npm-install.js';
-import { installService, statusService, type ServiceOpts } from './host/service-install.js';
+import { applySessionMode, installService, sessionModeNeedsReinstall, statusService, type ServiceOpts } from './host/service-install.js';
+import {
+  isServiceSessionMode, readServiceSessionMode, sessionModeSupported, writeServiceSessionMode, type ServiceSessionMode,
+} from './host/service-session-mode.js';
 import { guardServiceGesture } from './host/service-ownership.js';
 import { temporaryHomeNotice } from './host/temporary-home.js';
 import type { ExecResult } from './host/types.js';
 
 /** Named gestures. Anything else is refused before it reaches a process. */
 export type OnboardingAction =
-  | { action: 'install-service' }
+  /** `mode`: the onboarding's answer to "keep running when logged out?", recorded before the install. */
+  | { action: 'install-service'; mode?: ServiceSessionMode }
   | { action: 'service-status' }
   | { action: 'install-binary'; name: string }
   | { action: 'check-path'; path: string };
@@ -71,6 +76,14 @@ export type OnboardingResult = {
   command: string | null;
   /** Why it failed, in the words of the tool that refused. */
   reason: string | null;
+  /** `service-status`: the registered service keeps running once the user logs out (`ServiceResult.offSession`). */
+  offSession?: boolean | null;
+  /** `service-status`, Linux: lingering is on for the account, service or not (`ServiceResult.lingering`). */
+  lingering?: boolean | null;
+  /** `service-status`: the recorded answer, `null` when the user was never asked. */
+  sessionMode?: ServiceSessionMode | null;
+  /** `service-status`: the answer changes something on this OS (`sessionModeSupported`). */
+  sessionModeSupported?: boolean;
 };
 
 export class OnboardingError extends Error {}
@@ -422,16 +435,21 @@ export function foreignServiceRefusal(opts: ServiceOpts, sourceInstallDir: strin
 }
 
 let installInFlight: Promise<OnboardingResult> | undefined;
-async function installOnboardingService(): Promise<OnboardingResult> {
+async function installOnboardingService(mode?: ServiceSessionMode): Promise<OnboardingResult> {
   try {
     const opts = serviceOptsFromEnvironment();
+    // Recorded first: the desktop's upgrade runner reads it again at every
+    // update. Also passed with the install: an answer given now is applied
+    // even where it undoes what the machine had (Linux lingering already on).
+    if (mode && sessionModeSupported(opts.platform)) writeServiceSessionMode(opts.timonHome, mode);
+    const install: ServiceOpts = mode && sessionModeSupported(opts.platform) ? { ...opts, sessionMode: mode } : opts;
     // Not refused here: a release-candidate test on a throwaway home has to get
     // through onboarding. Its script removes the service at the end (#464).
     const temporary = temporaryHomeNotice(opts.timonHome, true);
     if (temporary) console.warn(`[onboarding] ${temporary.lines.join(' ')}`);
-    const refused = foreignServiceRefusal(opts, config().daemon.installDir);
+    const refused = foreignServiceRefusal(install, config().daemon.installDir);
     if (refused) return refused;
-    return await installWithRuntime(opts, config().daemon.installDir, (o) => runInstallService(o));
+    return await installWithRuntime(install, config().daemon.installDir, (o) => runInstallService(o));
   } catch (error) {
     return { ok: false, installed: false, lines: [], command: null, reason: (error as Error).message };
   }
@@ -440,29 +458,70 @@ async function installOnboardingService(): Promise<OnboardingResult> {
 /** Runs a named action. The only entry point a route is allowed to call. */
 export async function runOnboardingAction(action: OnboardingAction): Promise<OnboardingResult> {
   if (action.action === 'install-service') {
-    if (!installInFlight) installInFlight = installOnboardingService().finally(() => { installInFlight = undefined; });
+    if (!installInFlight) installInFlight = installOnboardingService(action.mode).finally(() => { installInFlight = undefined; });
     return installInFlight;
   }
   if (action.action === 'service-status') {
     // Read-only, and the reason the screen can block: it must know what the
     // MACHINE says, not whether a button was clicked once.
-    const res = statusService(serviceOptsFromEnvironment());
+    const opts = serviceOptsFromEnvironment();
+    const res = statusService(opts);
     return {
       ok: res.ok,
       installed: res.installed ?? false,
       lines: res.lines,
       command: null,
       reason: res.reason ?? null,
+      offSession: res.offSession ?? null,
+      lingering: res.lingering ?? null,
+      sessionMode: readServiceSessionMode(opts.timonHome),
+      // A Linux without systemd runs portable: no service, nothing to choose.
+      sessionModeSupported: sessionModeSupported(opts.platform)
+        && supervisorFor(opts.platform, { systemd: opts.platform === 'linux' && systemdPresent() }) !== null,
     };
   }
   if (action.action === 'check-path') return checkPath(action.path);
   return await runInstallBinary(action.name, machineFromEnvironment(), safeExec);
 }
 
+/**
+ * Settings › System: the answer to "keep running when logged out?" changed
+ * after the onboarding. Linux applies it in place (lingering). macOS and
+ * Windows change the supervisor itself: the service is reinstalled through the
+ * onboarding's install path, except from the service's own daemon, which that
+ * reinstall would stop mid-request (and which, in Windows session 0, could
+ * not even show the elevation prompt): the answer is recorded and the command
+ * shown.
+ */
+export async function changeServiceSessionMode(
+  mode: ServiceSessionMode,
+  daemonIsService: boolean,
+): Promise<OnboardingResult> {
+  try {
+    const opts = serviceOptsFromEnvironment();
+    const applied = applySessionMode(opts, mode);
+    const answer: OnboardingResult = {
+      ok: applied.ok, lines: applied.lines, command: null, reason: applied.reason ?? null,
+    };
+    if (!applied.ok || !sessionModeNeedsReinstall(opts.platform)) return answer;
+    if (!statusService(opts).installed) return answer;
+    if (daemonIsService) return { ...answer, command: 'timon service install' };
+    const installed = await installOnboardingService();
+    return { ...installed, lines: [...applied.lines, ...installed.lines] };
+  } catch (error) {
+    return { ok: false, lines: [], command: null, reason: (error as Error).message };
+  }
+}
+
 /** Parses the request body into an action, or refuses it. */
 export function parseOnboardingAction(body: unknown): OnboardingAction {
   const raw = (body ?? {}) as { action?: unknown; name?: unknown; path?: unknown };
-  if (raw.action === 'install-service') return { action: 'install-service' };
+  if (raw.action === 'install-service') {
+    const { mode } = raw as { mode?: unknown };
+    if (mode === undefined) return { action: 'install-service' };
+    if (!isServiceSessionMode(mode)) throw new OnboardingError('install-service: mode must be "session" or "always"');
+    return { action: 'install-service', mode };
+  }
   if (raw.action === 'service-status') return { action: 'service-status' };
   if (raw.action === 'install-binary') {
     if (typeof raw.name !== 'string') throw new OnboardingError('install-binary requires a binary name');

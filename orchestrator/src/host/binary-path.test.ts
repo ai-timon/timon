@@ -729,3 +729,33 @@ test('tailscale: the folders its installers use are candidates on Windows and ma
   // The bundle's real name, for a case-sensitive volume.
   assert.ok(mac.includes('/Applications/Tailscale.app/Contents/MacOS/Tailscale'), mac.join('\n'));
 });
+
+// GHSA-f58g: a binary a mission could have written is never the one the
+// daemon runs, wherever it sits on PATH.
+test('a binary in a folder a mission writes is skipped for the next one', { skip: process.platform === 'win32' }, (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'timon-planted-bin-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const timonHome = join(root, 'timon-home');
+  const exe = (dir: string) => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'git'), '#!/bin/sh\n', { mode: 0o755 });
+    return dir;
+  };
+  const planted = exe(join(timonHome, 'worktrees', 'task', 'bin'));
+  const scratch = exe(join(timonHome, 'tmp', 'missions', 'm1'));
+  const system = exe(join(root, 'usr-bin'));
+  const options = { platform: 'linux' as const, homeDir: '', env: {}, timonHome };
+  assert.equal(findExecutableBinary('git', { ...options, path: [planted, scratch, system].join(':') }), join(system, 'git'));
+  // A relative entry resolves against the daemon's cwd, a worktree as often as not.
+  assert.equal(findExecutableBinary('git', { ...options, path: ['.', '', system].join(':') }), join(system, 'git'));
+  // A link elsewhere that leads into a worktree is judged by where it leads.
+  const linkDir = join(root, 'linked');
+  mkdirSync(linkDir);
+  symlinkSync(join(planted, 'git'), join(linkDir, 'git'));
+  assert.equal(findExecutableBinary('git', { ...options, path: [linkDir, system].join(':') }), join(system, 'git'));
+  // A pin into a worktree is refused like any other candidate.
+  assert.equal(findExecutableBinary(join(planted, 'git'), options), null);
+  // What the daemon installs itself stays reachable.
+  const plugin = exe(join(timonHome, 'plugins', 'p', 'bin'));
+  assert.equal(findExecutableBinary('git', { ...options, path: [plugin, system].join(':') }), join(plugin, 'git'));
+});

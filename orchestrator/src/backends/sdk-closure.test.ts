@@ -98,6 +98,7 @@ const ALLOWED = new Set([
   'orchestrator/src/backends/mcp-preapproved.ts',
   'orchestrator/src/backends/mcp-serialize.ts',
   'orchestrator/src/backends/model-ids.ts',
+  'orchestrator/src/backends/package-cache-env.ts',
   'orchestrator/src/backends/oauth-store.ts',
   'orchestrator/src/backends/permission-models.ts',
   'orchestrator/src/backends/provider-agent-config.ts',

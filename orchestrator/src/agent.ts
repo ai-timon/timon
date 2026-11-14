@@ -48,7 +48,10 @@ import {
   restoreAgentSkillAttachments, setAgentSkills,
   type AgentSkillsDraft, type AgentSkillsWrite, type ResolvedSkill, type SkillMode, type SkillVia,
 } from './skill-attachments.js';
-import { refreshToolsCacheFromInit, listMcp } from './mcp.js';
+import { getMcp, refreshToolsCacheFromInit, listMcp } from './mcp.js';
+import { chatAttachmentsRoot } from './chat-attachments.js';
+import { pluginPackageDirs, removeAgentPackageCache, worktreeGitDirs } from './mission-fence-target.js';
+import type { FenceTarget } from './host/isolation.js';
 import { journalDirectSkillReads } from './skill-reads.js';
 import {
   getBackend, backendMetadata, assertBackendEnabled, backendForModel, catalogBackend, catalogClaimsModel, asBackendName,
@@ -82,13 +85,14 @@ import {
   fallbackFor,
 } from './backend-fallback.js';
 import { backendStillDry } from './backend-recheck.js';
+import { resolvedPermissionModeFor } from './backends/catalog.js';
+import { nestedSandboxOf } from './backends/capabilities.js';
 import { settingBool, settingNum } from './settings.js';
-import { profileLimits, wrapMissionLaunch } from './resources.js';
+import { profileLimits, watchFencedLaunch, wrapMissionLaunch } from './resources.js';
 import { getHost, type Host } from './host/index.js';
 import {
   backgroundDescendants, cliBaseline, cliProcessPid, readProcessTable, type ProcessEntry,
 } from './host/process-tree.js';
-import { ensureDaemonToken } from './plugins-bundled/http/auth.js';
 import { MissionSession, permissionHost, questionHost, type PermissionGate } from './mission-session.js';
 import { processHandle, remoteHandle, type MissionHandle, type RemoteMissionHandle } from './mission-handle.js';
 import { parseResumeState, serializeResumeState } from './backends/remote-session.js';
@@ -97,8 +101,8 @@ import { applyMissionMcpServers } from './mission-mcp-servers.js';
 import { conversionBackendRefusal, conversionMissionById, conversionToolCardRefusal, isConversionSource } from './users/conversion-mission.js';
 import { issueMissionApiToken, ownerForSpawn, PLUGIN_OWNER_PREFIX } from './users/api-tokens.js';
 import { missionEgressEnv } from './egress/service.js';
-import { baseBackendId, isAccountInstanceId } from './backends/instance-id.js';
-import { backendTrust, type BackendTrust } from './backends/registry.js';
+import { baseBackendId, isAccountInstanceId, splitBackendInstance } from './backends/instance-id.js';
+import { backendOwnerPlugin, backendTrust, type BackendTrust } from './backends/registry.js';
 import { DEFAULT_BACKEND_CAPABILITIES } from './backends/types.js';
 import { BUILTIN_DECLARATIONS } from './backends/builtin-declarations.js';
 import { withLaunchPath } from './host/launch-path.js';
@@ -106,6 +110,7 @@ import { missionProcessDir, trackMissionProcess } from './host/mission-processes
 import { closeLaunchSeal, openLaunchSeal } from './backends/launch-seal.js';
 import { assertSpawnPinned, buildSealedSpawn } from './backends/sealed-spawn.js';
 import { parkProviderScratch } from './backends/provider-scratch.js';
+import { packageCacheEnv } from './backends/package-cache-env.js';
 import { launchBackendName, launchForMission, replaceMissionLaunch, resolveLaunchBackend } from './backends/account-launch.js';
 import { servedIconUrl } from './uploads.js';
 import {
@@ -200,11 +205,13 @@ export function missionEnv(opts: {
   };
 }
 
-/** The mission's own credential: its `api_tokens` row, or the daemon-token on a
- *  machine with no account yet. Issuing revokes the previous row, so call it once
- *  per launch. */
+/** The mission's own credential: always its `api_tokens` row, never the
+ *  daemon-token — not even on a machine with no account yet, where the operator's
+ *  token would let the agent answer its own permission cards and create the first
+ *  account (`getLiveApiToken` keeps the install's rights for it until then).
+ *  Issuing revokes the previous row, so call it once per launch. */
 export function missionApiToken(missionId: string): string {
-  return dbApi.countUsers() === 0 ? ensureDaemonToken() : issueMissionApiToken(missionId);
+  return issueMissionApiToken(missionId);
 }
 
 /** What identifies the run, with no credential in it. */
@@ -723,9 +730,10 @@ the agent inside it; change one later with agent_update (partial), skill_put for
 (a skill by id; never a product skill), agent_set_scope for its memory, agent_doc_put for its identity
 docs (SOUL.md…; yours, or an agent's you orchestrate). A mission declares an http
 MCP server with mcp_server_put (a public http(s) url; secrets read back masked) when its account
-holds mcp:manage, then attaches it with agent_update mcp_servers; a stdio server (a command on the
-host) and the change or removal of a server this agent did not declare need agents:privileged-config,
-else the user does it in the app. Pick backend and model values
+holds mcp:manage, then attaches it with agent_update mcp_servers. Adding a tool to an agent (a skill
+whose allowed-tools it does not hold included), or declaring or attaching a stdio server (a command on
+the host), is the user's to do in the app, never a mission's; the change or removal of a server this agent did not declare needs
+agents:privileged-config, else the user does it in the app. Pick backend and model values
 from backends_list, never from memory. What the \`timon\` CLI does, an MCP tool of the same name
 does too (\`timon agent update\` → agent_update). Keep the returned mission id; follow it with
 mission_wait / mission_status, and never repeat a spawn just to check its status. Never guess a recipient id from
@@ -1612,6 +1620,16 @@ function resumeSessionIfSameBackend(
   if (!owner) return null;
   const targetOwner = ownerUserId ?? dbApi.getMission(missionId)?.owner_user_id ?? null;
   if (owner.ownerUserId !== targetOwner) return null;
+  // A memory rule this session saw was removed or rewritten since it began:
+  // its history still carries the rule, so the new mission starts fresh
+  // (memory-session-fence.ts). Checked here, where every new mission's resume
+  // passes, whatever the backend.
+  if (dbApi.sessionFenced(sessionId, agentName)) {
+    console.log(
+      `[resume] session ${sessionId.slice(0, 8)} predates a memory rule removal for ${agentName} — fresh conversation`,
+    );
+    return null;
+  }
   // Compared as ACCOUNTS too (TODO #52): a session lives in its account's
   // config directory, the same backend on another account has never seen it.
   // The source mission was frozen on its account (`backend_override`).
@@ -1815,6 +1833,43 @@ const HANDOVER_START_TIMEOUT_MS = 120_000;
 
 type MissionLaunch = { spec: SpawnResult; proc: ChildProcessWithoutNullStreams; procEnv: NodeJS.ProcessEnv; missionToken: string };
 
+/**
+ * What the fence of a mission needs beyond its working directory
+ * (`host/isolation.ts`, `FenceTarget`): who it is, the subscription account
+ * and provider plugin it runs on, the git directories its worktree commits
+ * into, the plugin packages its MCP servers run from, and the folder its chat
+ * attachments were saved to. Every path is checked again by `resolveFence`.
+ */
+function missionFenceTarget(input: {
+  missionId: string;
+  agentName: string;
+  project: string;
+  backend: string;
+  cwd: string | null;
+  mcpServers: readonly string[];
+}): Partial<FenceTarget> {
+  const git = input.cwd ? worktreeGitDirs(input.cwd, homedir()) : { dirs: [], refused: null };
+  if (git.refused) console.warn(`[agent] mission ${input.missionId.slice(0, 8)}: git directory not opened to the fence: ${git.refused}`);
+  const commandLines = input.mcpServers.flatMap((id) => {
+    try {
+      const server = getMcp(id);
+      return server?.transport.type === 'stdio' ? [server.transport.command, ...(server.transport.args ?? [])] : [];
+    } catch {
+      return []; // an id that is not a server's: the launch leaves it out too
+    }
+  });
+  const attachments = join(chatAttachmentsRoot(), input.missionId);
+  return {
+    agent: input.agentName,
+    project: input.project || undefined,
+    account: splitBackendInstance(input.backend).accountId ?? undefined,
+    providerPlugin: backendOwnerPlugin(input.backend) ?? undefined,
+    gitDirs: git.dirs,
+    pluginDirs: pluginPackageDirs(commandLines, TIMON_HOME),
+    timonRead: existsSync(attachments) ? [attachments] : [],
+  };
+}
+
 /** Builds the backend's command and spawns it, confined and with the
  *  mission's environment. */
 async function launchMissionProcess(
@@ -1883,16 +1938,23 @@ async function spawnMissionProcess(
   // a deny list must never swallow. Inert on the current scope launcher —
   // `host/isolation.ts` says why, at length.
   const backendBin = resolveBackendBin(host, spec.cmd);
+  const project = cfg.project ?? projectFromCwd(cwd) ?? '';
+  // The fence (`resources.ts`) is the innermost wrapper: what it needs beyond
+  // the working directory is the mission's identity, from which it reopens
+  // the mission's own folders of the Timon home and nothing else. A CLI whose
+  // own sandbox cannot run inside it says how to turn that sandbox off; the
+  // fence then applies the level instead, and only when it does apply.
   const launch = wrapMissionLaunch(backendBin, spec.args, missionId, {
     cwd: cwd ?? undefined,
     backend: backend.name,
     timonHome: TIMON_HOME,
+    nestedSandbox: nestedSandboxOf(backend.name),
+    ...missionFenceTarget({ missionId, agentName, project, backend: backend.name, cwd: cwd ?? null, mcpServers: cfg.mcp_servers ?? [] }),
   });
   // Vault slice computed HERE so the inject journal (§8 / §12.8) records the
   // identities without `missionEnv` writing to the database — that function
   // is called from tests that must not fill `secret_access`. inheritEnv
   // skips the vault entirely, same as missionEnv.
-  const project = cfg.project ?? projectFromCwd(cwd) ?? '';
   const inherit = inheritEnvEnabled();
   // What the user typed for THIS mission (`secret_request`, no grant) lies over
   // the vault slice; a `once` value is destroyed once it entered the environment.
@@ -1924,6 +1986,24 @@ async function spawnMissionProcess(
     // Only Electron's binary is no `node`: a daemon run from sources IS on the right one.
     selfExecutable: process.versions.electron ? process.execPath : undefined,
   });
+  if (launch.fence?.state === 'fenced') {
+    // A `mktemp` lands in the mission's own folder, not in a /tmp every other
+    // mission shares. And a CLI that updates itself writes where the fence
+    // keeps the home read-only: the update is the user's, outside a mission.
+    // Traced under the fence (`strace -f -e trace=%file`, claude, codex and
+    // grok answering a turn and writing in their worktree): the only refusals
+    // left were caches and locks a CLI does without (`~/.cache/claude-cli-nodejs`,
+    // `~/.local/state/claude/locks`, `~/.npm/_logs`) and, on the host's own
+    // claude sign-in, the rewrite of `~/.claude.json`, which the CLI survives;
+    // none of them earned a place on the write list.
+    if (launch.fence.tmpDir) procEnv.TMPDIR = launch.fence.tmpDir;
+    procEnv.DISABLE_AUTOUPDATER = '1';
+    // `npx -y`, `pnpm dlx` and `uvx` write their caches, which the read-only
+    // home refuses: they get the agent's own. The CLI hands its environment
+    // to the MCP servers it starts (claude, grok), or the names to pass
+    // (codex, `serializeCodexMcpToml`).
+    if (launch.fence.packageCacheDir) Object.assign(procEnv, packageCacheEnv(launch.fence.packageCacheDir));
+  }
   // Issued once: a second call would revoke the row the first one handed out.
   const missionToken = seal ? seal.token() : procEnv.TIMON_API_TOKEN ?? '';
   // Nothing awaited since: a third party's program is still the file checked for this launch.
@@ -1944,6 +2024,8 @@ async function spawnMissionProcess(
       process.stderr.write(`[${backend.name}:${missionId.slice(0, 8)}] ${name}: ${err.message}\n`);
     });
   }
+  // A launcher that cannot fence on this machine after all switches the fence off for the next launches.
+  void watchFencedLaunch(proc, launch.fence);
   journalInjectedSecrets({ missionId, agent: agentName, injected: vault?.injected ?? [] });
   requested?.consume();
   // On disk, for whoever comes after a daemon that dies without ending it.
@@ -2091,6 +2173,14 @@ async function spawnTurn(args: {
     // flattening all three into a usage limit.
     dbApi.setMissionInterrupted(missionId, interruptionForCooldown(cfg.backend));
     throw new BackendExhaustedError(cfg.backend ?? 'unknown');
+  }
+  // The mode the backend really honours: one that declares its supported modes
+  // (`PermissionStrategy.supportedModes`) runs any other in `plan`, never higher.
+  // Resolved here, where every launch path crosses, so the provider, the live
+  // agent and the mode it reports all see the level the ceiling judged.
+  {
+    const runs = resolvedPermissionModeFor(cfg.backend ?? defaultBackendName(), cfg.permission_mode);
+    if (runs !== cfg.permission_mode) cfg.permission_mode = runs;
   }
   // Per-spawn skills added by the code (dispatcher, workflow coordinator) are
   // kept apart from `cfg.skills`: they are pasted whole, whatever the
@@ -2706,7 +2796,9 @@ function announceSessionlessTurn(missionId: string, backend: string, model: stri
  *  launch, and the message goes to the live CLI. */
 function permissionModeStale(live: RunningAgent): boolean {
   const m = dbApi.getMission(live.missionId);
-  const wanted = m?.permission_mode_override ?? null;
+  const stored = m?.permission_mode_override ?? null;
+  // Compared as the backend runs it: a mode it resolves to the live one changes nothing.
+  const wanted = stored === null ? null : resolvedPermissionModeFor(live.backend.name, stored) ?? stored;
   return wanted !== null && wanted !== (live.permissionMode ?? null) && !!m?.session_id;
 }
 
@@ -5035,6 +5127,9 @@ export function deleteAgent(name: string, opts: { purge?: boolean; deletedBy?: s
     ? trashAgentDir(name, { deletedBy: opts.deletedBy ?? null, skills: heldAgentSkillAttachments(name) })
     : null;
   if (!trashed) rmSync(dir, { recursive: true, force: true });
+  // Its package cache goes even with a trashed folder: what its missions
+  // downloaded is fetched again, and an agent of the same name must not run it.
+  removeAgentPackageCache(TIMON_HOME, name);
   // Its skill attachments leave the table (TODO #623): an agent recreated
   // under the same name starts without them. A trashed agent carries them in
   // its entry, written above before this removal.
@@ -5276,6 +5371,10 @@ function renameAgentLocked(oldName: string, newName: string): RenameResult {
       console.warn(`[agent] rename ${oldName}→${newName}: failed to update project ${slug}'s roles.json: ${(err as Error).message}`);
     }
   }
+  // A cache is not worth moving: the renamed agent fetches its packages
+  // again, and a stale one under the new name is not its to inherit.
+  removeAgentPackageCache(TIMON_HOME, oldName);
+  removeAgentPackageCache(TIMON_HOME, newName);
   console.log(`[agent] renamed ${oldName} → ${newName} (directory + DB refs + roles.json + ${written.length} config reference(s))`);
   const warnings = [
     ...rewrites.unreadable.map((a) => `${a}: config.json unreadable, its hierarchy references were not checked`),

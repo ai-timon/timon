@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Settings2, Trash2, Plus, ArrowLeft, Loader2, type LucideIcon } from 'lucide-react';
+import { Settings2, Trash2, Plus, ArrowLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -24,6 +24,8 @@ import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
 import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
 import { apiErrorMessage } from '@/lib/api-error';
+import { RoleSvg } from '@/components/role-svg';
+import { loadLucideIconSet, roleSvgFromRenderedIcon, type LucideIconSet } from '@/lib/roles';
 
 export type Role = {
   id: string;
@@ -61,23 +63,9 @@ const BLANK: Draft = {
   mode: 'auto',
 };
 
-type IconSet = Readonly<Record<string, LucideIcon>>;
-
-/**
- * The whole lucide set, fetched the first time a picker opens. A static
- * `import { icons }` defeats the per-icon import Next applies to lucide-react
- * and put all ~1 500 icons (1.4 MB of source) in the root layout, since the
- * agent editor is mounted there (docs/BUNDLE-SIZE.md).
- */
-let iconSet: Promise<IconSet> | null = null;
-function loadIconSet(): Promise<IconSet> {
-  iconSet ??= import('lucide-react').then((m) => m.icons as IconSet);
-  return iconSet;
-}
-
-/** Searchable lucide icon grid. Captures the picked icon's inner SVG markup
- *  straight from the rendered DOM (pick-time SVG) so it renders identically in
- *  the React badge and the D3 canvas. */
+/** Searchable lucide icon grid. Keeps the picked icon's name, and its inner
+ *  markup reduced to the shapes the daemon accepts, as the fallback drawn by
+ *  the D3 canvas and wherever the name is not a known lucide icon. */
 function IconPicker({
   value,
   color,
@@ -88,10 +76,10 @@ function IconPicker({
   onPick: (name: string, svg: string) => void;
 }) {
   const [q, setQ] = useState('');
-  const [icons, setIcons] = useState<IconSet | null>(null);
+  const [icons, setIcons] = useState<LucideIconSet | null>(null);
   useEffect(() => {
     let live = true;
-    void loadIconSet().then((set) => { if (live) setIcons(set); });
+    void loadLucideIconSet().then((set) => { if (live) setIcons(set); });
     return () => { live = false; };
   }, []);
   const names = useMemo(() => {
@@ -120,7 +108,7 @@ function IconPicker({
               title={name}
               onClick={(e) => {
                 const svg = e.currentTarget.querySelector('svg');
-                onPick(name, svg?.innerHTML ?? '');
+                onPick(name, roleSvgFromRenderedIcon(svg?.innerHTML ?? ''));
               }}
               className={cn(
                 'grid place-items-center rounded p-1.5 hover:bg-muted',
@@ -252,8 +240,9 @@ export function RoleManager({ roles, onChanged }: { roles: Role[]; onChanged: ()
                       <span
                         className="grid size-5 shrink-0 place-items-center"
                         style={{ color: r.color }}
-                        dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${r.iconSvg}</svg>` }}
-                      />
+                      >
+                        <RoleSvg svg={r.iconSvg} iconName={r.iconName} size={16} />
+                      </span>
                       <span className="flex-1 text-[12px]">{r.label} <span className="text-muted-foreground/60">({r.id})</span></span>
                       <button type="button" onClick={() => editRole(r)} className="text-[11px] text-muted-foreground hover:text-foreground">{t('roles.edit', { id: r.id })}</button>
                       <button type="button" onClick={() => del(r.id)} className="text-muted-foreground hover:text-destructive"><Trash2 className="size-3.5" /></button>
@@ -267,7 +256,7 @@ export function RoleManager({ roles, onChanged }: { roles: Role[]; onChanged: ()
               <div className="flex flex-wrap gap-1.5">
                 {builtins.map((r) => (
                   <button type="button" key={r.id} onClick={() => editRole(r)} aria-label={t('roles.edit', { id: r.id })} className="inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] hover:bg-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring" style={{ color: r.color, borderColor: `${r.color}66`, background: `${r.color}14` }}>
-                    <span dangerouslySetInnerHTML={{ __html: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${r.iconSvg}</svg>` }} />
+                    <RoleSvg svg={r.iconSvg} iconName={r.iconName} size={12} />
                     {r.id} {r.directives_overridden && <span>· {t('roles.modified')}</span>}
                   </button>
                 ))}

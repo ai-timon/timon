@@ -46,6 +46,7 @@ import { responseErrorText, type PermissionAccess } from '@/lib/permission-refus
 import { autoColor, isIconUrl } from '@/lib/project-visual';
 import { accentVars } from '@/lib/accent-color';
 import { resolveRole, type RoleVisual } from '@/lib/roles';
+import { RoleSvg } from '@/components/role-svg';
 import { STATE_VISUALS, type ActiveState } from '@/lib/agent-state';
 import { avatarModeOf, lookOfAgent } from '@/components/agent-avatar';
 import { LiveAgentMascot } from '@/components/mascot/live-agent-mascot';
@@ -119,18 +120,7 @@ function RoleGlyph({ role, className }: { role: RoleVisual | null; className?: s
   const Icon = role?.icon;
   if (Icon) return <Icon className={className} />;
   if (role?.iconSvg) {
-    return (
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={className}
-        dangerouslySetInnerHTML={{ __html: role.iconSvg }}
-      />
-    );
+    return <RoleSvg svg={role.iconSvg} className={className} />;
   }
   return <Zap className={className} />;
 }

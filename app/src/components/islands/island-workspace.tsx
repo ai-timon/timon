@@ -284,7 +284,7 @@ export function sameIslandIdentity(singletonBy: string | readonly string[] | und
   return sameContentAs(b, singletonBy)({ type: '', params: a });
 }
 
-const HIDDEN_TAB_ATTRS = { inert: '', 'aria-hidden': true } as Record<string, unknown>;
+const HIDDEN_TAB_ATTRS = { inert: true, 'aria-hidden': true } as const;
 
 const rectStyle = (rect: Rect): CSSProperties => ({ left: rect.x, top: rect.y, width: rect.width, height: rect.height });
 
@@ -1120,7 +1120,7 @@ export function IslandWorkspaceView({
           className={wrapperClass}
           style={style}
           // `inert` hides a kept-mounted tab from the keyboard and assistive
-          // tech. A string: React 18 does not know the attribute as a boolean.
+          // tech. A boolean: React 19 drops the attribute for an empty string.
           {...(!visible ? HIDDEN_TAB_ATTRS : {})}
           // On the click, not on the press: focusing an island can reshape
           // its content (a passive chat gets its columns back, a card moves

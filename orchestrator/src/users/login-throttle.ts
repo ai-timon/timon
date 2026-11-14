@@ -68,17 +68,66 @@ function sweep(now: number): void {
   }
 }
 
-/** Refuses while ANY of the keys is locked; reports the longest wait. */
+/**
+ * Credential tests still running, per key. A password check is asynchronous
+ * (`users/password.ts`): without this count, a burst of parallel attempts
+ * would all pass `checkThrottle` before the first failure is recorded, and
+ * the budget would only apply once the whole burst had been computed.
+ */
+const PENDING = new Map<string, number>();
+
+/** What a refused attempt waits when only attempts in progress fill the budget. */
+const PENDING_RETRY_MS = 1_000;
+
+/** Failures that still count: an idle bucket starts over, as in `recordFailure`. */
+function liveFailures(bucket: Bucket | undefined, now: number): number {
+  if (!bucket) return 0;
+  const stale = bucket.lockedUntil <= now && now - bucket.lastFailureAt > settings().windowMs;
+  return stale ? 0 : bucket.failures;
+}
+
+/**
+ * Refuses while ANY of the keys is locked; reports the longest wait. An
+ * attempt in progress counts as a failure until it ends, so a bucket admits
+ * no more parallel attempts than it has failures left before its lockout,
+ * and one at a time once that lockout has run out.
+ */
 export function checkThrottle(keys: readonly string[], now: number = Date.now()): ThrottleVerdict {
   if (!settings().enabled) return { allowed: true };
+  const { maxAttempts } = settings();
   let retryAfterMs = 0;
   for (const key of keys) {
     const bucket = BUCKETS.get(key);
     if (bucket && bucket.lockedUntil > now) {
       retryAfterMs = Math.max(retryAfterMs, bucket.lockedUntil - now);
+      continue;
+    }
+    const pending = PENDING.get(key) ?? 0;
+    if (pending > 0 && pending >= Math.max(1, maxAttempts - liveFailures(bucket, now))) {
+      retryAfterMs = Math.max(retryAfterMs, PENDING_RETRY_MS);
     }
   }
   return retryAfterMs > 0 ? { allowed: false, retryAfterMs } : { allowed: true };
+}
+
+/**
+ * Marks a credential test as running on every key, until the returned
+ * release is called (once; later calls do nothing). Take it in the same
+ * synchronous stretch as the `checkThrottle` that admitted the attempt.
+ */
+export function holdAttempt(keys: readonly string[]): () => void {
+  if (!settings().enabled) return () => {};
+  for (const key of keys) PENDING.set(key, (PENDING.get(key) ?? 0) + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    for (const key of keys) {
+      const left = (PENDING.get(key) ?? 1) - 1;
+      if (left > 0) PENDING.set(key, left);
+      else PENDING.delete(key);
+    }
+  };
 }
 
 /**
@@ -119,4 +168,5 @@ export function clearThrottle(keys: readonly string[]): void {
 /** Tests only — the map is process-wide. */
 export function resetThrottle(): void {
   BUCKETS.clear();
+  PENDING.clear();
 }

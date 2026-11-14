@@ -3028,6 +3028,7 @@
     "save": "保存",
     "cancel": "取消",
     "editor": "编辑此注入项",
+    "freshConversation": "该代理将在下一次任务中开始新的对话：之前的对话仍包含这条规则（{agents}）。",
     "skillMode": {
       "include": "目录",
       "import": "已导入"
@@ -3647,7 +3648,7 @@
     "reorder": "拖动以调整此提供商的顺序",
     "claudeToken": {
       "title": "Claude 长期令牌",
-      "hint": "可选。在终端运行 `claude setup-token`，并将令牌粘贴到此处。此后，所有 Claude 任务会话都会使用该令牌，而不再依赖 CLI 自身的登录状态。在 macOS 上，这样即使未登录系统，Timon 也能继续运行；完成后请运行 `timon service install` 以切换服务。令牌会加密保存，保存后不会再显示。",
+      "hint": "可选。在终端运行 `claude setup-token`，并将令牌粘贴到此处。此后，所有 Claude 任务会话都会使用该令牌，而不再依赖 CLI 自身的登录状态。在 macOS 上，如果 Timon 在注销后继续运行，Claude 任务会话需要此令牌（{settingsPath}）。令牌会加密保存，保存后不会再显示。",
       "none": "未设置",
       "set": "已设置",
       "unreadable": "已设置但无法读取，请重新粘贴",

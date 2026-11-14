@@ -65,40 +65,68 @@ export function PermissionModeMenu({
   missionId,
   compact = false,
   className,
+  refreshKey,
   fetchImpl = fetch,
 }: {
   missionId: string;
   compact?: boolean;
   /** The trigger's shape, from the host: the composer paints it as a pill. */
   className?: string;
+  /** Changes when the level may have moved under the menu (a turn ended, the
+   *  backend changed): the level is read again. */
+  refreshKey?: string;
   /** Injected by tests. */
   fetchImpl?: typeof fetch;
 }) {
   const [state, setState] = useState<PermissionModeState | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [readTick, setReadTick] = useState(0);
+  // Bumped by every change the menu sends: a read that left before it
+  // answers with the old level and must not paint over the new one.
+  const writes = useRef(0);
   const cancelButton = useRef<HTMLButtonElement>(null);
   const url = `/api/ui/missions/${encodeURIComponent(missionId)}/permission-mode`;
+  const reread = useCallback(() => setReadTick((n) => n + 1), []);
 
+  // Another mission: its level is unknown until read, never the previous one's.
+  useEffect(() => { setState(null); }, [url]);
+
+  // The level is read again whenever it may have changed elsewhere: a save on
+  // the agent's sheet relaunches the CLI in the new mode, an agent can set
+  // its own, a backend switch changes the ladder. Read once, the menu kept
+  // naming the level of the moment it mounted.
   useEffect(() => {
     let alive = true;
-    setState(null);
+    const sentWrites = writes.current;
     void (async () => {
       try {
         const r = await fetchImpl(url, { cache: 'no-store' });
         if (!r.ok) return;
         const parsed = parsePermissionModeState(await r.json());
-        if (alive) setState(parsed);
+        if (alive && writes.current === sentWrites) setState(parsed);
       } catch {
         // No level to show is better than a wrong one: the menu stays hidden.
       }
     })();
     return () => { alive = false; };
-  }, [url, fetchImpl]);
+  }, [url, fetchImpl, refreshKey, readTick]);
+
+  // Coming back to the window after editing the agent elsewhere.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') reread(); };
+    window.addEventListener('focus', reread);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', reread);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [reread]);
 
   const apply = useCallback(async (mode: string) => {
     if (!state || busy || mode === state.mode) return;
     setBusy(true);
+    writes.current += 1;
     try {
       const r = await fetchImpl(url, {
         method: 'POST',
@@ -132,7 +160,7 @@ export function PermissionModeMenu({
     <>
     {/* Non-modal, like the gauge's menu: a modal one fights the focus with any
         dialog opened next to it (TIM-0035). */}
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} onOpenChange={(open) => { if (open) reread(); }}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"

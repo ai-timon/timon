@@ -1399,6 +1399,7 @@
       },
       "system": {
         "installation": "Installation",
+        "security": "Security",
         "backup": "Backups & trash",
         "diagnostics": "Diagnostics",
         "desktop": "Desktop app",
@@ -1464,6 +1465,7 @@
       },
       "system": {
         "installation": "version about installation service daemon task launchagent systemd path data folder log port export import backup update",
+        "security": "security isolation fence sandbox confinement landlock seatbelt mission unix sockets docker ssh agent exception enforce",
         "backup": "backup backups archive nightly restore keep retention days trash deleted agent recover undo purge",
         "diagnostics": "logs debug misc infra troubleshooting",
         "desktop": "uninstall remove delete electron app",
@@ -2311,7 +2313,8 @@
     "permissionsSelfBadge": "Manages its own permissions",
     "permissionsSelfBadgeHint": "This agent decides tool uses itself: the sandbox its own configuration sets applies, and TIMON shows no Allow/Deny card for it.",
     "permissionModeLabel": "Permission mode",
-    "permissionModeIgnored": "This mode is ignored: the backend applies its own permission configuration. For opencode, edit the permission key of its opencode.json file."
+    "permissionModeIgnored": "This mode is ignored: the backend applies its own permission configuration. For opencode, edit the permission key of its opencode.json file.",
+    "permissionModeRunsAsPlan": "This backend cannot run {mode}: the agent runs as plan (read-only). Choose one of the modes it supports."
   },
   "route": {
     "unknown": "No page is registered for {path}.",
@@ -2760,6 +2763,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "editor": "Edit this injection",
+    "freshConversation": "The agent will start a fresh conversation at its next mission: its earlier one still held this rule ({agents}).",
     "skillMode": { "include": "catalogue", "import": "imported" },
     "skillVia": {
       "global": "all agents",
@@ -2868,6 +2872,17 @@
     "windowsRevision": "Task revision",
     "windowsRevisionValue": "{revision} (current: {expected})",
     "windowsUnmarked": "Its launcher lacks the packaged marker.",
+    "loggedOut": "When you log out",
+    "loggedOutKeeps": "Timon keeps running: routines, night tasks and webhooks run with nobody at the screen",
+    "loggedOutStops": "Timon stops with your session and starts again when you log back in",
+    "loggedOutPending": "Your choice is not applied yet.",
+    "keepRunning": "Keep running when logged out",
+    "stopAtLogout": "Stop when I log out",
+    "sessionModeSaved": "Saved.",
+    "sessionModeSavedLinger": "Saved. Lingering is off for your account: your other user services also stop when you log out.",
+    "stopAtLogoutLinger": "Turns off lingering for your account: your other user services also stop when you log out.",
+    "sessionModeTerminal": "Saved. To apply it, run this in a terminal:",
+    "sessionModeFailed": "The change could not be applied.",
     "installWhy": "With the service, Timon keeps running when the app is closed and starts with the computer.",
     "repairWhy": "Reinstalling rewrites the service with this version's definition. Your data is not touched.",
     "installService": "Install the service",
@@ -3377,7 +3392,7 @@
     "reorder": "Drag to reorder this provider",
     "claudeToken": {
       "title": "Claude long-lived token",
-      "hint": "Optional. Run `claude setup-token` in a terminal and paste the token here: every Claude mission then uses it instead of the CLI's own sign-in. On macOS it lets Timon keep running with no session open; run `timon service install` afterwards to switch the service. The token is stored encrypted and never shown again.",
+      "hint": "Optional. Run `claude setup-token` in a terminal and paste the token here: every Claude mission then uses it instead of the CLI's own sign-in. On macOS Claude missions need it when Timon keeps running logged out ({settingsPath}). The token is stored encrypted and never shown again.",
       "none": "Not set",
       "set": "Set",
       "unreadable": "Set, but unreadable — paste it again",
@@ -4322,6 +4337,96 @@
         "diskFull": "Not enough disk space to download the installer.",
         "filesystem": "The installer could not be saved in Timon's data folder."
       }
+    }
+  },
+  "missionIsolation": {
+    "section": "Mission isolation",
+    "forbidden": "Only the superadmin, signed in to the app, can see and change the mission isolation.",
+    "loadError": "The mission isolation could not be loaded. Check that Timon is running, then reload the page.",
+    "saved": "Mission isolation updated",
+    "exposed": "Missions can read Timon's private files.",
+    "gapCount": "{count, plural, one {# opening} other {# openings}}",
+    "showDetails": "Details",
+    "hideDetails": "Hide",
+    "status": {
+      "title": "Protection"
+    },
+    "tone": {
+      "active": "Active",
+      "inactive": "Not active",
+      "off": "Off",
+      "altered": "Altered",
+      "refusing": "Refusing missions"
+    },
+    "summary": {
+      "landlock": "Missions run in a Landlock fence (kernel ABI {abi}).",
+      "seatbelt": "Missions run in a Seatbelt fence.",
+      "off": "Turned off.",
+      "unfenced": "No fence on this machine: {reason}."
+    },
+    "mode": {
+      "title": "Mode",
+      "auto": "Automatic",
+      "enforce": "Required",
+      "off": "Off",
+      "autoHint": "Fence missions where this machine can, warn elsewhere.",
+      "enforceHint": "Refuse to start a mission this machine cannot fence.",
+      "offHint": "Never fence missions."
+    },
+    "sockets": {
+      "title": "Unix sockets",
+      "denied": "Blocked: Docker, ssh-agent and D-Bus are out of a mission's reach.",
+      "allowed": "Allowed for every mission: Docker, ssh-agent and D-Bus act outside the fence."
+    },
+    "exceptions": {
+      "title": "Exceptions",
+      "manage": "Manage",
+      "none": "None",
+      "count": "{agents, plural, one {# agent} other {# agents}}, {projects, plural, one {# project} other {# projects}}",
+      "saved": "Exceptions saved"
+    },
+    "confirmOff": {
+      "title": "Turn off the mission isolation?",
+      "description": "Missions will be able to read Timon's private files, including the operator token and the vault key.",
+      "confirm": "Turn off"
+    },
+    "confirmSockets": {
+      "title": "Allow Unix sockets for every mission?",
+      "description": "A mission could reach Docker, ssh-agent and the session bus, which run commands outside the fence. An exception for one agent or project is narrower.",
+      "confirm": "Allow"
+    },
+    "dialog": {
+      "title": "Isolation exceptions",
+      "description": "An agent or a project may open Unix sockets or write extra folders of your home. The agent's exception wins over its project's.",
+      "empty": "No exception: every mission gets the same fence.",
+      "kind": {
+        "agent": "Agent",
+        "project": "Project"
+      },
+      "nameLabel": {
+        "agent": "Agent name",
+        "project": "Project slug"
+      },
+      "namePlaceholder": {
+        "agent": "agent name",
+        "project": "project slug"
+      },
+      "sockets": "Unix sockets allowed",
+      "writable": "Extra writable paths, one per line",
+      "remove": "Remove the exception {name}",
+      "addAgent": "Agent",
+      "addProject": "Project",
+      "badName": "“{name}” is not a valid agent name or project slug.",
+      "duplicate": "“{name}” has two exceptions.",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "errors": {
+      "unauthenticated": "Sign in again to change the mission isolation.",
+      "forbidden": "Only the superadmin can change the mission isolation.",
+      "invalid": "Refused: {detail}",
+      "configUnreadable": "timon.config.json cannot be read: fix it before changing the isolation.",
+      "generic": "The mission isolation could not be saved (error {status})."
     }
   }
 }

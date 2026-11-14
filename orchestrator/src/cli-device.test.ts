@@ -108,7 +108,7 @@ test('accounts', async () => {
     body: JSON.stringify({ email: 'robin@example.com', name: 'Robin', password: PASSWORD }),
   });
   assert.equal(setup.status, 201);
-  bobId = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword(PASSWORD), status: 'active' }).id;
+  bobId = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword(PASSWORD), status: 'active' }).id;
 });
 
 test('an anonymous caller gets no code', async () => {

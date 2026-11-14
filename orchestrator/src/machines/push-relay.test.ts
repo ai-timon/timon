@@ -74,7 +74,7 @@ async function call(method: string, path: string, opts: { body?: unknown; cookie
 const setup = await call('POST', '/api/auth/setup', { body: { email: 'robin@example.com', name: 'Robin', password: PASSWORD } });
 assert.equal(setup.status, 201);
 const rom = dbApi.getUserByEmail('robin@example.com')!;
-const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword(PASSWORD), status: 'active' });
+const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword(PASSWORD), status: 'active' });
 
 /** A device of the user on the witness, and the machine of the user's fleet that holds it. */
 function pairMachine(name: string, url: string = base): { machineId: string; deviceId: string } {

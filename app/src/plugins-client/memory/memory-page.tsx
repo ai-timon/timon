@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { md2html } from '@/lib/md';
+import { mdToSafeHtml } from '@/lib/markdown';
 import { t } from '@/lib/i18n';
 import { formatDateTime, formatRelativeTime } from '@/lib/intl';
 import { apiErrorMessage } from '@/lib/api-error';
@@ -560,7 +560,7 @@ function AgentView({ agent }: { agent: string }) {
             <span className="text-[12px] font-semibold">⚠️ {t('memoryPage.injectedPitfalls')}</span>
           </div>
           <div className="memory-md rounded-lg border border-border bg-card/20 px-4 py-3"
-            dangerouslySetInnerHTML={{ __html: md2html(piegesClean) }} />
+            dangerouslySetInnerHTML={{ __html: mdToSafeHtml(piegesClean) }} />
         </section>
       )}
     </div>
@@ -618,7 +618,7 @@ function MarkdownEditor({ title, getUrl, putUrl, placeholder }: {
           /* code-font: markdown source editor */ className="min-h-[160px] resize-y border-0 bg-background px-4 py-3 font-mono text-[12.5px] leading-relaxed outline-none placeholder:text-muted-foreground/50"
         />
         <div className="memory-md min-h-[160px] overflow-auto bg-card/20 px-4 py-3"
-          dangerouslySetInnerHTML={{ __html: md2html(content || '') }} />
+          dangerouslySetInnerHTML={{ __html: mdToSafeHtml(content) }} />
       </div>
     </section>
   );
@@ -637,7 +637,10 @@ function MemoryStyles() {
       .memory-md strong { color: hsl(var(--foreground)); font-weight: 600; }
       /* code-font: inline code in rendered markdown */ .memory-md code { font-family: var(--font-mono), monospace; font-size: 11.5px; background: hsl(var(--muted) / 0.6); border: 1px solid hsl(var(--border)); padding: 1px 5px; border-radius: calc(var(--radius) * 0.4); }
       .memory-md a { color: hsl(var(--primary)); }
-      .memory-md .md-break { height: 0; margin: 20px 0; }
+      /* A thematic break is space, not a drawn rule (AGENTS.md rule 7). */
+      .memory-md hr { height: 0; border: 0; margin: 20px 0; }
+      /* The code-block copy button is wired by the chat only: nothing handles its click here. */
+      .memory-md .copy-btn { display: none; }
     `}</style>
   );
 }

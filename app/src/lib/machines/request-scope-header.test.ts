@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { loadRequestScope, type RequestScopeRunner } from '../next-request-scope-test';
 
 const LOCAL = 'http://local-daemon.test';
 const REMOTE = 'https://vps.example';
@@ -20,7 +21,7 @@ const DEVICE_TOKEN = 'tdev_device-token-of-alice-for-vps';
 type Call = { url: string; headers: Headers };
 
 let home = '';
-let storage!: { run<T>(store: unknown, fn: () => T): T };
+let storage!: RequestScopeRunner;
 let proxy!: typeof import('../ui/proxy');
 let target!: typeof import('./target');
 let credential!: typeof import('./credential');
@@ -33,7 +34,7 @@ test.before(async () => {
   process.env.TIMON_HOME = home;
   process.env.ORCHESTRATOR_URL = LOCAL;
   (globalThis as unknown as { AsyncLocalStorage: unknown }).AsyncLocalStorage = AsyncLocalStorage;
-  ({ requestAsyncStorage: storage } = await import('next/dist/client/components/request-async-storage.external') as unknown as { requestAsyncStorage: typeof storage });
+  storage = await loadRequestScope();
   proxy = await import('../ui/proxy');
   target = await import('./target');
   credential = await import('./credential');

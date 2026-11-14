@@ -42,6 +42,7 @@ await ctx.memory.show('agent', 'support.bot', 'notes.md')  // { name, content }
 
 - Every rule you write carries `source: "plugin:<your id>"`, set by Timon. Nobody else can write that prefix, by the API or by editing a rule.
 - `rules.rm` removes only rules your plugin wrote, unless the request comes from a superadmin. Another's rule answers `forbidden` in a request and `not_found` in a job.
+- Removing a rule makes the agents it could have reached start a fresh conversation at their next mission, since their earlier one still holds the rule ([Agents](../usage/agents.md#removing-or-rewriting-a-memory-rule)).
 - A request may target any existing agent, project or role. `scope: "global"` and `tier: "core"` — injected everywhere, always — need a superadmin caller.
 - Input is strict: an unknown field, a missing target or a rule that already exists on that scope fails with a typed error. `PluginMemoryError.code` is `invalid`, `not_found`, `conflict` or `forbidden`.
 

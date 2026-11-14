@@ -4,17 +4,16 @@
  * Un spawn factice (hôte dont `spawn` n'exécute rien) vérifie que le
  * jeton est posé au même endroit que `TIMON_MISSION_ID`, et qu'un
  * `TIMON_API_TOKEN` hérité du parent ne gagne pas. First-run (empty
- * `users` table) still injects the daemon-token — that is the historical
- * 4.2c contract, kept so a machine that has not set up accounts works.
- * After setup, M.5 issues a per-mission `api_tokens` row instead (see
- * `agent-identity.test.ts`). TIMON_HOME jetable, aucun CLI réel, aucun bind.
+ * `users` table) issues a per-mission `api_tokens` row too, never the
+ * daemon-token: the operator's credential would let the agent approve its own
+ * permission cards (`mission-token-first-run.test.ts`). After setup, see
+ * `agent-identity.test.ts`. TIMON_HOME jetable, aucun CLI réel, aucun bind.
  */
 import './test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 
@@ -24,7 +23,8 @@ const { getHost } = await import('./host/index.js');
 await import('../tests/helpers/claude-provider.js');
 
 const { spawnAgent, upsertAgent, missionEnv } = await import('./agent.js');
-const { ensureDaemonToken, DAEMON_TOKEN_FILE } = await import('./plugins-bundled/http/auth.js');
+const { ensureDaemonToken } = await import('./plugins-bundled/http/auth.js');
+const { hashApiToken } = await import('./users/api-tokens.js');
 const { config, setConfig } = await import('./config/load.js');
 const { dbApi } = await import('./db.js');
 const { seal } = await import('./secrets/box.js');
@@ -48,11 +48,17 @@ function fakeChild(): FakeChild {
   return child;
 }
 
-test('missionEnv pose TIMON_API_TOKEN (first-run: jeton du daemon), pas celui du parent', () => {
+/** The token is a live row bound to this mission, not the operator's. */
+function assertMissionToken(token: string | undefined, missionId: string): void {
+  assert.ok(token, 'TIMON_API_TOKEN is set');
+  assert.notEqual(token, ensureDaemonToken(), 'never the daemon-token, even with no account');
+  assert.equal(dbApi.getApiTokenByHash(hashApiToken(token))?.mission_id, missionId);
+}
+
+test('missionEnv pose TIMON_API_TOKEN (first-run: jeton de mission), pas celui du parent', () => {
   const previous = process.env.TIMON_API_TOKEN;
   process.env.TIMON_API_TOKEN = 'token-du-parent';
   try {
-    const token = ensureDaemonToken();
     const env = missionEnv({
       missionId: 'mission-temoin',
       agentName: 'env-temoin',
@@ -63,16 +69,15 @@ test('missionEnv pose TIMON_API_TOKEN (first-run: jeton du daemon), pas celui du
     assert.equal(env.TIMON_AGENT, 'env-temoin');
     assert.equal(env.TIMON_API, 'http://localhost:3000');
     assert.equal(env.FOO, 'bar');
-    assert.equal(env.TIMON_API_TOKEN, token);
+    assertMissionToken(env.TIMON_API_TOKEN, 'mission-temoin');
     assert.notEqual(env.TIMON_API_TOKEN, 'token-du-parent');
-    assert.equal(env.TIMON_API_TOKEN, readFileSync(DAEMON_TOKEN_FILE, 'utf8').trim());
   } finally {
     if (previous === undefined) delete process.env.TIMON_API_TOKEN;
     else process.env.TIMON_API_TOKEN = previous;
   }
 });
 
-test('spawn factice first-run : le child reçoit TIMON_API_TOKEN = daemon-token', async () => {
+test('spawn factice first-run : le child reçoit son jeton de mission, pas le daemon-token', async () => {
   const previous = process.env.TIMON_API_TOKEN;
   process.env.TIMON_API_TOKEN = 'token-du-parent';
 
@@ -101,15 +106,13 @@ test('spawn factice first-run : le child reçoit TIMON_API_TOKEN = daemon-token'
 
   let missionId = '';
   try {
-    const token = ensureDaemonToken();
     missionId = await spawnAgent('env-temoin', 'ping');
     assert.equal(calls.length, 1, 'un seul spawn, via l\'hôte');
     const env = calls[0].env;
     assert.equal(env.TIMON_MISSION_ID, missionId);
     assert.equal(env.TIMON_AGENT, 'env-temoin');
-    assert.equal(env.TIMON_API_TOKEN, token);
+    assertMissionToken(env.TIMON_API_TOKEN, missionId);
     assert.notEqual(env.TIMON_API_TOKEN, 'token-du-parent');
-    assert.equal(readFileSync(DAEMON_TOKEN_FILE, 'utf8').trim(), token);
   } finally {
     host.spawn = original;
     for (const child of children) {

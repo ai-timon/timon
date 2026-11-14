@@ -59,7 +59,8 @@ async function until(done: () => boolean): Promise<void> {
 }
 
 function stubDir(scripts: Record<string, string>): string {
-  const dir = mkdtempSync(join(TMP_HOME, 'bin-'));
+  // Beside the Timon home, not in it: no binary is ever resolved from there.
+  const dir = mkdtempSync(`${TMP_HOME}-bin-`);
   for (const [name, body] of Object.entries(scripts)) {
     const file = join(dir, name);
     writeFileSync(file, `#!${process.execPath}\n${body}\n`);

@@ -35,6 +35,8 @@ import { licenseState } from '../license/runtime.js';
 import { fixedComposition, licenseCurrentlyValid } from '../license/capabilities.js';
 import { covers } from '../license/license.js';
 import { catchAsyncHandlers, routeErrorHandler } from './async-routes.js';
+import { config } from '../config/load.js';
+import { daemonHostPolicy, hostAllowed, type HostPolicy } from '../http-host.js';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -54,6 +56,19 @@ type ClaimedMethod = (typeof CLAIMED_METHODS)[number];
  * true when it took the socket; false lets the next handler try.
  */
 export type UpgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer) => boolean;
+
+/**
+ * Whether an upgrade may reach the handlers under the daemon's `Host` policy
+ * (`http-host.ts`) — the rule the auth middleware applies to every other
+ * request. A bearer credential exempts it there, and does here: a browser
+ * cannot attach an `Authorization` header to a WebSocket, so a page that
+ * rebound its own domain onto the loopback never carries one, and the handler
+ * still checks the credential itself.
+ */
+export function upgradeHostAllowed(req: IncomingMessage, policy: HostPolicy): boolean {
+  if (/^Bearer\s+\S/i.test(req.headers.authorization ?? '')) return true;
+  return hostAllowed(req.headers.host, policy);
+}
 
 /**
  * Canonical key of a route claim. Parameter NAMES are erased: `/api/roles/:id`
@@ -124,8 +139,15 @@ export class HttpService extends Service {
   /**
    * Entry point wired on the HTTP server's `upgrade` event. An upgrade no
    * module claims is destroyed: leaving it open would hold a socket forever.
+   * A misdirected one gets the same neutral 421 as any other request, before
+   * a handler sees it: the session cookie a browser attaches to a WebSocket
+   * must not open a shell to a page that rebound its domain here.
    */
-  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, policy: () => HostPolicy = () => daemonHostPolicy(config())): void {
+    if (!upgradeHostAllowed(req, policy())) {
+      socket.end('HTTP/1.1 421 Misdirected Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      return;
+    }
     for (const handler of this.upgrades) {
       try {
         if (handler(req, socket, head)) return;

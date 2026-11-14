@@ -1,4 +1,5 @@
 import './test-home.js';
+import '../tests/helpers/unfenced.js';
 import '../tests/helpers/paid-license.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

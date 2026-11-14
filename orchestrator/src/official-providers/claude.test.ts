@@ -27,6 +27,12 @@ test('Claude keeps its persistent process, session controls, login and model con
   assert.deepEqual(definition.reasoning.controls, ['levels', 'budget', 'toggle']);
   assert.deepEqual(ctx.provider.runtime.check.definitionProblems(definition), []);
 });
+test('fenced, Claude Code\'s own sandbox is kept off by command-line settings, which outrank the user\'s and the project\'s', () => {
+  const declaration = { offArgs: ['--settings', '{"sandbox":{"enabled":false}}'] };
+  assert.deepEqual(definition.permission.nestedSandbox, declaration);
+  assert.deepEqual(dialect.nestedSandbox, declaration);
+  assert.deepEqual(JSON.parse(declaration.offArgs[1]), { sandbox: { enabled: false } });
+});
 
 test('a persistent model change is acknowledged on the control channel without leaking into chat events', async () => {
   const { PassThrough } = await import('node:stream');

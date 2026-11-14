@@ -13,7 +13,7 @@
     "account": {
       "title": "Crea tu cuenta local",
       "subtitle": "Con ella inicias sesión en Timon. Eres su administrador.",
-      "privacy": "Solo recopilamos tu correo por si quieres restablecer tu contraseña. La cuenta que creas se queda en local."
+      "privacy": "Tu cuenta y tu contraseña se quedan en este ordenador. Tu correo y sus códigos pasan por nuestro servidor, que te los envía. Las estadísticas de uso anónimas se comparten por defecto; puedes desactivarlas en Configuración."
     },
     "llm": {
       "title": "Elige\ntu LLM.",

@@ -17,7 +17,7 @@
  * cockpit's arrangements without anyone having to filter.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
 import { Check, LayoutGrid, Pencil, Plus, Save, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -65,7 +65,7 @@ type StoredUpdate = ReturnType<typeof useStoredLayout>['update'];
 function useFoldPresets(
   source: string | null,
   mark: string | null,
-  folded: MutableRefObject<Set<string>>,
+  folded: RefObject<Set<string>>,
   presets: readonly LayoutPreset[],
   update: StoredUpdate,
 ): void {

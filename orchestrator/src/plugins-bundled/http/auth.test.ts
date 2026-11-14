@@ -12,7 +12,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
+import { request as httpRequest } from 'node:http';
 import express from 'express';
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-daemon-auth-test-'));
@@ -23,8 +25,29 @@ import assert from 'node:assert/strict';
 
 const { authIsRequired, createDaemonAuthMiddleware, ensureDaemonToken, DAEMON_TOKEN_FILE } =
   await import('./auth.js');
-const { loadConfig, ConfigError } = await import('../../config/load.js');
+const { loadConfig, ConfigError, setConfig, resetConfig } = await import('../../config/load.js');
 const { ZONES } = await import('../../paths.js');
+const { dbApi } = await import('../../db.js');
+const { issueMissionApiToken } = await import('../../users/api-tokens.js');
+const { daemonHostPolicy } = await import('../../http-host.js');
+type HostPolicy = import('../../http-host.js').HostPolicy;
+
+/** `fetch` will not let a test choose `Host`: a raw request does. */
+function requestWithHost(port: number, method: string, path: string, host: string, headers: Record<string, string> = {}): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, method, path, headers: { ...headers, host } }, (res) => {
+      res.resume();
+      resolve(res.statusCode ?? 0);
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+const LOOPBACK_POLICY = (): HostPolicy => daemonHostPolicy({
+  daemon: { listen: { host: '127.0.0.1' }, behindTlsProxy: false },
+  app: { listen: { host: '127.0.0.1' }, publicUrl: 'http://timon.localhost' },
+});
 
 function writeConfig(obj: unknown): string {
   const file = join(process.env.TIMON_HOME!, `cfg-${Math.random().toString(36).slice(2)}.json`);
@@ -46,9 +69,10 @@ async function listenApp(app: express.Express): Promise<{ port: number; close: (
   };
 }
 
-function appWithAuth(opts: { token: string; required: boolean }): express.Express {
+function appWithAuth(opts: { token: string; required: boolean; hostPolicy?: () => HostPolicy }): express.Express {
   const app = express();
   app.use(createDaemonAuthMiddleware(opts));
+  app.post('/api/auth/setup', (_req, res) => { res.status(201).json({ created: true }); });
   app.use(express.json({ limit: '25mb' }));
   app.get('/api/health', (_req, res) => { res.json({ ok: true }); });
   app.get('/api/health/resources', (_req, res) => { res.json({ ok: true }); });
@@ -156,6 +180,63 @@ test('auth auto + 127.0.0.1 : pas de jeton exigé tant que la table users est vi
   }
 });
 
+test('first run on the loopback: a foreign Host is refused, account creation included', async () => {
+  const { dbApi } = await import('../../db.js');
+  assert.equal(dbApi.countUsers(), 0);
+  const token = ensureDaemonToken();
+  const { port, close } = await listenApp(appWithAuth({ token, required: false, hostPolicy: LOOPBACK_POLICY }));
+  try {
+    const evil = `evil.example:${port}`;
+    assert.equal(await requestWithHost(port, 'POST', '/api/auth/setup', evil), 421);
+    assert.equal(await requestWithHost(port, 'GET', '/api/stats', evil), 421);
+    assert.equal(await requestWithHost(port, 'GET', '/api/health', evil), 421);
+    for (const host of [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]) {
+      assert.equal(await requestWithHost(port, 'POST', '/api/auth/setup', host), 201, host);
+      assert.equal(await requestWithHost(port, 'GET', '/api/stats', host), 200, host);
+    }
+    // A bearer credential is its own proof: the CLI behind any name keeps working.
+    assert.equal(await requestWithHost(port, 'GET', '/api/stats', evil, { authorization: `Bearer ${token}` }), 200);
+    assert.equal(await requestWithHost(port, 'GET', '/api/stats', evil, { authorization: 'Bearer deadbeef' }), 421);
+  } finally {
+    await close();
+  }
+});
+
+test('first run behind a TLS proxy or an exposed listener: the configured public name is served', async () => {
+  const token = ensureDaemonToken();
+  const proxied = (): HostPolicy => daemonHostPolicy({
+    daemon: { listen: { host: '127.0.0.1' }, behindTlsProxy: true },
+    app: { listen: { host: '127.0.0.1' }, publicUrl: 'https://timon.example.com' },
+  });
+  const named = (): HostPolicy => daemonHostPolicy({
+    daemon: { listen: { host: '127.0.0.1' }, behindTlsProxy: false },
+    app: { listen: { host: '127.0.0.1' }, publicUrl: 'https://timon.example.com' },
+  });
+  for (const hostPolicy of [proxied, named]) {
+    const { port, close } = await listenApp(appWithAuth({ token, required: true, hostPolicy }));
+    try {
+      assert.equal(await requestWithHost(port, 'GET', '/api/health', 'timon.example.com'), 200);
+      // Still behind the account: a served name opens nothing by itself.
+      assert.equal(await requestWithHost(port, 'GET', '/api/stats', 'timon.example.com'), 401);
+    } finally {
+      await close();
+    }
+  }
+});
+
+test('the daemon reads its policy from the config: a loopback listener refuses a foreign Host', async () => {
+  setConfig(loadConfig(writeConfig({ daemon: { listen: { host: '127.0.0.1' }, auth: 'auto' } })));
+  const token = ensureDaemonToken();
+  const { port, close } = await listenApp(appWithAuth({ token, required: false }));
+  try {
+    assert.equal(await requestWithHost(port, 'GET', '/api/health', `evil.example:${port}`), 421);
+    assert.equal(await requestWithHost(port, 'GET', '/api/health', 'timon.localhost'), 200);
+  } finally {
+    await close();
+    resetConfig();
+  }
+});
+
 test('loopback with users: anonymous is 401, daemon-token Bearer still works, health stays public', async () => {
   const { dbApi } = await import('../../db.js');
   const { hashPassword } = await import('../../users/password.js');
@@ -163,7 +244,7 @@ test('loopback with users: anonymous is 401, daemon-token Bearer still works, he
   createTestAccount(dbApi, {
     email: 'admin@example.com',
     name: 'Admin',
-    passwordHash: hashPassword('admin-secret'),
+    passwordHash: await hashPassword('admin-secret'),
     isSuperadmin: true,
   });
   const token = ensureDaemonToken();
@@ -177,6 +258,9 @@ test('loopback with users: anonymous is 401, daemon-token Bearer still works, he
 
     const health = await fetch(`${base}/api/health`);
     assert.equal(health.status, 200);
+
+    assert.equal(await requestWithHost(port, 'GET', '/api/stats', `localhost:${port}`), 401);
+    assert.equal(await requestWithHost(port, 'GET', '/api/stats', `evil.example:${port}`), 421);
 
     // CLI / operator still send this header (`TIMON_API_TOKEN` = daemon-token).
     const agent = await fetch(`${base}/api/stats`, {
@@ -295,25 +379,23 @@ test('auth off forcé en mémoire (sans loadConfig) + WebUI exposée : un anonym
   }
 });
 
-test('?token= : refusé hors SSE, accepté sur les deux flux SSE', async () => {
+test('?token= is read nowhere: the daemon-token and a mission token in the address get 401, the same token as a Bearer passes', async () => {
   const cfg = loadConfig(writeConfig({ daemon: { listen: { host: '0.0.0.0' }, auth: 'auto' } }));
   const token = ensureDaemonToken();
-  const q = `token=${encodeURIComponent(token)}`;
+  const missionId = randomUUID();
+  dbApi.createMission(missionId, 'witness', 'work');
+  const missionToken = issueMissionApiToken(missionId);
   const { port, close } = await listenApp(appWithAuth({ token, required: authIsRequired(cfg) }));
   try {
     const base = `http://127.0.0.1:${port}`;
-
-    // Les seules routes qui gardent la porte : EventSource ne pose pas d'en-tête.
-    assert.equal((await fetch(`${base}/api/stream?${q}`)).status, 200);
-    assert.equal((await fetch(`${base}/api/missions/m1/stream?${q}`)).status, 200);
-
-    // Tout le reste exige Authorization ou le cookie de session.
-    assert.equal((await fetch(`${base}/api/stats?${q}`)).status, 401);
-    assert.equal((await fetch(`${base}/api/health/resources?${q}`)).status, 401);
-    // Pas de préfixe : une route sous /api/stream/ ne bénéficie pas de l'exception.
-    assert.equal((await fetch(`${base}/api/stream/x?${q}`)).status, 401);
-    // Une méthode d'écriture sur le chemin SSE ne l'ouvre pas non plus.
-    assert.equal((await fetch(`${base}/api/stream?${q}`, { method: 'POST' })).status, 401);
+    for (const [label, secret] of [['daemon-token', token], ['mission token', missionToken]] as const) {
+      const q = `token=${encodeURIComponent(secret)}`;
+      for (const path of ['/api/stream', '/api/missions/m1/stream', '/api/stats']) {
+        assert.equal((await fetch(`${base}${path}?${q}`)).status, 401, `${label} in the address of ${path}`);
+        const bearer = await fetch(`${base}${path}`, { headers: { authorization: `Bearer ${secret}` } });
+        assert.equal(bearer.status, 200, `${label} as a Bearer on ${path}`);
+      }
+    }
   } finally {
     await close();
   }

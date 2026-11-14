@@ -12,7 +12,7 @@
  * `kernel/registry.ts` (Phase 1).
  */
 import { z } from 'zod';
-import { dirname, resolve } from 'node:path';
+import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isIP } from 'node:net';
 
@@ -119,20 +119,53 @@ export const EgressSchema = z.object({
     .default('127.0.0.1')
     .describe("Loopback address the egress proxy listens on."),
   port: z.number().int().min(0).max(65_535).default(0).describe("Egress proxy port; 0 lets the system choose a free one."),
+}).strict();
+
+/** A path the fence grants: absolute or `~/…`, never relative to whatever cwd the daemon has. */
+export const FencePathSchema = z.string().refine((p) => p.startsWith('~/') || isAbsolute(p), {
+  message: 'must be an absolute path or start with ~/',
 });
+
+/**
+ * Per-agent or per-project relaxation of the fence (`host/isolation.ts`,
+ * `resolveFence`): the agent's entry wins over the project's, which wins over
+ * the global values. Kept in the configuration file on purpose — a mission
+ * can read neither this file nor write it, so it cannot grant itself one.
+ */
+export const FenceExceptionSchema = z.object({
+  unixSockets: z.enum(['deny', 'allow']).optional().describe("Overrides `host.isolation.unixSockets` for these missions."),
+  writable: z.array(FencePathSchema).default([]).describe("Extra writable paths for these missions, added to `host.isolation.writable`."),
+}).strict();
 
 /**
  * Filesystem confinement of a mission (audit finding #4, `host/isolation.ts`).
  *
- * `auto` means "mask the sensitive paths wherever the launcher accepts the
- * directives". Today the mission launcher is a systemd `--scope`, which
- * rejects every `Exec*` sandboxing directive, so `auto` degrades to the
- * historical behaviour rather than breaking the spawn — the reasoning, and the
- * measurements behind it, are in `host/isolation.ts` and `docs/SECURITY.md`
- * §9.1.
+ * Two policies read it. The masking (`resolveIsolation`, `deny`/`readOnly`/
+ * `allow`) needs a launcher that accepts systemd sandboxing directives, which
+ * the `--scope` launcher does not. The fence (`resolveFence`, `writable`,
+ * `unixSockets`, `exceptions`) is applied by the kernel from inside the launch
+ * chain; the reasoning and the measurements are in `host/isolation.ts` and
+ * `docs/SECURITY.md` §9.1.
+ *
+ * Every object of this block is strict: a misspelt key (`writeable`,
+ * `unixSocket`) would otherwise be dropped, and the mission would run with
+ * a fence other than the one the operator believes they wrote.
  */
 export const IsolationSchema = z.object({
-  filesystem: z.enum(['auto', 'off']).default('auto').describe("Requested mission filesystem confinement mode; availability depends on the host launcher."),
+  /**
+   * `auto` fences missions wherever the host can, and launches them unfenced
+   * with a warning elsewhere; `enforce` refuses to launch a mission the host
+   * cannot fence; `off` never fences.
+   */
+  filesystem: z.enum(['auto', 'enforce', 'off']).default('auto').describe("Mission filesystem confinement: `auto` confines missions where the host supports it and warns elsewhere, `enforce` refuses to start a mission that cannot be confined, `off` disables confinement."),
+  /** Paths of the user's home a mission may write, besides its own folders. */
+  writable: z.array(FencePathSchema).default([]).describe("Extra paths missions may write; the rest of the user's home is read-only to them."),
+  /** Unix sockets (Docker, ssh-agent, D-Bus, the session bus) from inside a mission. */
+  unixSockets: z.enum(['deny', 'allow']).default('deny').describe("Whether missions may open Unix sockets (Docker, ssh-agent, D-Bus)."),
+  exceptions: z.object({
+    agents: z.record(z.string(), FenceExceptionSchema).default({}).describe("Confinement exceptions by agent name."),
+    projects: z.record(z.string(), FenceExceptionSchema).default({}).describe("Confinement exceptions by project slug."),
+  }).strict().prefault({}).describe("Confinement exceptions for some agents or projects."),
   /** Extra paths to mask, absolute or `~/…`. Added to the built-in list. */
   deny: z.array(z.string()).default([]).describe("Additional paths requested to be hidden from missions."),
   /** Paths kept visible but read-only. */
@@ -147,7 +180,7 @@ export const IsolationSchema = z.object({
    */
   runAs: z.string().nullable().default(null).describe("Reserved OS-account isolation option; non-null values are currently refused by the runtime."),
   egress: EgressSchema.prefault({}).describe("Outbound network proxy offered to missions."),
-});
+}).strict();
 
 export const HostSchema = z.object({
   docker: z.enum(['auto', 'required', 'disabled']).default('auto').describe("Container capability policy."),

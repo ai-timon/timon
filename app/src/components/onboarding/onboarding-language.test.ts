@@ -65,6 +65,7 @@ test('switching language on the welcome screen translates the titles, then the n
   const { useOnboarding } = await import('./onboarding-context');
   const { SplashStep } = await import('./steps/splash');
   const { AccountStep } = await import('./steps/account');
+  const { legacyStep } = await import('./steps/legacy-step');
   const h = React.createElement;
   // The roller's own gestures are another test's business: this calls what it calls.
   function Welcome(): React.ReactElement {
@@ -88,7 +89,8 @@ test('switching language on the welcome screen translates the titles, then the n
   try {
     await React.act(async () => {
       root.render(h(OnboardingShell, {
-        steps: [{ id: 'splash', Component: Welcome }, { id: 'account', Component: AccountStep }],
+        // The background question is another test's business: stepped over here, as on a machine with nothing to ask.
+        steps: [{ id: 'splash', Component: Welcome }, { id: 'background', Component: legacyStep(null) }, { id: 'account', Component: AccountStep }],
         companions: [],
         gate: ({ children }: { children: React.ReactNode }) => h(React.Fragment, null, children),
       }));

@@ -211,6 +211,10 @@ run_in "$INSTALL_DIR/orchestrator" npm ci
 run_in "$INSTALL_DIR/orchestrator" npm run build
 run_in "$INSTALL_DIR/app" npm ci
 run_in "$INSTALL_DIR/app" npm run build
+# The mission launcher (Landlock + seccomp), found by the daemon in
+# native/timon-fence/build/. Optional: without a C compiler the build is
+# skipped, missions run unfenced and `timon doctor` says so.
+run_in "$INSTALL_DIR" node native/timon-fence/build.mjs --optional
 
 # ── config: installDir, only if the file doesn't already exist ──────────────
 # Without this the daemon falls back on the folder its code was built in,

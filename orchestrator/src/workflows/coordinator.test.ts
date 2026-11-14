@@ -9,7 +9,8 @@ import type { Dialect, NormalizedEvent } from '../backends/types.js';
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-workflow-coordinator-'));
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 const { witnessCli } = await import('../../tests/helpers/witness-cli.js');
-const WITNESS_CLI = witnessCli(process.env.TIMON_HOME);
+// Beside the Timon home, not in it: no binary is ever resolved from there.
+const WITNESS_CLI = witnessCli(`${process.env.TIMON_HOME}-bin`);
 const { dbApi, db } = await import('../db.js');
 const { createBrowserProfile, resolveBrowserProfile } = await import('../browser-profiles.js');
 const { bus } = await import('../bus.js');

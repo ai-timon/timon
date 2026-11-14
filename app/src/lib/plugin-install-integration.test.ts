@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
+import { loadRequestScope } from './next-request-scope-test';
 
 /**
  * "Install a plugin" (TODO #332), rendered against the real daemon routes
@@ -96,7 +97,7 @@ test('rendered install flow: list, sheet with disclaimer, install on click only,
   const React = await import('react');
   install('React', React);
   const { createRoot } = await import('react-dom/client');
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const route = await import('../app/api/ui/plugin-install/[...path]/route');
   const { PluginInstallPanel } = await import('../components/plugin-install-panel');
   const session = <T,>(fn: () => T): T => requestAsyncStorage.run(

@@ -180,6 +180,80 @@ export function withCurrentCloseFlags(text: string): string {
   return out;
 }
 
+/* ── Role icon markup: a closed grammar, not free HTML ── */
+
+/**
+ * A custom role's `iconSvg` is injected as markup by every client that draws
+ * the role, inside the operator's session. Any caller holding `agents:manage`
+ * can write it, mission tokens included, so the field is limited to the shapes
+ * a lucide icon is made of. Anything else is refused, never cleaned up: a
+ * silently rewritten icon would hide the attempt.
+ */
+export const ROLE_ICON_SVG_MAX_LENGTH = 4096;
+const ROLE_ICON_ELEMENTS = new Set(['path', 'circle', 'rect', 'line', 'polyline', 'polygon', 'ellipse', 'g']);
+// Geometry only: a paint attribute such as `fill` would accept `url(#id)` and
+// let the icon reach other parts of the page. Clients draw a known lucide icon
+// from its `iconName`, so this markup is only a stroke-drawn fallback.
+const ROLE_ICON_ATTRIBUTES = new Set([
+  'd', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
+  'width', 'height', 'points', 'transform',
+]);
+const ROLE_ICON_VALUE_RE = /^[0-9a-zA-Z .,\-#()]*$/;
+const ROLE_ICON_OPEN_RE = /^<([a-zA-Z][a-zA-Z0-9:_-]*)((?:\s+[^\s=/>]+\s*=\s*"[^"]*")*)\s*(\/?)>/;
+const ROLE_ICON_CLOSE_RE = /^<\/([a-zA-Z][a-zA-Z0-9:_-]*)\s*>/;
+const ROLE_ICON_ATTR_RE = /\s+([^\s=/>]+)\s*=\s*"([^"]*)"/g;
+const ROLE_ICON_MAX_DEPTH = 8;
+
+/** Why `svg` is not an acceptable role icon, or null when it is. */
+export function roleIconSvgProblem(svg: unknown): string | null {
+  if (typeof svg !== 'string') return 'icon must be a string';
+  if (svg.length > ROLE_ICON_SVG_MAX_LENGTH) return `icon longer than ${ROLE_ICON_SVG_MAX_LENGTH} characters`;
+  const stack: string[] = [];
+  let rest = svg;
+  let shapes = 0;
+  while (rest.length > 0) {
+    const lt = rest.indexOf('<');
+    const text = lt < 0 ? rest : rest.slice(0, lt);
+    // Text, entities and CDATA have no place between shapes.
+    if (text.trim() !== '') return 'icon may only contain shapes';
+    if (lt < 0) break;
+    rest = rest.slice(lt);
+    const close = ROLE_ICON_CLOSE_RE.exec(rest);
+    if (close) {
+      if (stack.pop() !== close[1]) return 'icon has an unbalanced tag';
+      rest = rest.slice(close[0].length);
+      continue;
+    }
+    const open = ROLE_ICON_OPEN_RE.exec(rest);
+    if (!open) return 'icon has a malformed or forbidden tag';
+    const tag = open[1]!;
+    if (!ROLE_ICON_ELEMENTS.has(tag)) return `icon element <${tag}> is not allowed`;
+    const seen = new Set<string>();
+    for (const attr of open[2]!.matchAll(ROLE_ICON_ATTR_RE)) {
+      const name = attr[1]!;
+      if (!ROLE_ICON_ATTRIBUTES.has(name)) return `icon attribute "${name}" is not allowed`;
+      if (seen.has(name)) return `icon attribute "${name}" is repeated`;
+      seen.add(name);
+      if (!ROLE_ICON_VALUE_RE.test(attr[2]!)) return `icon attribute "${name}" has a forbidden character`;
+    }
+    const parent = stack[stack.length - 1];
+    if (parent !== undefined && parent !== 'g') return `icon element <${parent}> cannot hold children`;
+    shapes += 1;
+    if (open[3] !== '/') {
+      if (stack.length >= ROLE_ICON_MAX_DEPTH) return 'icon is nested too deeply';
+      stack.push(tag);
+    }
+    rest = rest.slice(open[0].length);
+  }
+  if (stack.length > 0) return 'icon has an unclosed tag';
+  if (shapes === 0) return 'icon required';
+  return null;
+}
+
+export function isSafeRoleIconSvg(svg: unknown): svg is string {
+  return roleIconSvgProblem(svg) === null;
+}
+
 /* ── Custom roles: persisted in ~/.timon/roles.json (cache invalidated on write) ── */
 
 let cache: AgentRole[] | null = null;
@@ -191,7 +265,11 @@ function readCustomRoles(): AgentRole[] {
     const mtime = statSync(CUSTOM_ROLES_FILE).mtimeMs;
     if (cache && mtime === cacheMtime) return cache;
     const raw = JSON.parse(readFileSync(CUSTOM_ROLES_FILE, 'utf8')) as AgentRole[];
-    cache = Array.isArray(raw) ? raw.map((r) => ({ ...r, builtin: false })) : [];
+    // A file written before the icon grammar existed, or edited by hand, may
+    // carry markup the routes now refuse: the icon is dropped, the role kept.
+    cache = Array.isArray(raw)
+      ? raw.map((r) => ({ ...r, iconSvg: isSafeRoleIconSvg(r.iconSvg) ? r.iconSvg : '', builtin: false }))
+      : [];
     cacheMtime = mtime;
     return cache;
   } catch {
@@ -278,7 +356,8 @@ export function createRole(input: CustomRoleInput): AgentRole {
   }
   if (getRole(input.id)) throw new Error(`role "${input.id}" already exists`);
   if (!input.label?.trim()) throw new Error('label required');
-  if (!input.iconSvg?.trim()) throw new Error('icon required');
+  const iconProblem = roleIconSvgProblem(input.iconSvg);
+  if (iconProblem) throw new Error(iconProblem);
   const role: AgentRole = {
     id: input.id,
     label: input.label.trim(),
@@ -300,6 +379,10 @@ export function updateRole(id: string, patch: Partial<CustomRoleInput>): AgentRo
   if (existing) {
     const prompt = z.object({ default_directives: z.string() }).strict().parse(patch);
     return writePromptOverride(id, prompt.default_directives);
+  }
+  if (patch.iconSvg !== undefined) {
+    const iconProblem = roleIconSvgProblem(patch.iconSvg);
+    if (iconProblem) throw new Error(iconProblem);
   }
   const custom = readCustomRoles();
   const idx = custom.findIndex((r) => r.id === id);

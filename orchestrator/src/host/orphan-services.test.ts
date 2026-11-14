@@ -31,6 +31,9 @@ test('the home is read back from each supervisor definition as it is rendered', 
   const xml = renderTaskXml({ userName: 't', timonHome: 'C:\\Users\\t\\AppData\\Local\\Temp\\rc & co', installDir: 'C:\\Timon' });
   assert.equal(homeOfTask(xml), 'C:\\Users\\t\\AppData\\Local\\Temp\\rc & co');
   assert.equal(homeOfTask('<Task><Actions><Exec><Command>notepad.exe</Command></Exec></Actions></Task>'), null);
+  // The logon task ("only while I'm logged in") names its launcher in a PowerShell literal.
+  const logon = renderTaskXml({ userName: 'o', timonHome: "C:\\Users\\o'neil & co\\.timon", installDir: 'C:\\Timon', offSession: false });
+  assert.equal(homeOfTask(logon), "C:\\Users\\o'neil & co\\.timon");
 });
 
 test('#464: Linux lists the Timon units whose home is gone, and only those', () => {

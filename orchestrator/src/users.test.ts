@@ -15,32 +15,32 @@ await import('../tests/helpers/paid-license.js');
 const { hashPassword, verifyPassword, PasswordError } = await import('./users/password.js');
 const { dbApi, DuplicateEmailError, LastSuperadminError } = await import('./db.js');
 
-test('hashPassword then verifyPassword round-trips, a wrong password does not', () => {
-  const hash = hashPassword('correct-horse-battery');
-  assert.match(hash, /^scrypt\$16384\$8\$1\$/);
-  assert.equal(verifyPassword('correct-horse-battery', hash), true);
-  assert.equal(verifyPassword('wrong-password', hash), false);
-  assert.equal(verifyPassword('correct-horse-battery', 'not-a-hash'), false);
-  assert.equal(verifyPassword('correct-horse-battery', 'scrypt$1$1$1$$'), false);
+test('hashPassword then verifyPassword round-trips, a wrong password does not', async () => {
+  const hash = await hashPassword('correct-horse-battery');
+  assert.match(hash, /^scrypt\$131072\$8\$1\$/);
+  assert.equal(await verifyPassword('correct-horse-battery', hash), true);
+  assert.equal(await verifyPassword('wrong-password', hash), false);
+  assert.equal(await verifyPassword('correct-horse-battery', 'not-a-hash'), false);
+  assert.equal(await verifyPassword('correct-horse-battery', 'scrypt$1$1$1$$'), false);
 });
 
-test('the same password hashes to two different strings (fresh salt)', () => {
-  const a = hashPassword('same-password');
-  const b = hashPassword('same-password');
+test('the same password hashes to two different strings (fresh salt)', async () => {
+  const a = await hashPassword('same-password');
+  const b = await hashPassword('same-password');
   assert.notEqual(a, b);
-  assert.equal(verifyPassword('same-password', a), true);
-  assert.equal(verifyPassword('same-password', b), true);
+  assert.equal(await verifyPassword('same-password', a), true);
+  assert.equal(await verifyPassword('same-password', b), true);
 });
 
-test('an empty password is refused', () => {
-  assert.throws(() => hashPassword(''), (err: unknown) => err instanceof PasswordError);
+test('an empty password is refused', async () => {
+  await assert.rejects(hashPassword(''), (err: unknown) => err instanceof PasswordError);
 });
 
-test('createUser stores a row and getUserByEmail finds it, case-insensitive', () => {
+test('createUser stores a row and getUserByEmail finds it, case-insensitive', async () => {
   const user = createTestAccount(dbApi, {
     email: 'Robin@Example.com',
     name: 'Robin',
-    passwordHash: hashPassword('secret-secret'),
+    passwordHash: await hashPassword('secret-secret'),
     isSuperadmin: true,
   });
   assert.equal(user.email, 'robin@example.com');
@@ -52,12 +52,13 @@ test('createUser stores a row and getUserByEmail finds it, case-insensitive', ()
   assert.equal(dbApi.countActiveSuperadmins(), 1);
 });
 
-test('a second user with the same email is refused', () => {
+test('a second user with the same email is refused', async () => {
+  const passwordHash = await hashPassword('other-secret');
   assert.throws(
     () => createTestAccount(dbApi, {
       email: 'robin@example.com',
       name: 'Clone',
-      passwordHash: hashPassword('other-secret'),
+      passwordHash,
     }),
     (err: unknown) => err instanceof DuplicateEmailError,
   );
@@ -78,12 +79,12 @@ test('the last active superadmin cannot be disabled or demoted', () => {
   assert.equal(dbApi.getUserById(only.id)?.status, 'active');
 });
 
-test('a second superadmin lets the first be demoted, then the last one is locked again', () => {
+test('a second superadmin lets the first be demoted, then the last one is locked again', async () => {
   const first = dbApi.getUserByEmail('robin@example.com')!;
   const second = createTestAccount(dbApi, {
     email: 'other@example.com',
     name: 'Other',
-    passwordHash: hashPassword('secret-secret-2'),
+    passwordHash: await hashPassword('secret-secret-2'),
     isSuperadmin: true,
   });
   assert.equal(dbApi.countActiveSuperadmins(), 2);

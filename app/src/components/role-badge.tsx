@@ -3,6 +3,7 @@
 import { cn } from '@/lib/utils';
 import { resolveRole } from '@/lib/roles';
 import { useRolesVersion } from '@/components/roles-provider';
+import { RoleSvg } from '@/components/role-svg';
 
 type Size = 'xs' | 'sm' | 'md';
 
@@ -67,16 +68,7 @@ export function RoleBadge({
       {Icon ? (
         <Icon className={ICON[size]} />
       ) : visual.iconSvg ? (
-        <svg
-          viewBox="0 0 24 24"
-          className={ICON[size]}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          dangerouslySetInnerHTML={{ __html: visual.iconSvg }}
-        />
+        <RoleSvg svg={visual.iconSvg} className={ICON[size]} />
       ) : null}
       {withLabel && text}
     </span>

@@ -130,7 +130,14 @@ export const EGRESS_PROXY_TOKEN_SCOPE = 'egress-proxy';
  * `agents:privileged-config`: the power-user path of the override guards
  * (`privileged-overrides.ts`). Still ∩ the launcher's grants, so a superadmin's
  * missions carry it and an employee's do not; what it lifts is bounded by the
- * calling agent's own permission level.
+ * calling agent's own permission level. It lifts the backend and the level,
+ * never the tools: since the maintainer's decision of 08/11/2026, adding a tool to an
+ * agent (its `allowed_tools`, a lifted `disallowed_tools`, a skill's
+ * `allowed-tools`, a spawn's or a task's `extra_allowed_tools`) or attaching
+ * a stdio MCP server takes a person, whatever a mission token holds — a
+ * developer-owner mission included (`agentWideningRefusal`). Narrowing, or
+ * sending the list unchanged, stays open. The daemon-token is the operator's
+ * CLI, not a mission: it is not bounded by these guards.
  *
  * `skills:manage` entered the cap on 12/10/2026: the runtime preamble sends an
  * agent to `skill_put` / `skill_rm`, and the route answered 403 to every mission
@@ -142,9 +149,11 @@ export const EGRESS_PROXY_TOKEN_SCOPE = 'egress-proxy';
  * `mcp:manage` entered it the same day, on the maintainer's decision (12/10/2026) to open
  * `mcp_server_put` / `mcp_server_rm` to agents. Still ∩ the launcher's grants,
  * and bounded on the route (`skills-mcp-guard.ts`, `mcpWriteRefusal`): a stdio
- * server is a command run on the host outside the permission classifier, so it
- * needs `agents:privileged-config` as well; an http one needs a plain http(s)
- * URL off this host; what Timon injects, what claude.ai discovered and what a
+ * server is a command run on the host outside the permission classifier, so no
+ * mission token declares or rewrites one, `agents:privileged-config` or not
+ * (a person does, from the MCP servers page); an http one needs a plain http(s)
+ * URL off this host unless the mission holds `agents:privileged-config`; what
+ * Timon injects, what claude.ai discovered and, without that permission, what a
  * human declared are never rewritten. A mission token is never shown the secret
  * values of a server, `mcp:manage` or not.
  *

@@ -21,6 +21,7 @@ import { packagedRuntime } from './host/bundled-node.js';
 import { getHost } from './host/index.js';
 import { logDir } from './log-file.js';
 import { linuxRelease, readOsRelease, supervisorFor, type SupervisorKind } from './host/machine.js';
+import { readServiceSessionMode, sessionModeSupported, type ServiceSessionMode } from './host/service-session-mode.js';
 import { serviceOptsFromEnvironment } from './onboarding.js';
 import {
   LINUX_UNIT, MACOS_LABEL, shQuote, statusService, WINDOWS_SERVICE_REVISION, WINDOWS_TASK,
@@ -59,6 +60,12 @@ export type ServiceReport = {
    */
   actionHere: boolean;
   command: string;
+  /** Keeps running once the user logs out, read from the machine; `null` when not registered or unreadable. */
+  offSession: boolean | null;
+  /** The user's recorded answer (`service-session-mode.ts`), `null` when never asked. */
+  sessionMode: ServiceSessionMode | null;
+  /** The answer can be changed on this OS. */
+  sessionModeSupported: boolean;
 };
 
 export type SystemInfo = {
@@ -196,10 +203,14 @@ function serviceReport(opts: ServiceOpts, mode: DaemonMode, packagedRuntime: boo
   const supervisor = supervisorFor(platform, { systemd: platform === 'linux' && systemdPresent() });
   const name = serviceName(supervisor, opts);
   const command = 'timon service install';
+  const session = {
+    sessionMode: readServiceSessionMode(opts.timonHome),
+    sessionModeSupported: supervisor !== null && sessionModeSupported(platform),
+  };
   if (supervisor === null) {
     return {
       supervisor, name, installed: false, running: false, reason: null, windows: null,
-      stale: false, action: null, actionHere: false, command,
+      stale: false, action: null, actionHere: false, command, offSession: null, ...session,
     };
   }
   const status = statusService(opts);
@@ -219,6 +230,7 @@ function serviceReport(opts: ServiceOpts, mode: DaemonMode, packagedRuntime: boo
   return {
     supervisor, name, installed, running: status.ok, reason: status.reason ?? null, windows, stale,
     ...serviceAction({ supervisor, installed, stale, mode, refused: !installed && Boolean(status.reason) }), command,
+    offSession: status.offSession ?? null, ...session,
   };
 }
 

@@ -126,6 +126,17 @@ export function saveRequest(target: EditTarget, text: string): SaveRequest {
   }
 }
 
+/**
+ * Agents an edit of a memory rule sends to a fresh conversation: their earlier
+ * session still held the old rule (`fresh_conversation` in the daemon's answer).
+ * Empty for any other answer.
+ */
+export function freshConversationAgents(body: unknown): string[] {
+  if (!body || typeof body !== 'object') return [];
+  const agents = (body as { fresh_conversation?: unknown }).fresh_conversation;
+  return Array.isArray(agents) ? agents.filter((a): a is string => typeof a === 'string') : [];
+}
+
 /** Why a block cannot be edited, as a locale key suffix (`agentInjections.why.*`). */
 export function whyNotEditable(block: Pick<InjectionBlock, 'editable' | 'redacted' | 'injected_by' | 'items'>): 'redacted' | 'cli' | 'code' | null {
   if (block.editable) return null;

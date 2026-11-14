@@ -309,7 +309,7 @@ export function registerEmailCodeRoutes(app: Router, deps: EmailCodeDeps): void 
    * account someone else got into. No session is opened here — the owner
    * signs in with the new password, which proves it was typed right.
    */
-  app.post('/api/auth/password-reset/confirm', (req, res) => {
+  app.post('/api/auth/password-reset/confirm', async (req, res) => {
     const parsed = ResetConfirmBody.safeParse(req.body ?? {});
     if (!parsed.success) {
       const passwordIssue = parsed.error.issues.some((issue) => issue.path[0] === 'password');
@@ -338,10 +338,12 @@ export function registerEmailCodeRoutes(app: Router, deps: EmailCodeDeps): void 
       sendCodeRefusal(res, { ok: false, reason: 'expired' });
       return;
     }
-    dbApi.setUserPassword(user.id, hashPassword(password));
-    dbApi.revokeUserAccess(user.id);
+    // Spent before the hash is awaited: a second request carrying the same
+    // code must find it gone, not pass the check while this one computes.
     store.consume(result.id);
     clearThrottle(keys);
+    dbApi.setUserPassword(user.id, await hashPassword(password));
+    dbApi.revokeUserAccess(user.id);
     auditRequest(req, 'user.reset_password_by_email', `user:${user.id}`);
     res.json({ ok: true });
   });

@@ -166,7 +166,7 @@ test('les MCP internes reçoivent le jeton de mission par env_vars, jamais sa va
   const tables = serverTables(toml);
   for (const server of ['timon', 'timon_ask']) {
     assert.ok(
-      tables.get(server)?.includes('env_vars = ["TIMON_API_TOKEN"]'),
+      tables.get(server)?.some((line) => line.startsWith('env_vars = ["TIMON_API_TOKEN", ')),
       `[mcp_servers.${server}] sans env_vars = ["TIMON_API_TOKEN"] :\n${toml}`,
     );
   }

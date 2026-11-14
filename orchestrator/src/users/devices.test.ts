@@ -142,7 +142,7 @@ const setup = await call('POST', '/api/auth/setup', {
 });
 assert.equal(setup.status, 201);
 const bob = createTestAccount(dbApi, {
-  email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword(PASSWORD), status: 'active',
+  email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword(PASSWORD), status: 'active',
 });
 const romCookie = await login('robin@example.com');
 const bobCookie = await login('bob@example.com');
@@ -404,7 +404,7 @@ test('a device idle past its lifetime is refused', async () => {
 test("a disabled owner's devices die with the account", async () => {
   resetThrottle();
   const carol = createTestAccount(dbApi, {
-    email: 'carol@example.com', name: 'Carol', passwordHash: hashPassword(PASSWORD), status: 'active',
+    email: 'carol@example.com', name: 'Carol', passwordHash: await hashPassword(PASSWORD), status: 'active',
   });
   const device = await pair(await login('carol@example.com'), 'Carol laptop');
   assert.equal((await call('GET', '/api/auth/me', { bearer: device.token })).status, 200);
@@ -581,7 +581,7 @@ test('the sweep closes the open streams of a device that expired or lost its own
   const { db } = await import('../db.js');
   resetThrottle();
   const dave = createTestAccount(dbApi, {
-    email: 'dave@example.com', name: 'Dave', passwordHash: hashPassword(PASSWORD), status: 'active',
+    email: 'dave@example.com', name: 'Dave', passwordHash: await hashPassword(PASSWORD), status: 'active',
   });
   const daveCookie = await login('dave@example.com');
   const idle = await pair(daveCookie, 'Dave idle');
@@ -607,7 +607,7 @@ test('the sweep closes the open streams of an account a lapsed licence falls bac
   const { paidTestLicense } = await import('../../tests/helpers/paid-license.js');
   resetThrottle();
   createTestAccount(dbApi, {
-    email: 'erin@example.com', name: 'Erin', passwordHash: hashPassword(PASSWORD), status: 'active',
+    email: 'erin@example.com', name: 'Erin', passwordHash: await hashPassword(PASSWORD), status: 'active',
   });
   const erinCookie = await login('erin@example.com');
   const erinDevice = await pair(erinCookie, 'Erin screen');

@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { loadRequestScope } from './next-request-scope-test';
 
 type Call = { url: string; init?: RequestInit };
 
@@ -15,7 +16,7 @@ async function withRoute(
 ): Promise<void> {
   const oldAsync = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
   Object.defineProperty(globalThis, 'AsyncLocalStorage', { value: AsyncLocalStorage, configurable: true });
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { GET } = await import('../app/api/ui/backends/catalog/route');
   const previousFetch = globalThis.fetch;
   const oldToken = process.env.TIMON_DAEMON_TOKEN;

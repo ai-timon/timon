@@ -11,7 +11,9 @@
  */
 import http from 'node:http';
 import next from 'next';
+import { createHostPolicyReader, hostAllowed, hostGuardExempt } from './lib/host-guard';
 import { listenHostsFor } from './lib/listen-hosts';
+import { TIMON_HOME } from './lib/paths';
 import { useStandaloneConfig } from './lib/standalone-config';
 import { handleTerminalUpgrade, matchTerminalWsPath } from './lib/ui/terminal-ws-proxy';
 import { createWindowPolicy } from './lib/ui/window-csp';
@@ -33,9 +35,21 @@ const app = next({ dev, hostname, port, dir: process.cwd(), httpServer: nextUpgr
 const handle = app.getRequestHandler();
 // Every response, before Next sees the request (TODO #533).
 const windowPolicy = createWindowPolicy({ dev });
+// Here rather than in `middleware.ts`: that one skips `/api/`, the proxy to
+// the daemon, and never sees the terminal's WebSocket upgrades.
+const hostPolicy = createHostPolicyReader(TIMON_HOME);
+
+function misdirected(req: http.IncomingMessage): boolean {
+  return !hostGuardExempt(req.url) && !hostAllowed(req.headers.host, hostPolicy());
+}
 
 function createServer(): http.Server {
   const server = http.createServer((req, res) => {
+    if (misdirected(req)) {
+      res.writeHead(421, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'misdirected request' }));
+      return;
+    }
     // No policy, no page: a response never leaves without it.
     void windowPolicy(req, res).then(() => handle(req, res), () => {
       res.statusCode = 500;
@@ -44,6 +58,10 @@ function createServer(): http.Server {
   });
 
   server.on('upgrade', (req, socket, head) => {
+    if (misdirected(req)) {
+      socket.destroy();
+      return;
+    }
     const terminal = matchTerminalWsPath(req.url);
     if (terminal) {
       void handleTerminalUpgrade(terminal, req, socket, head).catch(() => socket.destroy());

@@ -11,6 +11,7 @@
  */
 import { createTestAccount } from '../../tests/helpers/accounts.js';
 import '../test-home.js';
+import '../../tests/helpers/unfenced.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';

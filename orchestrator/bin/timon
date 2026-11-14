@@ -1041,7 +1041,7 @@ Backend sign-in (write-only: the stored token is never printed):
         claude setup-token          # then paste the token when asked
         printf %s "$TOKEN" | timon auth claude-token set
       every claude mission receives it; needed on macOS for Timon to run with
-      no session open. Then run 'timon service install' to switch the service.
+      no session open ('timon service session-mode always').
   timon auth claude-token status   configured or not, never the value
   timon auth claude-token clear
 
@@ -1139,8 +1139,8 @@ Web app served by the daemon (NEVER an orchestrator restart):
   timon app status [--json]                  module active? app built? child alive?
   timon app restart                          signals the web-app child (or rearms a supervisor that gave up)
 
-Daemon service (systemd user unit on Linux, launchd agent on macOS — a launchd
-                daemon once a claude token is set —, scheduled task at boot on Windows):
+Daemon service (systemd user unit on Linux, launchd agent on macOS, logon task on Windows;
+                a launchd daemon or a boot task when it keeps running logged out):
   timon service install [--dry-run] [--allow-temp-home] [--force]
                                              writes the unit/plist and starts it; refuses a TIMON_HOME
                                              under the system temporary folder without the flag, and a
@@ -1150,6 +1150,11 @@ Daemon service (systemd user unit on Linux, launchd agent on macOS — a launchd
   timon service start                        starts a stopped service again
   timon service status [--json]              installed? running?
   timon service repair                       Windows: seals the session witness again when the service waits for a logon that never comes
+  timon service session-mode [session|always]
+                                             shows or sets whether Timon keeps running once you log out: 'session'
+                                             stops it with your session, 'always' keeps routines and night tasks
+                                             running (Linux: loginctl linger; macOS: a launchd daemon; Windows: a
+                                             boot task instead of a logon task; both reinstalled)
 
 Bundled modules (writes timon.config.json — effective on next daemon boot):
   timon module list [--json]                 catalog, wanted state, actual state + reason
@@ -3190,6 +3195,11 @@ async function cmdMemoryRule(argv) {
     if (!id) { process.stderr.write('usage: timon memory rule rm <id>\n'); process.exit(64); }
     const j = await http('DELETE', `/api/memory/rules/${encodeURIComponent(id)}`);
     process.stdout.write(`rule #${(j.deleted || {}).id ?? id} deleted\n`);
+    // The rule lives on in the sessions that saw it: say who loses theirs.
+    const fresh = Array.isArray(j.fresh_conversation) ? j.fresh_conversation : [];
+    if (fresh.length) {
+      process.stdout.write(`the agent will start a fresh conversation at its next mission: ${fresh.join(', ')}\n`);
+    }
     return;
   }
 
@@ -4056,7 +4066,7 @@ async function rearmApp(fallback) {
 }
 
 /**
- * `timon service install|uninstall|stop|start|status|repair` — the daemon's supervisor (5.3).
+ * `timon service install|uninstall|stop|start|status|repair|session-mode` — the daemon's supervisor (5.3).
  *
  * Always LOCAL: a service belongs to the machine you're typing on, never to
  * the daemon a `--daemon` profile points at. Installing a unit on the wrong
@@ -4153,6 +4163,36 @@ async function cmdService(argv) {
     case 'repair':
       res = mod.repairSessionWitness(opts);
       break;
+    case 'session-mode': {
+      const { isServiceSessionMode, readServiceSessionMode } = await loadDist('host/service-session-mode');
+      const wanted = rest.find((arg) => !arg.startsWith('--'));
+      if (wanted === undefined) {
+        const status = mod.statusService(opts);
+        const recorded = readServiceSessionMode(opts.timonHome);
+        const loggedOut = status.offSession === undefined ? 'unknown' : status.offSession ? 'keeps running' : 'stops when you log out';
+        res = { ok: true, code: 0, lines: [`chosen    : ${recorded ?? 'never asked'}`, `logged out: ${loggedOut}`] };
+        break;
+      }
+      if (!isServiceSessionMode(wanted)) {
+        process.stderr.write(`timon service session-mode: "${wanted}" is not session or always\n`);
+        process.exit(64);
+      }
+      res = mod.applySessionMode(opts, wanted);
+      // macOS and Windows: the answer picks the supervisor (agent or
+      // LaunchDaemon, logon or boot task), so an installed service is
+      // reinstalled through the usual path, guarded like install.
+      if (res.ok && !dryRun && mod.sessionModeNeedsReinstall(opts.platform) && mod.statusService(opts).installed) {
+        const own = guardServiceGesture(opts, 'install', { sourceInstallDir: cfg.daemon.installDir });
+        if (own.refusal) {
+          res = { ...own.refusal, lines: [...res.lines, ...own.refusal.lines] };
+          break;
+        }
+        const { installWithRuntime } = await loadDist('host/packaged-install');
+        const installed = await installWithRuntime(opts, cfg.daemon.installDir, mod.installService);
+        res = { ...installed, lines: [...res.lines, ...installed.lines] };
+      }
+      break;
+    }
     case 'status':
     case undefined:
       res = mod.statusService(opts);
@@ -4171,7 +4211,7 @@ async function cmdService(argv) {
       }
       break;
     default:
-      process.stderr.write(`timon service: unknown subcommand "${sub}" (install|uninstall|stop|start|status|repair)\n`);
+      process.stderr.write(`timon service: unknown subcommand "${sub}" (install|uninstall|stop|start|status|repair|session-mode)\n`);
       process.exit(64);
   }
 
@@ -4600,7 +4640,7 @@ async function cmdAuth(argv) {
     }
     printClaudeTokenStatus(await http('PUT', '/api/backends/claude-token', { token }));
     if (process.platform === 'darwin') {
-      process.stdout.write('Run `timon service install` so Timon keeps running with no session open.\n');
+      process.stdout.write('To keep Timon running with no session open: timon service session-mode always\n');
     }
     return;
   }

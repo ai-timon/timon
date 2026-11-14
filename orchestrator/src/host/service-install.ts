@@ -41,6 +41,7 @@ import { dirname, isAbsolute, join, posix, relative, resolve, sep, win32 as winP
 import { runtimeDir } from './packaged-service.js';
 import type { ExecResult } from './types.js';
 import { isBundledNode } from './bundled-node.js';
+import { readServiceSessionMode, sessionModeSupported, writeServiceSessionMode, type ServiceSessionMode } from './service-session-mode.js';
 
 export const LINUX_UNIT = 'timon-orchestrator';
 export const MACOS_LABEL = 'com.timon.daemon';
@@ -114,6 +115,12 @@ export type ServiceOpts = {
    * would be broken in it, open session or not.
    */
   offSession?: boolean;
+  /**
+   * The user's answer to "keep running when logged out?"
+   * (`service-session-mode.ts`). Left out, the recorded one is read; `null` =
+   * never asked, and the supervisor's off-session behaviour is left as found.
+   */
+  sessionMode?: ServiceSessionMode | null;
   /** macOS: where LaunchDaemons live. Tests point it at a temporary directory. */
   launchDaemonsDir?: string;
   /** macOS: how the administrator prompt is shown. Default: `sudo` in a
@@ -149,6 +156,19 @@ export type ServiceResult = {
    * definition that would be refused the same way.
    */
   refused?: boolean;
+  /**
+   * `status` only: does the registered service keep running once the user
+   * logs out? Linux: lingering is on for the account. macOS: the LaunchDaemon.
+   * Windows: the task runs under S4U rather than the interactive token.
+   * Absent when no service is registered or the answer could not be read.
+   */
+  offSession?: boolean;
+  /**
+   * Linux `status` only: lingering is on for the account, service or not. A
+   * "stop with the session" answer turns it off, which also stops the user's
+   * other services at logout: the onboarding says so before the click.
+   */
+  lingering?: boolean;
   reason?: string;
 };
 
@@ -587,12 +607,49 @@ export function windowsTaskUserId(opts: Pick<ServiceOpts, 'userName' | 'userDoma
 }
 
 /**
- * Task definition, in the XML `schtasks /Create /XML` reads.
+ * What the session-mode task runs: PowerShell, its own window hidden, starting
+ * the launcher with no console window at all and holding it until it exits.
  *
+ * Under the user's interactive token the task runs on their desktop, where
+ * `cmd.exe` would open a console window that closing would kill Timon with.
+ * The S4U task has no such window (session 0). `wscript` and `.vbs`, which
+ * revision 1 hid it with, are what Windows now blocks (packaging audit I6), so
+ * PowerShell hides itself (`-WindowStyle Hidden`; its own window may show for
+ * an instant at logon) and starts cmd with `CreateNoWindow`, whose children
+ * inherit the windowless console. `WaitForExit` waits for cmd alone, unlike
+ * `Start-Process -Wait`, which would also wait for the detached terminal host
+ * and keep `IgnoreNew` dropping the restart of a daemon that died. The
+ * launcher path sits in a PowerShell literal, never between double quotes:
+ * Windows passes the arguments to PowerShell through its own quoting rules.
+ */
+export function windowsSessionTaskArguments(opts: Pick<ServiceOpts, 'timonHome'>): string {
+  const launcher = powershellLiteral(windowsLauncherPath(opts.timonHome));
+  const quote = '[char]34 + [char]34';
+  return '-NoProfile -NonInteractive -WindowStyle Hidden -Command "'
+    + `$i = New-Object Diagnostics.ProcessStartInfo; $i.FileName = $env:ComSpec; `
+    + `$i.Arguments = '/d /s /c ' + ${quote} + ${launcher} + ${quote}; `
+    + '$i.UseShellExecute = $false; $i.CreateNoWindow = $true; '
+    + '$p = [Diagnostics.Process]::Start($i); $p.WaitForExit(); exit $p.ExitCode"';
+}
+
+/**
+ * Task definition, in the XML `schtasks /Create /XML` reads. `offSession` is
+ * the user's answer to "keep running when logged out?" (`windowsKeepsRunning`).
+ *
+ * Off session (`always`):
  * - `BootTrigger` + `S4U`: starts without anyone logging on, and survives the
  *   user logging off — an InteractiveToken task died with the session. S4U
  *   stores no password; registering it needs the elevation the install
  *   already asks for.
+ *
+ * Session only (`session`):
+ * - `LogonTrigger` for this account + `InteractiveToken`: starts when the user
+ *   logs on and runs in their session, which Windows ends at logoff — the
+ *   very behaviour the S4U task was introduced to avoid (SERVICE-HORS-SESSION
+ *   W3). A trigger that fires with nobody logged on does nothing. Its action
+ *   hides the console (`windowsSessionTaskArguments`).
+ *
+ * Both:
  * - The `TimeTrigger` repeating every 5 minutes, forever, is the supervisor:
  *   while the launcher holds a live daemon, `IgnoreNew` drops the repetition;
  *   once it has exited, the next one starts it again. It also covers the time
@@ -601,15 +658,26 @@ export function windowsTaskUserId(opts: Pick<ServiceOpts, 'userName' | 'userDoma
  * - `RestartOnFailure` only covers a launch that fails (W5); kept for that.
  */
 export function renderTaskXml(
-  opts: Pick<ServiceOpts, 'userName' | 'timonHome' | 'installDir'> & { userId?: string },
+  opts: Pick<ServiceOpts, 'userName' | 'timonHome' | 'installDir'> & { userId?: string; offSession?: boolean },
 ): string {
+  const userId = escapeXmlText(opts.userId ?? opts.userName);
+  const offSession = opts.offSession ?? true;
+  const description = offSession
+    ? 'Timon orchestrator — local daemon, started at boot, runs without an open session.'
+    : 'Timon orchestrator — local daemon, started at logon, stops when the user logs off.';
+  const startTrigger = offSession
+    ? '<BootTrigger><Enabled>true</Enabled></BootTrigger>'
+    : `<LogonTrigger><Enabled>true</Enabled><UserId>${userId}</UserId></LogonTrigger>`;
+  const action = offSession
+    ? { command: 'cmd.exe', args: windowsTaskCommand(opts) }
+    : { command: 'powershell.exe', args: windowsSessionTaskArguments(opts) };
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>Timon orchestrator — local daemon, started at boot, runs without an open session.</Description>
+    <Description>${description}</Description>
   </RegistrationInfo>
   <Triggers>
-    <BootTrigger><Enabled>true</Enabled></BootTrigger>
+    ${startTrigger}
     <TimeTrigger>
       <StartBoundary>2026-01-01T00:00:00</StartBoundary>
       <Enabled>true</Enabled>
@@ -621,8 +689,8 @@ export function renderTaskXml(
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <UserId>${escapeXmlText(opts.userId ?? opts.userName)}</UserId>
-      <LogonType>S4U</LogonType>
+      <UserId>${userId}</UserId>
+      <LogonType>${offSession ? 'S4U' : 'InteractiveToken'}</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
   </Principals>
@@ -639,13 +707,55 @@ export function renderTaskXml(
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>cmd.exe</Command>
-      <Arguments>${escapeXmlText(windowsTaskCommand(opts))}</Arguments>
+      <Command>${action.command}</Command>
+      <Arguments>${escapeXmlText(action.args)}</Arguments>
       <WorkingDirectory>${escapeXmlText(opts.installDir)}</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>
 `;
+}
+
+/**
+ * Does the registered task keep running with nobody logged on? Read from its
+ * definition: S4U (or a stored password) does, an interactive token does not.
+ * `null` when no task is registered or its definition cannot be read.
+ * `schtasks /XML` loses non-ASCII characters (`readWindowsDefinition`), which
+ * the logon type never holds, and starts far faster than PowerShell.
+ */
+export function windowsTaskOffSession(opts: Pick<ServiceOpts, 'exec'>): boolean | null {
+  let res: ExecResult;
+  try {
+    res = opts.exec('schtasks', ['/Query', '/TN', WINDOWS_TASK, '/XML', 'ONE']);
+  } catch {
+    return null;
+  }
+  if (res.code !== 0) return null;
+  const type = /<LogonType>\s*([A-Za-z0-9]+)\s*<\/LogonType>/.exec(res.stdout)?.[1];
+  if (type === 'InteractiveToken') return false;
+  if (type === 'S4U' || type === 'Password') return true;
+  return null;
+}
+
+/**
+ * Does the task about to be written keep running when the user logs out? The
+ * answer when there is one; otherwise the task in place is kept as found (an
+ * install, or an upgrade's rewrite, from before the question), and a first
+ * install with nobody asked stops with the session, as on Linux and macOS.
+ * A task registered but unreadable is kept off session: every release before
+ * the question registered the boot task, and silently turning an upgraded
+ * user's night tasks off is the worse mistake.
+ */
+function windowsKeepsRunning(opts: ServiceOpts): boolean {
+  const mode = sessionModeOf(opts);
+  if (mode !== null) return mode === 'always';
+  const found = windowsTaskOffSession(opts);
+  if (found !== null) return found;
+  try {
+    return opts.exec('schtasks', ['/Query', '/TN', WINDOWS_TASK]).code === 0;
+  } catch {
+    return false;
+  }
 }
 
 function powershellLiteral(value: string): string {
@@ -869,9 +979,10 @@ function installWindows(opts: ServiceOpts, lines: string[]): ServiceResult {
     return { ok: false, code: 1, lines, written: false };
   }
   const file = taskXmlPath();
+  const offSession = windowsKeepsRunning(opts);
   // UTF-16 with a BOM: `schtasks /XML` rejects a UTF-8 file with a parse error
   // that names neither the encoding nor the file.
-  writeTaskXml(file, renderTaskXml({ ...opts, userId: windowsTaskUserId(opts) }), opts.dryRun ?? false, lines);
+  writeTaskXml(file, renderTaskXml({ ...opts, userId: windowsTaskUserId(opts), offSession }), opts.dryRun ?? false, lines);
   const { codes, output, cancelled } = runElevated(opts, lines, [
     { label: 'create', args: ['/Create', '/TN', WINDOWS_TASK, '/XML', file, '/F'], stopOnFailure: true },
     // A reinstall replaces a daemon this launcher already holds: `/Run` alone
@@ -885,7 +996,7 @@ function installWindows(opts: ServiceOpts, lines: string[]): ServiceResult {
     verifyTaskStartedStep(),
   ]);
   if (cancelled) {
-    lines.push('elevation refused: Windows will not register a boot task for a caller that is not elevated');
+    lines.push(`elevation refused: Windows will not register a ${offSession ? 'boot' : 'logon'} task for a caller that is not elevated`);
     return { ok: false, code: 1, lines, written: false };
   }
   const created = codes.get('create');
@@ -928,7 +1039,8 @@ function installWindows(opts: ServiceOpts, lines: string[]): ServiceResult {
     return { ok: false, code: 1, lines };
   }
   if (!opts.dryRun) rmSync(files.refused, { force: true });
-  lines.push(`${opts.dryRun ? '(dry-run) would install and start the service' : 'service installed and started'} (scheduled task ${WINDOWS_TASK}, starts at boot and keeps running after logoff)`);
+  const when = offSession ? 'starts at boot and keeps running after logoff' : 'starts at logon and stops when you log off';
+  lines.push(`${opts.dryRun ? '(dry-run) would install and start the service' : 'service installed and started'} (scheduled task ${WINDOWS_TASK}, ${when})`);
   return { ok: true, code: 0, lines };
 }
 
@@ -1334,8 +1446,16 @@ export function macosLauncherPath(timonHome: string): string {
   return join(timonHome, 'run', 'timon-service.sh');
 }
 
+function sessionModeOf(opts: ServiceOpts): ServiceSessionMode | null {
+  return opts.sessionMode !== undefined ? opts.sessionMode : readServiceSessionMode(opts.timonHome);
+}
+
+/** The user's answer first; an install from before the question keeps the claude token rule. */
 function wantsLaunchDaemon(opts: ServiceOpts): boolean {
-  return opts.offSession ?? existsSync(claudeTokenMarkerPath(opts.timonHome));
+  if (opts.offSession !== undefined) return opts.offSession;
+  const mode = sessionModeOf(opts);
+  if (mode !== null) return mode === 'always';
+  return existsSync(claudeTokenMarkerPath(opts.timonHome));
 }
 
 const SYSTEM_TARGET = `system/${MACOS_LABEL}`;
@@ -1752,16 +1872,18 @@ function installDarwin(opts: ServiceOpts, lines: string[]): ServiceResult {
     }
     return applyLaunchDaemon(opts, lines, renderLaunchDaemonPlist(opts), launcher);
   }
-  // No token: a LaunchDaemon left from an earlier token would run claude
-  // where it can never sign in. Back to the agent, which can.
+  // The user chose the session, or never chose and has no claude token (a
+  // LaunchDaemon would run claude where it can never sign in). Back to the
+  // agent, which lives and dies with the login session.
   const removed = removeLaunchDaemon(opts, lines);
   if (!removed.ok) return { ...removed, written: false };
   const file = plistPath(opts.homeDir);
   write(file, renderPlist(opts), opts.dryRun ?? false, lines);
   const res = bootstrapAgent(opts, lines, file);
   if (res.ok) {
-    res.lines.push('runs while you are logged in; to keep Timon running with no session open, '
-      + 'set a claude token (timon auth claude-token set) and run timon service install again');
+    res.lines.push(sessionModeOf(opts) === 'session'
+      ? 'runs while you are logged in, as you chose; timon service session-mode always keeps it running when you log out'
+      : 'runs while you are logged in; timon service session-mode always keeps it running when you log out');
   }
   return res;
 }
@@ -1793,7 +1915,7 @@ function statusDarwin(opts: ServiceOpts): ServiceResult {
     `state     : ${running ? 'running' : 'not loaded'}`,
   ];
   if (daemon && !token) lines.push('warning   : no claude token configured — claude missions fail in this service (timon auth claude-token set)');
-  if (!daemon && agent && token) lines.push('note      : a claude token is set — run timon service install to keep Timon running with no session open');
+  if (!daemon && agent && token && sessionModeOf(opts) === null) lines.push('note      : a claude token is set — run timon service install to keep Timon running with no session open');
   return { ok: running, code: running ? 0 : 3, installed: daemon || agent, lines };
 }
 
@@ -1928,6 +2050,32 @@ function takeDownReplacedUnits(opts: ServiceOpts, lines: string[]): ServiceResul
   return null;
 }
 
+/** What a "stop with the session" answer costs on Linux, said wherever lingering goes off. */
+const LINGER_OFF_NOTICE = 'lingering is off for your account: your other user services also stop when you log out';
+
+/**
+ * Lingering keeps the user manager, and so this daemon, alive after logout.
+ * `always`, given or recorded: switched on. `session` given with this very
+ * install (the onboarding's answer): switched off when it was on, so the
+ * daemon really stops at logout, and the line says what else that stops. A
+ * `session` only read from the file (a later reinstall or upgrade) leaves a
+ * lingering turned on since then as found: someone switched it on, and the
+ * status shows the gap. Never asked: left as found, and a fresh install
+ * stops with the session.
+ */
+function applyLingerOnInstall(opts: ServiceOpts, lines: string[]): void {
+  const mode = sessionModeOf(opts);
+  if (mode === 'always') {
+    run(opts, lines, 'loginctl', ['enable-linger', opts.userName]);
+    return;
+  }
+  if (opts.sessionMode !== 'session' || opts.dryRun || lingerEnabled(opts) !== true) return;
+  const res = run(opts, lines, 'loginctl', ['disable-linger', opts.userName]);
+  lines.push(res.code === 0
+    ? LINGER_OFF_NOTICE
+    : `lingering could not be turned off (${res.stderr.trim() || `exit ${res.code}`}): Timon keeps running after you log out`);
+}
+
 export function installService(opts: ServiceOpts): ServiceResult {
   if (opts.platform === 'linux' && !opts.dryRun) {
     let status = linuxService(opts);
@@ -1955,9 +2103,7 @@ export function installService(opts: ServiceOpts): ServiceResult {
   const notStopped = takeDownReplacedUnits(opts, lines);
   if (notStopped) return notStopped;
   write(unitPath(opts.homeDir, opts.unitName), unit, opts.dryRun ?? false, lines);
-  // Without linger, the user manager stops at logout and the night's agents
-  // stop with it. This is the whole point of a service rather than a terminal.
-  run(opts, lines, 'loginctl', ['enable-linger', opts.userName]);
+  applyLingerOnInstall(opts, lines);
   const reload = run(opts, lines, 'systemctl', ['--user', 'daemon-reload']);
   if (reload.code !== 0) return { ok: false, code: 1, lines: [...lines, reload.stderr.trim() || 'systemd reload failed'] };
   let res = run(opts, lines, 'systemctl', ['--user', 'enable', '--now', opts.unitName ?? LINUX_UNIT]);
@@ -2006,8 +2152,73 @@ export function uninstallService(opts: ServiceOpts): ServiceResult {
   return { ok: true, code: 0, lines };
 }
 
+/**
+ * Is lingering on for this account? `loginctl show-user` fails for a user with
+ * no session and no lingering, which is a "no"; any other answer is unknown.
+ */
+function lingerEnabled(opts: ServiceOpts): boolean | null {
+  const res = opts.exec('loginctl', ['show-user', opts.userName, '--property=Linger', '--value']);
+  if (res.code !== 0) return /not logged in or lingering/i.test(res.stderr) ? false : null;
+  const value = res.stdout.trim();
+  return value === 'yes' ? true : value === 'no' ? false : null;
+}
+
+/** What the registered supervisor does at logout, read from the machine (see `ServiceResult.offSession`). */
+function keepsRunningLoggedOut(opts: ServiceOpts): boolean | null {
+  if (opts.platform === 'win32') return windowsTaskOffSession(opts);
+  if (opts.platform === 'darwin') return existsSync(daemonPlistOf(opts));
+  if (opts.platform === 'linux') return lingerEnabled(opts);
+  return null;
+}
+
+/**
+ * Records the user's answer to "keep running when logged out?" and applies
+ * what can be applied in place. Linux: lingering, switched on or off for the
+ * account, the unit untouched. macOS and Windows: the answer picks the
+ * supervisor itself (agent or LaunchDaemon, logon or boot task), so the caller
+ * reinstalls the service (`sessionModeNeedsReinstall`) through the usual
+ * install path, which stages the runtime first.
+ * Turning lingering off is the user's explicit gesture: it also stops their
+ * other user services at logout, and the line says so.
+ */
+export function applySessionMode(opts: ServiceOpts, mode: ServiceSessionMode): ServiceResult {
+  const lines: string[] = [];
+  if (!sessionModeSupported(opts.platform)) {
+    const reason = 'Choosing whether Timon keeps running when you log out is not available on this system yet.';
+    return { ok: false, code: 1, lines: [reason], reason };
+  }
+  if (!opts.dryRun) writeServiceSessionMode(opts.timonHome, mode);
+  const what = mode === 'always' ? 'keep running when you log out' : 'run only while you are logged in';
+  lines.push(`${opts.dryRun ? '(dry-run) would record' : 'recorded'}: ${what}`);
+  if (opts.platform !== 'linux') return { ok: true, code: 0, lines };
+  const res = run(opts, lines, 'loginctl', [mode === 'always' ? 'enable-linger' : 'disable-linger', opts.userName]);
+  if (res.code !== 0) {
+    const reason = res.stderr.trim() || `loginctl exited with code ${res.code}`;
+    return { ok: false, code: 1, lines: [...lines, reason], reason };
+  }
+  if (mode === 'session') lines.push(LINGER_OFF_NOTICE);
+  return { ok: true, code: 0, lines };
+}
+
+/** On macOS and Windows the answer changes the supervisor itself: an installed service is reinstalled to follow it. */
+export function sessionModeNeedsReinstall(platform: NodeJS.Platform): boolean {
+  return platform === 'darwin' || platform === 'win32';
+}
+
 export function statusService(opts: ServiceOpts): ServiceResult {
   const res = opts.platform === 'win32' ? statusWindows(opts) : opts.platform === 'darwin' ? statusDarwin(opts) : linuxService(opts);
+  // Not over a service that is not ours: that status calls nothing more.
+  if (opts.platform === 'linux' && !res.reason) {
+    const lingering = lingerEnabled(opts);
+    if (lingering !== null) res.lingering = lingering;
+  }
+  if (res.installed) {
+    const offSession = opts.platform === 'linux' ? res.lingering ?? null : keepsRunningLoggedOut(opts);
+    if (offSession !== null) {
+      res.offSession = offSession;
+      res.lines.push(`logged out: ${offSession ? 'keeps running' : 'stops when you log out'}`);
+    }
+  }
   if (existsSync(serviceStoppedMarker(opts.timonHome))) {
     res.lines.push('stopped   : by the user (timon service stop); it starts again when the app opens, or with timon service start');
   }

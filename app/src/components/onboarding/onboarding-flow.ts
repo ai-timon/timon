@@ -7,7 +7,9 @@
  */
 
 /**
- * The steps of the 04/11/2026 mockup, in order. The agent step makes the main
+ * The steps of the 04/11/2026 mockup, in order. `background` asks whether
+ * Timon keeps running once the user logs out: the service is installed right
+ * after the welcome, so the answer comes first (`steps/background.tsx`). The agent step makes the main
  * agent; "Discover Timon" follows (`discover`, the maintainer's request of 05/11/2026):
  * a few animated slides on what a lone general agent does not do —
  * autonomous TIMs, teams, project agents that never leave their project. The
@@ -15,7 +17,7 @@
  * page (`WELCOME_PATH`, the maintainer's decision of 05/11/2026), and the shell leaves
  * the onboarding there once the slides are over or skipped (`afterLastStep`).
  */
-export const ONBOARDING_STEP_IDS = ['splash', 'account', 'llm', 'profile', 'agent', 'discover'] as const;
+export const ONBOARDING_STEP_IDS = ['splash', 'background', 'account', 'llm', 'profile', 'agent', 'discover'] as const;
 
 /**
  * The former last step, `?step=chat`: an address a tab opened before the
@@ -39,11 +41,11 @@ export const RETURNING_STEP_IDS = ['signin', 'mascot'] as const;
 export type OnboardingStepId = typeof ONBOARDING_STEP_IDS[number] | typeof RETURNING_STEP_IDS[number];
 
 /**
- * The progress dots cover the account up to the agent: the welcome splash is
+ * The progress dots cover the background choice up to the agent: the welcome splash is
  * not a step to count, and "Discover Timon" has its own progress bars.
  * Without a dot it has no "Back" either: the agent is made, behind it.
  */
-export const DOTTED_STEPS: readonly OnboardingStepId[] = ['account', 'llm', 'profile', 'agent'];
+export const DOTTED_STEPS: readonly OnboardingStepId[] = ['background', 'account', 'llm', 'profile', 'agent'];
 
 export const ONBOARDING_PATH = '/onboarding';
 
@@ -72,7 +74,7 @@ export function loginOpensWelcome(needsSetup: boolean, welcome: 'returning' | 'm
 
 /** Where the welcome's "Continue" leads: the sign-in for an install that already has its account. */
 export function afterSplash(returning: boolean): OnboardingStepId {
-  return returning ? 'signin' : 'account';
+  return returning ? 'signin' : 'background';
 }
 
 export function isOnboardingStepId(value: unknown): value is OnboardingStepId {

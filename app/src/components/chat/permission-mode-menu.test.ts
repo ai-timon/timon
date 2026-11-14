@@ -178,3 +178,79 @@ test('confirming bypassPermissions posts it', async () => {
     await ui.unmount();
   }
 });
+
+// The mission's level as the daemon holds it: a test moves it behind the
+// menu's back, as a save on the agent's sheet or the agent itself would.
+function liveFetch(initial: Record<string, unknown>, calls: Call[]) {
+  const held = { state: { ...initial } };
+  const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    calls.push({ url: String(input), method: init?.method ?? 'GET', body: null });
+    return new Response(JSON.stringify({ ok: true, ...held.state }), { status: 200, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  return Object.assign(impl, { held });
+}
+
+const shownLevel = () => trigger()?.getAttribute('aria-label') ?? '';
+
+test('the selector follows the mission when its level changes elsewhere', async () => {
+  const ui = await mount();
+  try {
+    const { PermissionModeMenu } = await loadMenu();
+    const calls: Call[] = [];
+    const fetchImpl = liveFetch({ ...GUARDED, mode: 'auto' }, calls);
+    const props = { missionId: 'm1', fetchImpl };
+    await ui.render(ui.React.createElement(PermissionModeMenu, { ...props, refreshKey: 'claude:idle' }));
+    await ui.until(() => /Auto/.test(shownLevel()), 'the first level to be shown');
+
+    // The agent's sheet now says acceptEdits; the next turn runs in it.
+    fetchImpl.held.state = { ...GUARDED, mode: 'acceptEdits' };
+    await ui.render(ui.React.createElement(PermissionModeMenu, { ...props, refreshKey: 'claude:turn' }));
+    await ui.until(() => /Accept edits/.test(shownLevel()), 'the turn boundary to read the level again');
+
+    fetchImpl.held.state = { ...GUARDED, mode: 'plan' };
+    await ui.React.act(async () => { window.dispatchEvent(new window.Event('focus')); });
+    await ui.until(() => /Plan/.test(shownLevel()), 'coming back to the window to read it again');
+
+    fetchImpl.held.state = { ...GUARDED, mode: 'default' };
+    const button = trigger()!;
+    button.focus();
+    await ui.key(button, 'Enter');
+    await ui.until(() => /Ask/.test(shownLevel()), 'opening the menu to read it again');
+    const ticked = document.querySelector<HTMLElement>('[role="menuitem"][data-mode="default"] svg');
+    assert.ok(ticked && !ticked.getAttribute('class')?.includes('opacity-0'), 'the level shown is the one ticked');
+  } finally {
+    await ui.unmount();
+  }
+});
+
+test('a read that left before a change does not paint the old level over it', async () => {
+  const ui = await mount();
+  try {
+    const { PermissionModeMenu } = await loadMenu();
+    let releaseRead: (() => void) | null = null;
+    let reads = 0;
+    const fetchImpl = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (method === 'POST') {
+        return new Response(JSON.stringify({ ok: true, mode: 'plan' }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      reads += 1;
+      // The read the menu's opening sends is held until the change is made.
+      if (reads === 2) await new Promise<void>((resolve) => { releaseRead = resolve; });
+      return new Response(JSON.stringify({ ok: true, ...GUARDED }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+    await ui.render(ui.React.createElement(PermissionModeMenu, { missionId: 'm1', fetchImpl }));
+    await ui.until(() => !!trigger(), 'the trigger to be painted');
+    const button = trigger()!;
+    button.focus();
+    await ui.key(button, 'Enter');
+    await ui.until(() => menuItems().length === GUARDED.choices.length && releaseRead !== null, 'the menu to open');
+    await ui.key(document.querySelector<HTMLElement>('[role="menuitem"][data-mode="plan"]')!, 'Enter');
+    await ui.until(() => /Plan/.test(shownLevel()), 'the new level to be shown');
+    await ui.React.act(async () => { releaseRead!(); });
+    await ui.until(() => true, 'the late read to land');
+    assert.match(shownLevel(), /Plan/);
+  } finally {
+    await ui.unmount();
+  }
+});

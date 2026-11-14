@@ -13,7 +13,7 @@
     "account": {
       "title": "Erstelle dein lokales Konto",
       "subtitle": "Damit meldest du dich bei Timon an. Du bist sein Administrator.",
-      "privacy": "Wir erfassen nur deine E-Mail-Adresse, falls du dein Passwort zurücksetzen möchtest. Das erstellte Konto bleibt lokal."
+      "privacy": "Dein Konto und dein Passwort bleiben auf diesem Computer. Deine E-Mail-Adresse und ihre Codes laufen über unseren Server, der sie dir per E-Mail schickt. Anonyme Nutzungsstatistiken werden standardmäßig geteilt; du kannst sie in den Einstellungen ausschalten."
     },
     "llm": {
       "title": "Wähle\ndein LLM.",

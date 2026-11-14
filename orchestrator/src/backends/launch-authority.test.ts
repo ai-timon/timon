@@ -10,6 +10,7 @@
  * Real plugin contexts, the real registry, real files on disk; the spawn is recorded, never run.
  */
 import '../test-home.js';
+import '../../tests/helpers/unfenced.js';
 import '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

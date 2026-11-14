@@ -9,6 +9,7 @@
  *
  * Routes extracted verbatim from `index.ts` (step 1.4).
  */
+import { existsSync } from 'node:fs';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ModuleManifest } from '../../kernel/registry.js';
 import { registerRoutes } from './routes.js';
@@ -17,6 +18,8 @@ import { startMissionTitles } from '../../mission-titles.js';
 import { purgeChatAttachments } from '../../chat-attachments.js';
 import { purgeProviderScratch, trimProviderCaches } from '../../backends/provider-scratch.js';
 import { dbApi } from '../../db.js';
+import { purgeMissionTmpDirs, purgeOrphanAgentPackageCaches } from '../../mission-fence-target.js';
+import { agentDir, TIMON_HOME } from '../../paths.js';
 import { settingNum } from '../../settings.js';
 import { startEgressProxy } from '../../egress/service.js';
 import { pruneEgressJournal } from '../../egress/journal.js';
@@ -93,6 +96,14 @@ function purgeProviderSessions(): void {
   }
 }
 
+/** The temporary folders fenced missions were handed as `TMPDIR`, once the mission is over. */
+function purgeMissionTmp(): void {
+  const removed = purgeMissionTmpDirs(TIMON_HOME, missionLifetime);
+  if (removed.length) console.log(`[fence] ${removed.length} temporary folder(s) of finished missions removed`);
+  const caches = purgeOrphanAgentPackageCaches(TIMON_HOME, (agent) => existsSync(agentDir(agent)));
+  if (caches.length) console.log(`[fence] package cache(s) of ${caches.length} deleted agent(s) removed`);
+}
+
 export function apply(ctx: Context): void {
   // Mounted at the root: the routes already carry their public prefix,
   // moving them would break the front proxy, the CLI and the agents.
@@ -112,7 +123,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => startEgressProxy());
 
   ctx.effect(() => {
-    const purge = (): void => { purgeOnce(); purgeProviderSessions(); pruneEgress(); };
+    const purge = (): void => { purgeOnce(); purgeProviderSessions(); purgeMissionTmp(); pruneEgress(); };
     purge();
     const timer = setInterval(purge, PURGE_EVERY_MS);
     return () => clearInterval(timer);

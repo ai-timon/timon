@@ -29,10 +29,11 @@ import {
   throttleKeys,
   sendThrottled,
   noteAuthFailure,
+  testCredential,
 } from '../../users/throttle-http.js';
 import { createNotification } from '../../notifications.js';
 import { readAvatar, saveAvatar } from '../../uploads.js';
-import { generateTemporaryPassword, hashPassword, verifyPassword } from '../../users/password.js';
+import { generateTemporaryPassword, hashPassword, needsRehash, verifyAccountPassword, verifyPassword } from '../../users/password.js';
 import { galleryPlugins, loaderFromApp } from '../../plugins/runtime.js';
 import {
   forbidden,
@@ -464,6 +465,14 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
     if (!verdict.allowed) { sendThrottled(res, verdict); return; }
     setupInProgress = true;
     try {
+      // Hashed before anything is written: the account and the licence land
+      // together or not at all.
+      const passwordHash = await hashPassword(password);
+      // Another account-creation path may have run while the hash was computed.
+      if (dbApi.countUsers() > 0) {
+        res.status(409).json(apiError('already_set_up', 'already set up'));
+        return;
+      }
       if (key) {
         const client: ClientOptions = {
           // A stalled service must release the admission lock so the user can retry.
@@ -505,7 +514,7 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       const user = dbApi.createUser({
         email,
         name,
-        passwordHash: hashPassword(password),
+        passwordHash,
         isSuperadmin: true,
         status: 'active',
         source: 'setup',
@@ -544,7 +553,7 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
     }
   });
 
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', async (req, res) => {
     const body = (req.body ?? {}) as AuthBody;
     const email = parseEmail(body.email);
     const password = typeof body.password === 'string' ? body.password : '';
@@ -559,9 +568,14 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       return;
     }
     const user = dbApi.getUserByEmail(email);
-    // Same 401 whether the email is unknown, disabled, or the password is
-    // wrong — do not leak which.
-    if (!user || user.status !== 'active' || !verifyPassword(password, user.password_hash)) {
+    // Same 401, in the same time, whether the email is unknown, disabled, or
+    // the password is wrong — do not leak which. The check runs first so an
+    // unknown e-mail pays the dummy hash too.
+    const passwordOk = await testCredential(keys, () => verifyAccountPassword(password, user));
+    // Re-read: the account may have been disabled or given a new password
+    // while the hash was computed.
+    const latest = user ? dbApi.getUserById(user.id) : undefined;
+    if (!passwordOk || !user || !latest || latest.status !== 'active' || latest.password_hash !== user.password_hash) {
       noteAuthFailure(req, keys);
       res.status(401).json(apiError('invalid_credentials', 'invalid credentials'));
       return;
@@ -571,6 +585,13 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       return;
     }
     clearThrottle(keys);
+    // The only moment the plain password is at hand: move a hash written with
+    // an older cost onto the current one — unless the password changed while
+    // the new hash was computed, which the old one must not overwrite.
+    if (needsRehash(user.password_hash)) {
+      const rehashed = await hashPassword(password);
+      if (dbApi.getUserById(user.id)?.password_hash === user.password_hash) dbApi.setUserPassword(user.id, rehashed);
+    }
     setSession(res, user.id, req.header('user-agent') ?? undefined);
     // Signed in again after the upgrade: the mascot is offered next.
     if (dbApi.userWelcomeStage(user.id) === 'signin') dbApi.setUserWelcomeStage(user.id, 'mascot');
@@ -617,7 +638,7 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
    * leak, leaving the thief's cookie alive defeats the point. The caller keeps
    * working through a freshly issued session.
    */
-  app.post('/api/auth/password', (req, res) => {
+  app.post('/api/auth/password', async (req, res) => {
     const session = req.auth?.kind === 'session' ? req.auth.user : null;
     if (!session) {
       res.status(401).json({ error: 'unauthorized' });
@@ -637,17 +658,21 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       return;
     }
     const user = dbApi.getUserById(session.id);
-    if (!user || user.status !== 'active' || !verifyPassword(current, user.password_hash)) {
+    const verdicts = await testCredential(keys, async () => {
+      const currentOk = await verifyAccountPassword(current, user);
+      return { currentOk, sameAsCurrent: currentOk && user ? await verifyPassword(next, user.password_hash) : false };
+    });
+    if (!user || !verdicts.currentOk) {
       noteAuthFailure(req, keys);
       res.status(401).json(apiError('invalid_credentials', 'invalid credentials'));
       return;
     }
-    if (verifyPassword(next, user.password_hash)) {
+    if (verdicts.sameAsCurrent) {
       res.status(400).json({ error: 'the new password must differ from the current one' });
       return;
     }
     clearThrottle(keys);
-    dbApi.setUserPassword(user.id, hashPassword(next));
+    dbApi.setUserPassword(user.id, await hashPassword(next));
     dbApi.deleteSessionsForUser(user.id);
     audit(req, 'user.change_password', `user:${user.id}`);
     setSession(res, user.id, req.header('user-agent') ?? undefined);
@@ -714,7 +739,7 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
    * link to copy. Every superadmin is notified — an identity moving on an
    * instance they administer is theirs to know about.
    */
-  app.post('/api/auth/email', (req, res) => {
+  app.post('/api/auth/email', async (req, res) => {
     const session = req.auth?.kind === 'session' ? req.auth.user : null;
     if (!session) {
       res.status(401).json({ error: 'unauthorized' });
@@ -734,7 +759,7 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       return;
     }
     const user = dbApi.getUserById(session.id);
-    if (!user || user.status !== 'active' || !verifyPassword(current, user.password_hash)) {
+    if (!user || !(await testCredential(keys, () => verifyAccountPassword(current, user)))) {
       noteAuthFailure(req, keys);
       res.status(401).json(apiError('invalid_credentials', 'invalid credentials'));
       return;
@@ -862,14 +887,14 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
     res.json({ users: dbApi.listUsers().map(toPublicUser) });
   });
 
-  app.post('/api/users/:id/reset-password', operatorOnly, (req, res) => {
+  app.post('/api/users/:id/reset-password', operatorOnly, async (req, res) => {
     const user = dbApi.getUserById(String(req.params.id));
     if (!user) {
       res.status(404).json(apiError('user_not_found', 'user not found'));
       return;
     }
     const password = generateTemporaryPassword();
-    dbApi.setUserPassword(user.id, hashPassword(password));
+    dbApi.setUserPassword(user.id, await hashPassword(password));
     dbApi.revokeUserAccess(user.id);
     audit(req, 'user.reset_password', `user:${user.id}`);
     res.json({ user: toPublicUser(dbApi.getUserById(user.id)!), password });

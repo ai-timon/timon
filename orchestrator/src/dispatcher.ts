@@ -40,8 +40,9 @@ import {
   type InterruptionDetail,
   type InterruptionReason,
 } from './interruption.js';
-import { profileLimits } from './resources.js';
+import { MissionFenceRefusedError, profileLimits } from './resources.js';
 import { gitTaskRefusal } from './task-git.js';
+import { spawnWideningRefusal } from './users/privileged-overrides.js';
 import { isMirrorTask } from './task-mirror.js';
 import {
   backendResumeRoute, cooldownReason, fallbackFor, interruptionForCooldown, noteBackendRateLimit, redirectTaskSpawn, switchSeriesToFallback,
@@ -772,6 +773,72 @@ export function blockIfGitMissing(task: TaskRow, capabilities?: readonly string[
   return true;
 }
 
+/** The dispatcher gives every task this skill itself: naming it in the extras grants nothing. */
+const DISPATCHER_TASK_SKILL = 'timon-task';
+
+/**
+ * Why the extras a task stores may not reach `agentName`, or null.
+ *
+ * Adding a tool, a skill that pre-authorises one or a stdio MCP server to an
+ * agent takes a person. The task route refuses an agent's token that tries,
+ * but only when the task is written: a task an agent's mission created before
+ * that check existed, or through a path that escaped it, would still hand its
+ * extras to the agent at start. So the dispatcher judges them again, against
+ * the agent that will really run the task (a rerouted task runs on the role's
+ * holder, not on the agent it names).
+ *
+ * The author is read from `creator_mission_id`: the task route stores a mission
+ * there only for a mission's own token (or one an unrestricted caller names),
+ * and the daemon's follow-up tasks inherit it from the task they follow. A task
+ * without one was written by a person, a routine or a trigger, and starts as
+ * before.
+ */
+export function taskExtrasRefusal(
+  task: Pick<TaskRow, 'creator_mission_id' | 'extra_allowed_tools' | 'extra_mcp_servers' | 'extra_skills'>,
+  agentName: string,
+): string | null {
+  if (!task.creator_mission_id) return null;
+  // Stored by the route as a JSON list; a malformed value is read as none,
+  // exactly as the spawn below reads it.
+  const stored = (raw: string | null): string[] | undefined => {
+    if (!raw) return undefined;
+    try {
+      const value = JSON.parse(raw) as unknown;
+      return Array.isArray(value) ? value.map(String) : undefined;
+    } catch { return undefined; }
+  };
+  const skills = stored(task.extra_skills)?.filter((id) => id !== DISPATCHER_TASK_SKILL);
+  const extras = {
+    extra_allowed_tools: stored(task.extra_allowed_tools),
+    extra_mcp_servers: stored(task.extra_mcp_servers),
+    extra_skills: skills?.length ? skills : undefined,
+  };
+  if (!extras.extra_allowed_tools && !extras.extra_mcp_servers && !extras.extra_skills) return null;
+  const config = (() => { try { return loadConfig(agentName); } catch { return null; } })();
+  return spawnWideningRefusal(extras, config, agentName);
+}
+
+/**
+ * BLOCKED with a readable reason when `taskExtrasRefusal` refuses: the task
+ * waits for a person to grant the agent what it asks for, or to strip the
+ * extras, and the block wakes its pilot like any other.
+ */
+export function blockIfExtrasWiden(task: TaskRow, agentName: string): boolean {
+  const refusal = taskExtrasRefusal(task, agentName);
+  if (!refusal) return false;
+  const reason = `An agent's mission wrote this task, and its extras would give agent "${agentName}" more than it holds: ${refusal}. `
+    + `Remove these extras from the task, or grant them to "${agentName}" first, then retry the task.`;
+  console.warn(`[dispatcher] task ${task.id} → BLOCKED: ${reason}`);
+  dbApi.insertAuditLog({
+    userId: task.creator_mission_id ? dbApi.missionOwnerId(task.creator_mission_id) : null,
+    actor: 'api-token',
+    action: 'task.override_denied',
+    target: `task:${task.id} agent:${agentName} — ${refusal}`,
+  });
+  dbApi.updateTaskStatus(task.id, 'BLOCKED', { blockedReason: reason });
+  return true;
+}
+
 /**
  * The first message of a task's mission: its id, the brief the human wrote,
  * the paths of its attached files (its verification root's included), then
@@ -932,6 +999,9 @@ async function dispatch(): Promise<void> {
       try { if (task.extra_skills) taskExtraSkills = JSON.parse(task.extra_skills); } catch { /* */ }
       try { if (task.extra_mcp_servers) taskExtraMcp = JSON.parse(task.extra_mcp_servers); } catch { /* */ }
       try { if (task.extra_allowed_tools) taskExtraAllowed = JSON.parse(task.extra_allowed_tools); } catch { /* */ }
+      // Before the worktree is created: a refusal after it would leave the
+      // worktree and its branch behind.
+      if (blockIfExtrasWiden(task, effectiveAgentName)) continue;
 
       const spec = resolveRoleSpec(task);
       const { permissionMode, roleMcpServers } = spec;
@@ -1087,7 +1157,9 @@ async function dispatch(): Promise<void> {
         blockOnRefusedSpawn(task, err.backend);
         continue;
       }
-      const fails = (spawnFailures.get(taskId) ?? 0) + 1;
+      // `enforce` without a fence refuses every launch the same way until
+      // someone changes the machine or the setting: retrying is noise.
+      const fails = err instanceof MissionFenceRefusedError ? MAX_SPAWN_FAILURES : (spawnFailures.get(taskId) ?? 0) + 1;
       spawnFailures.set(taskId, fails);
       console.error(`[dispatcher] failed to spawn task ${taskId} (${fails}/${MAX_SPAWN_FAILURES}):`, msg);
       if (fails >= MAX_SPAWN_FAILURES) {

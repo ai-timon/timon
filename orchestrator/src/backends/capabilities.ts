@@ -11,6 +11,7 @@ import { missionScratchPath } from './provider-scratch.js';
 
 type NativeRewind = NonNullable<Dialect['nativeRewind']>;
 type RewindContext = Parameters<NativeRewind>[0];
+import type { NestedSandboxDeclaration } from './permission-models.js';
 
 /** Dialect AND profile, every key absent = true: a profile narrows, it never
  *  gives back what its dialect declared it cannot do. */
@@ -68,6 +69,20 @@ export function nativeCompactCommand(id: string | null | undefined): string | nu
   const profile = installedProfiles().find((entry) => entry.id === base);
   const dialect = profile ? getDialect(profile.dialect) : undefined;
   return dialect?.nativeCompact?.command ?? null;
+}
+
+/**
+ * How a fenced launch of backend `id` turns the CLI's own sandbox off
+ * (`PermissionStrategy.nestedSandbox`), or undefined when there is nothing to
+ * turn off. Read off the dialect, never off a name: a profile over another
+ * dialect runs that dialect's CLI, sandbox included.
+ */
+export function nestedSandboxOf(id: string | null | undefined): NestedSandboxDeclaration | undefined {
+  if (!id) return undefined;
+  const base = baseBackendId(id);
+  const profile = installedProfiles().find((entry) => entry.id === base);
+  const dialect = profile ? getDialect(profile.dialect) : undefined;
+  return dialect && 'nestedSandbox' in dialect ? dialect.nestedSandbox : undefined;
 }
 
 /**

@@ -15,7 +15,7 @@
 import type { dbApi as DbApi, UserRow, UserStatus } from '../../src/db.js';
 import { registerPermissionSource } from '../../src/users/permission-source.js';
 import { claimAccountProvider, releaseAccountProvider } from '../../src/users/account-provider-state.js';
-import { hashPassword } from '../../src/users/password.js';
+import { hashPasswordSync } from '../../src/users/password.js';
 import { LicenseCapabilityError } from '../../src/license/capabilities.js';
 import { DuplicateEmailError } from '../../src/users/errors.js';
 
@@ -48,7 +48,7 @@ export function postTestAccount(
     const user = createTestAccount(db, {
       email: body.email,
       name: body.name,
-      passwordHash: hashPassword(body.password),
+      passwordHash: hashPasswordSync(body.password),
       isSuperadmin: body.is_superadmin === true,
       ...(body.status ? { status: body.status } : {}),
     });

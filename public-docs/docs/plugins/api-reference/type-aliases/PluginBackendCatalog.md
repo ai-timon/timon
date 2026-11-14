@@ -119,6 +119,10 @@
 
 > `optional` **planMaxToggle?**: `boolean`
 
+#### supportedPermissionModes?
+
+> `optional` **supportedPermissionModes?**: `string`[]
+
 #### thinkingControls?
 
 > `optional` **thinkingControls?**: [`ReasoningControl`](ReasoningControl.md)\[`"type"`\][]

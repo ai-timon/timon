@@ -150,6 +150,10 @@ The project's `AGENTS.md` and `CLAUDE.md`, when they exist in the working folder
 
 Select a row to read it. Items you can change carry an **editable** badge: **Edit** opens an editor and **Save** writes to the real source (the agent's file, its directives, the role, the memory rule or the skill), then the list is read again. Editing a role changes it for every agent that has it. Preamble, backend description and digest are written by Timon and cannot be edited.
 
+### Removing or rewriting a memory rule
+
+A new mission normally picks up the agent's previous conversation, and that conversation still holds every rule the agent was given. So when you remove a memory rule (`timon memory rule rm`, the `memory_rule_rm` tool, or a plugin), or change its text, who it applies to, or switch it off, and when the memory curation rewords, replaces, merges or archives a rule on its own, every agent the rule could have reached starts a **fresh conversation** at its next mission: the agent itself for an agent rule, the agents of the project or the role, every agent for a global rule. The command, the tool and the injections widget name those agents. A conversation still open in a chat keeps its context until it ends; start a new one if the old rule must stop at once. Changing only a rule's tier or kind does not reset anything.
+
 A secret from the vault appears masked on this screen, and the item says what the agent receives: **masked here** means the agent gets the value in clear, **masked when sent** means it does not (a skill pasted for a backend that reaches neither the skill's folder nor Timon's tools). An item that contains a secret cannot be edited from the list, because saving the masked text would replace the real one. Next to a chat, the widget follows the open mission: its backend and model, and the skills it adds to the agent's own (a Kanban task adds `timon-task`, and `timon-worktree` when it works in a worktree), are listed as that mission received them. Elsewhere, the list shows the agent's start-up in general. Tools a task adds and the mission's own text are never part of it.
 
 ## Who can hand work to whom
@@ -226,6 +230,18 @@ An agent working a Kanban task does not inherit those account connectors: Timon 
 Every agent also gets Timon's own tools without any setup — the Kanban, missions, and the forms it uses to ask you a question or to plan work. [Tools Timon gives agents](agent-tools.md) lists them.
 
 Permission behaviour depends on the backend's capabilities. Some support interactive tool approval; others receive a sandbox policy fixed when the mission starts. Read the editor's explanation for the selected backend instead of assuming every model can show the same permission dialog.
+
+A permission card names the tool the agent asks to use in your language: Timon's own tools and other MCP tools by their server and action (**Timon · Kanban Add**), with its identifier below, as allow rules and logs name it. When the call says what it does, the card adds it: the agent's own description of a shell command, otherwise a short sentence such as **Writes stats.py**. The call's full input follows.
+
+### A command that runs a project file
+
+When a shell command runs a file from the mission's folder, the permission card shows that file under a warning, so you approve what it contains and not only its name. It covers a script run by its path (`./run_tests.sh`), a script handed to an interpreter (`bash`, `sh`, `python`, `node`…) or to `source`, a command wrapped in `sh -c '…'`, `bash -c '…'` or `eval` (read like the outer one, three levels deep), an npm script (`npm test`, `npm run build`: its line in `package.json`, and the file it runs) and a make target (its rule in the `Makefile`). npm scripts and make targets that call one another are followed four levels deep, so `test` → `test:unit` → `node run.js` shows `run.js`. For each file the card gives its path, its size, its first 40 lines (4 KB at most; a long excerpt starts folded) and the beginning of its SHA-256 fingerprint. Timon only reads the file: it never runs it to find out what it does.
+
+A file outside the mission's folder, a link that leads out of it, or a path only the shell can work out (a variable, `~`, a wildcard, a command nested deeper than three `sh -c`) is named on the card with the reason, and not read: check it yourself before you allow. A file larger than 32 MiB is shown by its first lines only: Timon cannot fingerprint it, so **Allow** is refused and you run the command yourself if you trust it.
+
+If the file changes between the moment the card shows it and your **Allow**, the command does not run: the card says so and the agent is asked to request again, with a new card showing the current content. A file the command names but that is not there counts too: if it appears before your click, the command does not run, since you never saw what it holds. The same goes for an npm script missing from `package.json`.
+
+**Allow for this session** and **Always allow** remember the command together with the state of each file it runs: its full fingerprint, or the fact that it was not there. The remembered approval answers in your place only while every one of these files is exactly as the card showed it. If one changed, appeared or disappeared, the card comes back with the current content, and your new click updates what is remembered. An approval remembered before Timon recorded these states does not cover a command that runs a project file: the card shows once more, and your click records the new form. A file the card cannot vouch for (outside the folder, unresolved, too large, behind more than four chained npm scripts or make targets) offers no remembered answer, and neither does a command whose files Timon could not read at all.
 
 ### Allow for this session, always allow
 

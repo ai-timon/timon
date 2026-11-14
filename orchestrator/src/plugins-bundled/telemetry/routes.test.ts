@@ -83,8 +83,8 @@ test('first run, anonymous: the generic settings route cannot write the telemetr
 });
 
 let missionToken = '';
-test('accounts exist from here on', () => {
-  createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: hashPassword('admin-secret'), isSuperadmin: true });
+test('accounts exist from here on', async () => {
+  createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: await hashPassword('admin-secret'), isSuperadmin: true });
   const missionId = randomUUID();
   dbApi.createMission(missionId, 'acme.coder', 'work');
   missionToken = issueMissionApiToken(missionId);

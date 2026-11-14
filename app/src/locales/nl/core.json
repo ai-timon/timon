@@ -2962,6 +2962,7 @@
     "save": "Opslaan",
     "cancel": "Annuleren",
     "editor": "Deze injectie bewerken",
+    "freshConversation": "De agent begint bij zijn volgende missie een nieuw gesprek: het vorige bevatte deze regel nog ({agents}).",
     "skillMode": {
       "include": "catalogus",
       "import": "geïmporteerd"
@@ -3576,7 +3577,7 @@
     "reorder": "Sleep om deze provider te verplaatsen",
     "claudeToken": {
       "title": "Langlevend Claude-token",
-      "hint": "Optioneel. Voer `claude setup-token` uit in een terminal en plak het token hier: elke Claude-missie gebruikt het dan in plaats van de eigen aanmelding van de CLI. Op macOS kan Timon zo blijven draaien zonder open sessie; voer daarna `timon service install` uit om de dienst om te zetten. Het token wordt versleuteld opgeslagen en nooit meer getoond.",
+      "hint": "Optioneel. Voer `claude setup-token` uit in een terminal en plak het token hier: elke Claude-missie gebruikt het dan in plaats van de eigen aanmelding van de CLI. Op macOS hebben Claude-missies het nodig wanneer Timon blijft draaien na het afmelden ({settingsPath}). Het token wordt versleuteld opgeslagen en nooit meer getoond.",
       "none": "Niet ingesteld",
       "set": "Ingesteld",
       "unreadable": "Ingesteld, maar onleesbaar — plak het opnieuw",

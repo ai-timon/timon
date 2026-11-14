@@ -1,5 +1,6 @@
 {
   "apiErrors": {
+    "mission_fence_refused": "Timon refused to start this mission: the mission isolation is set to required, and this machine cannot fence it. Change the mode in the Security settings, or fix what the diagnostic reports.",
     "unknown": "Something went wrong.",
     "http_status": "HTTP {status}",
     "module_unavailable": "This feature is not available on this install: the module that serves it is turned off or not installed.",

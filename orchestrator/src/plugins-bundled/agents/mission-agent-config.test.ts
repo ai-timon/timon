@@ -238,14 +238,15 @@ test('a cwd outside every project is refused with what to do about it', async ()
 
 /* ─── 4 · allowed_tools / mcp_servers ───────────────────────────────────── */
 
-test('relaxed callers declare tools and MCP servers; restricted ones are told why not', async () => {
-  assertOk(await create(claudeAuto, { allowed_tools: ['Bash(git:*)'], mcp_servers: ['anything'] }));
-  const tools = await create(manager, { allowed_tools: ['Bash'] });
-  assertDenied(tools, /allowed_tools/);
-  assert.match(reasonOf(tools), /agents:privileged-config/);
-  const mcp = await create(manager, { mcp_servers: ['x'] });
-  assertDenied(mcp, /mcp_servers/);
-  assert.match(reasonOf(mcp), /agents:privileged-config/);
+test('no mission token adds a tool or an undeclared MCP server, relaxed or not', async () => {
+  // The maintainer's decision of 08/11/2026: a person does it, from the app.
+  for (const bearer of [claudeAuto, manager]) {
+    const tools = await create(bearer, { allowed_tools: ['Bash(git:*)'] });
+    assertDenied(tools, /allowed_tools adds Bash\(git:\*\)/);
+    assert.match(reasonOf(tools), /Agents page/);
+    const mcp = await create(bearer, { mcp_servers: ['anything'] });
+    assertDenied(mcp, /mcp_servers attaches anything/);
+  }
 });
 
 /* ─── 5 · a field that does not change is never refused ─────────────────── */

@@ -509,7 +509,15 @@ export function createCodexProvider(services, log) {
         // Allow/Deny card, no classifier. The `timon_ask` MCP server is still
         // injected, but only for its forms (a question, the Kanban planner), not to
         // arbitrate a tool use.
-        permission: { model: 'sandbox' },
+        //
+        // Codex's sandbox is bwrap on Linux and Seatbelt on macOS, and neither starts inside Timon's
+        // mission fence (`bwrap: Failed to make / slave`, `sandbox_apply: Operation not permitted`,
+        // codex-cli 0.167). A fenced launch runs `--sandbox danger-full-access`, and the fence applies
+        // the level instead: `read-only` keeps the working tree read-only, `workspace-write` writable.
+        permission: {
+            model: 'sandbox',
+            nestedSandbox: { level: { flag: '--sandbox', off: 'danger-full-access', readOnly: ['read-only'] } },
+        },
         // A throttle or quota surfaces as `turn.failed`/`error`, normalised into a
         // `result:error` carrying a plain text message: never a window nor a
         // reopening time (see `rate-limit.ts`).

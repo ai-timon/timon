@@ -52,8 +52,8 @@ import { rejectIfDenied, rejectUnlessAny, requireSuperadmin, isPersonAuth } from
 import { GENERATE_ALPHABETS, GENERATE_MAX_LENGTH, GENERATE_MIN_LENGTH } from '../../secrets/generate.js';
 import { callerFromRequest } from './caller.js';
 import { checkThrottle, clearThrottle } from '../../users/login-throttle.js';
-import { noteAuthFailure, sendThrottled, throttleKeys } from '../../users/throttle-http.js';
-import { verifyPassword } from '../../users/password.js';
+import { noteAuthFailure, sendThrottled, testCredential, throttleKeys } from '../../users/throttle-http.js';
+import { verifyAccountPassword } from '../../users/password.js';
 import { auditRequest } from '../../users/audit-actor.js';
 import { ProvideBody, provideSecretRequest, raiseSecretRequest, refuseSecretRequest, type Deliver } from './requests.js';
 import { apiError } from '../../api-error.js';
@@ -407,7 +407,7 @@ export function registerRoutes(router: Router, opts: SecretRouteOptions = {}): v
    *   alone must not be enough to read the vault.
    * Every attempt leaves an audit row and a journal line, with no value in it.
    */
-  router.post('/api/secrets/:id/reveal', (req, res) => {
+  router.post('/api/secrets/:id/reveal', async (req, res) => {
     if (!isPersonAuth(req.auth) || !req.auth.user) {
       res.status(403).json({ error: 'a signed-in session is required', code: 'session-required' });
       return;
@@ -438,7 +438,7 @@ export function registerRoutes(router: Router, opts: SecretRouteOptions = {}): v
       });
     };
     const user = dbApi.getUserById(session.id);
-    if (!user || user.status !== 'active' || !verifyPassword(parsed.data.password, user.password_hash)) {
+    if (!user || !(await testCredential(keys, () => verifyAccountPassword(parsed.data.password, user)))) {
       noteAuthFailure(req, keys);
       journal('denied', 'wrong password');
       res.status(401).json(apiError('invalid_credentials', 'invalid credentials'));

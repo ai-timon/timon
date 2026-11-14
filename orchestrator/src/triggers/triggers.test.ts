@@ -322,6 +322,52 @@ test('webhook without auth: a proxy on this host is not a sender on this machine
   assert.ok(reasons.includes('unauthenticated route refused while the daemon is declared behind a proxy (daemon.behindTlsProxy)'));
 });
 
+test('webhook without auth: a browser page on this machine is not a local sender', async () => {
+  const created = await api('POST', '/api/triggers', {
+    source: 'webhook', name: 'Paged', slug: 'open-paged', config: { auth: 'none' }, actions: [{ type: 'notify', title: 'paged {n}' }],
+  });
+  assert.equal(created.status, 201);
+  const id = String((created.body.trigger as Json).id);
+  const self = new URL(base).host;
+  // What a page's `fetch` to 127.0.0.1 carries, from another site or another port of localhost.
+  const pages: Array<Record<string, string>> = [
+    { origin: 'https://evil.example' },
+    { 'sec-fetch-site': 'cross-site' },
+    { 'sec-fetch-site': 'same-site', origin: 'http://localhost:5173' },
+    { 'sec-fetch-site': 'none' },
+    { origin: 'null' },
+    { origin: 'not a url' },
+    { 'sec-fetch-site': 'same-origin', origin: 'https://evil.example' },
+  ];
+  for (const headers of pages) {
+    const res = await hook('open-paged', '{"n":1}', headers);
+    assert.equal(res.status, 401, JSON.stringify(headers));
+    // The same neutral answer as an unknown route: no oracle on which slugs exist.
+    assert.deepEqual(res.body, { error: 'authentication failed' });
+  }
+  // A script or `curl` on this machine, and the daemon's own origin, still get through.
+  assert.equal((await hook('open-paged', '{"n":2}')).body.status, 'received');
+  assert.equal((await hook('open-paged', '{"n":3}', { origin: `http://${self}`, 'sec-fetch-site': 'same-origin' })).body.status, 'received');
+  const journal = await api('GET', `/api/triggers/${id}/deliveries`);
+  const rejected = (journal.body.deliveries as Array<{ status: string; reason: string | null }>).filter((d) => d.status === 'rejected');
+  assert.equal(rejected.length, pages.length);
+  for (const d of rejected) assert.match(d.reason ?? '', /^unauthenticated route called by a page of another origin/);
+});
+
+test('a signed webhook still answers a browser that holds its signature', async () => {
+  const created = await api('POST', '/api/triggers', {
+    source: 'webhook', name: 'Signed paged', slug: 'signed-paged', config: { auth: 'github' }, actions: [{ type: 'notify', title: 'signed {n}' }],
+  });
+  assert.equal(created.status, 201);
+  const secret = String(created.body.secret);
+  const raw = '{"n":1}';
+  const res = await hook('signed-paged', raw, {
+    origin: 'https://evil.example', 'sec-fetch-site': 'cross-site',
+    'x-hub-signature-256': githubSig(secret, raw), 'x-github-delivery': randomUUID(),
+  });
+  assert.equal(res.body.status, 'received');
+});
+
 test('no unauthenticated webhook can be created on a daemon declared behind a proxy', () => {
   const saved = config();
   try {

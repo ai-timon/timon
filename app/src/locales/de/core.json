@@ -2962,6 +2962,7 @@
     "save": "Speichern",
     "cancel": "Abbrechen",
     "editor": "Diese Injektion bearbeiten",
+    "freshConversation": "Der Agent beginnt bei seiner nächsten Mission eine neue Unterhaltung: Die bisherige enthielt diese Regel noch ({agents}).",
     "skillMode": {
       "include": "Katalog",
       "import": "importiert"
@@ -3576,7 +3577,7 @@
     "reorder": "Ziehen, um diesen Anbieter neu einzuordnen",
     "claudeToken": {
       "title": "Langlebiges Claude-Token",
-      "hint": "Optional. Führe `claude setup-token` in einem Terminal aus und füge das Token hier ein: Jede Claude-Mission nutzt es dann statt der eigenen Anmeldung der CLI. Unter macOS kann Timon so ohne offene Sitzung weiterlaufen; führe danach `timon service install` aus, um den Dienst umzustellen. Das Token wird verschlüsselt gespeichert und nie wieder angezeigt.",
+      "hint": "Optional. Führe `claude setup-token` in einem Terminal aus und füge das Token hier ein: Jede Claude-Mission nutzt es dann statt der eigenen Anmeldung der CLI. Unter macOS brauchen Claude-Missionen es, wenn Timon nach der Abmeldung weiterläuft ({settingsPath}). Das Token wird verschlüsselt gespeichert und nie wieder angezeigt.",
       "none": "Nicht gesetzt",
       "set": "Gesetzt",
       "unreadable": "Gesetzt, aber unlesbar — füge es erneut ein",

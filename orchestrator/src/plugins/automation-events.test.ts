@@ -33,7 +33,7 @@ setConfig(TimonConfigSchema.parse({ pluginPolicy: { spawn: { approved: ['ev-rout
 test.after(() => resetConfig());
 
 mkdirSync(agentDir('worker'), { recursive: true });
-const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
+const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
 
 async function pluginWith(permissions: string[], id: string) {
   const root = new Context();

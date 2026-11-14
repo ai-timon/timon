@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dbApi, type TaskRow } from './db.js';
@@ -99,7 +99,7 @@ test('automatic merge task: its description gives the merge command with an expl
   assert.match(merge.description ?? '', /git merge --no-ff -m "merge: integrate the task branch into main"/);
 });
 
-test('a refresh refused by a hook reaches the brief with its reason', async () => {
+test('a refused refresh reaches the brief with its reason', async () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-msg-brief-'));
   const repo = join(root, 'repo');
   mkdirSync(repo);
@@ -119,20 +119,19 @@ test('a refresh refused by a hook reaches the brief with its reason', async () =
     writeFileSync(join(wt.path, 'b.txt'), 'b\n');
     git(wt.path, 'add', '.');
     git(wt.path, 'commit', '-m', 'task work');
-    // Another task lands on the base, then a hook that refuses every message.
+    // Another task lands on the base, and the worktree holds an untracked
+    // file of the same name: git refuses the merge without a conflict.
     writeFileSync(join(repo, 'c.txt'), 'c\n');
     git(repo, 'add', '.');
     git(repo, 'commit', '-m', 'another task');
-    const hook = join(repo, '.git', 'hooks', 'commit-msg');
-    writeFileSync(hook, '#!/bin/sh\necho "commit refused: test hook" >&2\nexit 1\n');
-    chmodSync(hook, 0o755);
+    writeFileSync(join(wt.path, 'c.txt'), 'untracked\n');
 
     const again = dbApi.getTask(task.id)!;
     const respawn = await resolveWorktree(again);
     assert.ok(respawn);
     const brief = worktreeDirective(again, respawn);
     assert.match(brief, /NOT brought up to date/);
-    assert.match(brief, /commit refused: test hook/);
+    assert.match(brief, /c\.txt/);
     assertExplicitMessages(brief, 'failed refresh');
   } finally {
     if (wt) await disposeWorktree(wt, true);

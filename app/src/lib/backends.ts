@@ -130,6 +130,9 @@ export type CatalogBackend = {
   /** The provider applies the agent's permission mode itself before it asks
    *  (Pi): the editor says the mode holds. Absent → no claim. */
   permissionModeApplied?: boolean;
+  /** The only permission modes the provider honours: the selectors offer only
+   *  these, and the daemon runs any other in `plan`. Absent → every mode. */
+  supportedPermissionModes?: string[];
   rateLimitReporting?: 'structured' | 'textual' | 'none';
   /** Can the backend report the account's usage? */
   accountUsage?: boolean;
@@ -528,6 +531,33 @@ export function permissionModelFor(
   backend: BackendName,
 ): PermissionModel | null {
   return cat.backends.find((b) => b.id === backend)?.permissionModel ?? null;
+}
+
+/**
+ * The only permission modes `backend` honours, or null when it honours every
+ * mode (or the catalogue is not loaded yet: nothing is hidden on a guess).
+ */
+export function supportedPermissionModesFor(cat: BackendCatalog, backend: BackendName | null | undefined): readonly string[] | null {
+  if (!backend) return null;
+  return cat.backends.find((b) => b.id === backend)?.supportedPermissionModes ?? null;
+}
+
+/** The sandbox names, as the mode they mean (the daemon's `canonicalPermissionMode`). */
+const SANDBOX_MODE_NAMES: Readonly<Record<string, string>> = {
+  'read-only': 'plan',
+  'workspace-write': 'auto',
+  'danger-full-access': 'bypassPermissions',
+};
+
+/**
+ * The mode an agent asking for `mode` really runs in, as the daemon resolves it
+ * (`resolveSupportedPermissionMode`): on a backend with a list, any mode outside
+ * it runs in `plan`. Null when it runs as asked — nothing to tell the person.
+ */
+export function unsupportedModeRunsAs(supported: readonly string[] | null, mode: string | null | undefined): 'plan' | null {
+  if (!supported) return null;
+  const named = (mode && SANDBOX_MODE_NAMES[mode]) ?? mode;
+  return named && supported.includes(named) ? null : 'plan';
 }
 
 /** Does the agent decide its permissions on its own? False while the

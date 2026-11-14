@@ -15,6 +15,7 @@ import {
   readServiceDefinition, removeServiceDefinition, renderLaunchDaemonPlist, renderMacElevatedScript,
   renderMacLauncher, restoreServiceDefinition, shQuote, statusService, uninstallService, type ServiceOpts,
 } from './service-install.js';
+import { writeServiceSessionMode } from './service-session-mode.js';
 
 type Call = { name: string; args: string[] };
 
@@ -102,7 +103,38 @@ test('without a claude token the LaunchAgent stays, with no administrator prompt
   assert.ok(existsSync(plistPath(o.homeDir)));
   assert.equal(elevated(calls).length, 0);
   assert.ok(calls.some((c) => c.args[0] === 'bootstrap' && c.args[1] === 'gui/501'));
-  assert.match(res.lines.join('\n'), /claude-token set/);
+  assert.match(res.lines.join('\n'), /session-mode always/);
+});
+
+test('the user chose the session: a claude token does not raise the LaunchDaemon', () => {
+  const { o, calls } = mac({ token: true });
+  const res = installService({ ...o, sessionMode: 'session' });
+  assert.equal(res.ok, true, res.lines.join('\n'));
+  assert.ok(existsSync(plistPath(o.homeDir)));
+  assert.equal(elevated(calls).length, 0, 'no administrator prompt for an agent');
+  assert.equal(statusService(o).offSession, false, 'an agent stops with the login session');
+});
+
+test('the user chose to keep running logged out: the LaunchDaemon, even before any claude token', () => {
+  const { o, calls } = mac({ steps: INSTALLED });
+  const res = installService({ ...o, sessionMode: 'always' });
+  assert.equal(res.ok, true, res.lines.join('\n'));
+  const prompts = elevated(calls);
+  assert.equal(prompts.length, 1);
+  assert.ok(scriptOf(prompts[0]!).includes(renderLaunchDaemonPlist(o).trim()), 'root writes the LaunchDaemon');
+  // What root wrote, on a real Mac.
+  mkdirSync(o.launchDaemonsDir!, { recursive: true });
+  writeFileSync(launchDaemonPath(o.launchDaemonsDir), renderLaunchDaemonPlist(o));
+  const status = statusService(o);
+  assert.equal(status.offSession, true);
+  assert.match(status.lines.join('\n'), /logged out: keeps running/);
+});
+
+test('the recorded answer is read when the caller passes none (the desktop upgrade runner)', () => {
+  const { o, calls } = mac({ token: true });
+  writeServiceSessionMode(o.timonHome, 'session');
+  assert.equal(installService(o).ok, true);
+  assert.equal(elevated(calls).length, 0);
 });
 
 test('with a token: one prompt migrates the LaunchAgent to a LaunchDaemon', () => {

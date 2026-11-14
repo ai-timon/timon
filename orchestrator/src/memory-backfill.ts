@@ -23,12 +23,13 @@ import { readMeta, listProjects } from './projects.js';
 import { oneShotPrompt } from './summary.js';
 import { getRole } from './agent-roles.js';
 import { settingNum, settingStr } from './settings.js';
+import { reviseMemoryRule } from './memory-session-fence.js';
 import { oneShotTarget } from './backends/index.js';
 
 const MAX_RULES_PER_SCOPE = 80; // bounds the prompt; beyond that, processed in batches
 
 type BackfillAction = 'update' | 'merge' | 'archive' | 'keep';
-type BackfillDecision = {
+export type BackfillDecision = {
   id: number;
   action: BackfillAction;
   tier?: 'core' | 'normal';
@@ -144,6 +145,26 @@ export async function backfillScope(
   }
 
   const runId = opts.runId ?? randomUUID();
+  const stats = applyBackfillDecisions(decisions, rules, scope, slug, validSlugs, runId);
+  return { ...empty, decisions: withText, applied: true, stats };
+}
+
+/** Applies the backfill decisions of one scope; logs each in memory_audit. */
+export function applyBackfillDecisions(
+  decisions: BackfillDecision[],
+  rules: MemoryRuleRow[],
+  scope: 'project' | 'global',
+  slug: string | null,
+  validSlugs: ReadonlySet<string>,
+  runId: string,
+): BackfillScopeResult['stats'] {
+  const byId = new Map(rules.map((r) => [r.id, r]));
+  // Archiving or re-scoping takes the rule away from agents it reached: they
+  // start a fresh conversation (memory-session-fence.ts). A re-tier fences nobody.
+  const fresh = (id: number, patch: Parameters<typeof dbApi.updateRule>[1]): void => {
+    const agents = reviseMemoryRule(id, patch)?.freshConversation ?? [];
+    if (agents.length) console.log(`[memory-backfill] rule #${id} changed — fresh conversation for ${agents.join(', ')}`);
+  };
   let coreActive = rules.filter((r) => r.tier === 'core').length;
   const stats = { updated: 0, merged: 0, archived: 0, kept: 0 };
   for (const d of decisions) {
@@ -151,7 +172,7 @@ export async function backfillScope(
     const audit = { runId, scope, project: slug, agent: null as string | null };
     if (d.action === 'keep') { stats.kept++; continue; }
     if (d.action === 'archive') {
-      dbApi.updateRule(d.id, { status: 'archived' });
+      fresh(d.id, { status: 'archived' });
       dbApi.logMemoryAudit({ ...audit, action: 'archive', ruleId: d.id, candidateText: rule.text, rationale: d.rationale ?? null });
       stats.archived++;
       continue;
@@ -160,7 +181,7 @@ export async function backfillScope(
       const into = d.intoId != null ? byId.get(d.intoId) : undefined;
       if (!into || into.id === d.id) { stats.kept++; continue; }
       dbApi.bumpRuleSupport(into.id, rule.support || 1);
-      dbApi.updateRule(d.id, { status: 'archived' });
+      fresh(d.id, { status: 'archived' });
       dbApi.logMemoryAudit({ ...audit, action: 'merge', ruleId: d.id, targetRuleId: into.id, candidateText: rule.text, rationale: d.rationale ?? null });
       stats.merged++;
       continue;
@@ -187,12 +208,12 @@ export async function backfillScope(
       }
     }
     if (Object.keys(patch).length === 0) { stats.kept++; continue; }
-    dbApi.updateRule(d.id, patch);
+    fresh(d.id, patch);
     const act = patch.scope || patch.project !== undefined ? 'rescope' : 'retier';
     dbApi.logMemoryAudit({ ...audit, action: act, ruleId: d.id, candidateText: rule.text, rationale: d.rationale ?? null });
     stats.updated++;
   }
-  return { ...empty, decisions: withText, applied: true, stats };
+  return stats;
 }
 
 /**

@@ -31,13 +31,13 @@ const { createDaemonAuthMiddleware } = await import('./plugins-bundled/http/auth
 const admin = createTestAccount(dbApi, {
   email: 'admin@example.com',
   name: 'Admin',
-  passwordHash: hashPassword('admin-secret'),
+  passwordHash: await hashPassword('admin-secret'),
   isSuperadmin: true,
 });
 const ada = createTestAccount(dbApi, {
   email: 'ada@example.com',
   name: 'Ada',
-  passwordHash: hashPassword('ada-secret'),
+  passwordHash: await hashPassword('ada-secret'),
   isSuperadmin: false,
 });
 
@@ -126,7 +126,7 @@ test('finishMission revokes the mission token', () => {
   assert.equal(dbApi.getLiveApiToken(hashApiToken(raw)), undefined);
 });
 
-test('an expired or disabled-user token is not live', () => {
+test('an expired or disabled-user token is not live', async () => {
   const raw = issueApiTokenSecret();
   dbApi.createApiToken({
     tokenHash: hashApiToken(raw),
@@ -140,7 +140,7 @@ test('an expired or disabled-user token is not live', () => {
   const disabled = createTestAccount(dbApi, {
     email: 'eve@example.com',
     name: 'Eve',
-    passwordHash: hashPassword('eve-secret'),
+    passwordHash: await hashPassword('eve-secret'),
     isSuperadmin: false,
   });
   dbApi.setUserStatus(disabled.id, 'disabled');

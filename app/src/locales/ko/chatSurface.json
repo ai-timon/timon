@@ -1,0 +1,13 @@
+{
+  "chatSurface": {
+    "permission": "권한",
+    "permissionToUse": "에이전트가 {tool} 사용 권한을 요청합니다",
+    "permissionState": {
+      "pending": "대기 중",
+      "allowed": "허용됨",
+      "denied": "거부됨",
+      "expired": "만료됨",
+      "pasted": "붙여넣음"
+    }
+  }
+}

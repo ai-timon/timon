@@ -16,7 +16,7 @@ import { promptRewriteRefusal, rejectOverride } from '../../users/privileged-ove
 import { scopedDb } from '../../users/scoped-db.js';
 import { runBackfill } from '../../memory-backfill.js';
 import { MemoryRuleError, addMemoryRule } from '../../memory-rule-add.js';
-import { deleteMemoryRule, memoryOverview, searchMemoryHits } from '../../memory-queries.js';
+import { editMemoryRule, memoryOverview, removeMemoryRule, searchMemoryHits } from '../../memory-queries.js';
 import { runSynthesisNow } from '../../memory-synthesize.js';
 import { deleteProjectMemory, listProjectMemory, readProjectMemory, writeProjectMemory } from '../../projects.js';
 import { apiError } from '../../api-error.js';
@@ -259,9 +259,10 @@ export function registerRoutes(app: Router): void {
     try {
       const id = Number(req.params.id);
       if (!Number.isInteger(id)) { res.status(400).json({ error: 'invalid rule id' }); return; }
-      const cur = deleteMemoryRule(id, requestActor(req));
-      if (!cur) { res.status(404).json(apiError('rule_not_found', 'rule not found')); return; }
-      res.json({ ok: true, deleted: cur });
+      const removed = removeMemoryRule(id, requestActor(req));
+      if (!removed) { res.status(404).json(apiError('rule_not_found', 'rule not found')); return; }
+      // `fresh_conversation`: the agents whose next mission starts without their old session.
+      res.json({ ok: true, deleted: removed.rule, fresh_conversation: removed.freshConversation });
     } catch (err) { res.status(400).json({ error: (err as Error).message }); }
   });
 
@@ -275,9 +276,9 @@ export function registerRoutes(app: Router): void {
         if (k in b) (patch as Record<string, unknown>)[k] = b[k];
       }
       if ('supersedes' in b) patch.supersedes = b.supersedes == null ? null : Number(b.supersedes);
-      const rule = dbApi.updateRule(id, patch);
-      if (!rule) { res.status(404).json(apiError('rule_not_found', 'rule not found')); return; }
-      res.json(rule);
+      const edited = editMemoryRule(id, patch);
+      if (!edited) { res.status(404).json(apiError('rule_not_found', 'rule not found')); return; }
+      res.json({ ...edited.rule, fresh_conversation: edited.freshConversation });
     } catch (err) { res.status(400).json({ error: (err as Error).message }); }
   });
 

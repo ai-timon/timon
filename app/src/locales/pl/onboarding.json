@@ -13,7 +13,7 @@
     "account": {
       "title": "Utwórz konto lokalne",
       "subtitle": "Za jego pomocą logujesz się do Timona. Jesteś jego administratorem.",
-      "privacy": "Zbieramy tylko twój adres e-mail na wypadek, gdybyś chciał zresetować hasło. Utworzone konto pozostaje lokalne."
+      "privacy": "Twoje konto i hasło pozostają na tym komputerze. Twój adres e-mail i jego kody przechodzą przez nasz serwer, który wysyła je do ciebie. Anonimowe statystyki użycia są domyślnie udostępniane; możesz je wyłączyć w Ustawieniach."
     },
     "llm": {
       "title": "Wybierz\nswój LLM.",

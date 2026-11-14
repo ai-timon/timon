@@ -20,7 +20,7 @@ const SERVER_IMPORTS = [
 test('the custom server graph never loads next/headers at startup', () => {
   const code = [
     `for (const f of ${JSON.stringify(SERVER_IMPORTS)}) require(require('node:path').resolve(f));`,
-    `const hit = Object.keys(require.cache).filter((k) => /next[\\\\/](headers|dist[\\\\/]client[\\\\/]components[\\\\/](headers|request-async-storage))/.test(k));`,
+    `const hit = Object.keys(require.cache).filter((k) => /next[\\\\/](headers|dist[\\\\/]server[\\\\/](request[\\\\/](cookies|headers)|app-render[\\\\/](async-local-storage|work-async-storage|work-unit-async-storage)))/.test(k));`,
     'process.stdout.write(JSON.stringify(hit));',
   ].join('\n');
   const out = execFileSync(process.execPath, ['--import', 'tsx', '-e', code], {

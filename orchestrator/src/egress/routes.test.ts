@@ -86,23 +86,30 @@ test('no account yet: the loopback API is open, this route is not', async () => 
   assert.equal((await call('GET', `/api/missions/${early}/egress`, { bearer: TOKEN })).status, 200);
 });
 
-const setup = await call('POST', '/api/auth/setup', {
-  body: { email: 'admin@example.com', name: 'Admin', password: 'admin-secret' },
-});
-assert.equal(setup.status, 201);
-const adminId = (setup.json as { user: { id: string } }).user.id;
-const created = await postTestAccount(dbApi, { email: 'bea@example.com', name: 'Bea', password: 'bea-secret' });
-assert.equal(created.status, 201);
-const beaId = (created.json as { user: { id: string } }).user.id;
-
 const adminMission = randomUUID();
-dbApi.createMission(adminMission, 'admin.agent', 'admin only', undefined, adminId);
 const beaMission = randomUUID();
-dbApi.createMission(beaMission, 'bea.agent', 'bea only', undefined, beaId);
-for (let i = 0; i < 3; i += 1) {
-  recordEgress({ missionId: adminMission, method: 'CONNECT', host: 'secret-partner.example', port: 443, status: 200, bytesOut: 1, bytesIn: 2, startedAt: Date.now(), durationMs: 3 });
-}
-recordEgress({ missionId: beaMission, method: 'GET', host: 'bea.example', port: 80, status: 200, bytesOut: 1, bytesIn: 2, startedAt: Date.now(), durationMs: 3 });
+let adminId = '';
+let beaId = '';
+
+// Inside a test, not at module level: an `await` there leaves no test queued,
+// and the root `after` hook closes the server before the next test exists.
+test('accounts and missions exist from here on', async () => {
+  const setup = await call('POST', '/api/auth/setup', {
+    body: { email: 'admin@example.com', name: 'Admin', password: 'admin-secret' },
+  });
+  assert.equal(setup.status, 201);
+  adminId = (setup.json as { user: { id: string } }).user.id;
+  const created = await postTestAccount(dbApi, { email: 'bea@example.com', name: 'Bea', password: 'bea-secret' });
+  assert.equal(created.status, 201);
+  beaId = (created.json as { user: { id: string } }).user.id;
+
+  dbApi.createMission(adminMission, 'admin.agent', 'admin only', undefined, adminId);
+  dbApi.createMission(beaMission, 'bea.agent', 'bea only', undefined, beaId);
+  for (let i = 0; i < 3; i += 1) {
+    recordEgress({ missionId: adminMission, method: 'CONNECT', host: 'secret-partner.example', port: 443, status: 200, bytesOut: 1, bytesIn: 2, startedAt: Date.now(), durationMs: 3 });
+  }
+  recordEgress({ missionId: beaMission, method: 'GET', host: 'bea.example', port: 80, status: 200, bytesOut: 1, bytesIn: 2, startedAt: Date.now(), durationMs: 3 });
+});
 
 type EgressBody = {
   notice?: string;

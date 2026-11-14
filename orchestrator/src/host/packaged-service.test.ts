@@ -185,6 +185,21 @@ test('runtime staging omits links to the live tree without following them', asyn
   } finally { await rm(f.root, { recursive: true, force: true }); }
 });
 
+// The durable copy boots through `verifyRelease`, which refuses a launcher
+// stripped of its execute bit: the copy itself must not strip it.
+test('runtime staging keeps the mission launcher executable', {
+  skip: process.platform === 'win32' && 'Windows has no execute bit',
+}, async () => {
+  const f = await fixture();
+  try {
+    await mkdir(join(f.installDir, 'native'), { recursive: true });
+    await writeFile(join(f.installDir, 'native', 'timon-fence'), '#!/bin/sh\n', { mode: 0o755 });
+    await stagePackagedRuntime(f.home, f.executable, f.installDir);
+    const staged = await stat(join(runtimeReleaseDir(f.home), 'resources', 'orchestrator', 'native', 'timon-fence'));
+    assert.equal(staged.mode & 0o111, 0o111);
+  } finally { await rm(f.root, { recursive: true, force: true }); }
+});
+
 test('the generated unit passes the real systemd parser, including paths with spaces and percent signs', {
   skip: process.platform !== 'linux' || !existsSync('/usr/bin/systemd-analyze'),
 }, async () => {

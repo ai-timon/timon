@@ -401,6 +401,7 @@ CREATE TABLE IF NOT EXISTS approval_rules (
   tool_name TEXT NOT NULL,
   command TEXT,
   command_hash TEXT,
+  content_state TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_approval_rules_agent ON approval_rules(agent, owner_user_id, scope);
@@ -1365,6 +1366,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS mission_rewind_pending (
 if (!(db.prepare(`PRAGMA table_info(mission_rewind_pending)`).all() as { name: string }[]).some((c) => c.name === 'series_from')) {
   db.exec(`ALTER TABLE mission_rewind_pending ADD COLUMN series_from INTEGER`);
 }
+// The point after which an agent's earlier provider sessions may no longer be
+// carried into a new mission (memory-session-fence.ts). Written when a memory
+// rule that may have reached the agent is removed or rewritten: the rule lives
+// on in the history of every session that saw it, so only a session born after
+// this point is safe to resume. Keyed by agent name, carried by a rename.
+db.exec(`CREATE TABLE IF NOT EXISTS agent_session_fences (
+  agent_name TEXT PRIMARY KEY,
+  fenced_at INTEGER NOT NULL
+)`);
 
 // What the opening of a mission's chat has folded so far (mission-history-page.ts).
 // Derived from `events` and rebuilt from them when absent, so nothing backfills
@@ -1675,6 +1685,12 @@ if (!triggerLaterCols.includes('approved_at')) db.exec(`ALTER TABLE triggers ADD
 // still here are dropped (their owner gets the card again, with what the new
 // rule will cover). A `session` rule dies with its mission (`finishMission`);
 // one left behind by a daemon that stopped before the mission ended goes here.
+// `content_state` binds the rule of a command that runs local files to their
+// fingerprints (`script-preview.ts`). A rule written before it stays NULL and
+// no longer answers such a command: its owner gets the card again, and the
+// click records the new form. Nothing assumes the old content was safe.
+const approvalRuleCols = (db.prepare(`PRAGMA table_info(approval_rules)`).all() as { name: string }[]).map((c) => c.name);
+if (!approvalRuleCols.includes('content_state')) db.exec(`ALTER TABLE approval_rules ADD COLUMN content_state TEXT`);
 function pruneApprovalRules(): number {
   return db.prepare(`DELETE FROM approval_rules WHERE command_hash IS NULL`).run().changes
     + db.prepare(`DELETE FROM approval_rules WHERE scope = 'session'
@@ -2604,6 +2620,8 @@ export type ApprovalRuleRow = {
   /** Masked, for display only: a shell rule matches on `command_hash`. */
   command: string | null;
   command_hash: string | null;
+  /** The state of the local files the command runs, when it runs any (`script-preview.ts`). */
+  content_state: string | null;
   created_at: number;
 };
 
@@ -3833,6 +3851,7 @@ const taskCountsStmt = db.prepare(
 const latestSessionStmt = db.prepare(
   `SELECT session_id FROM missions
    WHERE agent_name = ? AND session_id IS NOT NULL
+     AND started_at > COALESCE((SELECT fenced_at FROM agent_session_fences WHERE agent_name = missions.agent_name), -1)
    ORDER BY started_at DESC LIMIT 1`,
 );
 
@@ -4833,6 +4852,8 @@ export const dbApi = {
       db.prepare('UPDATE approval_rules SET agent = ? WHERE agent = ?').run(newName, oldName);
       db.prepare('UPDATE memory_proposals SET agent = ? WHERE agent = ?').run(newName, oldName);
       db.prepare('UPDATE learnings SET agent = ? WHERE agent = ?').run(newName, oldName);
+      // A revoked rule stays revoked under the new name: the sessions it reached moved too.
+      db.prepare('UPDATE OR REPLACE agent_session_fences SET agent_name = ? WHERE agent_name = ?').run(newName, oldName);
       // `acting_agent` is re-checked at every run: an old name would make the
       // trigger fail its delegation check from then on.
       db.prepare('UPDATE triggers SET creator_agent = ? WHERE creator_agent = ?').run(newName, oldName);
@@ -6267,9 +6288,41 @@ export const dbApi = {
   getLatestSessionForAgent(agentName: string, ownerUserId?: string | null): string | null {
     const row = (ownerUserId === undefined ? latestSessionStmt.get(agentName)
       : db.prepare(`SELECT session_id FROM missions WHERE agent_name = ? AND owner_user_id IS ?
-          AND session_id IS NOT NULL ORDER BY started_at DESC LIMIT 1`).get(agentName, ownerUserId)) as
+          AND session_id IS NOT NULL
+          AND started_at > COALESCE((SELECT fenced_at FROM agent_session_fences WHERE agent_name = missions.agent_name), -1)
+          ORDER BY started_at DESC LIMIT 1`).get(agentName, ownerUserId)) as
       { session_id: string } | undefined;
     return row?.session_id ?? null;
+  },
+  /** Bars every provider session these agents already have from a new mission
+   *  (`agent_session_fences`). Moving the fence back is never wanted: the latest
+   *  revocation wins. */
+  fenceAgentSessions(agentNames: readonly string[], at: number = Date.now()): void {
+    const stmt = db.prepare(
+      `INSERT INTO agent_session_fences (agent_name, fenced_at) VALUES (?, ?)
+       ON CONFLICT(agent_name) DO UPDATE SET fenced_at = MAX(fenced_at, excluded.fenced_at)`,
+    );
+    db.transaction(() => { for (const name of agentNames) stmt.run(name, at); })();
+  },
+  agentSessionFence(agentName: string): number | null {
+    const row = db.prepare(`SELECT fenced_at FROM agent_session_fences WHERE agent_name = ?`).get(agentName) as
+      { fenced_at: number } | undefined;
+    return row?.fenced_at ?? null;
+  },
+  /**
+   * Whether `sessionId` was born before a fence of `agentName` or of an agent
+   * whose mission holds it. "Born" is the start of the first mission that holds
+   * the session: a mission resumed in place, or a session id renewed by its CLI,
+   * keeps the history of where it started.
+   */
+  sessionFenced(sessionId: string, agentName: string): boolean {
+    const row = db.prepare(
+      `SELECT MIN(m.started_at) AS born, MAX(f.fenced_at) AS fence
+         FROM missions m
+         LEFT JOIN agent_session_fences f ON f.agent_name = m.agent_name OR f.agent_name = ?
+        WHERE m.session_id = ?`,
+    ).get(agentName, sessionId) as { born: number | null; fence: number | null } | undefined;
+    return row?.born != null && row.fence != null && row.born <= row.fence;
   },
   /** Mission a provider session belongs to (the most recent if several share it,
    *  which happens when a mission is resumed in place). Returns enough to recover
@@ -6865,20 +6918,39 @@ export const dbApi = {
   insertApprovalRule(r: Omit<ApprovalRuleRow, 'created_at'>): ApprovalRuleRow {
     const now = Date.now();
     db.prepare(
-      `INSERT INTO approval_rules (id, scope, owner_user_id, agent, mission_id, tool_name, command, command_hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(r.id, r.scope, r.owner_user_id, r.agent, r.mission_id, r.tool_name, redactNullable(r.command), r.command_hash, now);
+      `INSERT INTO approval_rules (id, scope, owner_user_id, agent, mission_id, tool_name, command, command_hash, content_state, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(r.id, r.scope, r.owner_user_id, r.agent, r.mission_id, r.tool_name, redactNullable(r.command), r.command_hash, r.content_state, now);
     return db.prepare(`SELECT * FROM approval_rules WHERE id = ?`).get(r.id) as ApprovalRuleRow;
   },
   /** The rule that answers this motif for this mission, if any: one of the
-   *  mission's own `session` rules, or an `always` rule of its agent and owner. */
-  findApprovalRule(q: { missionId: string; ownerUserId: string; agent: string; toolName: string; commandHash: string | null }): ApprovalRuleRow | undefined {
+   *  mission's own `session` rules, or an `always` rule of its agent and owner.
+   *  `contentState` must match too: null for a command that runs no local file. */
+  findApprovalRule(q: {
+    missionId: string; ownerUserId: string; agent: string; toolName: string; commandHash: string | null; contentState: string | null;
+  }): ApprovalRuleRow | undefined {
     return db.prepare(
       `SELECT * FROM approval_rules
-       WHERE tool_name = ? AND command_hash IS ? AND owner_user_id = ? AND agent = ?
+       WHERE tool_name = ? AND command_hash IS ? AND content_state IS ? AND owner_user_id = ? AND agent = ?
          AND ((scope = 'session' AND mission_id = ?) OR scope = 'always')
        ORDER BY created_at LIMIT 1`,
-    ).get(q.toolName, q.commandHash, q.ownerUserId, q.agent, q.missionId) as ApprovalRuleRow | undefined;
+    ).get(q.toolName, q.commandHash, q.contentState, q.ownerUserId, q.agent, q.missionId) as ApprovalRuleRow | undefined;
+  },
+  /** The rule of this motif at exactly this scope, whatever the state of its files. */
+  findApprovalRuleAtScope(q: {
+    missionId: string; ownerUserId: string; agent: string; toolName: string; commandHash: string | null; scope: ApprovalRuleScope;
+  }): ApprovalRuleRow | undefined {
+    return db.prepare(
+      `SELECT * FROM approval_rules
+       WHERE tool_name = ? AND command_hash IS ? AND owner_user_id = ? AND agent = ? AND scope = ?
+         AND (scope = 'always' OR mission_id = ?)
+       ORDER BY created_at LIMIT 1`,
+    ).get(q.toolName, q.commandHash, q.ownerUserId, q.agent, q.scope, q.missionId) as ApprovalRuleRow | undefined;
+  },
+  /** Moves a rule to the files' state a new click approved. */
+  setApprovalRuleContentState(id: string, contentState: string): ApprovalRuleRow | undefined {
+    db.prepare(`UPDATE approval_rules SET content_state = ? WHERE id = ?`).run(contentState, id);
+    return db.prepare(`SELECT * FROM approval_rules WHERE id = ?`).get(id) as ApprovalRuleRow | undefined;
   },
   /** `always` rules of an agent; `ownerUserId` null = every owner (operator). */
   listAlwaysApprovalRules(agent: string, ownerUserId: string | null): ApprovalRuleRow[] {
@@ -9328,6 +9400,12 @@ export const dbApi = {
         const user = this.getUserById(ownerId);
         if (user && user.status === 'active') return asMissionActor(user);
       }
+      // No account yet: the loopback is open to the install's owner, and a
+      // mission used to run on the daemon-token. It keeps those rights, read at
+      // every request, but as an agent's token — never a person (no Allow on a
+      // card) nor the operator (no first-account setup). The first account
+      // closes it: an unattributed mission falls back to no grant.
+      if (this.countUsers() === 0) return { token, user: null, actorId, isSuperadmin: true, permissions: ['*'] };
       return { token, user: null, actorId, isSuperadmin: false, permissions: [] };
     }
     return { token, user: null, actorId, isSuperadmin: false };

@@ -30,7 +30,7 @@
       "routine": "routine"
     },
     "permission": "permission",
-    "permissionToRun": "The agent is requesting permission to run:",
+    "permissionToUse": "The agent asks permission to use {tool}",
     "permissionState": {
       "pending": "pending",
       "allowed": "allowed",
@@ -39,6 +39,29 @@
       "pasted": "pasted"
     },
     "unexpectedReaderResult": "Unexpected file reader result",
-    "readFailed": "Could not read the file"
+    "readFailed": "Could not read the file",
+    "scriptPreview": {
+      "warning": "This command runs files from the project. Read them before you allow it: a cloned repository can hide anything behind a familiar name.",
+      "kind": {
+        "npm_script": "npm script {name}",
+        "make_target": "make target {name}"
+      },
+      "status": {
+        "outside_cwd": "Outside the project folder: not read. Check it yourself before you allow.",
+        "symlink_outside": "A link that leads outside the project folder: not read. Check its target yourself before you allow.",
+        "missing": "File not found.",
+        "not_file": "Not a regular file: not read.",
+        "unresolved": "The path depends on the shell (variable, home folder, wildcard, a command nested too deep): not read.",
+        "not_found": "No such script in package.json.",
+        "binary": "Binary file: no excerpt.",
+        "unreadable": "Could not be opened: not read.",
+        "too_large": "Too large to fingerprint (over 32 MiB): Allow will be refused. Run it yourself if you trust it."
+      },
+      "unfold": "Show all {count, plural, one {# line} other {# lines}}",
+      "fold": "Fold",
+      "truncated": "First lines only: the file goes on.",
+      "changed": "Not run: {paths} changed after this card showed it. The agent was asked to request again.",
+      "remembered": "A remembered approval holds only while these files stay as shown here."
+    }
   }
 }

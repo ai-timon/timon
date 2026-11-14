@@ -7,13 +7,14 @@
 import assert from 'node:assert/strict';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import test from 'node:test';
+import { loadRequestScope } from '../next-request-scope-test';
 
 type Call = { url: string; init?: RequestInit };
 
 async function logout(cookies: Record<string, string>, url = 'http://localhost/api/ui/auth/logout', headers: Record<string, string> = {}): Promise<{ response: Response; calls: Call[] }> {
   const oldAsync = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
   Object.defineProperty(globalThis, 'AsyncLocalStorage', { value: AsyncLocalStorage, configurable: true });
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { POST } = await import('../../app/api/ui/auth/logout/route');
   const previousFetch = globalThis.fetch;
   const calls: Call[] = [];
@@ -64,7 +65,7 @@ test('the cleared cookie is Secure when the browser came over HTTPS', async () =
 test('a failed logout still forgets the machine', async () => {
   const oldAsync = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
   Object.defineProperty(globalThis, 'AsyncLocalStorage', { value: AsyncLocalStorage, configurable: true });
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { POST } = await import('../../app/api/ui/auth/logout/route');
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => Response.json({ error: 'unauthorized' }, { status: 401 });

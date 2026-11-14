@@ -7,6 +7,7 @@ import { createReleaseNotes } from './release-notes.mjs';
 import { FRAGMENTS_DIR, readFragments, withUnreleased } from '../../scripts/changelog-fragments.mjs';
 import { RELEASE_MANIFEST_VERSION, digest, productFiles, verifyRelease } from './release-integrity.mjs';
 import { BUILD_INFO_FILE, buildInfoPath, readBuildInfo } from './build-info.mjs';
+import { buildFence } from '../../native/timon-fence/build.mjs';
 
 const desktop = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repo = resolve(desktop, '..');
@@ -128,6 +129,22 @@ export function stageBuildInfo(target, orchestratorDir = join(repo, 'orchestrato
 }
 
 /**
+ * Builds timon-fence, the Linux mission launcher, into `native/` of the daemon
+ * release, where `sealTree` signs it and the daemon looks first
+ * (`orchestrator/src/host/fence.ts`). Packages are built on their target
+ * machine, so the host architecture is the package's. A Linux package without
+ * it would run every mission unfenced: no compiler is an error, not a skip.
+ */
+export function stageFence(target, platform = process.platform, arch = process.arch, build = buildFence) {
+  if (platform !== 'linux') return null;
+  const out = join(target, 'native', 'timon-fence');
+  if (!build(arch, out)) {
+    throw new Error('No C compiler for timon-fence on this Linux build machine: install gcc and libc6-dev, or musl-tools');
+  }
+  return out;
+}
+
+/**
  * The user documentation as Markdown, for the MCP tools docs_search/docs_read
  * (orchestrator/bin/docs-local.mjs): agents read the version they run, offline.
  * Public content, so it sits outside the signed roots.
@@ -170,6 +187,8 @@ export async function prepareDaemonRelease() {
     writeFileSync(join(stage, 'scripts', 'release-notes.json'), JSON.stringify(createReleaseNotes(changelog, pkg.version), null, 2) + '\n');
     cpSync(new URL('./release-notes.mjs', import.meta.url), join(stage, 'scripts', 'release-notes.mjs'));
     await exportDocs(join(stage, 'public-docs'));
+    const fence = stageFence(stage);
+    if (fence) console.log(`[release] mission launcher staged: ${fence}`);
     const count = sealTree(stage, keys);
     rmSync(releaseDir, { recursive: true, force: true });
     renameSync(stage, releaseDir);

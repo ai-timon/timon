@@ -515,17 +515,14 @@ test('a mission token is bounded like a non-operator, even when its launcher is 
   assert.equal(walked.status, 400);
   assert.equal(existsSync(victim), true);
 
-  // A superadmin launcher carries agents:privileged-config: its skills may declare tools,
-  // a non-privileged launcher's (bob) may not.
-  assert.equal((await call('POST', '/api/skills', {
-    bearer: adminToken, body: { id: 'mission-tools', content: WITH_TOOLS },
-  })).status, 200);
-  const bobTools = await call('POST', '/api/skills', {
-    bearer: bobToken, body: { id: 'bob-tools', content: WITH_TOOLS },
-  });
-  assert.equal(bobTools.status, 403);
-  assert.match(reasonOf(bobTools.json), /agents:privileged-config/);
-  assert.equal(existsSync(skillFile('bob-tools')), false);
+  // A skill that pre-authorises tools adds them to every agent it is attached to:
+  // no mission writes one, not even a superadmin's, which carries agents:privileged-config.
+  for (const [bearer, id] of [[adminToken, 'mission-tools'], [bobToken, 'bob-tools']] as const) {
+    const tools = await call('POST', '/api/skills', { bearer, body: { id, content: WITH_TOOLS } });
+    assert.equal(tools.status, 403, id);
+    assert.match(reasonOf(tools.json), /whatever its account holds.*Skills page/);
+    assert.equal(existsSync(skillFile(id)), false);
+  }
   assert.equal((await call('POST', '/api/skills', {
     bearer: bobToken, body: { id: 'bob-plain', content: SKILL },
   })).status, 200);
@@ -742,7 +739,7 @@ test('a masked round trip keeps the stored secret while the server points at the
 test('without agents:privileged-config a mission declares http only, to a url off this host', async () => {
   const stdio = await call('POST', '/api/mcp', { bearer: daveToken, body: { id: 'dave-stdio', transport: STDIO } });
   assert.equal(stdio.status, 403);
-  assert.match(reasonOf(stdio.json), /agents:privileged-config/);
+  assert.match(reasonOf(stdio.json), /command on the host.*MCP servers page/);
   assert.equal(storedMcp('dave-stdio'), null);
 
   for (const url of [
@@ -827,27 +824,18 @@ test('what a human declared, or another agent, is not rewritten by a mission wit
   assert.equal(storedMcp('human-http')!.created_by, undefined);
 });
 
-test('with agents:privileged-config a mission declares, rewrites and removes a stdio server', async () => {
+test('even with agents:privileged-config a mission declares no stdio server, and rewrites none', async () => {
+  // The maintainer's decision of 08/11/2026: a command on the host is a person's to declare.
   const stdio = await call('POST', '/api/mcp', {
     bearer: erinToken, body: { id: 'erin-stdio', transport: { ...STDIO, args: ['-u'], env: { TOKEN: 'abc' } } },
   });
-  assert.equal(stdio.status, 200, JSON.stringify(stdio.json));
-  assert.equal((storedMcp('erin-stdio') as { created_by: { agent: string } }).created_by.agent, 'erin.agent');
-  // Reading it back is still masked, and the round trip keeps the env.
-  const read = (await call('GET', '/api/mcp/erin-stdio', { bearer: erinToken })).json as { transport: { env: Record<string, string> } };
-  assert.deepEqual(read.transport.env, { TOKEN: '***' });
-  const roundTrip = await call('POST', '/api/mcp', { bearer: erinToken, body: { id: 'erin-stdio', transport: read.transport } });
-  assert.equal(roundTrip.status, 200);
-  assert.deepEqual((roundTrip.json as { transport: { env: unknown } }).transport.env, { TOKEN: '***' });
-  assert.deepEqual((storedMcp('erin-stdio') as { transport: { env: unknown } }).transport.env, { TOKEN: 'abc' });
-  // Another command, same mask: the env does not follow.
-  const moved = await call('POST', '/api/mcp', {
-    bearer: erinToken, body: { id: 'erin-stdio', transport: { type: 'stdio', command: 'env', env: { TOKEN: '***' } } },
-  });
-  assert.equal(moved.status, 403);
-  assert.match(reasonOf(moved.json), /masked/);
-  // A human-declared stdio server is hers to rewrite or remove at that level.
-  assert.equal((await call('POST', '/api/mcp', { bearer: erinToken, body: { id: 'human-stdio', transport: STDIO } })).status, 200);
+  assert.equal(stdio.status, 403, JSON.stringify(stdio.json));
+  assert.match(reasonOf(stdio.json), /whatever its account holds.*MCP servers page/);
+  assert.equal(storedMcp('erin-stdio'), null);
+  // A human-declared stdio server is not rewritten either; removing it grants nothing.
+  const rewrite = await call('POST', '/api/mcp', { bearer: erinToken, body: { id: 'human-stdio', transport: { ...STDIO, command: 'sh' } } });
+  assert.equal(rewrite.status, 403);
+  assert.equal((storedMcp('human-stdio') as { transport: { command: string } }).transport.command, STDIO.command);
   assert.equal((await call('DELETE', '/api/mcp/human-stdio', { bearer: erinToken })).status, 200);
   // The loopback test is for callers who cannot already run a command.
   assert.equal((await call('POST', '/api/mcp', { bearer: erinToken, body: { id: 'erin-local', transport: HTTP('http://127.0.0.1:8123/mcp') } })).status, 200);
@@ -861,7 +849,6 @@ test('with agents:privileged-config a mission declares, rewrites and removes a s
   assert.equal(storedMcp('human-http')!.created_by, undefined);
   assert.equal((await call('POST', '/api/mcp', { bearer: erinToken, body: { id: 'human-http', transport: HTTP('https://mcp.example.com/h2') } })).status, 200);
   assert.equal(storedMcp('human-http')!.created_by, undefined);
-  assert.equal((await call('DELETE', '/api/mcp/erin-stdio', { bearer: erinToken })).status, 200);
 });
 
 test('an http server a mission declared before the rule is held to public addresses at boot (TODO #577)', async () => {

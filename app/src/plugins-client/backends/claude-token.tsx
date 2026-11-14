@@ -17,6 +17,7 @@ import { ProviderSection, ProviderSettingRow } from '@/components/provider-page/
 import { TonePill } from '@/components/provider-page/provider-status-pill';
 import type { StatusTone } from '@/lib/provider-overview';
 import { t } from '@/lib/i18n';
+import { settingsPath } from '@/lib/settings-path';
 import { apiErrorMessage } from '@/lib/api-error';
 import { SecretValueDialog } from './secret-value-dialog';
 
@@ -100,7 +101,7 @@ export function ClaudeTokenPanel(): ReactElement | null {
         open={editing}
         onOpenChange={setEditing}
         title={t('backendsSettings.claudeToken.title')}
-        description={t('backendsSettings.claudeToken.hint')}
+        description={t('backendsSettings.claudeToken.hint', { settingsPath: settingsPath('system', 'installation') })}
         label={t('providerPage.claudeToken.field')}
         placeholder="sk-ant-oat01-…"
         submitLabel={t('backendsSettings.save')}

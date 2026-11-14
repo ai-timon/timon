@@ -102,6 +102,48 @@ test('every refusal is audited', async () => {
     && String(row.target).startsWith(`mission:${target}`)));
 });
 
+test('on a backend that declares its supported modes, the state, the choices and a change are the mode it really runs', async () => {
+  const grokMission = 'mission-grok';
+  dbApi.createMission(grokMission, 'acme.grok', 'code', undefined, OWNER);
+  dbApi.setMissionLlmOverrides(grokMission, 'grok', null);
+  const call = async (method: 'GET' | 'POST', body?: Record<string, unknown>) => {
+    let out: { status: number; json: Record<string, unknown> } | null = null;
+    await withRoute(PRIVILEGED, async (base) => {
+      const r = await fetch(`${base}/api/missions/${grokMission}/permission-mode`, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      out = { status: r.status, json: (await r.json()) as Record<string, unknown> };
+    });
+    return out!;
+  };
+  // Nothing stored = `default`, which grok runs read-only.
+  const state = await call('GET');
+  assert.equal(state.status, 200);
+  assert.equal(state.json.mode, 'plan');
+  assert.deepEqual(state.json.choices, ['plan'], 'only the supported modes, up to the caller ceiling (auto)');
+  // A guarded mode is judged and stored as what it runs: plan.
+  const guarded = await call('POST', { mode: 'auto' });
+  assert.equal(guarded.status, 200);
+  assert.equal(guarded.json.mode, 'plan');
+  assert.equal(dbApi.getMission(grokMission)?.permission_mode_override, 'plan');
+  // bypassPermissions stays bypassPermissions, so the ceiling refuses it below its own level…
+  const refused = await call('POST', { mode: 'bypassPermissions' });
+  assert.equal(refused.status, 403);
+  assert.match(String(refused.json.reason), /above the caller's own level/);
+  // …and grants it to a caller that runs in it.
+  dbApi.setMissionPermissionModeOverride(caller, 'bypassPermissions');
+  try {
+    assert.deepEqual((await call('GET')).json.choices, ['plan', 'bypassPermissions']);
+    const granted = await call('POST', { mode: 'bypassPermissions' });
+    assert.equal(granted.status, 200);
+    assert.equal(dbApi.getMission(grokMission)?.permission_mode_override, 'bypassPermissions');
+  } finally {
+    dbApi.setMissionPermissionModeOverride(caller, 'auto');
+  }
+});
+
 /* ── CLI and MCP (TODO #569): both transports only relay to this route, so the
    guard above is theirs too. Driven against the real route, never a stub: a
    transport that decided anything locally would show up here. */

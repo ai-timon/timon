@@ -34,7 +34,7 @@ export const SETTINGS_CATEGORY_IDS: readonly SettingsCategoryId[] = [
 ];
 
 /** Device-local panes: no row in the settings table. */
-export type NativePaneId = 'language' | 'push' | 'voice' | 'webui' | 'desktop' | 'installation' | 'instructions' | 'preamble' | 'fallback' | 'secrets' | 'connections' | 'devices' | 'developer';
+export type NativePaneId = 'language' | 'push' | 'voice' | 'webui' | 'desktop' | 'installation' | 'instructions' | 'preamble' | 'fallback' | 'secrets' | 'connections' | 'devices' | 'developer' | 'isolation';
 
 type Placement = { category: SettingsCategoryId; tab: string };
 
@@ -96,6 +96,8 @@ export const STATIC_TABS: Readonly<Record<SettingsCategoryId, readonly StaticTab
   system: [
     // How Timon runs on the machine (TODO #333): superadmin only.
     { id: 'installation', kind: 'native', pane: 'installation' },
+    // The mission fence (GHSA-f58g): superadmin only, like the machine it guards.
+    { id: 'security', kind: 'native', pane: 'isolation' },
     // The safety net (TODO #476): nightly backup retention, and the agent
     // trash whose list the agents plugin grafts below the rows.
     { id: 'backup', kind: 'rows' },
@@ -289,7 +291,7 @@ export function buildSettingsLayout(input: SettingsLayoutInput): SettingsCategor
       } else if (tab.kind === 'native') {
         if (tab.pane === 'desktop' && !input.desktop) continue;
         if (tab.pane === 'secrets' && !input.secrets) continue;
-        if ((tab.pane === 'installation' || tab.pane === 'developer') && !input.superadmin) continue;
+        if ((tab.pane === 'installation' || tab.pane === 'developer' || tab.pane === 'isolation') && !input.superadmin) continue;
         tabs.push({ id: tab.id, kind: 'native', pane: tab.pane, grafts });
       } else {
         const plugin = pluginById.get(tab.pluginId);

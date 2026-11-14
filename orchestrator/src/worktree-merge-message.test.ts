@@ -67,18 +67,33 @@ test('the refresh merge passes a hook that refuses task ids, and its message car
   }
 });
 
-test('a merge refused without conflict is reported with its reason and leaves no pending merge', async () => {
+// The daemon's git runs no hook a mission could have written (GHSA-f58g):
+// one that refuses every message no longer stops the refresh.
+test('the refresh merge runs no hook of the repository', async () => {
   const { wt, cleanup } = setup('true');
   try {
+    const out = await refreshWorktreeBase(wt, 'main');
+    assert.equal(out.status, 'merged', JSON.stringify(out));
+  } finally {
+    cleanup();
+  }
+});
+
+test('a merge refused without conflict is reported with its reason and leaves no pending merge', async () => {
+  const { wt, cleanup } = setup('false');
+  try {
+    // An untracked file the base would overwrite: git refuses the merge
+    // without a conflict to settle.
+    writeFileSync(join(wt, 'other.ts'), 'untracked\n');
     const before = git(wt, 'rev-parse', 'HEAD');
     const out = await refreshWorktreeBase(wt, 'main');
     assert.equal(out.status, 'failed');
-    assert.match(out.status === 'failed' ? out.reason : '', /commit refused: test hook/);
+    assert.match(out.status === 'failed' ? out.reason : '', /other\.ts/);
     // The agent must not start inside an unfinished merge: its first commit
     // would silently become that merge.
     assert.throws(() => git(wt, 'rev-parse', '-q', '--verify', 'MERGE_HEAD'));
     assert.equal(git(wt, 'rev-parse', 'HEAD'), before);
-    assert.equal(git(wt, 'status', '--porcelain'), '');
+    assert.equal(git(wt, 'status', '--porcelain'), '?? other.ts');
   } finally {
     cleanup();
   }

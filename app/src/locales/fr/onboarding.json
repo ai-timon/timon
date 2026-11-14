@@ -18,6 +18,21 @@
       "previous": "Langue précédente",
       "next": "Langue suivante"
     },
+    "background": {
+      "title": "Quand vous fermez votre session, Timon continue-t-il ?",
+      "subtitle": "Timon tourne en service d’arrière-plan sur cet ordinateur. Choisissez s’il s’arrête avec votre session ou s’il continue.",
+      "recommended": "Recommandé",
+      "session": {
+        "title": "Seulement quand ma session est ouverte",
+        "description": "Timon s’arrête quand vous fermez votre session et redémarre à la suivante. Verrouiller l’écran ne l’arrête pas.",
+        "lingerNote": "Le lingering est déjà activé pour votre compte : ce choix le désactive, et vos autres services utilisateur s’arrêtent aussi à la fermeture de session."
+      },
+      "always": {
+        "title": "Même quand ma session est fermée",
+        "description": "Les routines, les tâches de nuit et les webhooks continuent sans personne devant l’écran, tant que l’ordinateur est allumé. Sur Mac, votre mot de passe administrateur est demandé."
+      },
+      "later": "Vous pourrez changer ce choix à tout moment dans {settingsPath}."
+    },
     "account": {
       "title": "Créez votre compte local",
       "subtitle": "C’est avec lui que vous vous connectez à Timon. Vous en êtes l’administrateur.",
@@ -31,7 +46,7 @@
       "mismatch": "Les deux mots de passe ne correspondent pas.",
       "tooShort": "Au moins {min} caractères.",
       "create": "Créer mon compte",
-      "privacy": "Nous collectons uniquement l'e-mail au cas où vous souhaiteriez réinitialiser votre mot de passe. Le compte créé reste local."
+      "privacy": "Votre compte et votre mot de passe restent sur cet ordinateur. Votre adresse e-mail et ses codes passent par notre serveur, qui vous les envoie. Des statistiques d'usage anonymes sont partagées par défaut ; vous pouvez les désactiver dans les Réglages."
     },
     "legacy": {
       "opening": "Ouverture de l’écran suivant…"

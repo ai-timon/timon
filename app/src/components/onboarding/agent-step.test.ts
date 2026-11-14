@@ -209,6 +209,42 @@ test('a refused name is said on the step, which stays', async () => {
   }, (c) => (c.url === MAIN_AGENT_NAME_PATH ? Response.json({ error: 'name_taken' }, { status: 409 }) : undefined));
 });
 
+test('sheet: an engine that honours only some modes offers only those, and says what another mode runs as', async () => {
+  const withGrok: BackendCatalog = {
+    ...CATALOG,
+    backends: [
+      ...CATALOG.backends,
+      { id: 'grok', label: 'Grok Build', vendor: 'xAI', brand: 'grok', defaultModel: 'grok-4.6', models: [{ slug: 'grok-4.6', label: 'Grok 4.6' }], supportedPermissionModes: ['plan', 'bypassPermissions'] },
+    ],
+  };
+  const answer: Answer = (c) => (c.url.startsWith('/api/ui/backends/catalog') ? Response.json(withGrok) : undefined);
+  // The catalogue is cached per page: an earlier test left the one without grok.
+  const { invalidateBackendCatalog } = await import('@/lib/backends');
+  invalidateBackendCatalog();
+  await renderStep('developer', async (r) => {
+    await click(r, '[data-tab="perms"]');
+    // On claude, every mode.
+    assert.deepEqual(Array.from(r.host.querySelectorAll('[data-permission]')).map((el) => el.getAttribute('data-permission')), ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions']);
+    assert.ok(!r.host.querySelector('[data-permission-runs-as]'));
+    await click(r, '[data-tab="engine"]');
+    await click(r, 'button[aria-label="xAI"]');
+    const grok = Array.from(r.host.querySelectorAll<HTMLButtonElement>('[data-picker-row]')).find((b) => b.textContent?.includes('Grok 4.6'));
+    assert.ok(grok, 'the grok model is offered');
+    await r.react.act(async () => { grok.click(); });
+    await settle(r.react);
+    await click(r, '[data-tab="perms"]');
+    assert.deepEqual(Array.from(r.host.querySelectorAll('[data-permission]')).map((el) => el.getAttribute('data-permission')), ['plan', 'bypassPermissions']);
+    // The sheet's default (acceptEdits) is not one of them: it runs read-only, and the sheet says so.
+    const note = q(r.host, '[data-permission-runs-as="plan"]');
+    assert.match(note.textContent ?? '', /acceptEdits/);
+    assert.match(note.textContent ?? '', /read-only/);
+    await click(r, '[data-permission="bypassPermissions"]');
+    assert.ok(!r.host.querySelector('[data-permission-runs-as]'), 'a supported mode needs no note');
+    assert.ok(q(r.host, '[data-bypass-warning]'));
+  }, answer);
+  invalidateBackendCatalog();
+});
+
 test('sheet: line of work, exact permission mode with its warning, the daemon\'s lists, all written', async () => {
   await renderStep('developer', async (r) => {
     assert.equal(q(r.host, '[data-role="orchestrator"]').getAttribute('aria-pressed'), 'true', 'the sheet opens on the pilot');

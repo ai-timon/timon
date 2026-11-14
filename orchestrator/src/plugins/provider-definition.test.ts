@@ -102,6 +102,9 @@ function allowExec(...names: string[]): () => void {
 
 test('the three shapes of provider are coherent', () => {
   assert.deepEqual(definitionProblems(perTurn()), []);
+  assert.deepEqual(definitionProblems({ ...perTurn(), permission: { model: 'sandbox', supportedModes: ['plan', 'bypassPermissions'] } }), []);
+  assert.deepEqual(definitionProblems({ ...perTurn(), permission: { model: 'sandbox', nestedSandbox: { level: { flag: '--sandbox', off: 'none', readOnly: ['ro'] } } } }), []);
+  assert.deepEqual(definitionProblems({ ...perTurn(), permission: { model: 'mcp-bridge', nestedSandbox: { offArgs: ['--no-sandbox'] } } }), []);
   assert.deepEqual(definitionProblems(persistentDriver()), []);
   assert.deepEqual(definitionProblems(remote()), []);
 });
@@ -112,6 +115,16 @@ test('a capability declared without the member that serves it is refused, naming
     ['byAgent without a protocol', (d) => { d.permission = { model: 'sandbox', byAgent: true }; }, /byAgent.*only a session protocol/],
     ['appliesMode without a protocol', (d) => { d.permission = { model: 'sandbox', appliesMode: true }; }, /appliesMode.*permission\.model: 'protocol'/],
     ['appliesMode on an agent that never asks', (d) => { d.permission = { model: 'protocol', byAgent: true, appliesMode: true }; }, /appliesMode.*no `byAgent`/],
+    ['supportedModes that is not a list', (d) => { d.permission = { model: 'sandbox', supportedModes: 'plan' }; }, /supportedModes.*non-empty list/],
+    ['an empty supportedModes', (d) => { d.permission = { model: 'sandbox', supportedModes: [] }; }, /supportedModes.*non-empty list/],
+    ['supportedModes naming an unknown mode', (d) => { d.permission = { model: 'sandbox', supportedModes: ['plan', 'yolo'] }; }, /supportedModes.*unknown modes "yolo"/],
+    ['supportedModes listing a mode twice', (d) => { d.permission = { model: 'sandbox', supportedModes: ['plan', 'plan'] }; }, /supportedModes.*twice/],
+    ['supportedModes without plan', (d) => { d.permission = { model: 'sandbox', supportedModes: ['bypassPermissions'] }; }, /supportedModes.*must include 'plan'/],
+    ['a nestedSandbox that says nothing', (d) => { d.permission = { model: 'sandbox', nestedSandbox: {} }; }, /nestedSandbox.*`level`, `offArgs` or both/],
+    ['a nestedSandbox level that is no option', (d) => { d.permission = { model: 'sandbox', nestedSandbox: { level: { flag: 'sandbox', off: 'none' } } }; }, /nestedSandbox\.level\.flag/],
+    ['a nestedSandbox read-only level that turns it off', (d) => { d.permission = { model: 'sandbox', nestedSandbox: { level: { flag: '--sandbox', off: 'none', readOnly: ['none'] } } }; }, /nestedSandbox\.level\.readOnly/],
+    ['nestedSandbox offArgs that are not arguments', (d) => { d.permission = { model: 'sandbox', nestedSandbox: { offArgs: ['a\0b'] } }; }, /nestedSandbox\.offArgs/],
+    ['a nestedSandbox with an unknown key', (d) => { d.permission = { model: 'sandbox', nestedSandbox: { offArgs: ['-x'], replace: true } }; }, /nestedSandbox.*unknown keys "replace"/],
     ['setModel on a process per turn', (d) => { d.session = { store: 'per-mission', resumable: false, setModel: async () => true }; }, /setModel.*stdio-persistent/],
     ['a persistent process that cannot resume', (d) => { d.transport = { kind: 'stdio-persistent' }; d.session = { store: 'per-mission', resumable: false }; }, /stdio-persistent.*resumable: false/],
     ['a global store that is not resumable', (d) => { d.session = { store: 'global', resumable: false }; }, /global.*resumable by construction/],
@@ -134,6 +147,9 @@ test('a capability declared without the member that serves it is refused, naming
   const remoteWithLines = remote() as unknown as Record<string, unknown>;
   remoteWithLines.codec = perTurn().codec;
   assert.ok(definitionProblems(remoteWithLines).some((p) => /remote.*no process/.test(p)));
+  const remoteNested = remote() as unknown as Record<string, unknown>;
+  remoteNested.permission = { model: 'none', nestedSandbox: { offArgs: ['-x'] } };
+  assert.ok(definitionProblems(remoteNested).some((p) => /nestedSandbox.*remote.*no process/.test(p)));
   assert.ok(definitionProblems('nope').length > 0 && definitionProblems(null).length > 0);
 });
 
@@ -238,6 +254,23 @@ test('REFUSAL: an incoherent definition never reaches the registry', () => {
     assert.throws(() => ctx.provider.registerProvider(bad as unknown as NativeProviderDefinition), (error: unknown) =>
       error instanceof registry.ProviderDefinitionError && /protocol/.test(error.message));
     assert.equal(registry.getDialect('acme-d'), undefined);
+    bad.permission = { model: 'sandbox', supportedModes: ['bypassPermissions', 'everything'] };
+    assert.throws(() => ctx.provider.registerProvider(bad as unknown as NativeProviderDefinition), (error: unknown) =>
+      error instanceof registry.ProviderDefinitionError && /supportedModes/.test(error.message));
+    assert.equal(registry.getDialect('acme-d'), undefined);
+  } finally {
+    restore();
+  }
+});
+
+test('supportedModes reaches the dialect the catalogue is built from', () => {
+  const restore = allowExec('acme-agent');
+  const ctx = pluginContext('acme-plugin-modes');
+  try {
+    const release = ctx.provider.registerProvider({ ...perTurn('acme-modes'), permission: { model: 'sandbox', supportedModes: ['plan', 'bypassPermissions'] } });
+    assert.deepEqual(registry.getDialect('acme-modes')?.supportedPermissionModes, ['plan', 'bypassPermissions']);
+    release();
+    assert.equal(registry.getDialect('acme-modes'), undefined);
   } finally {
     restore();
   }

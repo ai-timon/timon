@@ -1,4 +1,6 @@
 /** Stable entry point retained by already installed OS services. */
+// First of all: it may replace this process to honour a corporate proxy.
+import './env-proxy-boot.js';
 // Before anything prints: the restore below already logs.
 import './log-boot.js';
 // Before any database is opened or any route served: the home restricted to its owner.

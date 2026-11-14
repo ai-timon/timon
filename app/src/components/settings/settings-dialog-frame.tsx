@@ -5,7 +5,7 @@
  * cross, Escape) or a click on the dimmed page around the dialog; a click
  * outside never discards a row still being typed, it says so instead.
  */
-import type { MutableRefObject, ReactElement, ReactNode } from 'react';
+import type { ReactElement, ReactNode, RefObject } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -19,7 +19,7 @@ export function SettingsDialogFrame({
 }: {
   onClose: () => void;
   /** True while a row holds a typed value that was not saved yet. */
-  unsavedRef: MutableRefObject<boolean>;
+  unsavedRef: RefObject<boolean>;
   children: ReactNode;
 }): ReactElement {
   return (

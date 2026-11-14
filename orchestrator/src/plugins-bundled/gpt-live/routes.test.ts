@@ -226,7 +226,7 @@ test('a voice turn reading out the agent answer is journaled with its relay mark
 test('a signed-in user without the right to talk to missions is refused and writes nothing', async () => {
   const missionId = 'mission-voice-2';
   dbApi.createMission(missionId, 'demo.agent', 'someone else');
-  createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
+  createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
   const login = await call('POST', '/api/auth/login', { body: { email: 'ada@example.com', password: 'ada-secret' } });
   assert.equal(login.status, 200);
   const ada = sessionCookie(login.res);

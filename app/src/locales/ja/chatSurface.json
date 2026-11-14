@@ -1,0 +1,13 @@
+{
+  "chatSurface": {
+    "permission": "許可",
+    "permissionToUse": "エージェントが {tool} の使用許可を求めています",
+    "permissionState": {
+      "pending": "保留中",
+      "allowed": "許可済み",
+      "denied": "拒否",
+      "expired": "期限切れ",
+      "pasted": "貼り付け済み"
+    }
+  }
+}

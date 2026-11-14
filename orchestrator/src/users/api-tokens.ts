@@ -43,9 +43,10 @@ export function isPluginOwner(owner: string | null | undefined): owner is string
 }
 
 /**
- * Token to inject into a mission's environment. Caller must not use this
- * while the users table is empty — first-run still injects the daemon-token
- * (see `missionEnv`). After setup, every mission gets its own row.
+ * Token to inject into a mission's environment, with or without an account
+ * on the machine: a mission never holds the daemon-token. Before the first
+ * account, the row has no user and `getLiveApiToken` gives it the install's
+ * rights as an agent (`db.ts`).
  */
 export function issueMissionApiToken(missionId: string): string {
   // The egress credential has its own lifecycle: issuing it after the API token,

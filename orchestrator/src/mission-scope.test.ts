@@ -20,13 +20,13 @@ const { hashPassword } = await import('./users/password.js');
 const admin = createTestAccount(dbApi, {
   email: 'admin@example.com',
   name: 'Admin',
-  passwordHash: hashPassword('admin-secret'),
+  passwordHash: await hashPassword('admin-secret'),
   isSuperadmin: true,
 });
 const ada = createTestAccount(dbApi, {
   email: 'ada@example.com',
   name: 'Ada',
-  passwordHash: hashPassword('ada-secret'),
+  passwordHash: await hashPassword('ada-secret'),
   isSuperadmin: false,
 });
 

@@ -115,4 +115,5 @@ export {
   ASK_MCP_FORMS_ONLY_ENV, ASK_MCP_SERVER, ASK_TOOL_KANBAN_PLAN, ASK_TOOL_QUESTION, ASK_TOOL_REQUEST,
   CLAUDE_PERMISSION_PROMPT_TOOL,
 } from '../../../orchestrator/src/ask-mcp.js';
-export { PERMISSION_MODEL_OBLIGATIONS } from '../../../orchestrator/src/backends/permission-models.js';
+export { PERMISSION_MODEL_OBLIGATIONS, PERMISSION_MODES } from '../../../orchestrator/src/backends/permission-models.js';
+export type { NestedSandboxDeclaration, PermissionMode } from '../../../orchestrator/src/backends/permission-models.js';

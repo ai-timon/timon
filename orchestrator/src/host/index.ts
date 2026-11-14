@@ -1,14 +1,21 @@
 import type { TimonConfig } from '../config/schema.js';
 import { config } from '../config/load.js';
+import { createDarwinHost } from './darwin.js';
 import { createGenericHost } from './generic.js';
+import { createLandlockFence } from './landlock.js';
 import { createLinuxHost } from './linux.js';
 import { hasSystemd } from './systemd.js';
+import { fenceWritableRoots, setFencedSystemFoldersSource, setMissionWritableRootsSource } from './mission-writable.js';
+import { systemWritableFolders } from './isolation.js';
 import type { ExecOpts, Host } from './types.js';
 
-export type { Capability, ExecOpts, ExecResult, Host, RevealVia, SpawnOpts } from './types.js';
+export type {
+  Capability, ExecOpts, ExecResult, FenceMechanism, Host, HostFence, HostFenceProbe, RevealVia, SpawnOpts,
+} from './types.js';
 export { chooseRevealLane, type RevealLane } from './reveal.js';
 export type { DesktopSession } from './desktop-session.js';
 export { isDirectoryLink, linkDirectory, removeDirectoryLink } from './directory-link.js';
+export { createDarwinHost } from './darwin.js';
 export { createGenericHost } from './generic.js';
 export { createLinuxHost } from './linux.js';
 export { hasSystemd, systemctlCallCount } from './systemd.js';
@@ -19,9 +26,19 @@ export function createHost(cfg: TimonConfig): Host {
   // Pins are read from the live config, not from `cfg`: the adapter lives as
   // long as the daemon, and `host.binaries` can change under it (TODO #413).
   const pins = () => config().host.binaries;
+  // A folder the fence lets missions write never yields a binary the daemon runs.
+  setMissionWritableRootsSource(() => fenceWritableRoots(config()));
+  // Nor a local git remote the daemon pushes to: its hooks would run unfenced.
+  setFencedSystemFoldersSource(() => (config().host.isolation.filesystem === 'off' ? [] : systemWritableFolders(process.platform)));
   const host = process.platform === 'linux' && hasSystemd()
     ? createLinuxHost(cfg, pins)
-    : createGenericHost(cfg, {}, pins);
+    : process.platform === 'darwin'
+      ? createDarwinHost(cfg, pins)
+      // Linux without systemd (a container, WSL without it, a minimal server)
+      // has no resource scope, and the fence does not need one.
+      : process.platform === 'linux'
+        ? { ...createGenericHost(cfg, {}, pins), fence: createLandlockFence() }
+        : createGenericHost(cfg, {}, pins);
   current = host;
   // On stderr, not stdout: `getHost()` is lazy, so this line also comes out
   // from the CLI (`timon doctor --json`, `timon module list --json`) where it would

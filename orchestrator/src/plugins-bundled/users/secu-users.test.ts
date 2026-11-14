@@ -228,6 +228,12 @@ test('Settings › System: machine report and service install are superadmin-onl
   assert.equal((await call('POST', '/api/admin/service/install', { cookie: adaCookie, body: {} })).status, 403);
   // An agent or the CLI holds the daemon token: superadmin, but no person to answer the prompt.
   assert.equal((await call('POST', '/api/admin/service/install', { bearer: TOKEN, body: {} })).status, 403);
+  // Lingering lets agents run with nobody at the screen: same gates as the install.
+  const always = { mode: 'always' };
+  assert.equal((await call('POST', '/api/admin/service/session-mode', { body: always })).status, 401);
+  assert.equal((await call('POST', '/api/admin/service/session-mode', { cookie: adaCookie, body: always })).status, 403);
+  assert.equal((await call('POST', '/api/admin/service/session-mode', { bearer: TOKEN, body: always })).status, 403);
+  assert.equal((await call('POST', '/api/admin/service/session-mode', { cookie: adminCookie, body: { mode: 'forever' } })).status, 400);
   // The superadmin POST is not exercised here: it would install a service on
   // the machine running the tests.
   const report = await call('GET', '/api/admin/system', { cookie: adminCookie });

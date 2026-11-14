@@ -7,7 +7,7 @@
 import type { Request, Response } from 'express';
 import { config } from '../config/load.js';
 import { auditRequest } from './audit-actor.js';
-import { recordFailure, type ThrottleVerdict } from './login-throttle.js';
+import { holdAttempt, recordFailure, type ThrottleVerdict } from './login-throttle.js';
 import { apiError } from '../api-error.js';
 
 /**
@@ -40,6 +40,20 @@ export function throttleKeys(req: Request, scope: string, subject: string | null
 export function sendThrottled(res: Response, verdict: Extract<ThrottleVerdict, { allowed: false }>): void {
   res.setHeader('Retry-After', String(Math.max(1, Math.ceil(verdict.retryAfterMs / 1000))));
   res.status(429).json(apiError('too_many_attempts', 'too many attempts, try again later'));
+}
+
+/**
+ * Runs a password test with the attempt counted against `keys` while it runs
+ * (`holdAttempt`). Call it right after the `checkThrottle` that admitted the
+ * attempt, with nothing awaited in between.
+ */
+export async function testCredential<T>(keys: readonly string[], test: () => Promise<T>): Promise<T> {
+  const release = holdAttempt(keys);
+  try {
+    return await test();
+  } finally {
+    release();
+  }
 }
 
 /** Counts the failure and audits the lockout it opens, once per bucket. */

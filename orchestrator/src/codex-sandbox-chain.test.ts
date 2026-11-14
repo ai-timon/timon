@@ -87,6 +87,22 @@ test('the mission reads its own level first, the agent\'s otherwise', () => {
   );
 });
 
+test('the selector shows the level codex really runs in, not the label it was given', () => {
+  const authority: OverrideAuthority = { relaxed: true, ceiling: null };
+  for (const label of ['default', 'acceptEdits', 'workspace-write']) {
+    const id = randomUUID();
+    dbApi.createMission(id, CODER, 'witness', { channel: 'dispatcher' });
+    dbApi.setMissionPermissionModeOverride(id, label);
+    const state = missionPermissionState(id, authority);
+    assert.equal(state?.mode, 'auto', `${label} runs in the workspace-write sandbox`);
+    assert.ok(state?.choices.includes(state.mode), `${label}: the menu can tick the level shown`);
+  }
+  const edits = randomUUID();
+  dbApi.createMission(edits, CODER, 'witness', { channel: 'dispatcher' });
+  dbApi.setMissionPermissionModeOverride(edits, 'acceptEdits');
+  assert.equal(missionPermissionState(edits, authority)?.configured, 'acceptEdits', 'the written label stays readable');
+});
+
 test('only plan reaches codex as read-only; acceptEdits and auto write, bypassPermissions lifts the sandbox', async () => {
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'timon-codex-chain-cwd-')));
   try {

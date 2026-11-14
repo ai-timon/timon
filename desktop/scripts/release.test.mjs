@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { generateKeyPairSync } from 'node:crypto';
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { copyBuiltinPlugins, sealTree, releaseKeys, stageBuildInfo } from './prepare-daemon-release.mjs';
+import { copyBuiltinPlugins, sealTree, releaseKeys, stageBuildInfo, stageFence } from './prepare-daemon-release.mjs';
 import { createBuildInfo, writeBuildInfo } from './build-info.mjs';
 import { RELEASE_MANIFEST_VERSION, verifyRelease } from './release-integrity.mjs';
-import { THIRD_PARTY_NOTICES, assertPackagedPublicKey, assertPackagedReleaseCheck, assertPackagedSpeechEngine, assertPackagedThirdPartyNotices, beforePack, runtimeFuses } from './release-hooks.mjs';
+import { THIRD_PARTY_NOTICES, assertPackagedFence, assertPackagedPublicKey, assertPackagedReleaseCheck, assertPackagedSpeechEngine, assertPackagedThirdPartyNotices, beforePack, runtimeFuses } from './release-hooks.mjs';
 import { sherpaPackageName } from '../src/speech-paths.ts';
 import { checkMacSignature, describeSignature, parseSignatureDetails } from './mac-signature.mjs';
 import { FuseV1Options } from '@electron/fuses';
@@ -152,6 +152,9 @@ test('Electron Builder configuration parses and selects only the sealed daemon r
   assert.equal(config.extraResources.find(r => r.to === 'orchestrator/builtin-plugins.json').from, 'build-resources/daemon-release/builtin-plugins.json');
   // The channel/expiry file rides the same signed staging into the package.
   assert.equal(config.extraResources.find(r => r.to === 'orchestrator/build-info.json')?.from, 'build-resources/daemon-release/build-info.json');
+  // The mission launcher rides the signed staging too, in Linux packages only.
+  assert.equal(config.extraResources.find(r => r.to === 'orchestrator/native'), undefined);
+  assert.equal(config.linux.extraResources.find(r => r.to === 'orchestrator/native')?.from, 'build-resources/daemon-release/native');
   // The shell reads the key from inside `app.asar`. electron-builder resolves
   // a fileset `from` as a base DIRECTORY: the earlier
   // `from: build-resources/release-public-key.pem` named a FILE, so the entry
@@ -346,6 +349,74 @@ test('build-info.json is staged, signed, and its removal or edit fails the relea
     else rmSync(join(root, 'build-info.json'));
     assert.throws(() => verifyRelease(root, keys.publicKey), undefined, action);
   }
+});
+
+// ── timon-fence: the Linux mission launcher, signed with the release ────────
+
+test('the Linux mission launcher is signed with the release: replacing or removing it fails the check', (t) => {
+  for (const action of ['edit', 'delete']) {
+    const root = fixtureUnsealed(t);
+    mkdirSync(join(root, 'native'));
+    writeFileSync(join(root, 'native', 'timon-fence'), 'launcher', { mode: 0o755 });
+    sealTree(root, keys);
+    assert.ok(verifyRelease(root, keys.publicKey).files['native/timon-fence'], 'native/timon-fence is not in the signed inventory');
+    if (action === 'edit') writeFileSync(join(root, 'native', 'timon-fence'), '#!/bin/sh\nexec "$@"\n');
+    else rmSync(join(root, 'native'), { recursive: true });
+    assert.throws(() => verifyRelease(root, keys.publicKey), undefined, action);
+  }
+});
+
+// The daemon skips a launcher it cannot execute (host/fence.ts) and the
+// digest does not see a mode: the execute bit must be checked on its own, or a
+// chmod on the durable copy would unfence every mission without failing boot.
+test('a release whose launcher lost its execute bit fails the check; a release without one is unaffected', { skip: process.platform === 'win32' && 'Windows has no execute bit' }, (t) => {
+  const root = fixtureUnsealed(t);
+  mkdirSync(join(root, 'native'));
+  const fence = join(root, 'native', 'timon-fence');
+  writeFileSync(fence, 'launcher', { mode: 0o755 });
+  sealTree(root, keys);
+  assert.doesNotThrow(() => verifyRelease(root, keys.publicKey));
+  chmodSync(fence, 0o644);
+  assert.throws(() => verifyRelease(root, keys.publicKey), /native\/timon-fence is not executable/);
+  chmodSync(fence, 0o755);
+  assert.doesNotThrow(() => verifyRelease(root, keys.publicKey));
+
+  const older = fixtureUnsealed(t);
+  sealTree(older, keys);
+  assert.equal(verifyRelease(older, keys.publicKey).files['native/timon-fence'], undefined);
+});
+
+test('a launcher that is not executable is never sealed', { skip: process.platform === 'win32' && 'Windows has no execute bit' }, (t) => {
+  const root = fixtureUnsealed(t);
+  mkdirSync(join(root, 'native'));
+  writeFileSync(join(root, 'native', 'timon-fence'), 'launcher', { mode: 0o644 });
+  assert.throws(() => sealTree(root, keys), /not executable/);
+});
+
+test('the launcher is staged on Linux only, and a Linux build without a compiler stops', () => {
+  const calls = [];
+  const build = (arch, out) => { calls.push([arch, out]); return 'cc'; };
+  assert.equal(stageFence('/stage', 'darwin', 'arm64', build), null);
+  assert.equal(stageFence('/stage', 'win32', 'x64', build), null);
+  assert.deepEqual(calls, []);
+  assert.equal(stageFence('/stage', 'linux', 'arm64', build), join('/stage', 'native', 'timon-fence'));
+  assert.deepEqual(calls, [['arm64', join('/stage', 'native', 'timon-fence')]]);
+  assert.throws(() => stageFence('/stage', 'linux', 'x64', () => null), /No C compiler for timon-fence/);
+});
+
+test('a Linux package without its executable launcher is refused; other OSes carry none', { skip: process.platform === 'win32' }, (t) => {
+  const resources = mkdtempSync(join(tmpdir(), 'timon-fence-pack-'));
+  t.after(() => rmSync(resources, { recursive: true, force: true }));
+  assert.doesNotThrow(() => assertPackagedFence(resources, 'darwin'));
+  assert.doesNotThrow(() => assertPackagedFence(resources, 'win32'));
+  assert.throws(() => assertPackagedFence(resources, 'linux'), /timon-fence is missing/);
+  mkdirSync(join(resources, 'orchestrator', 'native'), { recursive: true });
+  const fence = join(resources, 'orchestrator', 'native', 'timon-fence');
+  writeFileSync(fence, '#!/bin/sh\necho impostor\n');
+  chmodSync(fence, 0o644);
+  assert.throws(() => assertPackagedFence(resources, 'linux'), /not executable/);
+  chmodSync(fence, 0o755);
+  if (process.platform === 'linux') assert.throws(() => assertPackagedFence(resources, 'linux'), /not the mission launcher/);
 });
 
 // ── Built-in plugins: signed with the release, handed to the daemon ─────────

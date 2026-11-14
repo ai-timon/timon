@@ -240,6 +240,10 @@ export type OnboardingAnswer = {
   command?: string | null;
   reason?: string | null;
   error?: string;
+  /** `service-status`: the answer to "keep running when logged out?" changes something here (Linux, macOS, Windows). */
+  sessionModeSupported?: boolean;
+  /** `service-status`, Linux: lingering is already on for the account, so "only while logged in" turns it off. */
+  lingering?: boolean | null;
 };
 
 /**
@@ -457,8 +461,14 @@ export function stepNeedsService(step: string): boolean {
  * screen would ask again behind the reader's back.
  */
 export function preparationStarts(step: string, stays: boolean): boolean {
-  return stays && step !== 'splash' && !UPGRADE_WELCOME_STEPS.includes(step) && !AFTER_AGENT_STEPS.includes(step);
+  return stays && !BEFORE_INSTALL_STEPS.includes(step) && !UPGRADE_WELCOME_STEPS.includes(step) && !AFTER_AGENT_STEPS.includes(step);
 }
+
+/**
+ * The welcome, and the question the install depends on ("keep running when
+ * logged out?", `steps/background.tsx`): the install waits for its answer.
+ */
+const BEFORE_INSTALL_STEPS: readonly string[] = ['splash', 'background'];
 
 /**
  * The steps after the agent ("Discover Timon"): the agent step's guard already waited
@@ -494,7 +504,7 @@ export function pollsForAccount(phase: ServicePhase, step: string, stays: boolea
  * thing in the middle of the screen when it matters.
  */
 export function preparationVisible(step: string, started: boolean, stays: boolean): boolean {
-  return started && stays && step !== 'splash' && !stepNeedsService(step) && !AFTER_AGENT_STEPS.includes(step);
+  return started && stays && !BEFORE_INSTALL_STEPS.includes(step) && !stepNeedsService(step) && !AFTER_AGENT_STEPS.includes(step);
 }
 
 export type PreparationItemId = 'service' | 'database' | 'browser' | 'providers';

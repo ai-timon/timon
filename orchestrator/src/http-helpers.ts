@@ -28,7 +28,8 @@ import {
 import { defaultBackendName } from './backends/index.js';
 import { ATTACHMENTS_UNSUPPORTED, attachmentsRefusal } from './backends/capabilities.js';
 import { rejectIfDenied } from './users/identity.js';
-import { isPrivilegedCaller, overrideAuthority, rejectOverride, type SpawnOverrides, spawnOverrideRefusal } from './users/privileged-overrides.js';
+import { launchErrorStatus, missionLaunchErrorBody } from './resources.js';
+import { isPrivilegedCaller, overrideAuthority, rejectOverride, type SpawnOverrides, spawnOverrideRefusal, spawnWideningDenied } from './users/privileged-overrides.js';
 
 type SpawnBody = {
   trace_id?: string;
@@ -162,6 +163,13 @@ const handleSpawnOnce = async (req: express.Request, res: express.Response) => {
   // (tools, MCP servers, backend). Checked BEFORE any side effect, against
   // that agent's own config — an override that stays inside it is a no-op.
   const agentConfig = (() => { try { return loadConfig(agent); } catch { return null; } })();
+  // Extra tools, a skill that pre-authorises tools or a stdio MCP server need a
+  // person, whatever an agent's token holds.
+  const widening = spawnWideningDenied(req, body, agentConfig, agent);
+  if (widening) {
+    rejectOverride(req, res, 'spawn.override_denied', `agent:${agent}`, widening);
+    return;
+  }
   if (!isPrivilegedCaller(req)) {
     const refusal = spawnOverrideRefusal(body as SpawnOverrides, agentConfig, overrideAuthority(req));
     if (refusal) {
@@ -256,7 +264,7 @@ const handleSpawnOnce = async (req: express.Request, res: express.Response) => {
     res.status(201).json({ mission_id: missionId, ...skippedAttachmentsField(skipped) });
   } catch (err) {
     if (!started) discardChatAttachments(persisted);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(launchErrorStatus(err, 500)).json(missionLaunchErrorBody(err));
   }
 };
 

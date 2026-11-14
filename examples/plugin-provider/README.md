@@ -34,6 +34,24 @@ Without that authorization the example catches the registration error and leaves
 its compatible profile available. Provider endpoints and model IDs are example
 data, not current catalogue recommendations.
 
+## Permission modes
+
+A CLI that cannot ask for an approval in the middle of a turn may honour only
+some of the agent's permission modes. A provider registered with
+`ctx.provider.registerProvider` says so in its definition:
+
+```js
+permission: { model: 'sandbox', supportedModes: ['plan', 'bypassPermissions'] },
+```
+
+The list is optional, must not be empty, may only name known modes
+(`PERMISSION_MODES` in `@timon-ai/sdk/provider`) and must include `plan`. Timon
+then offers only these modes in its screens, and runs every other one in `plan`,
+never higher: `launch` receives the resolved mode, and the permission ceiling
+judges it. Apply the same rule in your own mapping, so the plugin stays
+read-only on a daemon that does not resolve the mode. Leave the field out when
+the CLI honours every mode.
+
 ## Testing
 
 `test/conformance.test.mjs` runs the conformance bench of `@timon-ai/sdk/testing`

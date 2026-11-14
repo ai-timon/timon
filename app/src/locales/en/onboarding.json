@@ -18,6 +18,21 @@
       "previous": "Previous language",
       "next": "Next language"
     },
+    "background": {
+      "title": "When you log out, should Timon keep working?",
+      "subtitle": "Timon runs as a background service on this computer. Choose whether it stops with your session or keeps going.",
+      "recommended": "Recommended",
+      "session": {
+        "title": "Only while I'm logged in",
+        "description": "Timon stops when you log out and starts again when you log back in. Locking the screen keeps it running.",
+        "lingerNote": "Lingering is already on for your account: this choice turns it off, so your other user services also stop when you log out."
+      },
+      "always": {
+        "title": "Even when I'm logged out",
+        "description": "Routines, night tasks and webhooks keep running with nobody at the screen, as long as the computer is on. On a Mac, this asks for your administrator password."
+      },
+      "later": "You can change this at any time in {settingsPath}."
+    },
     "account": {
       "title": "Create your local account",
       "subtitle": "You sign in to Timon with it. You are its administrator.",
@@ -31,7 +46,7 @@
       "mismatch": "The two passwords don't match.",
       "tooShort": "At least {min} characters.",
       "create": "Create my account",
-      "privacy": "We only collect your email in case you want to reset your password. The account you create stays local."
+      "privacy": "Your account and password stay on this computer. Your email address and its codes go through our server, which emails them to you. Anonymous usage statistics are shared by default; you can turn them off in Settings."
     },
     "legacy": {
       "opening": "Opening the next screen…"

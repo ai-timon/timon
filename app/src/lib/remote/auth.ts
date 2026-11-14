@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { verifyAndLoad, bumpUsage, type VerifiedToken } from './token';
 import { rateLimit } from './rateLimit';
 import { audit } from './audit';
+import { secretEquals } from './constant-time';
 
 export type AuthContext = { tokenId: string; clientName: string };
 
@@ -76,7 +77,7 @@ export function authenticateMaster(req: Request): NextResponse | null {
     );
   }
   const raw = extractBearer(req);
-  if (!raw || raw !== master) {
+  if (!raw || !secretEquals(raw, master)) {
     return NextResponse.json({ error: 'master auth required' }, { status: 401 });
   }
   return null;

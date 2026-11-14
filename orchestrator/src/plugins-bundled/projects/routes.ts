@@ -6,7 +6,7 @@
  * Routes extracted verbatim from `index.ts` (step 1.4).
  */
 import type { Router } from 'express';
-import { listAgents } from '../../agent.js';
+import { listAgents, loadConfig } from '../../agent.js';
 import { db, dbApi } from '../../db.js';
 import { autoColorFor, listProjects, readMeta, readRoles, type RoleSpec, writeRoles } from '../../projects.js';
 import { ProjectHasAgentsError, removeProject, type AgentsFate } from '../../project-removal.js';
@@ -14,7 +14,7 @@ import { ensureProjectOrchestrator, inheritedLlm, previewRoleAgent, roleForTaskT
 import { readProjectIcon, saveProjectIcon } from '../../uploads.js';
 import { createDemoProject } from '../../project-demo.js';
 import { rejectIfDenied } from '../../users/identity.js';
-import { agentConfigRefusal, isPrivilegedCaller, overrideAuthority, rejectOverride } from '../../users/privileged-overrides.js';
+import { agentConfigRefusal, agentWideningDenied, isPrivilegedCaller, overrideAuthority, rejectOverride } from '../../users/privileged-overrides.js';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import {
@@ -59,14 +59,29 @@ function answerProjectError(req: Request, res: Response, err: unknown): void {
  * others is not refused.
  */
 function roleLlmRefusal(req: Request, slug: string, role: string, spec: RoleSpec | null): string | null {
-  if (!spec || isPrivilegedCaller(req)) return null;
+  if (!spec) return null;
+  let current: RoleSpec | undefined;
+  try { current = readRoles(slug)[role as keyof ReturnType<typeof readRoles>]; } catch { current = undefined; }
+  // A role's MCP servers replace its agent's at dispatch: attaching a stdio one
+  // there needs a person, whatever an agent's token holds (same rule as the
+  // agent's own `mcp_servers`). What the pin or the agent already holds passes.
+  if (spec.mcp_servers) {
+    let agentServers: string[] = [];
+    try { agentServers = loadConfig(spec.agent).mcp_servers ?? []; } catch { /* unknown agent: holds none */ }
+    const widening = agentWideningDenied(
+      req,
+      { mcp_servers: spec.mcp_servers },
+      { mcp_servers: [...(current?.mcp_servers ?? []), ...agentServers] },
+      { mcp_servers: `role ${role} mcp_servers` },
+    );
+    if (widening) return widening;
+  }
+  if (isPrivilegedCaller(req)) return null;
   const llm: Record<string, unknown> = {};
   if (spec.backend !== undefined) llm.backend = spec.backend;
   if (spec.model !== undefined) llm.model = spec.model;
   if (spec.permission_mode !== undefined) llm.permission_mode = spec.permission_mode;
   if (!Object.keys(llm).length) return null;
-  let current: RoleSpec | undefined;
-  try { current = readRoles(slug)[role as keyof ReturnType<typeof readRoles>]; } catch { current = undefined; }
   const pinned = current
     ? { backend: current.backend ?? undefined, model: current.model ?? undefined, permission_mode: current.permission_mode ?? undefined }
     : null;

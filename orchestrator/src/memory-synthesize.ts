@@ -22,6 +22,7 @@ import { readMeta } from './projects.js';
 import { oneShotPrompt } from './summary.js';
 import { getRole } from './agent-roles.js';
 import { settingBool, settingNum, settingStr } from './settings.js';
+import { reviseMemoryRule, supersedeMemoryRule } from './memory-session-fence.js';
 import { oneShotTarget } from './backends/index.js';
 
 const MAX_DECISIONS = 24;
@@ -129,6 +130,10 @@ function renderByKind(rows: LearningRow[]): string {
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+function logFresh(ruleId: number, agents: string[]): void {
+  if (agents.length) console.log(`[memory-synth] rule #${ruleId} changed — fresh conversation for ${agents.join(', ')}`);
+}
+
 type CurationStats = { added: number; merged: number; superseded: number; rejected: number };
 
 /**
@@ -159,7 +164,9 @@ export function applyCuration(
       const target = d.targetId != null ? byId.get(d.targetId) : undefined;
       if (!target) continue; // hallucinated target → ignored
       dbApi.bumpRuleSupport(target.id, d.clusterSize ?? 1);
-      if (d.text && d.text !== target.text) dbApi.updateRule(target.id, { text: d.text });
+      // A merge that rewords the rule takes the old wording away: the agents
+      // it reached start a fresh conversation (memory-session-fence.ts).
+      if (d.text && d.text !== target.text) logFresh(target.id, reviseMemoryRule(target.id, { text: d.text })?.freshConversation ?? []);
       dbApi.logMemoryAudit({ ...auditBase, action: 'merge', targetRuleId: target.id, candidateText: d.text ?? null, rationale: d.rationale ?? null });
       stats.merged++;
       continue;
@@ -189,7 +196,7 @@ export function applyCuration(
     });
     if (tier === 'core') coreActive++;
     if (d.action === 'supersede' && d.targetId != null && byId.has(d.targetId)) {
-      dbApi.supersedeRule(d.targetId, newId);
+      logFresh(d.targetId, supersedeMemoryRule(d.targetId, newId));
       dbApi.logMemoryAudit({ ...auditBase, action: 'supersede', ruleId: newId, targetRuleId: d.targetId, candidateText: d.text ?? null, rationale: d.rationale ?? null });
       stats.superseded++;
     } else {

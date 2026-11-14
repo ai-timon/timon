@@ -32,6 +32,7 @@ import type { ProviderModelCache, UnverifiedSubject } from './provider-declarati
 import { BUILTIN_DECLARATIONS } from './builtin-declarations.js';
 import { baseBackendId } from './instance-id.js';
 import { resolveCapabilities } from './capabilities.js';
+import { resolveSupportedPermissionMode } from './permission-models.js';
 import { isRemoteDialect, type BackendCapabilities, type BackendProfile, type PermissionModel, type RateLimitReporting } from './types.js';
 
 export type { CatalogModel } from './catalog-model.js';
@@ -89,6 +90,10 @@ export type CatalogBackend = {
    *  (Pi's gate, `PermissionStrategy.appliesMode`): the UI says the mode holds.
    *  Present only when true. */
   permissionModeApplied?: boolean;
+  /** The only permission modes the provider honours (`PermissionStrategy.supportedModes`):
+   *  the selectors offer only these, and any other mode runs in `plan`.
+   *  Absent = every mode is honoured. */
+  supportedPermissionModes?: string[];
   /** The agent is served by a remote session: Timon starts no process on this
    *  machine for it (`isRemoteDialect`). Present only when true. What it does
    *  runs on someone else's host, so it cannot widen what a mission may do HERE
@@ -301,6 +306,7 @@ function staticCatalogEntries(): CatalogBackend[] {
     accountUsage: !!dialect.accountUsage && !profile.custom,
     ...(dialect.permissionsByAgent?.(profile.id) ? { selfManagedPermissions: true } : {}),
     ...(dialect.appliesPermissionMode ? { permissionModeApplied: true } : {}),
+    ...(dialect.supportedPermissionModes ? { supportedPermissionModes: [...dialect.supportedPermissionModes] } : {}),
     ...(isRemoteDialect(dialect) ? { remote: true } : {}),
     ...(profile.custom && dialect.thinkingControls ? { thinkingControls: [...dialect.thinkingControls] } : {}),
     ...(profile.vendor ? { vendor: profile.vendor } : {}),
@@ -345,6 +351,17 @@ function providerBrandIcon(profile: BackendProfile): string | undefined {
 export function catalogBackend(id: string | null | undefined): CatalogBackend | undefined {
   if (!id) return undefined;
   return currentBackends().find((b) => b.id === id);
+}
+
+/**
+ * The permission mode an agent asking for `mode` really runs in on `backend`:
+ * on a provider that declares the only modes it honours
+ * (`PermissionStrategy.supportedModes`), any other mode is `plan`
+ * (`resolveSupportedPermissionMode`). Untouched on a backend that honours
+ * every mode, and on one the catalogue does not know.
+ */
+export function resolvedPermissionModeFor(backend: string | null | undefined, mode: string | null | undefined): string | undefined {
+  return resolveSupportedPermissionMode(mode, catalogBackend(backend)?.supportedPermissionModes);
 }
 
 /**

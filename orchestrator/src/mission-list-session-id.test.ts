@@ -26,9 +26,9 @@ const { registerRoutes: registerMissionRoutes } = await import('./plugins-bundle
 const { registerRoutes: registerUserRoutes } = await import('./plugins-bundled/users/routes.js');
 const { SESSION_COOKIE } = await import('./users/session.js');
 
-createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: hashPassword('admin-secret'), isSuperadmin: true });
-const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
-const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword('bob-secret'), isSuperadmin: false });
+createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: await hashPassword('admin-secret'), isSuperadmin: true });
+const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
+const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword('bob-secret'), isSuperadmin: false });
 
 const adaMission = randomUUID();
 const adaFresh = randomUUID();

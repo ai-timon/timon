@@ -45,7 +45,7 @@ for (const backend of ['claude', 'codex', 'grok']) {
         const environment = config.split(/^\[/m).find((chunk) => chunk.startsWith('mcp_servers.timon-browser.env]'))!;
         assert.ok(environment.includes(`TIMON_MISSION_ID = "${missionId}"`));
         assert.ok(environment.includes('TIMON_ORCH_URL'));
-        if (backend === 'codex') assert.ok(config.includes('env_vars = ["TIMON_API_TOKEN"]'));
+        if (backend === 'codex') assert.ok(config.includes('env_vars = ["TIMON_API_TOKEN", '));
       }
     });
   }

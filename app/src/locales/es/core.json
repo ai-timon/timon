@@ -2962,6 +2962,7 @@
     "save": "Guardar",
     "cancel": "Cancelar",
     "editor": "Editar esta inyección",
+    "freshConversation": "El agente empezará una conversación nueva en su próxima misión: la anterior aún contenía esta regla ({agents}).",
     "skillMode": {
       "include": "catálogo",
       "import": "importada"
@@ -3576,7 +3577,7 @@
     "reorder": "Arrastra para reordenar este proveedor",
     "claudeToken": {
       "title": "Token de larga duración de Claude",
-      "hint": "Opcional. Ejecuta `claude setup-token` en un terminal y pega aquí el token: todas las misiones de Claude lo usarán en lugar del inicio de sesión propio de la CLI. En macOS permite que Timon siga funcionando sin ninguna sesión abierta; ejecuta después `timon service install` para cambiar el servicio. El token se guarda cifrado y no se vuelve a mostrar.",
+      "hint": "Opcional. Ejecuta `claude setup-token` en un terminal y pega aquí el token: todas las misiones de Claude lo usarán en lugar del inicio de sesión propio de la CLI. En macOS, las misiones de Claude lo necesitan cuando Timon sigue funcionando con la sesión cerrada ({settingsPath}). El token se guarda cifrado y no se vuelve a mostrar.",
       "none": "Sin definir",
       "set": "Definido",
       "unreadable": "Definido, pero ilegible: pégalo de nuevo",

@@ -12,7 +12,7 @@ import * as d3 from 'd3';
 import { graphNodeFace, type GraphFace } from '@/lib/graph-face';
 import type { AgentLook } from '@/components/mascot/agent-look';
 import { LiveAgentMascot } from '@/components/mascot/live-agent-mascot';
-import { resolveRole, roleIconSvg } from '@/lib/roles';
+import { appendRoleSvg, resolveRole, roleIconSvg } from '@/lib/roles';
 import { ListTodo, ListTree, Maximize2, MessageSquare, Plus, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -1088,7 +1088,7 @@ export function AgentsClient() {
             .attr('stroke-width', 2.5)
             .attr('stroke-linecap', 'round')
             .attr('stroke-linejoin', 'round')
-            .html((d) => roleIconSvg(d.kind));
+            .each(function (d) { appendRoleSvg(this, roleIconSvg(d.kind)); });
           // Non-role kinds → keep the legacy glyph (no lucide equivalent).
           g.filter((d) => !resolveRole(d.kind))
             .append('text')

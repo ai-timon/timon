@@ -8,12 +8,13 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { loadRequestScope, type RequestScopeRunner } from '../next-request-scope-test';
 
 const LOCAL = 'http://local-daemon.test';
 const SESSION = 'local-session-of-alice';
 
 let home = '';
-let storage!: { run<T>(store: unknown, fn: () => T): T };
+let storage!: RequestScopeRunner;
 const urls: string[] = [];
 const previousFetch = globalThis.fetch;
 
@@ -23,7 +24,7 @@ test.before(async () => {
   process.env.TIMON_HOME = home;
   process.env.ORCHESTRATOR_URL = LOCAL;
   (globalThis as unknown as { AsyncLocalStorage: unknown }).AsyncLocalStorage = AsyncLocalStorage;
-  ({ requestAsyncStorage: storage } = await import('next/dist/client/components/request-async-storage.external') as unknown as { requestAsyncStorage: typeof storage });
+  storage = await loadRequestScope();
   globalThis.fetch = async (input) => {
     const url = String(input);
     urls.push(url);

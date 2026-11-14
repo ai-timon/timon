@@ -3,15 +3,34 @@ title: Running in the background
 sidebar_position: 6
 ---
 
-Timon's daemon runs under your operating system's supervisor, not inside the desktop window. Closing the window does not stop it, and on every supported system it can keep working after you sign out: scheduled Kanban tasks, overnight series and running missions carry on without an open session. On macOS this needs one extra step, a long-lived Claude token.
+Timon's daemon runs under your operating system's supervisor, not inside the desktop window. Closing the window does not stop it. Whether it keeps working after you sign out is your choice: scheduled Kanban tasks, overnight series, routines and webhooks then carry on with nobody at the screen.
 
-What each system needs is described on its own page:
+## Choose whether Timon keeps running when you log out
 
-| System | What keeps Timon running without a session | Details |
-| --- | --- | --- |
-| Linux | A systemd user service with user lingering: it starts at boot and survives logout. | [Linux](linux.md) |
-| macOS | A launchd daemon, once a long-lived Claude token is set: it starts at boot and survives logout. Without a token, the service is a launchd agent that stops when you log out. | [macOS](macos.md#keep-timon-running-when-you-are-logged-out) |
-| Windows | The `TimonOrchestrator` scheduled task: it starts at boot and survives sign-out. After a restart, Timon waits for your first sign-in. | [Windows](windows.md) |
+Setup asks the question once, right after the welcome screen:
+
+- **Only while I'm logged in** (recommended): Timon stops when you log out and starts again when you log back in. Locking the screen keeps it running.
+- **Even when I'm logged out**: Timon keeps running with no session open, as long as the computer is on.
+
+Nothing is preselected. To change your answer later, open **Settings › System › Installation**: the **When you log out** row says what the service does now and offers the button that switches it. From a terminal:
+
+```bash
+timon service session-mode           # shows your answer and what the service does
+timon service session-mode session   # stop with your session
+timon service session-mode always    # keep running when logged out
+```
+
+What each answer means on each system:
+
+| System | Only while I'm logged in | Even when I'm logged out | Details |
+| --- | --- | --- | --- |
+| Linux | A systemd user service, without user lingering: it stops when your last session ends. | The same service with user lingering (`loginctl enable-linger`): it starts at boot and survives logout. | [Linux](linux.md) |
+| macOS | A launchd agent: it stops when you log out. | A launchd daemon: it starts at boot and survives logout. macOS asks for an administrator password, and Claude missions need a long-lived Claude token. | [macOS](macos.md#keep-timon-running-when-you-are-logged-out) |
+| Windows | The `TimonOrchestrator` scheduled task, started when you sign in: Windows ends it when you sign out. | The same task, started at boot under your account: it survives sign-out. After a restart, Timon waits for your first sign-in. | [Windows](windows.md) |
+
+Choosing **Only while I'm logged in** on Linux turns user lingering off for your whole account if it was on, so your other user services also stop when you log out. Setup and Settings say so before you choose. On macOS and Windows, the switch reinstalls the service, and the system asks for permission; from the app, Timon shows the command to run in a terminal (`timon service install`).
+
+An installation made before this question existed keeps the behaviour it had until you choose.
 
 Check the service at any time with:
 
@@ -68,7 +87,7 @@ The check reads what systemd actually runs, including drop-ins. If systemd canno
 
 ## Sign out, do not just lock
 
-Locking the screen keeps your session open, so Timon keeps running whatever the installation. Signing out is the case covered above; on macOS without a Claude token, it stops Timon. Portable mode (Linux without systemd, or a daemon started by hand) is the exception: that daemon stops with the application, together with the programs of its running missions.
+Locking the screen keeps your session open, so Timon keeps running whatever your answer. Signing out is what the question above decides. Portable mode (Linux without systemd, or a daemon started by hand) is the exception: that daemon stops with the application, together with the programs of its running missions.
 
 ## Sleep stops everything
 
@@ -84,11 +103,11 @@ Turning off only the display is fine: it does not stop Timon.
 
 ## After a restart
 
-On Linux, Timon starts at boot, before anyone signs in.
+On Linux with **Even when I'm logged out**, Timon starts at boot, before anyone signs in. Otherwise it waits for you to sign in.
 
-On Windows, Timon waits for your **first sign-in** after each restart, including restarts made by Windows Update during the night. After that sign-in you can sign out again and Timon keeps running. To keep a machine working through unattended restarts, enable automatic sign-in on it, or sign in after each restart.
+On Windows with **Even when I'm logged out**, Timon waits for your **first sign-in** after each restart, including restarts made by Windows Update during the night. After that sign-in you can sign out again and Timon keeps running. To keep a machine working through unattended restarts, enable automatic sign-in on it, or sign in after each restart. With **Only while I'm logged in**, Timon starts when you sign in and stops when you sign out.
 
-On macOS with a Claude token, Timon starts at boot, before anyone logs in. If FileVault is turned on, nothing starts until someone unlocks the disk at the login screen. Without a token, Timon waits for you to log in.
+On macOS with **Even when I'm logged out**, Timon starts at boot, before anyone logs in. If FileVault is turned on, nothing starts until someone unlocks the disk at the login screen. Otherwise Timon waits for you to log in.
 
 ## Limits while no session is open
 

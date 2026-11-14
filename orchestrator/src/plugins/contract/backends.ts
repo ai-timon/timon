@@ -32,6 +32,7 @@ export type PluginBackendCatalog = {
     sessionResumable: boolean;
     selfManagedPermissions?: boolean;
     permissionModeApplied?: boolean;
+    supportedPermissionModes?: string[];
     remote?: boolean;
     capabilities: BackendCapabilities;
     nativeCompact?: boolean;

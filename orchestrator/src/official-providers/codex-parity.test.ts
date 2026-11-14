@@ -188,5 +188,5 @@ test('the mission token never reaches config.toml', async () => {
   const toml = readFileSync(join(sp.env!.CODEX_HOME!, 'config.toml'), 'utf8');
   assert.equal(toml.includes('test-token-parity-token'), false, 'the token value');
   assert.equal(toml.includes('timon-seal-'), false, 'a reference left unresolved');
-  assert.match(toml, /env_vars = \["TIMON_API_TOKEN"\]/);
+  assert.match(toml, /env_vars = \["TIMON_API_TOKEN", "npm_config_cache"/);
 });

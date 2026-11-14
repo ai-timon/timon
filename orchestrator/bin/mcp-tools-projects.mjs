@@ -38,7 +38,7 @@ export const tools = [
   {
     name: 'memory_rule_rm',
     title: 'Delete a memory rule',
-    description: 'Deletes a memory rule by id (CLI `timon memory rule rm`); ids come from memory_rule_list.',
+    description: 'Deletes a memory rule by id (CLI `timon memory rule rm`); ids come from memory_rule_list. The agents the rule may have reached start a fresh conversation at their next mission (`fresh_conversation`).',
     inputSchema: { type: 'object', properties: { id: { type: ['string', 'number'] } }, required: ['id'] },
   },
   {
@@ -124,7 +124,12 @@ export const handlers = {
   },
   async memory_rule_rm(args, { call }) {
     const r = await call('DELETE', `/api/memory/rules/${enc(String(args.id))}`);
-    return { deleted: r.deleted ?? { id: args.id } };
+    const fresh = Array.isArray(r.fresh_conversation) ? r.fresh_conversation : [];
+    return {
+      deleted: r.deleted ?? { id: args.id },
+      fresh_conversation: fresh,
+      ...(fresh.length ? { note: 'The agent will start a fresh conversation at its next mission: its earlier session still held the rule.' } : {}),
+    };
   },
   async memory_search(args, { call }) {
     return await call('GET', `/api/memory/search?q=${enc(args.query)}`);

@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { loadRequestScope } from './next-request-scope-test';
 
 (globalThis as unknown as { AsyncLocalStorage: unknown }).AsyncLocalStorage = AsyncLocalStorage;
 
 /** The task attachment proxy: the file and the download flag cross, nothing else. */
 test('task attachments: the proxy forwards the file fields and the download flag only', async (ctx) => {
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const list = await import('../app/api/ui/tasks/[id]/attachments/route');
   const one = await import('../app/api/ui/tasks/[id]/attachments/[attachmentId]/route');
   const calls: { url: string; init: RequestInit }[] = [];
@@ -40,7 +41,7 @@ test('task attachments: the proxy forwards the file fields and the download flag
 
 /** The idea attachment proxy: same shape as the task one. */
 test('idea attachments: the proxy forwards the file fields and the download flag only', async (ctx) => {
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const list = await import('../app/api/ui/project-todo/[id]/attachments/route');
   const one = await import('../app/api/ui/project-todo/[id]/attachments/[attachmentId]/route');
   const calls: { url: string; init: RequestInit }[] = [];
@@ -72,7 +73,7 @@ test('idea attachments: the proxy forwards the file fields and the download flag
 });
 
 test('idea attachments: an anonymous call reaches the daemon with no credential, and its 401 comes back', async (ctx) => {
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const list = await import('../app/api/ui/project-todo/[id]/attachments/route');
   const one = await import('../app/api/ui/project-todo/[id]/attachments/[attachmentId]/route');
   const previous = process.env.TIMON_DAEMON_TOKEN;

@@ -88,16 +88,6 @@ export async function killMission(id: string): Promise<boolean> {
   return true;
 }
 
-export function orchestratorStreamUrl(): string {
-  const headers = orchestratorAuthHeaders();
-  const token = headers.Authorization?.replace(/^Bearer\s+/i, '');
-  const base = localTarget().url;
-  if (!token) return `${base}/api/stream`;
-  const url = new URL('/api/stream', base);
-  url.searchParams.set('token', token);
-  return url.toString();
-}
-
 /** Concatenate the final assistant text blocks from a mission's stream-json events. */
 export function extractAssistantText(events: MissionDetails['events']): string {
   const parts: string[] = [];

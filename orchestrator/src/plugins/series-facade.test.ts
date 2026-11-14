@@ -24,8 +24,8 @@ const { runPluginRequest } = await import('./als.js');
 const { dbApi } = await import('../db.js');
 const { hashPassword } = await import('../users/password.js');
 
-const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
-const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword('bob-secret'), isSuperadmin: false });
+const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
+const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword('bob-secret'), isSuperadmin: false });
 
 type Identity = Parameters<typeof runPluginRequest>[0];
 const identityOf = (user: { id: string; email: string; name: string }, isSuperadmin = false): Identity => ({

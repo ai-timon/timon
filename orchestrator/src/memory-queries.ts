@@ -5,6 +5,7 @@
  */
 import { dbApi, type DbViewer, type MemoryRuleRow } from './db.js';
 import { emitMemoryRuleEvent, type PluginMemoryActor } from './memory-rule-events.js';
+import { deleteMemoryRuleAndFence, reviseMemoryRule } from './memory-session-fence.js';
 import { listProjects } from './projects.js';
 import { settingNum } from './settings.js';
 import { scopedDb } from './users/scoped-db.js';
@@ -44,15 +45,41 @@ export function searchMemoryHits(rawQuery: string, onlySource?: string): MemoryS
   return { q, count: out.length, truncated: out.length >= settingNum('TIMON_MEMORY_SEARCH_CAP'), hits: out };
 }
 
-/** Deletes a rule and audits it; `undefined` when it does not exist. */
-export function deleteMemoryRule(id: number, actor: PluginMemoryActor = { kind: 'manual', id: null }): MemoryRuleRow | undefined {
-  const cur = dbApi.getRule(id);
-  if (!cur) return undefined;
-  dbApi.deleteRule(id);
+/**
+ * Deletes a rule, audits it, and fences the sessions of the agents it may have
+ * reached (`memory-session-fence.ts`): `freshConversation` names them, their
+ * next mission does not resume a session that still holds the rule.
+ * `undefined` when the rule does not exist.
+ */
+export function removeMemoryRule(
+  id: number,
+  actor: PluginMemoryActor = { kind: 'manual', id: null },
+): { rule: MemoryRuleRow; freshConversation: string[] } | undefined {
+  const removed = deleteMemoryRuleAndFence(id);
+  if (!removed) return undefined;
+  const cur = removed.rule;
   dbApi.logMemoryAudit({
     scope: cur.scope, project: cur.project, agent: cur.agent,
     action: 'manual_delete', ruleId: id, candidateText: cur.text,
   });
   emitMemoryRuleEvent('memory_rule_removed', cur, actor);
-  return cur;
+  return removed;
+}
+
+/** `removeMemoryRule` for the callers that only need the deleted row. */
+export function deleteMemoryRule(id: number, actor: PluginMemoryActor = { kind: 'manual', id: null }): MemoryRuleRow | undefined {
+  return removeMemoryRule(id, actor)?.rule;
+}
+
+/**
+ * Manual edit of a rule. An edit that takes something away from the agents
+ * (text, audience, deactivation) fences the agents the OLD rule reached, as a
+ * deletion does; `freshConversation` names them. `undefined` when the rule
+ * does not exist.
+ */
+export function editMemoryRule(
+  id: number,
+  patch: Parameters<typeof dbApi.updateRule>[1],
+): { rule: MemoryRuleRow; freshConversation: string[] } | undefined {
+  return reviseMemoryRule(id, patch);
 }

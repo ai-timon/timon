@@ -143,7 +143,7 @@ test('superadmin sees every surface; employee does not see kanban or settings', 
 });
 
 test('Administration role (not superadmin) sees settings via page:/settings', async () => {
-  const hash = hashPassword('boss-secret');
+  const hash = await hashPassword('boss-secret');
   const boss = createTestAccount(dbApi, {
     email: 'boss@example.com',
     name: 'Boss',

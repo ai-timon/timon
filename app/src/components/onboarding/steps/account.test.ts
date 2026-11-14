@@ -117,7 +117,7 @@ test('the form: one column, a disabled button until the address and a matching p
   assert.ok(!name?.labels?.[0]?.textContent?.includes('*'), 'the first name is optional');
   assert.ok(email?.labels?.[0]?.textContent?.includes('*'), 'the email is required');
   assert.match(w.doc.body.textContent ?? '', /So your agents call you by your first name\./);
-  assert.match(w.doc.body.textContent ?? '', /We only collect your email in case you want to reset your password\. The account you create stays local\./);
+  assert.match(w.doc.body.textContent ?? '', /Your email address and its codes go through our server, which emails them to you\. Anonymous usage statistics are shared by default/);
   assert.equal(w.submit().disabled, true);
 
   await w.fill(email!, 'ada@example.com');

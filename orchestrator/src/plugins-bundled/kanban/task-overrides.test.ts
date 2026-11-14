@@ -17,14 +17,15 @@ const OWNER = 'user-owner';
 const lowMission = 'mission-low';
 dbApi.createMission(lowMission, 'acme.low', 'orchestrate', undefined, OWNER);
 
-type Caller = { permissions: string[]; missionId?: string; superadmin?: boolean };
+/** `person`: a browser session, the only caller that may add tools to a task (decision of 08/11/2026). */
+type Caller = { permissions: string[]; missionId?: string; superadmin?: boolean; person?: boolean };
 
 async function call(method: string, path: string, caller: Caller, body: Record<string, unknown>): Promise<{ status: number; json: Record<string, unknown> }> {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     req.auth = {
-      kind: 'api-token', user: null, isSuperadmin: caller.superadmin === true, actorId: OWNER,
+      kind: caller.person ? 'session' : 'api-token', user: caller.person ? { id: OWNER, is_superadmin: caller.superadmin === true } : null, isSuperadmin: caller.superadmin === true, actorId: OWNER,
       // Every caller here may write the Kanban (TODO #752): what is judged is the override.
       permissions: ['kanban:write', ...caller.permissions], ...(caller.missionId ? { missionId: caller.missionId } : {}),
     } as never;
@@ -84,10 +85,10 @@ test('a codex sandbox name is stored as the mode every dialect understands', asy
   assert.equal(dbApi.getTask(id)?.permission_mode_override, 'plan');
 });
 
-/** A task created by a caller who MAY grant `overrides` (privileged-config, no mission). */
+/** A task created by a caller who MAY grant `overrides`: an operator, from the app. */
 async function privilegedTask(overrides: Record<string, unknown>): Promise<string> {
-  const r = await post(['agents:privileged-config'], undefined, overrides);
-  assert.equal(r.status, 201);
+  const r = await call('POST', '/api/tasks', { permissions: [], superadmin: true, person: true }, { title: 't', agent_name: 'acme.coder', ...overrides });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
   return (r.json.task as { id: string }).id;
 }
 
@@ -109,7 +110,7 @@ test('reassigning a task whose extra tools the new agent does not declare is ref
   const id = await privilegedTask({ extra_allowed_tools: ['Bash'], extra_mcp_servers: ['shell'] });
   const r = await call('PUT', `/api/tasks/${id}`, { permissions: [] }, { agent_name: 'acme.other' });
   assert.equal(r.status, 403);
-  assert.match(String(r.json.reason), /extra_allowed_tools widens the agent's tools: Bash/);
+  assert.match(String(r.json.reason), /already carries extras.*extra_allowed_tools adds Bash/);
   assert.equal(dbApi.getTask(id)?.agent_name, 'acme.coder');
 });
 
@@ -145,9 +146,9 @@ test('a task without overrides is reassigned freely', async () => {
   assert.equal(dbApi.getTask(id)?.agent_name, 'acme.other');
 });
 
-test('the superadmin reassigns a task whatever it carries', async () => {
+test('the superadmin reassigns a task whatever it carries, from the app', async () => {
   const id = await privilegedTask({ permission_mode_override: 'bypassPermissions', extra_allowed_tools: ['Bash'] });
-  const r = await call('PUT', `/api/tasks/${id}`, { permissions: [], superadmin: true }, { agent_name: 'acme.other' });
+  const r = await call('PUT', `/api/tasks/${id}`, { permissions: [], superadmin: true, person: true }, { agent_name: 'acme.other' });
   assert.equal(r.status, 200);
   assert.equal(dbApi.getTask(id)?.agent_name, 'acme.other');
 });

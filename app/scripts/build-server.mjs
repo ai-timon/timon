@@ -25,7 +25,7 @@
  */
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const appDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -48,6 +48,14 @@ function loadEsbuild() {
   if (!existsSync(tsxCli)) throw new Error(`tsx is not installed (${tsxCli}) — run npm install in app/`);
   return createRequire(tsxCli)('esbuild');
 }
+
+/**
+ * Traced, never loaded: Next's image optimizer requires sharp, but it is off
+ * (`images.unoptimized` in `next.config.mjs`), and sharp's libvips binaries
+ * are ~37 MB of native decoders. `next.config.mjs` keeps them out of Next's
+ * own trace; this keeps the entries' trace from bringing them back.
+ */
+const UNSHIPPED = ['sharp', '@img'].map((name) => join('node_modules', name) + sep);
 
 /** Where Node would find package `name` from `fromDir`, without leaving the app. */
 function packageDir(name, fromDir) {
@@ -107,6 +115,7 @@ async function completeStandalone(distDir, entries) {
   let added = 0;
   for (const file of fileList) {
     if (file.startsWith('..') || isAbsolute(file)) throw new Error(`${file} lies outside the app: a package could not ship it`);
+    if (UNSHIPPED.some((prefix) => file.startsWith(prefix))) continue;
     const to = join(standalone, file);
     if (existsSync(to)) continue;
     mkdirSync(dirname(to), { recursive: true });

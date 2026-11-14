@@ -67,6 +67,7 @@ const sidebars: SidebarsConfig = {
         "usage/antigravity",
         "usage/licence-api",
         "usage/multi-user",
+        "usage/mission-isolation",
         "usage/cli-reference"
       ]
     },

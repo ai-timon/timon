@@ -26,6 +26,12 @@
  * alone (until 30/10/2026, TODO #534) let one click cover every file and every
  * address: an "always" on the shell tool itself would be bypassPermissions by
  * another name, and so would an "always" on Write.
+ *
+ * A shell command that runs local files (`./run_tests.sh`, `npm test`) is
+ * bound to their state as well (`content_state`, `script-preview.ts`): the
+ * rule answers only while each file has the fingerprint it was approved with,
+ * or is still absent. A rewritten script brings the card back, with what it
+ * now holds.
  */
 import { createHash, randomUUID } from 'node:crypto';
 import { loadConfig } from './agent-config.js';
@@ -64,6 +70,11 @@ function shellCommand(input: unknown): string | null {
     : Array.isArray(raw) && raw.every((part) => typeof part === 'string') ? raw.join(' ') : null;
   const command = text?.trim() ?? '';
   return command && command.length <= MAX_COMMAND_CHARS ? command : null;
+}
+
+/** The command a shell tool would run, or null for any other tool. */
+export function shellCommandOfTool(toolName: string, input: unknown): string | null {
+  return SHELL_TOOLS.has(toolName.trim()) ? shellCommand(input) : null;
 }
 
 function filePath(input: unknown, field: string): string | null {
@@ -150,14 +161,20 @@ export function rememberableScopes(missionId: string, toolName: string, input: u
   return APPROVAL_SCOPES;
 }
 
-/** The remembered approval that answers this request, if any. */
-export function findApproval(missionId: string, toolName: string, input: unknown): ApprovalRuleRow | null {
+/**
+ * The remembered approval that answers this request, if any. `contentState`
+ * is the state of the local files the command runs (`ScriptPreviews.state`),
+ * null when it runs none: a rule answers only for the same one.
+ */
+export function findApproval(
+  missionId: string, toolName: string, input: unknown, contentState: string | null = null,
+): ApprovalRuleRow | null {
   const motif = approvalMotif(toolName, input);
   const key = missionKey(missionId);
   if (!motif || !key || deniedByAgent(key.agent, motif.tool_name)) return null;
   return dbApi.findApprovalRule({
     missionId, ownerUserId: key.owner, agent: key.agent,
-    toolName: motif.tool_name, commandHash: commandHash(motif.command),
+    toolName: motif.tool_name, commandHash: commandHash(motif.command), contentState,
   }) ?? null;
 }
 
@@ -167,17 +184,25 @@ export function rememberApproval(
   toolName: string,
   input: unknown,
   scope: ApprovalScope,
+  contentState: string | null = null,
 ): ApprovalRuleRow | null {
   const motif = approvalMotif(toolName, input);
   const key = missionKey(missionId);
   if (!motif || !key) return null;
-  const existing = dbApi.findApprovalRule({
+  const where = {
     missionId, ownerUserId: key.owner, agent: key.agent,
     toolName: motif.tool_name, commandHash: commandHash(motif.command),
-  });
+  };
+  const existing = dbApi.findApprovalRule({ ...where, contentState });
   // Already covered at least as widely: a second row would only be a duplicate
   // to revoke.
   if (existing && (existing.scope === 'always' || scope === 'session')) return existing;
+  // The same command approved for files that have changed since (or by a rule
+  // older than the binding): the click moves that rule to what it saw now.
+  if (contentState !== null) {
+    const stale = dbApi.findApprovalRuleAtScope({ ...where, scope });
+    if (stale) return dbApi.setApprovalRuleContentState(stale.id, contentState) ?? null;
+  }
   return dbApi.insertApprovalRule({
     id: randomUUID(),
     scope,
@@ -187,6 +212,7 @@ export function rememberApproval(
     tool_name: motif.tool_name,
     command: motif.command,
     command_hash: commandHash(motif.command),
+    content_state: contentState,
   });
 }
 

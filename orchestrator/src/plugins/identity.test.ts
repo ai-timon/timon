@@ -47,19 +47,19 @@ async function pluginFiber(root: Context) {
 const admin = createTestAccount(dbApi, {
   email: 'admin@example.com',
   name: 'Admin',
-  passwordHash: hashPassword('admin-secret'),
+  passwordHash: await hashPassword('admin-secret'),
   isSuperadmin: true,
 });
 const ada = createTestAccount(dbApi, {
   email: 'ada@example.com',
   name: 'Ada',
-  passwordHash: hashPassword('ada-secret'),
+  passwordHash: await hashPassword('ada-secret'),
   isSuperadmin: false,
 });
 const bob = createTestAccount(dbApi, {
   email: 'bob@example.com',
   name: 'Bob',
-  passwordHash: hashPassword('bob-secret'),
+  passwordHash: await hashPassword('bob-secret'),
   isSuperadmin: false,
 });
 

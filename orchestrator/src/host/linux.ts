@@ -18,6 +18,7 @@ import { guardEnabled, MISSION_SLICE, profileLimits } from '../resources.js';
 import { settingStr } from '../settings.js';
 import { spawnInNewSession, spawnInScope } from './detached.js';
 import { createGenericHost } from './generic.js';
+import { createLandlockFence } from './landlock.js';
 import {
   isolationArgsFor, resolveIsolation, sandboxSupported, SCOPE_SANDBOX_REASON,
   type IsolationTarget, type LauncherKind,
@@ -269,6 +270,9 @@ export function createLinuxHost(config: TimonConfig, pins?: BinaryPins): Host {
       },
     },
     containers: base.containers,
+    // The innermost layer of a mission launch, under the scope, nice and ionice
+    // above (`resources.ts`, `wrapMissionLaunch`); applied without systemd too.
+    fence: createLandlockFence(),
     // A unit of its own, or `restart` empties the cgroup and the shells with it.
     spawnDetached: (spec) => (hasSystemd() ? spawnInScope(spec) : spawnInNewSession(spec)),
     isolation: {

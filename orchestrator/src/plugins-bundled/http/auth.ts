@@ -31,6 +31,7 @@ import { isDeviceToken, lookupDevice } from '../../users/devices.js';
 import { rejectConversionRoute } from '../../users/conversion-mission.js';
 import { auditDeadDeviceUse, deviceTransportAllowed, noteDeviceUse, sendDeviceRequiresTls } from '../../users/devices-http.js';
 import { apiError } from '../../api-error.js';
+import { daemonHostPolicy, hostAllowed, type HostPolicy } from '../../http-host.js';
 
 export { DAEMON_TOKEN_FILE };
 
@@ -86,23 +87,6 @@ const PUBLIC_ENDPOINTS: readonly { method: string; path: RegExp }[] = [
 ];
 
 /**
- * The only routes where `?token=` is still read. A token in the query string
- * leaks into access logs, browser history, the `Referer` header and every
- * proxy on the way; `EventSource` is the one client that cannot set an
- * `Authorization` header, so the SSE streams — and nothing else — keep the
- * escape hatch. Exact patterns on purpose: a prefix would re-open the hole
- * for any future route mounted under it.
- */
-const SSE_QUERY_TOKEN_PATHS: readonly RegExp[] = [
-  /^\/api\/stream$/,
-  /^\/api\/missions\/[^/]+\/stream$/,
-];
-
-function acceptsQueryToken(req: Request): boolean {
-  return req.method === 'GET' && SSE_QUERY_TOKEN_PATHS.some((re) => re.test(req.path));
-}
-
-/**
  * Auth is required when set to `required`, or as soon as anyone
  * but this machine can reach the daemon. A loopback daemon is not enough: an
  * exposed WebUI (`app.listen.host`) or a TLS reverse proxy reaches it from
@@ -139,17 +123,19 @@ export function ensureDaemonToken(file: string = DAEMON_TOKEN_FILE): string {
   return token;
 }
 
-function extractToken(req: Request): { token: string; fromQuery: boolean } | undefined {
+/**
+ * The `Authorization` header is the only place a token is read. A token in
+ * the query string leaks into access logs, browser history, the `Referer`
+ * header and every proxy on the way, and the SSE streams used to keep that
+ * escape hatch for `EventSource`. No client needs it any more: the browser
+ * reaches the streams through the app's proxy (its session cookie is relayed
+ * as a header), and every other client sends a Bearer header.
+ */
+function extractToken(req: Request): string | undefined {
   const header = req.headers.authorization;
-  if (typeof header === 'string') {
-    const match = /^Bearer\s+(\S+)/i.exec(header);
-    if (match?.[1]) return { token: match[1], fromQuery: false };
-  }
-  if (acceptsQueryToken(req)) {
-    const q = req.query?.['token'];
-    if (typeof q === 'string' && q.length > 0) return { token: q, fromQuery: true };
-  }
-  return undefined;
+  if (typeof header !== 'string') return undefined;
+  const match = /^Bearer\s+(\S+)/i.exec(header);
+  return match?.[1] || undefined;
 }
 
 /**
@@ -157,17 +143,12 @@ function extractToken(req: Request): { token: string; fromQuery: boolean } | und
  * on every refusal: a device token that names a dead row must hear 401, not
  * fall through to a cookie or to the first-run hole.
  */
-function authenticateDevice(req: Request, res: Response, given: { token: string; fromQuery: boolean }): boolean {
-  // Its own lane: never from a query string, whatever the route.
-  if (given.fromQuery) {
-    res.status(401).json({ error: 'unauthorized' });
-    return false;
-  }
+function authenticateDevice(req: Request, res: Response, given: string): boolean {
   if (!deviceTransportAllowed(req)) {
     sendDeviceRequiresTls(res);
     return false;
   }
-  const found = lookupDevice(given.token);
+  const found = lookupDevice(given);
   if (found.kind !== 'live') {
     if (found.kind === 'dead') auditDeadDeviceUse(req, found.device);
     res.status(401).json(apiError('device_invalid', 'unauthorized'));
@@ -220,7 +201,9 @@ function isPublicPath(req: Request): boolean {
  * instead — never this daemon-token.
  *
  * `/api/health` and the endpoints of `PUBLIC_ENDPOINTS` stay public in
- * every case.
+ * every case — for a request whose `Host` the daemon's policy admits
+ * (`http-host.ts`): without a bearer credential, a loopback daemon answers
+ * 421 to any other name.
  */
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -254,7 +237,10 @@ export function isCrossSiteMutation(req: Request): boolean {
 export function createDaemonAuthMiddleware(opts: {
   token: string;
   required: boolean;
+  /** Tests inject it; the daemon reads its config at every request. */
+  hostPolicy?: () => HostPolicy;
 }): RequestHandler {
+  const hostPolicy = opts.hostPolicy ?? (() => daemonHostPolicy(config()));
   return (req: Request, res: Response, next: NextFunction): void => {
     // The remote MCP endpoint takes its own restricted token and nothing else
     // (`remote-mcp/auth.ts`): decided before any other credential is read.
@@ -262,16 +248,15 @@ export function createDaemonAuthMiddleware(opts: {
       if (authenticateRemoteMcp(req, res)) next();
       return;
     }
-    const extracted = extractToken(req);
-    const given = extracted?.token;
+    const given = extractToken(req);
     if (given !== undefined && tokensEqual(opts.token, given)) {
       const user = dbApi.getActiveSuperadmin() ?? null;
       req.auth = { kind: 'daemon-token', user, isSuperadmin: true };
       next();
       return;
     }
-    if (extracted !== undefined && isDeviceToken(extracted.token)) {
-      if (authenticateDevice(req, res, extracted)) next();
+    if (given !== undefined && isDeviceToken(given)) {
+      if (authenticateDevice(req, res, given)) next();
       return;
     }
     if (given !== undefined) {
@@ -301,6 +286,13 @@ export function createDaemonAuthMiddleware(opts: {
         res.status(401).json({ error: 'unauthorized' });
         return;
       }
+    }
+    // Past this point the caller holds no bearer credential: what it gets, it
+    // gets for reaching this address (first-run setup, public paths). A page
+    // that rebound its own domain onto the loopback must not be that caller.
+    if (!hostAllowed(req.headers.host, hostPolicy())) {
+      res.status(421).json({ error: 'misdirected request' });
+      return;
     }
     const raw = readCookie(
       typeof req.headers.cookie === 'string' ? req.headers.cookie : undefined,

@@ -25,7 +25,7 @@ const {
 } = await import('./tokens.js');
 
 const ada = createTestAccount(dbApi, {
-  email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false,
+  email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false,
 });
 
 function runningMission(agent = 'ada.agent'): string {

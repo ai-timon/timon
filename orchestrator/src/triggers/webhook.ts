@@ -48,6 +48,26 @@ export function unauthenticatedHookRefusal(req: Request, listensOnLoopback: bool
     return 'unauthenticated route refused while the daemon is declared behind a proxy (daemon.behindTlsProxy)';
   }
   if (!verdict.direct || !listensOnLoopback) return 'unauthenticated route called from outside loopback';
+  return browserPageRefusal(req);
+}
+
+/**
+ * A page open in a browser on this machine is a loopback peer with no proxy
+ * header, so the checks above take it for a local sender: any site could fire
+ * the trigger with a plain `fetch`, the slug being guessable. A script or
+ * `curl` sends no fetch metadata and no `Origin`; a browser does. Only the
+ * daemon's own origin passes: `same-site` is refused too, since another port
+ * of `localhost` is the same site and may serve anything.
+ */
+export function browserPageRefusal(req: Request): string | null {
+  const site = req.headers['sec-fetch-site'];
+  if (site !== undefined && site !== 'same-origin') return 'unauthenticated route called by a page of another origin (Sec-Fetch-Site)';
+  const origin = req.headers.origin;
+  if (origin === undefined) return null;
+  const host = typeof req.headers.host === 'string' ? req.headers.host.toLowerCase() : '';
+  let originHost = '';
+  try { originHost = typeof origin === 'string' && origin !== 'null' ? new URL(origin).host : ''; } catch { originHost = ''; }
+  if (!originHost || originHost !== host) return 'unauthenticated route called by a page of another origin (Origin)';
   return null;
 }
 

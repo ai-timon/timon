@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { loadRequestScope } from './next-request-scope-test';
 
 type Call = { url: string; init?: RequestInit };
 type Handlers = typeof import('../app/api/ui/providers/[...path]/route');
@@ -15,15 +16,15 @@ type Handlers = typeof import('../app/api/ui/providers/[...path]/route');
 async function withRoute(work: (handlers: Handlers, call: <T>(fn: () => Promise<T>, session?: string) => Promise<T>, calls: Call[]) => Promise<void>): Promise<void> {
   const oldAsync = Object.getOwnPropertyDescriptor(globalThis, 'AsyncLocalStorage');
   Object.defineProperty(globalThis, 'AsyncLocalStorage', { value: AsyncLocalStorage, configurable: true });
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestScope = await loadRequestScope();
   const handlers = await import('../app/api/ui/providers/[...path]/route');
   const previousFetch = globalThis.fetch;
   const oldToken = process.env.TIMON_DAEMON_TOKEN;
   process.env.TIMON_DAEMON_TOKEN = 'must-never-be-forwarded';
   const calls: Call[] = [];
   globalThis.fetch = async (url, init) => { calls.push({ url: String(url), init }); return Response.json({ providers: [] }); };
-  const call = <T,>(fn: () => Promise<T>, session?: string): Promise<T> => requestAsyncStorage.run(
-    { headers: new Headers(), cookies: { get: (name: string) => (name === 'timon_session' && session ? { value: session } : undefined) } } as never,
+  const call = <T,>(fn: () => Promise<T>, session?: string): Promise<T> => requestScope.run(
+    { headers: new Headers(), cookies: { get: (name: string) => (name === 'timon_session' && session ? { value: session } : undefined) } },
     fn,
   );
   try {

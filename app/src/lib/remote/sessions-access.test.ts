@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import test from 'node:test';
+import { loadRequestScope } from '../next-request-scope-test';
 
 const LOCAL = 'http://local-daemon.test';
 process.env.ORCHESTRATOR_URL = LOCAL;
@@ -14,7 +15,7 @@ process.env.ORCHESTRATOR_URL = LOCAL;
 type Me = { status: number; body: unknown };
 
 async function allowed(cookies: Record<string, string>, me: Me | 'down'): Promise<{ ok: boolean; urls: string[] }> {
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { localSuperadmin } = await import('./sessions-access');
   const previousFetch = globalThis.fetch;
   const urls: string[] = [];

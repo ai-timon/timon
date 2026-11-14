@@ -23,7 +23,15 @@ export type ServiceReport = {
   action: 'install' | 'repair' | null;
   actionHere: boolean;
   command: string;
+  /** Keeps running once the user logs out, read from the machine; `null` when unknown. Absent from an older daemon. */
+  offSession?: boolean | null;
+  /** The recorded answer to "keep running when logged out?", `null` when never asked. */
+  sessionMode?: ServiceSessionMode | null;
+  /** The answer can be changed on this OS (Linux, macOS, Windows). */
+  sessionModeSupported?: boolean;
 };
+
+export type ServiceSessionMode = 'session' | 'always';
 
 export type SystemInfo = {
   version: string;
@@ -75,4 +83,26 @@ export function diagnosticFileName(now: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return `timon-diagnostic-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
     + `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.txt`;
+}
+
+/**
+ * What the "When you log out" row of Settings › System shows.
+ * `choice`: the user can flip it, `keeps` read from the machine first and
+ * from the recorded answer when the machine could not tell; `pending` when
+ * the two disagree (macOS or Windows waiting for their reinstall, a Linux
+ * whose lingering was switched by hand). `hidden`: nothing registered, a
+ * system with no choice, or an older daemon.
+ */
+export type SessionModeView =
+  | { kind: 'hidden' }
+  | { kind: 'choice'; keeps: boolean; pending: boolean; next: ServiceSessionMode };
+
+export function sessionModeView(service: Pick<ServiceReport, 'installed' | 'supervisor' | 'offSession' | 'sessionMode' | 'sessionModeSupported'>): SessionModeView {
+  if (!service.installed || service.sessionModeSupported === undefined) return { kind: 'hidden' };
+  if (!service.sessionModeSupported) return { kind: 'hidden' };
+  const machine = service.offSession ?? null;
+  const chosen = service.sessionMode ?? null;
+  const keeps = machine ?? chosen === 'always';
+  const pending = machine !== null && chosen !== null && machine !== (chosen === 'always');
+  return { kind: 'choice', keeps, pending, next: keeps ? 'session' : 'always' };
 }

@@ -54,6 +54,10 @@ test("aucune chaîne du client n'atteint un argv", () => {
   );
   assert.throws(() => parseOnboardingAction({ action: 'run', command: 'rm -rf /' }));
   assert.throws(() => parseOnboardingAction({ action: 'install-binary' }));
+  // The answer to "keep running when logged out?" is one of two words, nothing else.
+  assert.deepEqual(parseOnboardingAction({ action: 'install-service', mode: 'always' }), { action: 'install-service', mode: 'always' });
+  assert.deepEqual(parseOnboardingAction({ action: 'install-service', mode: 'session' }), { action: 'install-service', mode: 'session' });
+  assert.throws(() => parseOnboardingAction({ action: 'install-service', mode: 'enable-linger root' }));
 
   // L'argv vient de la table, jamais de la requête.
   assert.deepEqual(installPlanFor('claude', APT)?.argv, ['npm', 'install', '-g', '@anthropic-ai/claude-code']);

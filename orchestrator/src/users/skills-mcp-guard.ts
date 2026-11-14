@@ -8,7 +8,9 @@
  *
  * Same polarity as `privileged-overrides.ts`: what cannot be proven safe is
  * refused. The operator (superadmin, daemon-token, verified developer-owner
- * mission) is exempt through `isPrivilegedCaller`.
+ * mission) is exempt through `isPrivilegedCaller`, except from one rule: an
+ * agent's token, whoever launched it, never adds a tool (a skill's
+ * `allowed-tools`) nor declares a stdio MCP server — a person does.
  */
 import type { Request, Response } from 'express';
 import { lstatSync, realpathSync } from 'node:fs';
@@ -25,7 +27,7 @@ import { FRONTMATTER_RE } from '../skill-registry.js';
 import { isSystemSkillId, SKILL_FRONTMATTER_RE } from '../skills.js';
 import { requestHasPermission } from './identity.js';
 import {
-  isPrivilegedCaller, overrideAuthority, PRIVILEGED_CONFIG_PERMISSION, rejectOverride,
+  isAgentToken, isPrivilegedCaller, overrideAuthority, PRIVILEGED_CONFIG_PERMISSION, rejectOverride,
 } from './privileged-overrides.js';
 
 export { conversionMissionOf, isMissionToken, type ConversionMission } from './conversion-mission.js';
@@ -144,6 +146,14 @@ export function skillWriteRefusal(
   req: Request,
   target: { path: string; content?: string; byPath?: boolean },
 ): string | null {
+  // A skill's `allowed-tools` lands in the `--allowedTools` of every agent it
+  // is attached to: adding a tool to an agent needs a person (decision of
+  // 08/11/2026), so an agent's token never writes one, whatever it holds.
+  if (isAgentToken(req) && target.content !== undefined && declaresAllowedTools(target.content)) {
+    return 'allowed-tools (or allowed_tools) in a skill pre-authorises tools for the agents it is attached to: '
+      + 'an agent\'s token cannot write one, whatever its account holds. Leave the key out, '
+      + 'or ask a person to add it from the Skills page of the app';
+  }
   // Before the operator's exemption: a conversion mission stays bounded whoever launched it.
   const conversion = conversionMissionOf(req);
   if (conversion) {
@@ -211,8 +221,9 @@ export function nonOperatorSkillRefusal(
  * `mcp:manage` is in the mission cap since 12/10/2026, bounded here (the cap
  * stays ∩ the launcher's grants — an employee without it is refused):
  *  - a server that does not speak plain `http` (stdio: a command on the host) is
- *    `agents:privileged-config` territory, the level at which an agent may
- *    already pre-authorise any tool for another one;
+ *    a person's to declare or change since the maintainer's decision of 08/11/2026,
+ *    whatever the mission holds (`hostCommandRefusal`); removing one stays
+ *    `agents:privileged-config` territory;
  *  - an `http` one is accepted when its URL is `http(s)` and its host RESOLVES
  *    to public addresses only, none of them this host's own: not the loopback
  *    (the daemon's own API), the LAN, a Tailscale network nor a link-local one
@@ -229,8 +240,9 @@ export function nonOperatorSkillRefusal(
  *    changes what agents already attached run or talk to. `created_by` is the
  *    stamp the create leaves.
  * Every refusal is a 403 with a `reason` telling what to do. Same polarity as
- * `privileged-overrides.ts`: what cannot be proven safe is refused. The
- * verified developer-owner mission (superadmin) and humans are untouched.
+ * `privileged-overrides.ts`: what cannot be proven safe is refused. Humans are
+ * untouched; the verified developer-owner mission (superadmin) is held only to
+ * the stdio rule.
  */
 export type McpWriteTarget = {
   id: string;
@@ -300,11 +312,31 @@ export function missionBoundToPublicUrls(req: Request): boolean {
 }
 
 /**
+ * Declaring or changing a server that runs a command on the host needs a
+ * person (the maintainer's decision of 08/11/2026), whatever an agent's token holds:
+ * `agents:privileged-config` and the developer-owner mission included. A
+ * mission steered by injected text would otherwise run the command of its
+ * choice at the next spawn of every agent the server is attached to. An http
+ * server stays under the rules below; removing a server grants nothing.
+ */
+function hostCommandRefusal(req: Request, target: McpWriteTarget): string | null {
+  if (!isAgentToken(req) || target.transport === undefined) return null;
+  const transport = target.transport as { type?: unknown } | null;
+  if (transport && typeof transport === 'object' && transport.type === 'http') return null;
+  const kind = transport && typeof transport === 'object' ? String(transport.type) : 'non-http';
+  return `a ${kind} MCP server runs a command on the host, outside the permission classifier: `
+    + 'an agent\'s token cannot declare or change one, whatever its account holds. '
+    + 'A person declares it from the MCP servers page of the app. An http server (a url) is accepted from a mission';
+}
+
+/**
  * Refusal reason for a write (`transport` given) or a delete (absent) of the
  * MCP server `target` by a mission token, or null (also for any other caller).
  */
 export async function mcpWriteRefusal(req: Request, target: McpWriteTarget): Promise<string | null> {
   const auth = req.auth;
+  const stdio = hostCommandRefusal(req, target);
+  if (stdio) return stdio;
   if (!auth || auth.isSuperadmin || !isMissionToken(req)) return null;
   const verb = target.transport === undefined ? 'remove' : 'declare or change';
   if (!requestHasPermission(req, 'mcp:manage')) {

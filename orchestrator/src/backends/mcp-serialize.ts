@@ -13,6 +13,7 @@
  */
 
 import { CODEX_MCP_APPROVAL_TOML } from './codex-mcp-approval.js';
+import { PACKAGE_CACHE_ENV_NAMES } from './package-cache-env.js';
 import type { AcpMcpServer } from './acp/wire.js';
 
 export type McpLaunchStdio = {
@@ -77,7 +78,10 @@ export type CodexMcpTomlOptions = {
   /**
    * The variables of codex's own environment to hand on to a stdio server (`env_vars`), by name: codex does
    * not let its MCP servers inherit its environment, so a server that needs the mission's token has to be
-   * told which variable to ask for. The NAME is written, never a value.
+   * told which variable to ask for. The NAME is written, never a value. Every stdio server also asks for
+   * the package cache variables (`PACKAGE_CACHE_ENV_NAMES`), which a fenced mission's CLI carries: an
+   * `npx -y` server cannot write the user's cache under the fence. codex skips a name its environment
+   * lacks (checked on codex 0.167), so an unfenced mission is unchanged.
    */
   readonly forward?: (server: McpLaunchServer) => readonly string[];
 };
@@ -90,7 +94,7 @@ export function serializeCodexMcpToml(servers: readonly McpLaunchServer[], optio
     if (s.type === 'stdio') {
       lines.push(`command = ${tomlString(s.command)}`);
       if (s.args.length) lines.push(`args = [${s.args.map(tomlString).join(', ')}]`);
-      const forwarded = options.forward?.(s) ?? [];
+      const forwarded = [...new Set([...(options.forward?.(s) ?? []), ...PACKAGE_CACHE_ENV_NAMES])];
       if (forwarded.length) lines.push(`env_vars = [${forwarded.map(tomlString).join(', ')}]`);
       lines.push(CODEX_MCP_APPROVAL_TOML);
       const envKeys = Object.keys(s.env);

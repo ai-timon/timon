@@ -21,7 +21,7 @@ const { readManifest, PLUGIN_API_VERSION } = await import('./manifest.js');
 const { createPluginContext, daemonHost, PluginPermissionError } = await import('./context.js');
 const { runPluginRequest, currentPluginUser } = await import('./als.js');
 const { dbApi } = await import('../db.js');
-const { hashPassword } = await import('../users/password.js');
+const { hashPasswordSync } = await import('../users/password.js');
 const { TimonConfigSchema } = await import('../config/schema.js');
 const { setConfig, resetConfig } = await import('../config/load.js');
 const { withTaskOrigin } = await import('../task-origin.js');
@@ -33,7 +33,7 @@ await mountOfficialProviders();
 
 const PLUGIN_ID = 'acme-sync';
 function member(name: string, withPlugin: boolean) {
-  const user = createTestAccount(dbApi, { email: `${name}@example.com`, name, passwordHash: hashPassword(`${name}-secret`), isSuperadmin: false });
+  const user = createTestAccount(dbApi, { email: `${name}@example.com`, name, passwordHash: hashPasswordSync(`${name}-secret`), isSuperadmin: false });
   if (withPlugin) {
     grantTestPermissions(dbApi, user.id, [`plugin:${PLUGIN_ID}`]);
   }

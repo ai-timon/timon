@@ -1,7 +1,9 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { hydrateCustomRoles } from '@/lib/roles';
+import { hydrateCustomRoles, loadLucideIconSet } from '@/lib/roles';
+
+type CustomRole = { id: string; label: string; color: string; builtin?: boolean; iconName?: string; iconSvg?: string };
 
 /**
  * Hydrates user-defined custom roles into the (sync) module cache of
@@ -23,13 +25,17 @@ export function RolesProvider({ children }: { children: ReactNode }) {
       .then((r) => (r.ok ? r.json() : { roles: [] }))
       .then((j) => {
         if (cancelled) return;
-        const custom = (j.roles || []).filter(
-          (r: { builtin?: boolean; iconSvg?: string }) => r.builtin === false && r.iconSvg,
-        );
-        if (custom.length) {
-          hydrateCustomRoles(custom);
+        const roles: CustomRole[] = j.roles || [];
+        const custom = roles.filter((r) => r.builtin === false && (r.iconSvg || r.iconName));
+        if (!custom.length) return;
+        // Draw the stored shapes now, then the real lucide icons once loaded.
+        hydrateCustomRoles(custom);
+        setVersion((v) => v + 1);
+        return loadLucideIconSet().then((icons) => {
+          if (cancelled) return;
+          hydrateCustomRoles(custom, icons);
           setVersion((v) => v + 1);
-        }
+        });
       })
       .catch(() => {});
     return () => {

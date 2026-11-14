@@ -8,6 +8,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { ModuleManifest } from '../../kernel/registry.js';
 import { registerDirectoryRoutes } from './directory-routes.js';
 import { registerIslandRoutes } from './island-routes.js';
+import { registerIsolationRoutes } from './isolation-routes.js';
 import { registerNavigateRoutes } from './navigate-routes.js';
 import { registerNavRoutes } from './nav-routes.js';
 import { registerOnboardingProfileRoutes } from './onboarding-profile-routes.js';
@@ -45,6 +46,8 @@ export function apply(ctx: Context): void {
   registerLayoutProposalRoutes(ctx.http.router());
   // The folders of this machine, for a picker that is not on it (TIM-0136).
   registerDirectoryRoutes(ctx.http.router());
+  // The mission fence's card in Settings › System › Security (GHSA-f58g).
+  registerIsolationRoutes(ctx.http.router());
 
   // The service does not hide the registry (all the code still imports it
   // directly): it serves as an ordering token, like `db`. A module that

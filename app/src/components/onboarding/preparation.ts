@@ -22,6 +22,8 @@ import { fetchCapabilities } from '@/lib/capabilities';
 import { apiErrorMessage } from '@/lib/api-error';
 import { handOverToService } from '@/lib/desktop';
 import { machineSessionStorage } from '@/lib/machines/machine-storage';
+import type { ServiceSessionMode } from '@/lib/system-info';
+import { readSessionChoice } from './service-session-choice';
 import {
   configureTarget, gateAction, phaseAfterInstall, preparationItems, servicePhaseFrom, setupAnswers,
   shouldInstallService, statusFailure,
@@ -33,7 +35,8 @@ import {
 export type PreparationApi = {
   firstRun: () => Promise<boolean | null>;
   doctor: () => Promise<SetupDoctor>;
-  onboarding: (action: 'service-status' | 'install-service') => Promise<ServiceStatusRead>;
+  /** `mode`: the answer of the background step, sent with `install-service` only. */
+  onboarding: (action: 'service-status' | 'install-service', mode?: ServiceSessionMode) => Promise<ServiceStatusRead>;
   browserAvailable: () => Promise<boolean>;
   existingInstance: () => Promise<boolean>;
   writeSetup: (endpoint: string, body: Record<string, unknown>) => Promise<{ ok: true } | { ok: false; message: string }>;
@@ -172,7 +175,8 @@ export function createPreparation(api: PreparationApi, storage: FailureStorage |
   async function install(): Promise<void> {
     set({ installing: true });
     try {
-      const answer = await api.onboarding('install-service');
+      // No answer (a tab opened past the background step): the daemon keeps the session default.
+      const answer = await api.onboarding('install-service', readSessionChoice(storage) ?? undefined);
       if (answer.kind !== 'answer') {
         const failure = statusFailure(answer);
         keepFailure(storage, failure);
@@ -254,12 +258,12 @@ export function createPreparation(api: PreparationApi, storage: FailureStorage |
   };
 }
 
-async function postOnboarding(action: 'service-status' | 'install-service'): Promise<ServiceStatusRead> {
+export async function postOnboarding(action: 'service-status' | 'install-service', mode?: ServiceSessionMode): Promise<ServiceStatusRead> {
   try {
     const response = await fetch('/api/ui/onboarding', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify(mode ? { action, mode } : { action }),
     });
     if (response.status === 401) return { kind: 'unauthorized' };
     // The daemon closes its onboarding gestures once `timon.config.json` exists.

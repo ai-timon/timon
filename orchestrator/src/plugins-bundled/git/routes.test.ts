@@ -16,6 +16,10 @@ import express from 'express';
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-git-remote-routes-'));
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
+// No fence configured: the temporary folders the test remotes live in are no
+// place a mission writes. A fence leaves them writable, and the daemon's git
+// then refuses them as remotes (`git-neutral.test.ts`).
+writeFileSync(join(process.env.TIMON_HOME, 'timon.config.json'), JSON.stringify({ host: { isolation: { filesystem: 'off' } } }));
 
 const { createDaemonAuthMiddleware } = await import('../http/auth.js');
 const { registerRoutes } = await import('./routes.js');

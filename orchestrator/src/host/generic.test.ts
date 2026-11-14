@@ -7,7 +7,7 @@ import { test } from 'node:test';
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-host-test-'));
 
 const { TimonConfigSchema } = await import('../config/schema.js');
-const { createGenericHost } = await import('./generic.js');
+const { createGenericHost, unresolvedBinaryPath } = await import('./generic.js');
 
 const host = createGenericHost(TimonConfigSchema.parse({}));
 
@@ -174,4 +174,48 @@ test('generic (win32): an npm shim starts its script as a direct child, argument
   assert.deepEqual((JSON.parse(win.exec('acme-cli', ['x y']).stdout) as { args: string[] }).args, ['x y']);
   const asynchronous = await win.execAsync('acme-cli', ['x y']);
   assert.deepEqual((JSON.parse(asynchronous.stdout) as { args: string[] }).args, ['x y']);
+});
+
+// Windows looks for a bare name in the child's cwd BEFORE the PATH: a daemon
+// spawn whose cwd is a mission's worktree would start the `<name>.exe` planted
+// there.
+test('generic spawn (win32): a binary that does not resolve is never passed by its bare name', async () => {
+  const runtime = 'C:\\Program Files\\Timon\\Timon.exe';
+  const path = unresolvedBinaryPath('codex', 'win32', runtime);
+  assert.equal(path, 'C:\\Program Files\\Timon\\Timon.exe\\unresolved-binary\\codex');
+  const { win32 } = await import('node:path');
+  assert.ok(win32.isAbsolute(path));
+  assert.equal(unresolvedBinaryPath('sub\\codex.exe', 'win32', runtime), 'C:\\Program Files\\Timon\\Timon.exe\\unresolved-binary\\codex.exe');
+  assert.equal(unresolvedBinaryPath('C:\\tools\\x.exe', 'win32', runtime), 'C:\\tools\\x.exe', 'an absolute name is looked up nowhere');
+  assert.equal(unresolvedBinaryPath('C:x.exe', 'win32', runtime), 'C:\\Program Files\\Timon\\Timon.exe\\unresolved-binary\\x.exe');
+
+  const win = createGenericHost(TimonConfigSchema.parse({}), {
+    platform: 'win32', path: '', homeDir: '', env: {}, installedBinariesFile: join(tmpdir(), 'timon-absent.json'),
+  });
+  const child = win.spawn('timon-no-such-cli', [], { stdio: 'ignore', cwd: tmpdir() });
+  assert.equal(child.spawnfile, unresolvedBinaryPath('timon-no-such-cli', 'win32'));
+  const code = await new Promise<string | undefined>((resolve) => {
+    child.on('error', (err: NodeJS.ErrnoException) => resolve(err.code));
+    child.on('close', () => resolve(undefined));
+  });
+  assert.equal(code, 'ENOENT');
+});
+
+test('generic spawn: a binary planted in the cwd never runs in place of a missing one', { skip: process.platform === 'win32' }, async (t) => {
+  const { chmodSync, existsSync, rmSync, writeFileSync } = await import('node:fs');
+  const dir = mkdtempSync(join(tmpdir(), 'timon-planted-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const witness = join(dir, 'ran');
+  // A shell builtin: the child's PATH holds nothing else.
+  writeFileSync(join(dir, 'timon-no-such-cli'), `#!/bin/sh\n: > '${witness}'\n`);
+  chmodSync(join(dir, 'timon-no-such-cli'), 0o755);
+  // A relative PATH entry: the bare name would resolve in the cwd.
+  const posixHost = createGenericHost(TimonConfigSchema.parse({}), { path: '.', homeDir: '', env: {} });
+  const child = posixHost.spawn('timon-no-such-cli', [], { stdio: 'ignore', cwd: dir, env: { PATH: '.' } });
+  const code = await new Promise<string | undefined>((resolve) => {
+    child.on('error', (err: NodeJS.ErrnoException) => resolve(err.code));
+    child.on('close', () => resolve(undefined));
+  });
+  assert.equal(code, 'ENOENT');
+  assert.equal(existsSync(witness), false);
 });

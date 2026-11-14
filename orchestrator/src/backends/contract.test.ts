@@ -48,8 +48,9 @@ writeFileSync(join(process.env.CODEX_AUTH_DIR, 'auth.json'), JSON.stringify({ to
 process.env.GROK_AUTH_DIR = join(TMP_HOME, 'grok-auth');
 /* The copilot profile exists only when its CLI is on PATH (`requiredBinary`).
    A stand-in file is enough for the registry to list it, so its contract runs
-   on a machine without Copilot — nothing here ever executes it. */
-const FAKE_BIN = join(TMP_HOME, 'bin');
+   on a machine without Copilot — nothing here ever executes it. Beside the
+   Timon home, not in it: no binary is ever resolved from there. */
+const FAKE_BIN = `${TMP_HOME}-bin`;
 mkdirSync(FAKE_BIN, { recursive: true });
 writeFileSync(join(FAKE_BIN, 'copilot'), '', { mode: 0o755 });
 writeFileSync(join(FAKE_BIN, 'grok'), '', { mode: 0o755 });

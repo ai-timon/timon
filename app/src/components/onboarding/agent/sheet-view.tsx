@@ -5,7 +5,9 @@
  * role and project, engine, permissions, tools. The engine is the product's
  * model picker (`ModelPickerPanel`, the `model.picker` slot: favourites,
  * accounts and search included), the skills and MCP servers the daemon's own
- * lists: none of them is written here.
+ * lists: none of them is written here. A backend that honours only some
+ * permission modes (`supportedModes`) is offered only those, and a mode picked
+ * before the engine changed says it runs as plan.
  */
 import type { ReactElement } from 'react';
 import { AlertTriangle, FolderOpen, GitBranch, Plug } from 'lucide-react';
@@ -13,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { ModelPickerPanel } from '@/components/model-picker';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
+import { unsupportedModeRunsAs } from '@/lib/backends';
 import {
   DEV_ROLES, DEV_TABS, PERMISSION_MODES, toggled,
   type AgentDraft, type ModelChoice,
@@ -28,6 +31,8 @@ export type SheetViewProps = {
   skills: readonly CatalogItem[];
   mcp: readonly CatalogItem[];
   onPickFolder: () => void;
+  /** The only permission modes the picked engine honours; null = every mode. */
+  supportedModes?: readonly string[] | null;
 };
 
 function Radio({ on }: { on: boolean }): ReactElement {
@@ -39,8 +44,10 @@ function Radio({ on }: { on: boolean }): ReactElement {
   );
 }
 
-export function SheetView({ draft, update, shownModel, skills, mcp, onPickFolder }: SheetViewProps): ReactElement {
+export function SheetView({ draft, update, shownModel, skills, mcp, onPickFolder, supportedModes = null }: SheetViewProps): ReactElement {
   const tab = draft.tab;
+  const modes = supportedModes ? PERMISSION_MODES.filter((m) => supportedModes.includes(m)) : PERMISSION_MODES;
+  const runsAs = unsupportedModeRunsAs(supportedModes, draft.permission);
   return (
     <div data-sheet>
       <div role="tablist" className="mb-[18px] flex gap-[3px] rounded-[13px] bg-card p-1">
@@ -110,7 +117,7 @@ export function SheetView({ draft, update, shownModel, skills, mcp, onPickFolder
           <section>
             <SectionTitle>{t('onboarding.agent.sheet.permissions')}</SectionTitle>
             <div className="flex flex-col gap-[5px]" role="radiogroup" aria-label={t('onboarding.agent.sheet.permissions')}>
-              {PERMISSION_MODES.map((mode) => {
+              {modes.map((mode) => {
                 const on = draft.permission === mode;
                 return (
                   <button
@@ -136,6 +143,12 @@ export function SheetView({ draft, update, shownModel, skills, mcp, onPickFolder
               <p role="alert" data-bypass-warning className="mx-0.5 mt-2 flex items-center gap-1.5 text-xs text-amber-500">
                 <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
                 {t('onboarding.agent.sheet.bypassWarning')}
+              </p>
+            )}
+            {runsAs && (
+              <p role="note" data-permission-runs-as={runsAs} className="mx-0.5 mt-2 flex items-center gap-1.5 text-xs text-amber-500">
+                <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
+                {t('editPage.permissionModeRunsAsPlan', { mode: draft.permission })}
               </p>
             )}
           </section>

@@ -292,7 +292,11 @@ const legacy = {
   // (verified on Claude Code 2.1.310, 28/10/2026): `system/status` compacting,
   // `system/compact_boundary`, then a `result` with an empty text.
   session: { store: 'global', resumable: true, notFound: legacy.isSessionNotFoundError, setModel: legacy.setModel, compact: { command: '/compact' }, rewind: claudeRewind },
-  permission: { model: 'mcp-bridge' }, limits: { reporting: 'structured' }, mcp: { timon: true },
+  // Inside Timon's mission fence, Claude Code's own sandbox (bwrap, Seatbelt) cannot start: a
+  // `sandbox.enabled` from the user's or the project's settings is overridden for a fenced launch,
+  // and the fence confines the tools instead. Command-line settings rank above both.
+  permission: { model: 'mcp-bridge', nestedSandbox: { offArgs: ['--settings', '{"sandbox":{"enabled":false}}'] } },
+  limits: { reporting: 'structured' }, mcp: { timon: true },
   reasoning: { controls: ['levels', 'budget', 'toggle'] }, usage: { probe: legacy.accountUsage },
   // The binary and the sign-in folder: the manifest's entry, the one place they are written (`manifest.js`).
   declares: { binary: CLAUDE.binary,

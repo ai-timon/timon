@@ -1,0 +1,13 @@
+{
+  "chatSurface": {
+    "permission": "permissão",
+    "permissionToUse": "O agente pede permissão para usar {tool}",
+    "permissionState": {
+      "pending": "pendente",
+      "allowed": "permitido",
+      "denied": "negado",
+      "expired": "expirado",
+      "pasted": "colado"
+    }
+  }
+}

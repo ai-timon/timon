@@ -95,17 +95,17 @@ test('superadmin is `*` without reading grants; a demoted user is not', () => {
   );
 });
 
-test('rights come from the permission source; a deny still wins, a superadmin skips the evaluator', () => {
+test('rights come from the permission source; a deny still wins, a superadmin skips the evaluator', async () => {
   const rom = createTestAccount(dbApi, {
     email: 'robin@example.com',
     name: 'Robin',
-    passwordHash: hashPassword('secret-secret'),
+    passwordHash: await hashPassword('secret-secret'),
     isSuperadmin: true,
   });
   const ada = createTestAccount(dbApi, {
     email: 'ada@example.com',
     name: 'Ada',
-    passwordHash: hashPassword('employee-secret'),
+    passwordHash: await hashPassword('employee-secret'),
   });
   // No source answers for Ada yet: nothing, refused by default.
   assert.deepEqual(dbApi.listPermissionsForUser(ada.id), []);

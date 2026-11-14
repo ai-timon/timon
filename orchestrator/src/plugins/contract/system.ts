@@ -106,21 +106,41 @@ export type DoctorReport = {
   docker: { present: boolean; usable: boolean; detail: string };
   display: string | null;
   /**
-   * Mission filesystem masking (audit finding #4): what the config asks for
-   * versus what the launcher actually emits. Reported because `host.isolation`
-   * is settable to `auto` while the current launcher — a systemd `--scope` —
-   * refuses every `Exec*` directive, so the policy is resolved and then
-   * emitted nowhere (`host/isolation.ts`, `docs/SECURITY.md` §9.1). A
-   * configurable key that silently buys nothing is the trap this line closes.
+   * Mission isolation: whether the kernel fences a mission launched now
+   * (`host/fence.ts`, `resources.ts` `hostFenceStatus`), and what a launch does
+   * when it cannot. `tampered` is apart from `unsupported` on purpose: the
+   * release ships a launcher that is gone, not executable, replaced or unable
+   * to run, a sign the package was altered.
+   *
+   * `launcher` and `maskedPaths` describe the older systemd masking (audit
+   * finding #4), which a `--scope` launcher never emits: they only matter
+   * while no fence applies.
    */
   missionIsolation: {
     /** `host.isolation.filesystem`, verbatim. */
-    configured: 'auto' | 'off';
-    /** `true` only when the masking directives actually reach the launcher. */
+    configured: 'auto' | 'enforce' | 'off';
+    /** The mechanism that fences a mission launched now; `none` when missions run unfenced. */
+    mechanism: 'landlock' | 'seatbelt' | 'none';
+    /** Landlock ABI of the kernel, 0 when unknown, absent or not Landlock. */
+    abi: number;
+    /** `true` only when a mission launched now runs inside the fence. */
     enforced: boolean;
+    state: 'ready' | 'unsupported' | 'tampered' | 'off';
+    /** What a mission launch does today: `unfenced` warns, `refused` is `enforce` without a fence. */
+    launch: 'fenced' | 'unfenced' | 'refused';
+    /** Why missions are not fenced, in English; null when they are. */
+    reason: string | null;
+    /** The diagnostic line, in English: what holds and, when nothing does, what a mission can reach. */
+    message: string;
+    /** What the fence leaves open on this machine and configuration, one English line each; empty when unfenced. */
+    gaps: string[];
+    /** `host.isolation.unixSockets`, the default every exception departs from. */
+    unixSockets: 'deny' | 'allow';
+    /** Agents and projects with a fence exception (`host.isolation.exceptions`). */
+    exceptions: { agents: string[]; projects: string[] };
     /** Unit kind missions are wrapped in; `null` when the host declares none. */
     launcher: string | null;
-    /** Paths the policy would mask. Non-zero with `enforced: false` = inert. */
+    /** Paths the systemd masking policy would hide. Non-zero and unfenced = inert. */
     maskedPaths: number;
   };
   /**

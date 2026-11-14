@@ -22,6 +22,7 @@ import { PreparationCard } from '../preparation-card';
 import { ServiceGate, type OnboardingGate } from '../service-gate';
 import { AccountStep } from './account';
 import { AgentStep } from './agent';
+import { BackgroundStep } from './background';
 import { LlmStep } from './llm';
 import { MascotStep } from './mascot';
 import { ProfileStep } from './profile';
@@ -38,6 +39,7 @@ export type OnboardingStepEntry = {
 
 export const ONBOARDING_STEPS: readonly OnboardingStepEntry[] = [
   { id: 'splash', Component: SplashStep },
+  { id: 'background', Component: BackgroundStep },
   { id: 'account', Component: AccountStep },
   { id: 'llm', Component: LlmStep },
   { id: 'profile', Component: ProfileStep },

@@ -7,7 +7,7 @@ import { clipboardShortcut, mouseButton, type ClipboardKind, type RemoteInput } 
 import { t } from '@/lib/i18n';
 
 export function BrowserRemoteSurface({ surface, video, overlay, controlled, blocked, running, viewport, screenshot, useScreenshot, dragTouch, sendInput, children, onClipboard }: {
-  surface: RefObject<HTMLDivElement>; video: RefObject<HTMLVideoElement>; overlay: boolean; controlled: boolean; blocked: boolean; running: boolean;
+  surface: RefObject<HTMLDivElement | null>; video: RefObject<HTMLVideoElement | null>; overlay: boolean; controlled: boolean; blocked: boolean; running: boolean;
   viewport: { width: number; height: number }; screenshot: BrowserShot | null; useScreenshot: boolean; dragTouch: boolean;
   sendInput: (input: RemoteInput) => void; children: ReactNode;
   /** Raised by the DOM copy/cut/paste events. A paste carries the clipboard text, read without any permission prompt. */

@@ -1399,6 +1399,7 @@
       },
       "system": {
         "installation": "Installation",
+        "security": "Sécurité",
         "backup": "Sauvegardes et corbeille",
         "diagnostics": "Diagnostic",
         "desktop": "Application desktop",
@@ -1464,6 +1465,7 @@
       },
       "system": {
         "installation": "version à propos installation service daemon tâche launchagent systemd chemin données dossier journal log port export import sauvegarde mise à jour",
+        "security": "sécurité isolation clôture bac à sable confinement landlock seatbelt mission sockets unix docker ssh agent exception imposer",
         "backup": "sauvegarde sauvegardes archive nuit restaurer garder rétention jours corbeille agent supprimé récupérer annuler purger backup trash",
         "diagnostics": "journaux logs débogage divers infra dépannage",
         "desktop": "désinstaller supprimer retirer electron application",
@@ -2311,7 +2313,8 @@
     "permissionsSelfBadge": "Gère ses permissions lui-même",
     "permissionsSelfBadgeHint": "Cet agent décide seul de ses tool uses : c'est le bac à sable de sa propre configuration qui s'applique, et TIMON n'affiche aucune carte Allow/Deny pour lui.",
     "permissionModeLabel": "Mode de permission",
-    "permissionModeIgnored": "Ce mode est ignoré : le backend applique sa propre configuration de permissions. Pour opencode, modifiez la clé permission de son fichier opencode.json."
+    "permissionModeIgnored": "Ce mode est ignoré : le backend applique sa propre configuration de permissions. Pour opencode, modifiez la clé permission de son fichier opencode.json.",
+    "permissionModeRunsAsPlan": "Ce backend ne sait pas exécuter {mode} : l'agent tourne en plan (lecture seule). Choisissez l'un des modes qu'il prend en charge."
   },
   "route": {
     "unknown": "Aucune page n'est enregistrée pour {path}.",
@@ -2760,6 +2763,7 @@
     "save": "Enregistrer",
     "cancel": "Annuler",
     "editor": "Modifier cette injection",
+    "freshConversation": "L’agent repartira d’une nouvelle conversation à sa prochaine mission : l’ancienne contenait encore cette règle ({agents}).",
     "skillMode": { "include": "catalogue", "import": "importé" },
     "skillVia": {
       "global": "tous les agents",
@@ -2868,6 +2872,17 @@
     "windowsRevision": "Révision de la tâche",
     "windowsRevisionValue": "{revision} (actuelle : {expected})",
     "windowsUnmarked": "Son lanceur n'a pas le marqueur d'installation packagée.",
+    "loggedOut": "Session fermée",
+    "loggedOutKeeps": "Timon continue : routines, tâches de nuit et webhooks tournent sans personne devant l’écran",
+    "loggedOutStops": "Timon s’arrête avec votre session et redémarre à la suivante",
+    "loggedOutPending": "Votre choix n’est pas encore appliqué.",
+    "keepRunning": "Continuer session fermée",
+    "stopAtLogout": "Arrêter à la fermeture de session",
+    "sessionModeSaved": "Enregistré.",
+    "sessionModeSavedLinger": "Enregistré. Le lingering est désactivé pour votre compte : vos autres services utilisateur s’arrêtent aussi à la fermeture de session.",
+    "stopAtLogoutLinger": "Désactive le lingering de votre compte : vos autres services utilisateur s’arrêtent aussi à la fermeture de session.",
+    "sessionModeTerminal": "Enregistré. Pour l’appliquer, lancez ceci dans un terminal :",
+    "sessionModeFailed": "Le changement n’a pas pu être appliqué.",
     "installWhy": "Avec le service, Timon continue de tourner application fermée et démarre avec l'ordinateur.",
     "repairWhy": "Réinstaller réécrit le service avec la définition de cette version. Vos données ne sont pas touchées.",
     "installService": "Installer le service",
@@ -3377,7 +3392,7 @@
     "reorder": "Glisser pour déplacer ce fournisseur",
     "claudeToken": {
       "title": "Jeton Claude longue durée",
-      "hint": "Facultatif. Lancez `claude setup-token` dans un terminal et collez le jeton ici : chaque mission Claude l'utilise alors à la place de la connexion du CLI. Sous macOS, il permet à Timon de tourner sans session ouverte ; lancez ensuite `timon service install` pour basculer le service. Le jeton est stocké chiffré et n'est plus jamais affiché.",
+      "hint": "Facultatif. Lancez `claude setup-token` dans un terminal et collez le jeton ici : chaque mission Claude l'utilise alors à la place de la connexion du CLI. Sous macOS, les missions Claude en ont besoin quand Timon continue session fermée ({settingsPath}). Le jeton est stocké chiffré et n'est plus jamais affiché.",
       "none": "Non défini",
       "set": "Défini",
       "unreadable": "Défini mais illisible — collez-le de nouveau",
@@ -4322,6 +4337,96 @@
         "diskFull": "Pas assez d'espace disque pour télécharger l'installeur.",
         "filesystem": "L'installeur n'a pas pu être enregistré dans le dossier de données de Timon."
       }
+    }
+  },
+  "missionIsolation": {
+    "section": "Isolation des missions",
+    "forbidden": "Seul le superadmin, connecté à l'application, peut voir et modifier l'isolation des missions.",
+    "loadError": "L'isolation des missions n'a pas pu être chargée. Vérifiez que Timon tourne, puis rechargez la page.",
+    "saved": "Isolation des missions mise à jour",
+    "exposed": "Les missions peuvent lire les fichiers privés de Timon.",
+    "gapCount": "{count, plural, one {# ouverture} other {# ouvertures}}",
+    "showDetails": "Détails",
+    "hideDetails": "Masquer",
+    "status": {
+      "title": "Protection"
+    },
+    "tone": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "off": "Désactivée",
+      "altered": "Altérée",
+      "refusing": "Missions refusées"
+    },
+    "summary": {
+      "landlock": "Les missions tournent dans une clôture Landlock (ABI noyau {abi}).",
+      "seatbelt": "Les missions tournent dans une clôture Seatbelt.",
+      "off": "Désactivée.",
+      "unfenced": "Aucune clôture sur cette machine : {reason}."
+    },
+    "mode": {
+      "title": "Mode",
+      "auto": "Automatique",
+      "enforce": "Obligatoire",
+      "off": "Désactivé",
+      "autoHint": "Clôturer les missions là où cette machine le peut, avertir ailleurs.",
+      "enforceHint": "Refuser de lancer une mission que cette machine ne peut pas clôturer.",
+      "offHint": "Ne jamais clôturer les missions."
+    },
+    "sockets": {
+      "title": "Sockets Unix",
+      "denied": "Bloquées : Docker, ssh-agent et D-Bus sont hors de portée d'une mission.",
+      "allowed": "Autorisées pour toutes les missions : Docker, ssh-agent et D-Bus agissent hors de la clôture."
+    },
+    "exceptions": {
+      "title": "Exceptions",
+      "manage": "Gérer",
+      "none": "Aucune",
+      "count": "{agents, plural, one {# agent} other {# agents}}, {projects, plural, one {# projet} other {# projets}}",
+      "saved": "Exceptions enregistrées"
+    },
+    "confirmOff": {
+      "title": "Désactiver l'isolation des missions ?",
+      "description": "Les missions pourront lire les fichiers privés de Timon, dont le jeton d'opérateur et la clé du coffre.",
+      "confirm": "Désactiver"
+    },
+    "confirmSockets": {
+      "title": "Autoriser les sockets Unix pour toutes les missions ?",
+      "description": "Une mission pourrait joindre Docker, ssh-agent et le bus de session, qui exécutent des commandes hors de la clôture. Une exception pour un agent ou un projet est plus étroite.",
+      "confirm": "Autoriser"
+    },
+    "dialog": {
+      "title": "Exceptions d'isolation",
+      "description": "Un agent ou un projet peut ouvrir des sockets Unix ou écrire dans d'autres dossiers de votre home. L'exception de l'agent l'emporte sur celle de son projet.",
+      "empty": "Aucune exception : toutes les missions ont la même clôture.",
+      "kind": {
+        "agent": "Agent",
+        "project": "Projet"
+      },
+      "nameLabel": {
+        "agent": "Nom de l'agent",
+        "project": "Slug du projet"
+      },
+      "namePlaceholder": {
+        "agent": "nom de l'agent",
+        "project": "slug du projet"
+      },
+      "sockets": "Sockets Unix autorisées",
+      "writable": "Chemins inscriptibles en plus, un par ligne",
+      "remove": "Supprimer l'exception {name}",
+      "addAgent": "Agent",
+      "addProject": "Projet",
+      "badName": "« {name} » n'est pas un nom d'agent ou un slug de projet valide.",
+      "duplicate": "« {name} » a deux exceptions.",
+      "cancel": "Annuler",
+      "save": "Enregistrer"
+    },
+    "errors": {
+      "unauthenticated": "Reconnectez-vous pour modifier l'isolation des missions.",
+      "forbidden": "Seul le superadmin peut modifier l'isolation des missions.",
+      "invalid": "Refusé : {detail}",
+      "configUnreadable": "timon.config.json est illisible : corrigez-le avant de modifier l'isolation.",
+      "generic": "L'isolation des missions n'a pas pu être enregistrée (erreur {status})."
     }
   }
 }

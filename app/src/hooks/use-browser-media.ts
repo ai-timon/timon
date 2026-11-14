@@ -21,7 +21,7 @@ function eventUntil(target: EventTarget, event: string, ready: () => boolean, si
 }
 
 /** A remote profile remains the same across WebRTC/HTTPS transport negotiation. */
-export function useBrowserMedia(videoRef: RefObject<HTMLVideoElement>, enabled: boolean, profileId: string | null, tabId: string | null, audio: boolean, command: BrowserCommand, revision: number | string) {
+export function useBrowserMedia(videoRef: RefObject<HTMLVideoElement | null>, enabled: boolean, profileId: string | null, tabId: string | null, audio: boolean, command: BrowserCommand, revision: number | string) {
   const [state, setState] = useState<BrowserMediaState>(initial);
   const closedSession = useRef(Promise.resolve());
   useEffect(() => {

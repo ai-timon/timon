@@ -13,7 +13,7 @@
     "account": {
       "title": "Maak je lokale account aan",
       "subtitle": "Hiermee meld je je aan bij Timon. Jij bent de beheerder.",
-      "privacy": "We verzamelen alleen je e-mailadres voor het geval je je wachtwoord wilt resetten. Het account dat je aanmaakt blijft lokaal."
+      "privacy": "Je account en wachtwoord blijven op deze computer. Je e-mailadres en de codes ervoor gaan via onze server, die ze je mailt. Anonieme gebruiksstatistieken worden standaard gedeeld; je kunt ze uitzetten in Instellingen."
     },
     "llm": {
       "title": "Kies\nje LLM.",

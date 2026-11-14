@@ -19,15 +19,16 @@ The daemon writes its log to `~/.timon/tmp/daemon-<date>.log`, one file per day;
 
 ## Keep Timon running when you are logged out
 
-By default the service is a launchd **agent**: it keeps running while the screen is locked, but it stops when you log out, and after a restart it waits for you to log in.
+Setup asks whether Timon keeps running when you log out ([Running in the background](background.md#choose-whether-timon-keeps-running-when-you-log-out)). With **Only while I'm logged in**, the service is a launchd **agent**: it keeps running while the screen is locked, stops when you log out, and after a restart waits for you to log in.
 
-To keep it running with no session open, Timon needs a long-lived Claude token. On macOS, `claude` keeps its sign-in in your login keychain, which background services cannot read, even while you are logged in.
+With **Even when I'm logged out**, macOS asks once for an administrator password and the service becomes a launchd **daemon** that starts at boot and keeps running after you log out. To switch later, choose the button of **Settings › System › Installation**, then run the command it shows, or run `timon service session-mode always` (or `session`) in a terminal.
+
+Claude missions in a launchd daemon need a long-lived Claude token: `claude` keeps its sign-in in your login keychain, which background services cannot read, even while you are logged in.
 
 1. In a terminal, run `claude setup-token` and copy the token it prints.
 2. Store it in Timon, either in **Settings → AI models → Providers → Claude**, row **Long-lived token** under **Settings**, then **Set**, or with `timon auth claude-token set` (paste the token when asked).
-3. Run `timon service install`. macOS asks once for an administrator password: the service becomes a launchd **daemon** that starts at boot and keeps running after you log out.
 
-Every Claude mission then uses this token. Without a token nothing changes: the service stays a launchd agent. Removing the token (`timon auth claude-token clear`) and running `timon service install` again brings back the agent.
+Every Claude mission then uses this token. An installation made before setup asked the question still follows the token: with a token, `timon service install` installs the daemon; without one, the agent.
 
 Limits of a service running with no session open:
 
@@ -63,7 +64,7 @@ timon service status
 timon doctor
 ```
 
-The launchd label is `com.timon.daemon`; its plist lives in `~/Library/LaunchAgents/`, or in `/Library/LaunchDaemons/` once a Claude token is set (see [above](#keep-timon-running-when-you-are-logged-out)). `timon service status` says which one is installed. Use an explicit backend binary path when launchd cannot find a tool that works in your shell.
+The launchd label is `com.timon.daemon`; its plist lives in `~/Library/LaunchAgents/`, or in `/Library/LaunchDaemons/` when Timon keeps running logged out (see [above](#keep-timon-running-when-you-are-logged-out)). `timon service status` says which one is installed. Use an explicit backend binary path when launchd cannot find a tool that works in your shell.
 
 Open the configured web-app address (for the configuration example, `http://127.0.0.1:3100`) and complete [First run](first-run.md).
 

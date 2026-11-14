@@ -217,16 +217,26 @@ test('pipelines: a run takes the override guard of a task created by hand, befor
     name: 'escalation-flow',
     definition: { steps: [
       { id: 'plain', agent: 'witness', prompt: 'x' },
-      { id: 'escalate', agent: 'witness', prompt: 'x', permission_mode_override: 'bypassPermissions', extra_allowed_tools: ['Bash(*)'] },
+      { id: 'escalate', agent: 'witness', prompt: 'x', permission_mode_override: 'bypassPermissions' },
     ] },
   });
   assert.equal(created.status, 201);
+  // Extra tools on a step are refused to an agent's token when the pipeline is
+  // written, not only when it runs.
+  const before = listPipelines().length;
+  const widened = await call('POST', '/api/pipelines', 'writer', {
+    name: 'widening-flow',
+    definition: { steps: [{ id: 'tools', agent: 'witness', prompt: 'x', extra_allowed_tools: ['Bash(*)'] }] },
+  });
+  assert.equal(widened.status, 403);
+  assert.match(((await widened.json()) as { reason?: string }).reason ?? '', /step tools: extra_allowed_tools adds Bash\(\*\)/);
+  assert.equal(listPipelines().length, before);
   const id = ((await created.json()) as { pipeline: { id: string } }).pipeline.id;
   const runs = () => dbApi.listTasks().filter((t) => t.title.startsWith('escalation-flow ·')).length;
 
   // The same overrides on a task created by hand are refused to this caller.
   const byHand = await call('POST', '/api/tasks', 'writer', {
-    title: 'by hand', agent_name: 'witness', permission_mode_override: 'bypassPermissions', extra_allowed_tools: ['Bash(*)'],
+    title: 'by hand', agent_name: 'witness', permission_mode_override: 'bypassPermissions',
   });
   assert.equal(byHand.status, 403);
 

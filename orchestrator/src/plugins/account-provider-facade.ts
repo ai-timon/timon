@@ -16,7 +16,7 @@ import { DuplicateEmailError } from '../users/errors.js';
 import { assertAccountWrite, LicenseCapabilityError } from '../license/capabilities.js';
 import { licenseState } from '../license/runtime.js';
 import type { UserRow } from '../db.js';
-import { hashPassword } from '../users/password.js';
+import { hashPasswordSync } from '../users/password.js';
 import { setSession } from '../users/session-open.js';
 import { onAccountChange } from '../users/account-changes.js';
 import { claimAccountProvider, releaseAccountProvider } from '../users/account-provider-state.js';
@@ -111,7 +111,7 @@ export function createAccountProviderFacade(opts: {
       let user;
       try {
         user = dbApi.createUser({
-          email, name, passwordHash: hashPassword(input.password), status, isSuperadmin: false, source: 'provider',
+          email, name, passwordHash: hashPasswordSync(input.password), status, isSuperadmin: false, source: 'provider',
         });
       } catch (err) {
         if (err instanceof DuplicateEmailError) throw new AccountProviderError('duplicate', 'an account already uses this e-mail');
@@ -177,7 +177,7 @@ export function createAccountProviderFacade(opts: {
         dbApi.insertAuditLog({ userId: by, actor, action: 'user.rename', target, ip: null });
       }
       if (patch.password !== undefined) {
-        dbApi.setUserPassword(user.id, hashPassword(patch.password));
+        dbApi.setUserPassword(user.id, hashPasswordSync(patch.password));
         // A new password ends the sessions opened with the old one.
         dbApi.revokeUserAccess(user.id);
         dbApi.insertAuditLog({ userId: by, actor, action: 'user.set_password', target, ip: null });

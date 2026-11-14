@@ -1,0 +1,13 @@
+{
+  "chatSurface": {
+    "permission": "toestemming",
+    "permissionToUse": "De agent vraagt toestemming om {tool} te gebruiken",
+    "permissionState": {
+      "pending": "in afwachting",
+      "allowed": "toegestaan",
+      "denied": "geweigerd",
+      "expired": "verlopen",
+      "pasted": "geplakt"
+    }
+  }
+}

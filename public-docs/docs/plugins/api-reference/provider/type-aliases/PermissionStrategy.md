@@ -22,3 +22,15 @@
 ### model
 
 > `readonly` **model**: [`PermissionModel`](PermissionModel.md)
+
+***
+
+### nestedSandbox?
+
+> `readonly` `optional` **nestedSandbox?**: [`NestedSandboxDeclaration`](NestedSandboxDeclaration.md)
+
+***
+
+### supportedModes?
+
+> `readonly` `optional` **supportedModes?**: readonly [`PermissionMode`](PermissionMode.md)[]

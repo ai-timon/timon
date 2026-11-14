@@ -168,6 +168,10 @@ async function clickChatLink(url: string, href: string, init: MouseEventInit = {
     const React = await import('react');
     const { createRoot } = await import('react-dom/client');
     const { AppRouterContext } = await import('next/dist/shared/lib/app-router-context.shared-runtime');
+    // Plain Node resolves `next/link` to the implementation that reads this
+    // context (the build aliases the App Router's, which needs the bundler to
+    // load); Next 14 shipped one link that read either. Both carry the router.
+    const { RouterContext } = await import('next/dist/shared/lib/router-context.shared-runtime');
     const { ChatLink } = await import('@/components/chat/chat-link');
     // The tests compile JSX to `React.createElement`.
     const saved = new Map(['IS_REACT_ACT_ENVIRONMENT', 'React'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -181,7 +185,8 @@ async function clickChatLink(url: string, href: string, init: MouseEventInit = {
     try {
       await React.act(async () => {
         root.render(React.createElement(AppRouterContext.Provider, { value: router },
-          React.createElement(ChatLink, { href }, 'open')));
+          React.createElement(RouterContext.Provider, { value: router as never },
+            React.createElement(ChatLink, { href }, 'open'))));
       });
       const anchor = document.querySelector('a')!;
       assert.equal(anchor.getAttribute('href'), href, 'still a real link for a new tab or a drag');

@@ -92,8 +92,9 @@ const ORIGINAL = { version: 1, edition: 'expert', daemon: { listen: { port: 3999
 writeFileSync(CONFIG_FILE, `${JSON.stringify(ORIGINAL, null, 4)}\n`);
 
 const CMD = checkBackendBinaries()[0]!.cmd;
-const BIN_DIR = join(HOME, 'bin dir');
-mkdirSync(BIN_DIR);
+// Beside the Timon home, not in it: no binary is ever resolved from there.
+const BIN_DIR = join(`${HOME}-pins`, 'bin dir');
+mkdirSync(BIN_DIR, { recursive: true });
 const EXECUTABLE = join(BIN_DIR, CMD);
 writeFileSync(EXECUTABLE, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
 const NOT_EXECUTABLE = join(BIN_DIR, `${CMD}-plain`);

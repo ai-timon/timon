@@ -114,7 +114,7 @@ const dictationTypes = describeTypeExports(join(dirname(fileURLToPath(import.met
 const KIT_TYPE_NAMES: Record<'provider' | 'testing', readonly string[]> = {
   provider: ['Backend', 'ProviderAgentConfig', 'ProviderDefinition', 'LinesCodec', 'ProcessDriverCodec', 'RemoteDriverCodec',
     'SessionStrategy', 'PermissionStrategy', 'LimitsStrategy', 'McpStrategy', 'UsageStrategy', 'LifecycleStrategy',
-    'ProviderTransportKind', 'McpLaunchServer', 'McpLaunchStdio', 'McpLaunchHttp', 'RpcMessage', 'RpcId', 'RateLimitHit',
+    'ProviderTransportKind', 'NestedSandboxDeclaration', 'McpLaunchServer', 'McpLaunchStdio', 'McpLaunchHttp', 'RpcMessage', 'RpcId', 'RateLimitHit',
     'TokenUsage', 'SessionOpenArgs', 'SessionStdio', 'AccountUsage', 'UsageWindow', 'UsageProbeOptions', 'SpanOp', 'SpanState', 'OpenSpan',
     'AcpMcpServer', 'AcpRecord', 'AcpUsage', 'RefreshedToken', 'ProcessSessionArgs', 'LegacyLaunch', 'ProviderPluginContext',
     // `ProviderServices` and `ProviderRuntime` are frozen member by member under `members` (`provider.*`), not as

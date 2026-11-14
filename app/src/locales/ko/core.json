@@ -2962,6 +2962,7 @@
     "save": "저장",
     "cancel": "취소",
     "editor": "이 주입 편집",
+    "freshConversation": "에이전트는 다음 미션에서 새 대화를 시작합니다. 이전 대화에는 아직 이 규칙이 남아 있었습니다 ({agents}).",
     "skillMode": {
       "include": "카탈로그",
       "import": "가져옴"
@@ -3576,7 +3577,7 @@
     "reorder": "드래그해서 이 공급자 순서 바꾸기",
     "claudeToken": {
       "title": "Claude 장기 토큰",
-      "hint": "선택 사항. 터미널에서 `claude setup-token`을 실행하고 토큰을 여기에 붙여넣으세요: 이후 모든 Claude 미션이 CLI 자체 로그인 대신 이 토큰을 사용합니다. macOS에서는 세션을 열지 않아도 Timon이 계속 실행됩니다. 그런 다음 `timon service install`을 실행해 서비스를 전환하세요. 토큰은 암호화되어 저장되며 다시 표시되지 않습니다.",
+      "hint": "선택 사항. 터미널에서 `claude setup-token`을 실행하고 토큰을 여기에 붙여넣으세요: 이후 모든 Claude 미션이 CLI 자체 로그인 대신 이 토큰을 사용합니다. macOS에서 로그아웃 후에도 Timon이 계속 실행되면 Claude 미션에 이 토큰이 필요합니다({settingsPath}). 토큰은 암호화되어 저장되며 다시 표시되지 않습니다.",
       "none": "설정 안 됨",
       "set": "설정됨",
       "unreadable": "설정되었지만 읽을 수 없음 — 다시 붙여넣으세요",

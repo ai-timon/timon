@@ -54,3 +54,13 @@ test('over an accepted transport, a wrong master token is still refused', () => 
   assert.equal(authenticateMaster(request({ authorization: 'Bearer wrong' }))?.status, 401);
   assert.equal(authenticateMaster(request({ authorization: 'Bearer the-master' })), null);
 });
+
+test('the master token is compared whole: same length, other length and empty are all refused', () => {
+  process.env.TIMON_REMOTE_MASTER = 'the-master';
+  process.env.TIMON_ALLOW_HTTP = '1';
+  for (const value of ['the-masteR', 'xhe-master', 'the-master-and-more', 'the-maste']) {
+    assert.equal(authenticateMaster(request({ authorization: `Bearer ${value}` }))?.status, 401, JSON.stringify(value));
+  }
+  assert.equal(authenticateMaster(request({ authorization: 'Bearer ' }))?.status, 401, 'empty bearer');
+  assert.equal(authenticateMaster(request({ authorization: '' }))?.status, 401, 'empty header');
+});

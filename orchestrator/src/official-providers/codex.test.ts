@@ -16,6 +16,7 @@ const kit = await import('../../../packages/sdk/src/testing/index.js');
 const plugin = await import('../../official-providers/provider-codex/lib/index.js') as { apply(ctx: unknown): void };
 const { BUILTIN_DECLARATIONS } = await import('../backends/builtin-declarations.js');
 const { declarationProblems } = await import('../backends/provider-declarations.js');
+const { argsUnderFence } = await import('../backends/permission-models.js');
 
 const TMP_HOME = mkdtempSync(join(tmpdir(), 'timon-codex-plugin-'));
 const AUTH_DIR = join(TMP_HOME, 'codex-auth');
@@ -78,9 +79,36 @@ test('the sandbox is opened to the git folders the daemon computed, and the toke
   else assert.match(toml, new RegExp(`writable_roots = \\["${join(REPO, '.git').replace(/\\/g, '\\\\\\\\')}"\\]`));
   assert.match(toml, /network_access = true/);
   assert.equal(toml.includes(kit.FAKE_TOKEN_REFERENCE), false, 'the reference of the token is not in the file');
-  assert.match(toml, /env_vars = \["TIMON_API_TOKEN"\]/);
+  assert.match(toml, /env_vars = \["TIMON_API_TOKEN", "npm_config_cache"/);
   assert.deepEqual(spec.args.slice(0, 5), ['exec', '--json', '--skip-git-repo-check', '--sandbox', 'workspace-write']);
   assert.equal(spec.initialStdin, '# Instructions\nsp\n\n# Task\nm');
+});
+
+test('golden: the arguments of a launch, unfenced as the provider builds them and fenced as the core rewrites them', async () => {
+  const declaration = provider.permission.nestedSandbox;
+  assert.deepEqual(declaration, { level: { flag: '--sandbox', off: 'danger-full-access', readOnly: ['read-only'] } });
+  assert.deepEqual(dialect.nestedSandbox, declaration, 'the dialect carries it to the core');
+  const head = (args: readonly string[]) => args.slice(0, args.indexOf('-'));
+  const cases: Array<[string | undefined, string, boolean]> = [
+    ['plan', 'read-only', true],
+    ['auto', 'workspace-write', false],
+    ['acceptEdits', 'workspace-write', false],
+    [undefined, 'workspace-write', false],
+    ['bypassPermissions', 'danger-full-access', false],
+  ];
+  for (const [permission_mode, level, readOnly] of cases) {
+    const spec = await provider.launch(opts({ cfg: { cwd: REPO, ...(permission_mode ? { permission_mode } : {}) } }), PROFILE);
+    assert.deepEqual(head(spec.args), ['exec', '--json', '--skip-git-repo-check', '--sandbox', level], `unfenced ${permission_mode}`);
+    const fenced = argsUnderFence(spec.args, declaration);
+    assert.deepEqual(head(fenced.args), ['exec', '--json', '--skip-git-repo-check', '--sandbox', 'danger-full-access'], `fenced ${permission_mode}`);
+    assert.deepEqual(fenced.args.slice(5), spec.args.slice(5), 'nothing else moves');
+    assert.equal(fenced.readOnly, readOnly, `fenced ${permission_mode}: read-only workspace`);
+    assert.equal(fenced.levelMissing, false);
+  }
+  // A read-only-tools launch keeps its disabled tools; the fence makes its workspace read-only.
+  const tools = argsUnderFence((await provider.launch(opts({ readOnlyTools: true }), PROFILE)).args, declaration);
+  assert.equal(tools.readOnly, true);
+  assert.ok(tools.args.includes('shell_tool') && tools.args.includes('web_search=disabled'));
 });
 
 test('a CLI older than the profile\'s floor is refused with the command that fixes it; an unreadable version is not a verdict', async () => {

@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import type { PluginPublic } from './plugin-gallery';
+import { loadRequestScope } from './next-request-scope-test';
 
 test('rendered gallery toggles through Next and session auth, persists and reloads wanted', async (ctx) => {
   process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-plugin-contract-'));
@@ -45,7 +46,7 @@ test('rendered gallery toggles through Next and session auth, persists and reloa
   const React = await import('react');
   install('React', React);
   const { createRoot } = await import('react-dom/client');
-  const { requestAsyncStorage } = await import('next/dist/client/components/request-async-storage.external');
+  const requestAsyncStorage = await loadRequestScope();
   const { SearchParamsContext } = await import('next/dist/shared/lib/hooks-client-context.shared-runtime');
   const { POST } = await import('../app/api/ui/plugins/enabled/route');
   const { GET } = await import('../app/api/ui/plugins/route');

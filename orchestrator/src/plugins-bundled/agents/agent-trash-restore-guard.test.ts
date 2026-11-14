@@ -115,10 +115,10 @@ const teamBMission = missionToken('caller.team-b', managerId);
 
 test('a manager mission cannot restore an agent with MCP servers or tools nobody gave it', async () => {
   const id = await trashed('risky.mcp', { role: 'coder', mcp_servers: ['host-shell'] });
-  assertRefused(await restore(id, managerMission), id, 'risky.mcp', /mcp_servers.*agents:privileged-config/);
+  assertRefused(await restore(id, managerMission), id, 'risky.mcp', /mcp_servers attaches host-shell.*stdio.*Agents page/);
 
   const tools = await trashed('risky.tools', { role: 'coder', allowed_tools: ['Bash'] });
-  assertRefused(await restore(tools, managerMission), tools, 'risky.tools', /allowed_tools.*agents:privileged-config/);
+  assertRefused(await restore(tools, managerMission), tools, 'risky.tools', /allowed_tools adds Bash.*Agents page/);
 });
 
 test('a manager mission cannot restore a permission level above the safe ones', async () => {

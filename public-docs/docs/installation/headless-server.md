@@ -28,13 +28,16 @@ By hand, install the supplied deb package: it also installs the `timon` command.
 ```bash
 timon service install --dry-run   # shows what will be installed
 timon service install
+timon service session-mode always # keeps it running after you log out
 timon service status
 timon doctor
 ```
 
-On Linux the service is a systemd **user** service, with user lingering requested at installation: it starts at boot, before anyone signs in, and survives the end of your SSH session. Install it as the account that will own Timon's data, never as `root`. See [Running in the background](background.md) for the details, and for `timon service stop` / `timon service start`.
+On Linux the service is a systemd **user** service. `timon service session-mode always` turns on user lingering: the service then starts at boot, before anyone signs in, and survives the end of your SSH session. Without it, the service stops when your last SSH session ends. Install it as the account that will own Timon's data, never as `root`. See [Running in the background](background.md) for the details, and for `timon service stop` / `timon service start`.
 
 A server must not sleep: nothing runs while it does, and Timon does not wake it. On a machine without a desktop, `sudo systemctl mask sleep.target suspend.target` disables suspend.
+
+**Behind a company proxy**, give the service the standard variables: `systemctl --user edit <unit>` (`systemctl --user list-unit-files 'timon-*'` lists the name), then add `Environment=HTTPS_PROXY=http://proxy.example:3128` and `Environment=HTTP_PROXY=http://proxy.example:3128` under `[Service]`, and restart the service. Timon then sends its own requests and its missions' requests through that proxy, and keeps connections to the machine itself (`127.0.0.1`, `localhost`) direct; you do not need to set `NODE_USE_ENV_PROXY` yourself, Timon turns it on when it sees a proxy.
 
 The AI providers' command-line tools (`claude`, `codex`…) and their sign-in live on the server too: sign them in there, from an SSH session under the same account, once. A machine you drive from elsewhere keeps the providers it was configured with; nothing about them travels between machines.
 
@@ -138,7 +141,7 @@ Update the interfaces that drive the server as well. When a machine runs a Timon
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
-| `timon service status` reports the service stopped after you log out of SSH | User lingering is off | `sudo loginctl enable-linger $USER`, then `timon service start` |
+| `timon service status` reports the service stopped after you log out of SSH | User lingering is off | `timon service session-mode always` (or `sudo loginctl enable-linger $USER`), then `timon service start` |
 | *The machine must be reached over HTTPS* when adding the server | The address starts with `http://` | Publish the daemon with `tailscale serve` (section 4) and use its `https://` address |
 | *No Timon machine answers at this address* | Something other than a Timon daemon answers at this address | Use the address published for the **daemon** port (`:8443` above), with no path, and check `tailscale serve status` |
 | *The machine does not see this connection as HTTPS* | A reverse proxy in front of the daemon drops `X-Forwarded-Proto`, or `daemon.behindTlsProxy` is off behind a proxy on another host | Forward `X-Forwarded-Proto: https` and set `daemon.behindTlsProxy` to `true`, then restart the daemon |

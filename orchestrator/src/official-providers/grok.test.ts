@@ -8,7 +8,8 @@ import '../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
+import { execFileSync } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BuildSpawnOpts, ImageAttachment, NativeProviderDefinition, ProfileRuntime } from '../backends/types.js';
@@ -117,20 +118,36 @@ test('a huge message goes back through the file even with an image', async () =>
   assert.ok(written.includes('[Images jointes]'), 'images not referenced in the fallback');
 });
 
-test('permission_mode: everything falls back on always-approve, except plan', async () => {
+test('permission_mode: never raised — only an explicit bypassPermissions gets always-approve, the rest runs in plan', async () => {
   for (const [mode, expected] of [
-    ['auto', 'bypassPermissions'],
-    ['default', 'bypassPermissions'],
-    ['acceptEdits', 'bypassPermissions'],
-    ['dontAsk', 'bypassPermissions'],
     ['bypassPermissions', 'bypassPermissions'],
-    // Another dialect's vocabulary (codex): without a fallback the CLI would refuse the value.
-    ['danger-full-access', 'bypassPermissions'],
-    [undefined, 'bypassPermissions'],
     ['plan', 'plan'],
+    // Guarded modes: the CLI's approval pipeline has no channel headless, and
+    // always-approve would hand more than the agent was given (fail-closed).
+    ['default', 'plan'],
+    ['auto', 'plan'],
+    ['acceptEdits', 'plan'],
+    ['dontAsk', 'plan'],
+    // Another dialect's vocabulary, a typo, nothing: never a reason to raise.
+    ['danger-full-access', 'plan'],
+    ['read-only', 'plan'],
+    ['bypass', 'plan'],
+    [undefined, 'plan'],
   ] as const) {
     const sp = await provider.launch(opts({ cfg: { cwd: TMP_HOME, model: 'grok-4.6', permission_mode: mode } }), PROFILE);
     assert.equal(argAfter(sp.args, '--permission-mode'), expected, `mode ${mode}`);
+  }
+});
+
+test('permission_mode: the provider declares the two modes it honours, and its mapping keeps to them', async () => {
+  const { permissionModeForGrok, GROK_SUPPORTED_MODES } = await import('../../official-providers/provider-grok/lib/grok.js') as {
+    permissionModeForGrok(mode: string | undefined): string;
+    GROK_SUPPORTED_MODES: string[];
+  };
+  assert.deepEqual(provider.permission.supportedModes, ['plan', 'bypassPermissions']);
+  assert.deepEqual(dialect.supportedPermissionModes, ['plan', 'bypassPermissions']);
+  for (const mode of ['plan', 'default', 'acceptEdits', 'auto', 'dontAsk', 'bypassPermissions', 'read-only', undefined]) {
+    assert.ok(GROK_SUPPORTED_MODES.includes(permissionModeForGrok(mode)), `mode ${String(mode)}`);
   }
 });
 
@@ -180,6 +197,78 @@ test('without Timon\'s servers (timonMcp: false) the config declares none of the
   assert.doesNotMatch(toml, /\[mcp_servers\.timon\]/);
   assert.doesNotMatch(toml, /\[mcp_servers\.timon_ask\]/);
   assert.match(toml, /\[compat\.claude\]/);
+});
+
+/* ── The CLI's private home: no rule of ~/.claude/settings.json reaches a mission ── */
+
+const homeHelpers = await import('../../official-providers/provider-grok/lib/grok.js') as {
+  privateHomeEnv(privateHome: string, platform?: NodeJS.Platform): Record<string, string>;
+  realHomeEnv(platform?: NodeJS.Platform): Record<string, string>;
+  relayRcFiles(realHome: string): Record<string, string>;
+  PRIVATE_HOME_DIR: string;
+};
+
+test('grok runs with a private HOME inside its GROK_HOME, so ~/.claude/settings.json names nothing', async () => {
+  const sp = await provider.launch(opts(), PROFILE);
+  const privateHome = join(sp.env!.GROK_HOME!, homeHelpers.PRIVATE_HOME_DIR);
+  // grok 1.0.77 reads the permission rules of `~/.claude/settings.json` whatever the compat cells
+  // say, and takes `~` from HOME only: the user's home must not be the CLI's.
+  assert.equal(sp.env!.HOME, privateHome);
+  assert.notEqual(sp.env!.HOME, homedir());
+  assert.ok(lstatSync(privateHome).isDirectory(), 'the private home exists before the CLI starts');
+  assert.equal(existsSync(join(privateHome, '.claude')), false);
+  assert.equal(existsSync(join(privateHome, '.claude.json')), false);
+});
+
+test('the agent\'s shell gets the user\'s real home back through [shell_environment_policy]', async () => {
+  const sp = await provider.launch(opts(), PROFILE);
+  const toml = readFileSync(join(sp.env!.GROK_HOME!, 'config.toml'), 'utf8');
+  const section = toml.split('[shell_environment_policy]')[1]?.split('\n[')[0] ?? '';
+  assert.ok(section.length > 0, 'section [shell_environment_policy] missing: git, ssh and timon would look in the private home');
+  assert.ok(section.includes(`HOME = ${JSON.stringify(homedir())}`), section);
+});
+
+test('Timon\'s MCP servers start with the user\'s real home, not the CLI\'s', async () => {
+  const sp = await provider.launch(opts(), PROFILE);
+  const toml = readFileSync(join(sp.env!.GROK_HOME!, 'config.toml'), 'utf8');
+  const timonEnv = toml.split('[mcp_servers.timon.env]')[1]?.split('\n[')[0] ?? '';
+  assert.ok(timonEnv.includes(`HOME = ${JSON.stringify(homedir())}`), timonEnv);
+});
+
+test('Windows: USERPROFILE moves with HOME, both ways', () => {
+  assert.deepEqual(homeHelpers.privateHomeEnv('P', 'win32'), { HOME: 'P', USERPROFILE: 'P' });
+  assert.deepEqual(homeHelpers.realHomeEnv('win32'), { HOME: homedir(), USERPROFILE: homedir() });
+  assert.deepEqual(homeHelpers.privateHomeEnv('P', 'linux'), { HOME: 'P' });
+  assert.deepEqual(homeHelpers.realHomeEnv('darwin'), { HOME: homedir() });
+});
+
+test('the login shell grok captures reads the user\'s own rc files, with the real HOME', { skip: process.platform === 'win32' }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'timon-grok-rc-'));
+  try {
+    const realHome = join(root, "real home's");
+    const privateHome = join(root, 'private');
+    mkdirSync(realHome, { recursive: true });
+    mkdirSync(privateHome, { recursive: true });
+    writeFileSync(join(realHome, '.profile'), 'export TIMON_RC_MARK=profile\n');
+    writeFileSync(join(realHome, '.bashrc'), 'export TIMON_RC_MARK=bashrc\n');
+    for (const [name, content] of Object.entries(homeHelpers.relayRcFiles(realHome))) {
+      writeFileSync(join(privateHome, name), content);
+    }
+    const env = { PATH: process.env.PATH ?? '', HOME: privateHome };
+    // The machine's own rc files may print a banner first (Ubuntu's sudo hint): only the last line is ours.
+    const probe = 'printf "\\n%s|%s" "$HOME" "$TIMON_RC_MARK"';
+    const run = (args: string[]): string => execFileSync(args[0]!, args.slice(1), { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').at(-1)!;
+    // portability: POSIX login shells, skipped on Windows
+    assert.equal(run(['bash', '-l', '-c', probe]), `${realHome}|profile`);
+    // portability: POSIX login shells, skipped on Windows
+    assert.equal(run(['bash', '-i', '-c', probe]), `${realHome}|bashrc`);
+    // portability: POSIX login shells, skipped on Windows
+    assert.equal(run(['sh', '-l', '-c', probe]), `${realHome}|profile`);
+    // zsh (macOS's login shell) reads every later file from ZDOTDIR, which the relay points home.
+    assert.match(readFileSync(join(privateHome, '.zshenv'), 'utf8'), /^export ZDOTDIR="\$HOME"$/m);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('the mission\'s home is stable between two turns, and gone with the mission', async () => {

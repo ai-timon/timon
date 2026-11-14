@@ -187,10 +187,12 @@ test('developer mode tab only for the superadmin, first under Plugins', () => {
   assert.equal(buildSettingsLayout(input({ rows: [], plugins: [] })).some((c) => c.id === 'plugins'), false);
 });
 
-test('installation tab only for the superadmin, first under System', () => {
-  assert.deepEqual(tabIds(buildSettingsLayout(input({ superadmin: true })), 'system'), ['installation', 'diagnostics']);
-  assert.equal(tabIds(buildSettingsLayout(input()), 'system').includes('installation'), false);
-  assert.equal(tabIds(buildSettingsLayout(input({ superadmin: false })), 'system').includes('installation'), false);
+test('installation and security tabs only for the superadmin, first under System', () => {
+  assert.deepEqual(tabIds(buildSettingsLayout(input({ superadmin: true })), 'system'), ['installation', 'security', 'diagnostics']);
+  for (const tab of ['installation', 'security']) {
+    assert.equal(tabIds(buildSettingsLayout(input()), 'system').includes(tab), false, tab);
+    assert.equal(tabIds(buildSettingsLayout(input({ superadmin: false })), 'system').includes(tab), false, tab);
+  }
 });
 
 test('the deep-link param keeps a scoped plugin id whole', () => {

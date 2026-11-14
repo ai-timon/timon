@@ -45,12 +45,26 @@
  *     MCP servers TIMON never declared, and so would not behave like the same
  *     agent served by another backend.
  *
- *     CAVEAT: `compat.claude.hooks = false` does neutralise the hooks, but NOT
- *     the *permission rules* of `~/.claude/settings.json` — the CLI loads them
- *     anyway (visible in `grok inspect`, Permissions section) and no compat
- *     cell covers them. Harmless today (the host's file only contains `allow`
- *     entries), but adding a `deny` or an `ask` there would silently apply to
- *     every grok agent.
+ *  7. A PRIVATE HOME for the CLI (see `privateHomeEnv`). The compat cells do not
+ *     cover everything: grok 1.0.77 still loads the *permission rules* of
+ *     `~/.claude/settings.json` and `settings.local.json` (67 rules on the
+ *     maintainer's machine, `grok inspect` → permissions.loaded), the user's
+ *     subagents of `~/.claude/agents/` and the plugins of `~/.claude/plugins/`,
+ *     with every `compat.claude.*` at false. A `deny` or an `ask` written there
+ *     for Claude Code applied silently to every grok agent. No setting, no
+ *     `CLAUDE_CONFIG_DIR` and no `XDG_CONFIG_HOME` moves that read: the CLI takes
+ *     `~` from HOME. So the process runs with HOME pointing at an empty folder of
+ *     the mission (`grok inspect`: 0 rule, 0 Claude subagent, 0 plugin) and
+ *     everything it starts gets the real one back: its shell through
+ *     `[shell_environment_policy] set` (git, ssh, gh, the `timon` CLI find their
+ *     files again), its MCP servers through their `env`, and its login shell
+ *     through relay rc files that restore HOME and source the user's own.
+ *     Auth does not depend on HOME: it lives in GROK_HOME.
+ *
+ *     Still read, on purpose or out of reach: the project's own
+ *     `.claude/settings*.json` (a claude agent reads them too), and Claude's
+ *     machine-wide managed settings (`/etc/claude-code/…`), which an
+ *     organisation deploys to bind every tool on the machine.
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -78,43 +92,49 @@ function grokAuthSource() {
 }
 
 /**
+ * The only two modes this CLI can honour headless. Declared to Timon as
+ * `permission.supportedModes`: the screens offer only these, the permission
+ * ceiling judges the mode an agent really runs in, and any other mode reaches
+ * `launch` already resolved to `plan`.
+ */
+const GROK_SUPPORTED_MODES = ['plan', 'bypassPermissions'];
+/**
  * `agent.permission_mode` → grok's `--permission-mode`.
  *
- * ── Why EVERYTHING falls back on `bypassPermissions` ("always-approve") ────
+ * ── Why only `plan` and `bypassPermissions` ("always-approve") ─────────────
  *
- * The other modes send every batch of tool calls through the CLI's approval
- * pipeline. Headless, that pipeline has nobody to talk to, and it does not
- * merely fail politely:
+ * The CLI's other modes send every batch of tool calls through its approval
+ * pipeline. Headless, that pipeline has nobody to talk to (no
+ * `--permission-prompt-tool`, and its ACP mode never sends
+ * `session/request_permission` either), and it does not merely fail politely:
  *
  *  1. LATENCY. In `auto`, the CLI submits the batch to its safety check before
  *     running it. Measured on grok 1.0.5 (gap between
  *     `shell.turn.inference_done` and `shell.tool.exec_done` in
  *     `<GROK_HOME>/logs/unified.jsonl`): 6 to 12 s per batch, for tools that
  *     then run in 0–200 ms. Over a four-batch turn, that is ~40 s of pure
- *     latency. With automatic approval, the same sequence drops to 6 ms.
+ *     latency.
  *  2. KILLED TURNS. When that check hits a call it cannot decide on, the call
  *     is cancelled (`User cancelled the execution for tool`) AND the whole turn
  *     stops: `result.stop_reason = "cancelled"`, exit 1, mission
- *     `failed`/`crash`. No Allow/Deny card, no resume: the work stops in the
- *     middle of a tool batch, with no readable reason. Reproduced outside TIMON
+ *     `failed`/`crash`. No Allow/Deny card, no resume. Reproduced outside TIMON
  *     with a dummy MCP server — three parallel `use_tool` calls are enough to
  *     trigger the cancellation, a single one goes through.
  *
- * The CLI's documentation says the same (user-guide/22-permissions-and-safety):
- * "For automation that must run tools without interactive approval, use
- * always-approve (and deny rules if you need hard blocks) rather than auto
- * alone." Hence this mapping, and the `--deny` rules below, which stay in force
- * even under always-approve (deny wins over everything else).
- *
- * `plan` is the only exception kept: planning mode runs nothing, so it has
- * nothing to get approved.
+ * So no guarded mode is usable as such, and raising one to always-approve
+ * would hand the agent more than it was given. The mapping is fail-closed, the
+ * same rule the daemon applies to `supportedModes`: an explicit
+ * `bypassPermissions` gets always-approve, everything else (`default`, `auto`,
+ * `acceptEdits`, `dontAsk`, another dialect's word, nothing) runs in `plan`,
+ * which runs no tool and so has nothing to get approved. Applied here too so
+ * the plugin stays read-only on a daemon that does not resolve the mode. The
+ * `--deny` rules below stay in force under always-approve (deny wins over
+ * everything else).
  */
 function permissionModeForGrok(permissionMode) {
-    if (permissionMode === 'plan')
-        return 'plan';
-    // `default`, `auto`, `acceptEdits`, `dontAsk`: all of them lead to an
-    // approval request which, headless, can go nowhere (see above).
-    return 'bypassPermissions';
+    if (permissionMode === 'bypassPermissions')
+        return 'bypassPermissions';
+    return 'plan';
 }
 /**
  * Hard guardrails, applied whatever the mode — a `deny` wins over automatic
@@ -148,7 +168,7 @@ const GROK_DENY_RULES = [
     'Bash(systemctl --user stop pkos-orchestrator*)',
     'Bash(systemctl --user start pkos-orchestrator*)',
 ];
-export { permissionModeForGrok, GROK_DENY_RULES };
+export { permissionModeForGrok, GROK_DENY_RULES, GROK_SUPPORTED_MODES };
 
 /**
  * Turns off discovery of the host's Claude Code and Cursor configurations.
@@ -177,6 +197,91 @@ function compatToml() {
         '',
     ].join('\n');
 }
+/** The mission's folder grok takes for `~` (relative to GROK_HOME). */
+const PRIVATE_HOME_DIR = 'home';
+/**
+ * The variables a program reads its home from: HOME everywhere, USERPROFILE too on Windows, where
+ * Git Bash and most native tools look there first.
+ *
+ * @param {NodeJS.Platform} platform
+ */
+function homeEnvKeys(platform) {
+    return platform === 'win32' ? ['HOME', 'USERPROFILE'] : ['HOME'];
+}
+/**
+ * The home variables as `value` for each of them.
+ *
+ * @param {string} value
+ * @param {NodeJS.Platform} platform
+ * @returns {Record<string, string>}
+ */
+function homeEnv(value, platform) {
+    return Object.fromEntries(homeEnvKeys(platform).map((key) => [key, value]));
+}
+/**
+ * The grok process's own home: the mission's empty folder, so that `~/.claude` names nothing
+ * (see 7. above). Only the CLI sees it; `realHomeEnv` gives the user's back to its children.
+ *
+ * @param {string} privateHome
+ * @param {NodeJS.Platform} [platform]
+ */
+function privateHomeEnv(privateHome, platform = process.platform) {
+    return homeEnv(privateHome, platform);
+}
+/** The user's real home, for everything grok starts. @param {NodeJS.Platform} [platform] */
+function realHomeEnv(platform = process.platform) {
+    return homeEnv(homedir(), platform);
+}
+/** A value as a POSIX shell single-quoted word: nothing inside is expanded. @param {string} value */
+function shellQuote(value) {
+    return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+/**
+ * The rc files of the private home. grok captures its login shell's environment for its bash tool,
+ * and that shell starts under the CLI's HOME: without these relays it would read no rc file of the
+ * user's, and an agent would lose what they put on PATH there (nvm, Homebrew). Each one puts the
+ * real HOME back, then sources the file the shell would have read, so the shell ends up exactly as
+ * under the user's home. zsh reads the rest of its files from ZDOTDIR.
+ *
+ * @param {string} realHome
+ * @returns {Record<string, string>}
+ */
+function relayRcFiles(realHome) {
+    const restore = `# Written by Timon: grok runs with a private HOME so it cannot read ~/.claude.\nexport HOME=${shellQuote(realHome)}\n`;
+    const source = (/** @type {string} */ name) => `if [ -f "$HOME/${name}" ]; then . "$HOME/${name}"; fi\n`;
+    return {
+        // bash as a login shell reads the first of these three, and only it.
+        '.bash_profile': `${restore}if [ -f "$HOME/.bash_profile" ]; then . "$HOME/.bash_profile"; elif [ -f "$HOME/.bash_login" ]; then . "$HOME/.bash_login"; elif [ -f "$HOME/.profile" ]; then . "$HOME/.profile"; fi\n`,
+        '.profile': restore + source('.profile'),
+        '.bashrc': restore + source('.bashrc'),
+        '.zshenv': `${restore}export ZDOTDIR="$HOME"\n${source('.zshenv')}`,
+    };
+}
+/**
+ * `[shell_environment_policy]`: grok forces these values into the environment of the commands its
+ * shell runs, so the agent's `git`, `ssh` or `timon` see the user's home, not the CLI's. A TOML
+ * basic string takes JSON's string syntax.
+ *
+ * @param {Record<string, string>} env
+ */
+function shellPolicyToml(env) {
+    const pairs = Object.entries(env).map(([key, value]) => `${key} = ${JSON.stringify(value)}`).join(', ');
+    return ['[shell_environment_policy]', `set = { ${pairs} }`, ''].join('\n');
+}
+/**
+ * The plan's stdio servers with the user's home: grok starts them with its own environment, whose
+ * HOME is the private one. A server that sets its own home keeps it.
+ *
+ * @param {ReadonlyArray<import('@timon-ai/sdk/provider').ProviderMcpPlan['servers'][number]>} servers
+ * @param {Record<string, string>} home
+ */
+function withRealHome(servers, home) {
+    return servers.map((server) => server.type === 'stdio'
+        ? { ...server, env: { ...home, ...server.env } }
+        : server);
+}
+export { privateHomeEnv, realHomeEnv, relayRcFiles, PRIVATE_HOME_DIR };
+
 /**
  * The plan's servers without the mission's token. The CLI starts its MCP servers with its own environment,
  * which already carries the token (the daemon gives it to an official provider's process): the file on disk
@@ -193,14 +298,16 @@ function withoutToken(plan) {
         : server);
 }
 /**
- * The base of the mission's `config.toml`: the discovery switches, then the servers
- * Timon composed for this mission (`ctx.provider.mcp`, serialized in grok's TOML).
- * The mission's token is not in it (see `withoutToken`): this plugin never holds it.
+ * The base of the mission's `config.toml`: the discovery switches, the real home for the
+ * agent's shell, then the servers Timon composed for this mission (`ctx.provider.mcp`,
+ * serialized in grok's TOML). The mission's token is not in it (see `withoutToken`): this
+ * plugin never holds it.
  *
  * @param {string | null} servers
+ * @param {Record<string, string>} realHome
  */
-function configToml(servers) {
-    return [compatToml(), servers ?? ''].join('\n');
+function configToml(servers, realHome) {
+    return [compatToml(), shellPolicyToml(realHome), servers ?? ''].join('\n');
 }
 
 /** MIME → extension, so that the CLI does not have to guess the format. */
@@ -336,8 +443,13 @@ export function createGrokProvider(services, log) {
         // (immediate crash, exit 1, before any answer).
         // `permissionPrompt` stays off: grok has no `--permission-prompt-tool`, so the
         // forms server only serves its forms (a question, the Kanban planner).
+        const realHome = realHomeEnv();
         const plan = await services.mcp(opts);
-        scratch.writeFile('config.toml', configToml(runtime.mcp.serializeGrokMcpToml(withoutToken(plan))));
+        scratch.writeFile('config.toml', configToml(runtime.mcp.serializeGrokMcpToml(withRealHome(withoutToken(plan), realHome)), realHome));
+        // The CLI's private home (see 7. above), rewritten on every turn like the rest: the
+        // user's home can move between two turns (a daemon restarted with another HOME).
+        for (const [name, content] of Object.entries(relayRcFiles(homedir())))
+            scratch.writeFile(join(PRIVATE_HOME_DIR, name), content);
         // System prompt: `$GROK_HOME/rules/` is always scanned, across all projects.
         // A single file, rewritten on every turn.
         scratch.writeFile('rules/timon.md', opts.systemPrompt);
@@ -432,8 +544,8 @@ export function createGrokProvider(services, log) {
                 cmd: profile.cmd,
                 args,
                 cwd: opts.cfg.cwd,
-                // GROK_HOME first (per mission, non-negotiable), then the profile's env.
-                env: { GROK_HOME: grokHome.path, ...profile.env },
+                // GROK_HOME and the private home first (per mission), then the profile's env.
+                env: { GROK_HOME: grokHome.path, ...privateHomeEnv(grokHome.resolve(PRIVATE_HOME_DIR)), ...profile.env },
                 initialStdin: null,
             };
         },
@@ -459,8 +571,8 @@ export function createGrokProvider(services, log) {
         // No approval round trip during the turn: rights are frozen at spawn time by
         // `--permission-mode` plus the `--deny` rules (see permissionModeForGrok and
         // GROK_DENY_RULES). No Allow/Deny card, no classifier — exactly codex's
-        // situation.
-        permission: { model: 'sandbox' },
+        // situation, with two modes only: read-only or run-everything.
+        permission: { model: 'sandbox', supportedModes: GROK_SUPPORTED_MODES },
         // Two shapes, and only one of them is structured. An API error travels as
         // JSON inside `errors[]` and carries its `http_status`, which `parseLine`
         // hoists to `api_error_status` — that is what makes a 402 (no credit left)

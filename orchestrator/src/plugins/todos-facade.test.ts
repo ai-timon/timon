@@ -26,8 +26,8 @@ const { TodoLinkError } = await import('../plugins-bundled/kanban/todo-api.js');
 
 const PLUGIN_ID = 'acme-tickets';
 
-const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
-const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: hashPassword('bob-secret'), isSuperadmin: false });
+const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
+const bob = createTestAccount(dbApi, { email: 'bob@example.com', name: 'Bob', passwordHash: await hashPassword('bob-secret'), isSuperadmin: false });
 
 function identityOf(user: { id: string; email: string; name: string }) {
   return {

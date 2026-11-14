@@ -27,7 +27,7 @@ const { EgressSchema, TimonConfigSchema } = await import('../config/schema.js');
 const { authenticateMissionToken, egressProxyAddress, formatEgressRecord, startEgressProxy } = await import('./service.js');
 const { listMissionEgress } = await import('./journal.js');
 
-const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: hashPassword('ada-secret'), isSuperadmin: false });
+const ada = createTestAccount(dbApi, { email: 'ada@example.com', name: 'Ada', passwordHash: await hashPassword('ada-secret'), isSuperadmin: false });
 
 function runningMission(): { id: string; token: string } {
   const id = randomUUID();

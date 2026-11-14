@@ -18,7 +18,7 @@
  */
 
 import { PERMISSION_MODELS, RATE_LIMIT_REPORTINGS, SESSION_STORES } from '../types.js';
-import { PERMISSION_MODEL_OBLIGATIONS } from '../permission-models.js';
+import { nestedSandboxProblems, PERMISSION_MODEL_OBLIGATIONS, PERMISSION_MODES, UNSUPPORTED_MODE_FALLBACK } from '../permission-models.js';
 import { declarationProblems } from '../provider-declarations.js';
 import { PROVIDER_TRANSPORTS } from './definition.js';
 
@@ -136,6 +136,27 @@ export function definitionProblems(definition: unknown): string[] {
       else if (permission.appliesMode && (permission.model !== 'protocol' || (permission.byAgent !== undefined && permission.byAgent !== false))) {
         problems.push("`permission.appliesMode` says the provider applies the permission mode before it asks: it needs `permission.model: 'protocol'` and an agent that asks (no `byAgent`)");
       }
+    }
+    if (permission.supportedModes !== undefined) {
+      const modes = permission.supportedModes;
+      const known = PERMISSION_MODES as readonly unknown[];
+      if (!Array.isArray(modes) || modes.length === 0) {
+        problems.push('`permission.supportedModes` must be a non-empty list of permission modes; leave it out when the provider honours every mode');
+      } else {
+        const unknown = modes.filter((m) => !known.includes(m));
+        if (unknown.length) {
+          problems.push(`\`permission.supportedModes\` names unknown modes ${unknown.map((m) => JSON.stringify(m)).join(', ')}; known: ${PERMISSION_MODES.map((m) => `'${m}'`).join(', ')}`);
+        } else if (new Set(modes).size !== modes.length) {
+          problems.push('`permission.supportedModes` lists a mode twice');
+        } else if (!modes.includes(UNSUPPORTED_MODE_FALLBACK)) {
+          // Every mode left out runs in plan: a provider that cannot run it would get a mode it refuses.
+          problems.push(`\`permission.supportedModes\` must include '${UNSUPPORTED_MODE_FALLBACK}': every mode left out runs in it`);
+        }
+      }
+    }
+    if (permission.nestedSandbox !== undefined) {
+      if (remote) problems.push('`permission.nestedSandbox` turns off the sandbox of a CLI the daemon launches: a `remote` provider has no process');
+      else problems.push(...nestedSandboxProblems(permission.nestedSandbox));
     }
   }
 

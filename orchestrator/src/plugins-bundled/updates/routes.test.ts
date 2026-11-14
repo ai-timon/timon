@@ -80,8 +80,8 @@ test('first run, anonymous: no status, no check', async () => {
 });
 
 let missionToken = '';
-test('accounts exist from here on', () => {
-  createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: hashPassword('admin-secret'), isSuperadmin: true });
+test('accounts exist from here on', async () => {
+  createTestAccount(dbApi, { email: 'admin@example.com', name: 'Admin', passwordHash: await hashPassword('admin-secret'), isSuperadmin: true });
   const missionId = randomUUID();
   dbApi.createMission(missionId, 'acme.coder', 'work');
   missionToken = issueMissionApiToken(missionId);
@@ -116,7 +116,7 @@ test('a signed-in administrator reads the status and forces a check', async () =
 });
 
 test('a member without `settings` reads the offer but cannot force a check', async () => {
-  const member = createTestAccount(dbApi, { email: 'member@example.com', name: 'Member', passwordHash: hashPassword('member-secret') });
+  const member = createTestAccount(dbApi, { email: 'member@example.com', name: 'Member', passwordHash: await hashPassword('member-secret') });
   assert.ok(!dbApi.listPermissionsForUser(member.id).some((permission) => permission.startsWith('settings')));
   const cookie = await login('member@example.com', 'member-secret');
   const status = await call('GET', '/api/updates', { cookie });

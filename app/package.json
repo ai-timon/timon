@@ -19,7 +19,8 @@
   "timonTests": {
     "imports": [
       "tsx",
-      "../scripts/test-tmp-preload.mjs"
+      "../scripts/test-tmp-preload.mjs",
+      "./scripts/test-codemirror-preload.mjs"
     ],
     "files": [
       "src/**/*.test.ts"
@@ -58,11 +59,11 @@
     "isomorphic-dompurify": "^3.13.0",
     "lucide-react": "^0.460.0",
     "marked": "^18.0.3",
-    "next": "^14.2.15",
+    "next": "^15.5.29",
     "next-themes": "^0.4.6",
-    "react": "^18.3.1",
+    "react": "^19.3.1",
     "react-day-picker": "^10.0.2",
-    "react-dom": "^18.3.1",
+    "react-dom": "^19.3.1",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.6.1",
@@ -73,13 +74,18 @@
     "@types/better-sqlite3": "^7.6.11",
     "@types/d3": "^7.4.3",
     "@types/node": "^22.7.4",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.7",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@types/three": "^0.185.4",
     "autoprefixer": "^10.5.0",
     "postcss": "^8.5.14",
     "tailwindcss": "^3.4.19",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.6.2"
+  },
+  "overrides": {
+    "recharts": {
+      "react-is": "^19.3.1"
+    }
   }
 }

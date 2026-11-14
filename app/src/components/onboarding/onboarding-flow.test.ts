@@ -17,9 +17,10 @@ import {
 } from './onboarding-flow';
 import { signedInTarget } from './welcome-landing';
 
-test('the steps follow the mockup: welcome, account, LLM, profile, agent, « Discover Timon » — no chat step any more', () => {
-  assert.deepEqual([...ONBOARDING_STEP_IDS], ['splash', 'account', 'llm', 'profile', 'agent', 'discover']);
-  assert.equal(nextStep('splash'), 'account');
+test('the steps follow the mockup: welcome, background choice, account, LLM, profile, agent, « Discover Timon » — no chat step any more', () => {
+  assert.deepEqual([...ONBOARDING_STEP_IDS], ['splash', 'background', 'account', 'llm', 'profile', 'agent', 'discover']);
+  assert.equal(nextStep('splash'), 'background', 'the service installs right after the welcome: its question comes first');
+  assert.equal(nextStep('background'), 'account');
   assert.equal(nextStep('agent'), 'discover', 'the slides follow the agent\'s creation');
   assert.equal(nextStep('discover'), null, 'the last step: the welcome follows on the TIMs page');
   assert.equal(isLastStep('discover'), true);
@@ -29,7 +30,8 @@ test('the steps follow the mockup: welcome, account, LLM, profile, agent, « Dis
   assert.equal(asksFormerChatStep('?step=chat'), true, 'the former chat step');
   assert.equal(asksFormerChatStep('?step=agent'), false);
   assert.equal(stepFromSearch('?step=chat'), 'splash', 'no step of that name: the shell sends it to the welcome first');
-  assert.equal(previousStep('account'), 'splash');
+  assert.equal(previousStep('account'), 'background');
+  assert.equal(previousStep('background'), 'splash');
   assert.equal(previousStep('splash'), null);
 });
 
@@ -43,17 +45,17 @@ test('the background install starts on the account step, which lives in the onbo
   const { ONBOARDING_STEPS } = await import('./steps/registry');
   const { preparationStarts } = await import('@/lib/setup-plan');
   const starts = ONBOARDING_STEPS.filter((entry) => preparationStarts(entry.id, entry.leavesPage !== true)).map((entry) => entry.id);
-  assert.equal(starts[0], 'account', 'the first step past the welcome, as in the mockup');
+  assert.equal(starts[0], 'account', 'the first step past the welcome and its background question, whose answer the install carries');
   assert.deepEqual(starts, ['account', 'llm', 'profile', 'agent'], 'every step past the welcome stays in the onboarding; the upgrade welcome and the slides after the agent prepare nothing');
   assert.ok(ONBOARDING_STEPS.every((entry) => entry.leavesPage !== true), 'no stand-in left');
 });
 
-test('the dots cover the account up to the agent; « Back » shows on those steps only', () => {
-  assert.deepEqual([...DOTTED_STEPS], ['account', 'llm', 'profile', 'agent']);
+test('the dots cover the background choice up to the agent; « Back » shows on those steps only', () => {
+  assert.deepEqual([...DOTTED_STEPS], ['background', 'account', 'llm', 'profile', 'agent']);
   assert.equal(progressDots('splash'), null);
-  assert.deepEqual(progressDots('account'), ['current', 'todo', 'todo', 'todo']);
-  assert.deepEqual(progressDots('profile'), ['done', 'done', 'current', 'todo']);
-  assert.deepEqual(ONBOARDING_STEP_IDS.filter(canGoBack), ['account', 'llm', 'profile', 'agent']);
+  assert.deepEqual(progressDots('background'), ['current', 'todo', 'todo', 'todo', 'todo']);
+  assert.deepEqual(progressDots('profile'), ['done', 'done', 'done', 'current', 'todo']);
+  assert.deepEqual(ONBOARDING_STEP_IDS.filter(canGoBack), ['background', 'account', 'llm', 'profile', 'agent']);
   assert.equal(progressDots('discover'), null, 'the slides have their own progress bars');
   assert.equal(canGoBack('discover'), false, 'the agent is made: no way back to its creation');
 });
@@ -74,7 +76,7 @@ test('an account made before this onboarding meets the welcome, then signs in, t
   assert.equal(loginOpensWelcome(false, 'returning'), true);
   assert.equal(loginOpensWelcome(false, 'mascot'), false, 'a signed-in stage never sends the login anywhere');
   assert.equal(afterSplash(true), 'signin');
-  assert.equal(afterSplash(false), 'account');
+  assert.equal(afterSplash(false), 'background');
   for (const id of RETURNING_STEP_IDS) {
     assert.equal(stepFromSearch(new URL(stepHref(id), 'http://x').search), id, 'reopens from its URL');
     assert.equal(nextStep(id), null, 'outside the order: each goes on by itself');

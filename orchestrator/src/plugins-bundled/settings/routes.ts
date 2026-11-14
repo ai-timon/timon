@@ -17,9 +17,12 @@ import { resolve, resolveAll, setSetting, settingGroups } from '../../settings.j
 import { join, resolve as resolvePath, sep } from 'node:path';
 import { forbidden, rejectIfDenied, requireAuth, requireSuperadmin, isPersonAuth } from '../../users/identity.js';
 import { memoryPresetSettings, resourceMemoryInfo } from '../../resource-memory-presets.js';
-import { runOnboardingAction } from '../../onboarding.js';
+import { changeServiceSessionMode, runOnboardingAction } from '../../onboarding.js';
+import { SERVICE_SESSION_MODES } from '../../host/service-session-mode.js';
 import { daemonDiagnosticReport, systemInfo } from '../../system-info.js';
 import { apiError } from '../../api-error.js';
+
+const sessionModeSchema = z.object({ mode: z.enum(SERVICE_SESSION_MODES) }).strict();
 
 const memoryPresetSchema = z.object({ ramGb: z.union([z.literal(8), z.literal(16), z.literal(32), z.literal(64)]) }).strict();
 
@@ -286,6 +289,38 @@ export function registerRoutes(app: Router): void {
       // Never trust the click: ask the machine what it now holds.
       const status = await runOnboardingAction({ action: 'service-status' });
       res.json({ ...answer, installed: status.installed === true, running: status.ok });
+    } catch (e) {
+      res.status(500).json({ error: (e as Error).message });
+    }
+  });
+
+  /**
+   * Settings › System: does the service keep running once the user logs out?
+   * The onboarding asked it; this changes the answer (`changeServiceSessionMode`).
+   * Same gates as the install above: a signed-in superadmin, never the daemon
+   * token, since turning lingering on lets agents run with nobody at the screen.
+   */
+  app.post('/api/admin/service/session-mode', async (req, res) => {
+    const auth = requireSuperadmin(req, res);
+    if (!auth) return;
+    if (!isPersonAuth(auth)) {
+      res.status(403).json({ error: 'This operation requires a signed-in user.' });
+      return;
+    }
+    const body = sessionModeSchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: 'mode must be "session" or "always"' });
+      return;
+    }
+    try {
+      const { service, daemon } = systemInfo();
+      if (!service.sessionModeSupported) {
+        res.status(409).json({ error: 'not_supported', command: null });
+        return;
+      }
+      const answer = await changeServiceSessionMode(body.data.mode, daemon.mode === 'service');
+      const status = await runOnboardingAction({ action: 'service-status' });
+      res.status(answer.ok ? 200 : 500).json({ ...answer, offSession: status.offSession ?? null, sessionMode: status.sessionMode ?? null });
     } catch (e) {
       res.status(500).json({ error: (e as Error).message });
     }

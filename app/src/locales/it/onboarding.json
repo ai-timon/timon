@@ -13,7 +13,7 @@
     "account": {
       "title": "Crea il tuo account locale",
       "subtitle": "Lo usi per accedere a Timon. Ne sei l’amministratore.",
-      "privacy": "Raccogliamo solo la tua email nel caso tu voglia reimpostare la password. L’account che crei resta locale."
+      "privacy": "Il tuo account e la tua password restano su questo computer. Il tuo indirizzo email e i suoi codici passano dal nostro server, che te li invia. Le statistiche d’uso anonime sono condivise per impostazione predefinita; puoi disattivarle nelle Impostazioni."
     },
     "llm": {
       "title": "Scegli\nil tuo LLM.",

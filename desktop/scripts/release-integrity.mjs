@@ -1,5 +1,5 @@
 import { createHash, verify } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Only immutable product files: user state and installed dependencies are not
@@ -10,7 +10,16 @@ export const protectedRoots = ['dist', 'bin', 'scripts', 'presets', 'package.jso
 // them still fails on their removal, since the inventories must match.
 // `build-info.json` (channel + expiry) is signed too, so the date cannot be
 // edited in an installed package; a release prepared before it stays valid.
-export const optionalRoots = ['builtin-plugins', 'builtin-plugins.json', 'build-info.json'];
+// `native/` holds the Linux mission launcher (timon-fence): signed, so a
+// replaced launcher fails the boot check instead of unfencing the missions.
+export const optionalRoots = ['builtin-plugins', 'builtin-plugins.json', 'build-info.json', 'native'];
+// Files the daemon only runs when executable, so their mode is part of what a
+// release guarantees, not only their bytes: a launcher stripped of its execute
+// bit keeps its digest, and the daemon would skip it and run every mission
+// unfenced. Same test as the daemon (`orchestrator/src/host/fence.ts`): the
+// owner may execute it. Checked only when the manifest lists the file, so a
+// release that predates it, or targets another OS, is unaffected.
+export const executableFiles = ['native/timon-fence'];
 // Read by the daemon to trust built-in plugins by location; set only here,
 // after the inventory below has been verified.
 export const RELEASE_MARKER = Symbol.for('timon.verifiedRelease');
@@ -33,6 +42,14 @@ export function productFiles(root) {
   for (const name of optionalRoots) if (existsSync(join(root, name))) visit(name);
   return files.sort();
 }
+function isExecutable(path) {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 export function digest(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
 }
@@ -47,6 +64,9 @@ export function verifyRelease(root, publicKey) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('Release inventory differs');
   for (const name of actual) {
     if (digest(join(root, name)) !== manifest.files[name]) throw new Error(`Release integrity failed: ${name}`);
+  }
+  for (const name of executableFiles) {
+    if (name in manifest.files && !isExecutable(join(root, name))) throw new Error(`Release integrity failed: ${name} is not executable`);
   }
   return manifest;
 }

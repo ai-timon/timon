@@ -14,7 +14,8 @@ import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
-const binDir = mkdtempSync(join(process.env.TIMON_HOME!, 'bin-'));
+// Beside the Timon home, not in it: no binary is ever resolved from there.
+const binDir = mkdtempSync(`${process.env.TIMON_HOME!}-bin-`);
 const stub = join(binDir, process.platform === 'win32' ? 'copilot.cmd' : 'copilot');
 writeFileSync(stub, process.platform === 'win32' ? '@exit /b 0\r\n' : '#!/bin/sh\nexit 0\n');
 if (process.platform !== 'win32') chmodSync(stub, 0o755);

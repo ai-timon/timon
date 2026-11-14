@@ -602,7 +602,7 @@ export function ModelPickerPanel({ className, autoFocusSearch, ...props }: Model
 
 /** What a caller's own trigger spreads on its button (`renderTrigger`). */
 export type ModelPickerTriggerProps = {
-  ref: RefObject<HTMLButtonElement>;
+  ref: RefObject<HTMLButtonElement | null>;
   onClick: () => void;
   disabled: boolean;
   'aria-haspopup': 'dialog';

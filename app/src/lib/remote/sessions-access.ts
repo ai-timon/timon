@@ -15,7 +15,7 @@ import { proxyAuthHeaders, SESSION_COOKIE } from '../ui/proxy-auth';
 export async function localSuperadmin(): Promise<boolean> {
   let session: string | undefined;
   try {
-    session = cookies().get(SESSION_COOKIE)?.value;
+    session = (await cookies()).get(SESSION_COOKIE)?.value;
   } catch {
     return false;
   }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { pluginNodeReference, workflowNodeSpec } from './nodes/registry.js';
 import { settingNum } from '../settings.js';
+import { refusedMatchesPattern } from './expr.js';
 
 const node = z.object({ id:z.string().min(1), type:z.string(), label:z.string().optional(), position:z.object({x:z.number(),y:z.number()}).optional(), config:z.record(z.string(), z.unknown()).default({}) });
 const edge = z.object({ id:z.string().min(1), from:z.string(), fromPort:z.string(), to:z.string(), toPort:z.string().default('in'), condition:z.string().nullable().optional(), loop:z.boolean().optional(), maxIterations:z.number().int().positive().optional() });
@@ -24,8 +25,28 @@ function describeIssues(error: z.ZodError): string {
   return error.issues.slice(0, 3).map((issue) => `${issue.path.join('.') || 'config'} ${issue.message}`).join('; ');
 }
 
+type ExpressionHolders = { nodes: Array<{ id: string; type: string; config: Record<string, unknown> }>; edges: Array<{ id: string; condition?: string | null }> };
+
+/** Refuses at save every expression whose literal `matches` pattern the safe
+ *  regex engine would refuse at run: condition nodes, edge conditions and the
+ *  payload filter of trigger nodes. */
+function checkExpressions(v: ExpressionHolders, ctx: z.RefinementCtx): void {
+  for (const n of v.nodes) {
+    const expr = n.type === 'condition' ? n.config.expr : n.type.startsWith('trigger.') ? n.config.filter : undefined;
+    if (typeof expr !== 'string') continue;
+    const refused = refusedMatchesPattern(expr);
+    if (refused) ctx.addIssue({ code: 'custom', message: `${n.id}: ${refused}`, path: ['nodes', n.id] });
+  }
+  for (const e of v.edges) {
+    if (typeof e.condition !== 'string') continue;
+    const refused = refusedMatchesPattern(e.condition);
+    if (refused) ctx.addIssue({ code: 'custom', message: `edge ${e.id}: ${refused}`, path: ['edges', e.id] });
+  }
+}
+
 const storedWorkflowDefinitionSchema = z.object({ schemaVersion:z.literal(1), nodes:z.array(node).min(1), edges:z.array(edge).default([]), variables:z.array(z.object({name:z.string(),type:z.enum(['string','number','boolean','json']),default:z.unknown().optional()})).default([]), settings:z.object({browserProfileId:z.string().min(1).nullable().optional(),timeoutMs:z.number().positive().optional(),maxParallel:z.number().int().positive().default(3),maxCostUsd:z.number().nonnegative().optional(),onError:z.enum(['fail','continue']).default('fail'),overlap:z.enum(['skip','queue','parallel']).default('skip')}).default({maxParallel:3,onError:'fail',overlap:'skip'}) });
 export const workflowDefinitionSchema = storedWorkflowDefinitionSchema.superRefine((v,ctx) => {
+ checkExpressions(v, ctx);
  const ids=new Set<string>(); for(const n of v.nodes){if(ids.has(n.id))ctx.addIssue({code:'custom',message:`duplicate node id: ${n.id}`,path:['nodes',n.id]});ids.add(n.id); const spec=workflowNodeSpec(n.type);if(!spec)ctx.addIssue({code:'custom',message:`unknown node type: ${n.type}`,path:['nodes',n.id]});else {const r=spec.configSchema.safeParse(n.config);if(!r.success)ctx.addIssue({code:'custom',message:`invalid config for ${n.id}: ${describeIssues(r.error)}`,path:['nodes',n.id]});}if((n.type==='agent'||n.type==='skill')&&typeof n.config.timeoutMs==='number'&&n.config.timeoutMs>settingNum('TIMON_REAP_HUNG_MS'))ctx.addIssue({code:'custom',message:`node timeoutMs must not exceed TIMON_REAP_HUNG_MS for ${n.id}`,path:['nodes',n.id]});}
  for (const n of v.nodes) {
    if (pluginNodeReference(n.type)?.kind !== 'executor' || n.config.retries === undefined) continue;
@@ -51,7 +72,7 @@ export type WorkflowDefinition = z.infer<typeof workflowDefinitionSchema>;
  * refused with "invalid config for <id>" (the "Save failed" banner). The strict
  * rules belong to publish and run, which freeze a version that must execute.
  */
-export const workflowDraftSchema = z.object({
+const workflowDraftStructureSchema = z.object({
   schemaVersion: z.literal(1),
   nodes: z.array(node).default([]),
   edges: z.array(edge).default([]),
@@ -66,9 +87,16 @@ export const workflowDraftSchema = z.object({
   }
   for (const e of v.edges) if (!ids.has(e.from) || !ids.has(e.to)) ctx.addIssue({ code:'custom', message:`edge ${e.id} references unknown node` });
 });
+export const workflowDraftSchema = workflowDraftStructureSchema.superRefine(checkExpressions);
 
 export function parseWorkflowDraft(value: unknown): WorkflowDefinition {
   return workflowDraftSchema.parse(value) as WorkflowDefinition;
+}
+
+/** A stored draft, read back without the expression check: a workflow saved
+ *  before a pattern became refused must stay deletable. */
+export function parseStoredWorkflowDraft(value: unknown): WorkflowDefinition {
+  return workflowDraftStructureSchema.parse(value) as WorkflowDefinition;
 }
 
 export function parseWorkflowDefinition(value: unknown): WorkflowDefinition { return workflowDefinitionSchema.parse(value); }

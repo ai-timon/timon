@@ -17,7 +17,7 @@
 import {
   PERMISSION_MODELS, RATE_LIMIT_REPORTINGS, SESSION_STORES,
 } from './types.js';
-import { PERMISSION_MODEL_OBLIGATIONS } from './permission-models.js';
+import { nestedSandboxProblems, PERMISSION_MODEL_OBLIGATIONS } from './permission-models.js';
 
 const THINKING_CONTROLS = ['levels', 'budget', 'toggle'] as const;
 
@@ -93,6 +93,7 @@ export function dialectProblems(dialect: unknown): string[] {
   if (isFunction(d.setModel) && d.persistentProcess !== true) {
     problems.push('`setModel` switches the model of a live process: without `persistentProcess: true` there is none, the next turn is a new launch');
   }
+  if (d.nestedSandbox !== undefined) problems.push(...nestedSandboxProblems(d.nestedSandbox, 'nestedSandbox'));
   if (d.nativeCompact !== undefined) {
     const command = typeof d.nativeCompact === 'object' && d.nativeCompact !== null
       ? (d.nativeCompact as { command?: unknown }).command

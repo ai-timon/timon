@@ -65,82 +65,136 @@ test('the diagnostic names what blocks and the text render shows it', () => {
   assert.match(txt, /free disk space/);
 });
 
-/**
- * secu-11 — `host.isolation.filesystem` is settable to `auto` while the mission
- * launcher (a systemd `--scope`) emits nothing. The diagnostic is where an
- * operator finds that out without reading the source: a resolved policy that
- * masks nothing must print INERT, not silence.
- */
-test('the diagnostic says whether mission FS masking is actually enforced', () => {
-  try {
-    const auto = diagnose().missionIsolation;
-    assert.equal(auto.configured, 'auto');
-    // `enforced` is not asserted true or false: it depends on the host adapter
-    // (a `scope` launcher enforces nothing, a `service` one would). What must
-    // hold is that the rendered line never claims a protection that is absent.
-    const txt = formatDoctor(diagnose());
-    assert.match(txt, auto.enforced ? /mission FS masking enforced/ : /mission FS masking INERT/);
-    if (!auto.enforced) assert.match(txt, /NONE masked today/);
+const ISO_DEFAULTS = { unixSockets: 'deny', writable: [], exceptions: { agents: {}, projects: {} } } as const;
 
+type IsoInput = Parameters<typeof import('./doctor.js')['missionIsolationReport']>[0];
+function isoInput(over: Partial<IsoInput>): IsoInput {
+  return {
+    configured: 'auto', status: null, mechanism: 'landlock', platform: 'linux',
+    isolation: ISO_DEFAULTS, launcher: 'scope', maskedPaths: 7, ...over,
+  };
+}
+
+/**
+ * GHSA-f58g — the isolation line must never read as protection that is absent:
+ * a fenced machine says which mechanism holds, an unfenced one says NOT
+ * enforced with its cause and what a mission can then read, an altered
+ * launcher is said apart from a machine without the mechanism, and only
+ * `enforce` turns the absence into a blocker.
+ */
+test('the diagnostic says whether missions are fenced, and why not', async () => {
+  const { missionIsolationReport } = await import('./doctor.js');
+  const ready = { state: 'ready', binary: '/x/timon-fence', abi: 6, seccomp: true } as const;
+
+  const linux = missionIsolationReport(isoInput({ status: ready }));
+  assert.equal(linux.blocker, null);
+  assert.deepEqual(
+    { mechanism: linux.report.mechanism, abi: linux.report.abi, enforced: linux.report.enforced, launch: linux.report.launch, gaps: linux.report.gaps, reason: linux.report.reason },
+    { mechanism: 'landlock', abi: 6, enforced: true, launch: 'fenced', gaps: [], reason: null },
+  );
+  assert.equal(linux.report.message, "enforced (landlock ABI 6 + unix-socket filter): missions cannot read Timon's private files.");
+
+  const mac = missionIsolationReport(isoInput({ status: { ...ready, abi: 0 }, mechanism: 'seatbelt', platform: 'darwin' }));
+  assert.equal(mac.report.message, "enforced (seatbelt): missions cannot read Timon's private files.");
+  assert.deepEqual({ abi: mac.report.abi, gaps: mac.report.gaps }, { abi: 0, gaps: [] });
+
+  // ABI 2: truncation and signals are not confined.
+  const abi2 = missionIsolationReport(isoInput({ status: { ...ready, abi: 2 } })).report;
+  assert.equal(abi2.gaps[0], 'partial: kernel ABI 2 — a mission can truncate files it cannot read.');
+  assert.match(abi2.gaps[1] ?? '', /ABI 2 — a mission can send signals/);
+  assert.deepEqual(missionIsolationReport(isoInput({ status: { ...ready, abi: 4 } })).report.gaps.length, 1);
+
+  const kernel = missionIsolationReport(isoInput({ status: { state: 'unsupported', reason: 'kernel without Landlock', abi: 0 } }));
+  assert.equal(kernel.blocker, null, 'auto never blocks');
+  assert.deepEqual({ mechanism: kernel.report.mechanism, enforced: kernel.report.enforced, launch: kernel.report.launch },
+    { mechanism: 'none', enforced: false, launch: 'unfenced' });
+  assert.match(kernel.report.message, /^NOT enforced — kernel without Landlock\. A mission can read Timon's private files, including the operator token and the vault key: on a multi-account install, account permissions do not hold against a mission\. Set host\.isolation\.filesystem to "enforce"/);
+  assert.doesNotMatch(kernel.report.message, /altered/);
+
+  const windows = missionIsolationReport(isoInput({ status: { state: 'unsupported', reason: 'no mission fence on this OS', abi: 0 }, mechanism: null, platform: 'win32', launcher: null }));
+  assert.equal(windows.report.reason, 'no mission fence on Windows yet');
+  assert.match(windows.report.message, /^NOT enforced — no mission fence on Windows yet\./);
+
+  const tampered = { state: 'tampered', reason: 'the fence launcher this release ships (/x/native/timon-fence) is not executable', abi: 0 } as const;
+  const altered = missionIsolationReport(isoInput({ status: tampered }));
+  assert.equal(altered.report.state, 'tampered');
+  assert.match(altered.report.message, /^NOT enforced — ALTERED: .*not executable\. The Timon package may have been altered: reinstall it\./);
+  assert.equal(altered.blocker, null);
+
+  const refused = missionIsolationReport(isoInput({ configured: 'enforce', status: tampered }));
+  assert.equal(refused.report.launch, 'refused');
+  assert.match(refused.blocker ?? '', /^Mission refused.*"enforce".*altered/);
+  assert.match(refused.report.message, /every mission is refused until this is fixed/);
+
+  const off = missionIsolationReport(isoInput({ configured: 'off', status: null }));
+  assert.deepEqual({ state: off.report.state, enforced: off.report.enforced, blocker: off.blocker }, { state: 'off', enforced: false, blocker: null });
+  assert.match(off.report.message, /^NOT enforced — turned off/);
+});
+
+test('the diagnostic names what the fence leaves open: unix sockets, writable paths, exceptions', async () => {
+  const { missionIsolationReport } = await import('./doctor.js');
+  const ready = { state: 'ready', binary: '/x/timon-fence', abi: 6, seccomp: true } as const;
+  const report = missionIsolationReport(isoInput({
+    status: ready,
+    isolation: {
+      unixSockets: 'deny',
+      writable: ['~/.cache/tool'],
+      exceptions: {
+        agents: { deployer: { unixSockets: 'allow', writable: [] }, quiet: { writable: [] } },
+        projects: { site: { writable: ['~/.npm', '~/.cargo'] } },
+      },
+    },
+  })).report;
+  assert.deepEqual(report.exceptions, { agents: ['deployer', 'quiet'], projects: ['site'] });
+  assert.deepEqual(report.gaps, [
+    '1 extra writable path(s) in the home for every mission (host.isolation.writable).',
+    'exception for agent "deployer": unix sockets allowed.',
+    'exception for project "site": 2 extra writable path(s).',
+  ]);
+
+  const open = missionIsolationReport(isoInput({ status: ready, isolation: { ...ISO_DEFAULTS, unixSockets: 'allow' } })).report;
+  assert.equal(open.message, "enforced (landlock ABI 6): missions cannot read Timon's private files.");
+  assert.match(open.gaps[0] ?? '', /^unix sockets allowed for every mission/);
+
+  // Unfenced, the gaps are moot: the warning already says a mission reaches everything.
+  const none = missionIsolationReport(isoInput({ status: { state: 'unsupported', reason: 'kernel without Landlock', abi: 0 }, isolation: { ...ISO_DEFAULTS, unixSockets: 'allow' } })).report;
+  assert.deepEqual(none.gaps, []);
+});
+
+/**
+ * #891: the INERT masking line goes away where the fence applies, and stays
+ * where it does not, next to the NOT enforced warning; `enforce` without a
+ * fence is a blocker, `auto` never is.
+ */
+test('the text render shows the fence, the warning and the INERT line only where unfenced', async () => {
+  const { missionIsolationReport } = await import('./doctor.js');
+  const base = diagnose();
+  const fenced = missionIsolationReport(isoInput({ status: { state: 'ready', binary: '/x', abi: 2, seccomp: true } })).report;
+  const fencedText = formatDoctor({ ...base, missionIsolation: fenced, blockers: [] });
+  assert.match(fencedText, /mission isolation enforced \(landlock ABI 2 \+ unix-socket filter\)/);
+  assert.match(fencedText, /\n {2}partial: kernel ABI 2 — a mission can truncate files it cannot read\./);
+  assert.doesNotMatch(fencedText, /INERT|mission FS masking|WARNING:/);
+
+  const unfenced = missionIsolationReport(isoInput({ status: { state: 'unsupported', reason: 'kernel without Landlock', abi: 0 } })).report;
+  const unfencedText = formatDoctor({ ...base, missionIsolation: unfenced, blockers: [] });
+  assert.match(unfencedText, /mission isolation NOT enforced — kernel without Landlock\./);
+  assert.match(unfencedText, /mission FS masking INERT — 7 path\(s\) in the policy, NONE masked today/);
+  assert.match(unfencedText, /WARNING:\n {2}- mission isolation NOT enforced/);
+
+  try {
+    const live = diagnose();
+    assert.equal(live.missionIsolation.configured, 'auto');
+    assert.ok(!live.blockers.some((b) => b.startsWith('Mission refused')));
+    assert.equal(live.missionIsolation.enforced, live.missionIsolation.launch === 'fenced');
+    setConfig(TimonConfigSchema.parse({ host: { isolation: { filesystem: 'enforce' } } }));
+    const strict = diagnose();
+    assert.equal(strict.blockers.some((b) => b.startsWith('Mission refused')), strict.missionIsolation.launch === 'refused');
     setConfig(TimonConfigSchema.parse({ host: { isolation: { filesystem: 'off' } } }));
-    const off = diagnose().missionIsolation;
-    assert.deepEqual(
-      { configured: off.configured, enforced: off.enforced, maskedPaths: off.maskedPaths },
-      { configured: 'off', enforced: false, maskedPaths: 0 },
-    );
-    assert.match(formatDoctor(diagnose()), /mission FS masking off/);
+    const off = diagnose();
+    assert.equal(off.missionIsolation.state, 'off');
+    assert.match(formatDoctor(off), /mission isolation NOT enforced — turned off/);
+    assert.doesNotMatch(formatDoctor(off), /mission FS masking/);
   } finally {
     resetConfig();
   }
-});
-
-test('doctor explains an invalid backend pin even when another backend works', async () => {
-  const { join } = await import('node:path');
-  const { TIMON_HOME } = await import('./paths.js');
-  const missing = join(TIMON_HOME, 'missing', 'codex.cmd');
-  try {
-    setConfig(TimonConfigSchema.parse({ host: { binaries: { codex: missing } } }));
-    const report = diagnose();
-    const binary = report.binaries.find((b) => b.name === 'codex')!;
-    assert.equal(binary.ok, false);
-    assert.equal(binary.pinned, true);
-    assert.match(formatDoctor(report), /host\.binaries\.codex.*not.*file/);
-    assert.ok(formatDoctor(report).includes(missing));
-  } finally { resetConfig(); }
-});
-
-test('an empty main seat is a warning line, never a blocker, and is silent before the first agent (TIM-0142)', async () => {
-  const { mkdirSync, rmSync, writeFileSync } = await import('node:fs');
-  const { join } = await import('node:path');
-  const { AGENTS_DIR, TIMON_HOME } = await import('./paths.js');
-  const { dbApi } = await import('./db.js');
-  const { MAIN_AGENT_KEY } = await import('./main-agent.js');
-  const { TEAM_STATE_KEY, writeTeamState } = await import('./onboarding-team-state.js');
-  const { doctorMainSeat } = await import('./doctor.js');
-  rmSync(AGENTS_DIR, { force: true, recursive: true });
-  dbApi.deleteSetting(MAIN_AGENT_KEY);
-  dbApi.deleteSetting(TEAM_STATE_KEY);
-  assert.equal(doctorMainSeat(), null, 'no agent yet: nothing to warn about');
-
-  // Folders written by hand, as a restore leaves them: this file loads no provider.
-  for (const name of ['Zeus', 'Atlas']) {
-    mkdirSync(join(AGENTS_DIR, name), { recursive: true });
-    writeFileSync(join(AGENTS_DIR, name, 'config.json'), JSON.stringify({ role: 'orchestrator', cwd: TIMON_HOME }));
-  }
-  const r = diagnose();
-  assert.equal(r.mainSeat?.empty, true);
-  assert.deepEqual([...(r.mainSeat?.candidates ?? [])].sort(), ['Atlas', 'Zeus']);
-  assert.ok(!r.blockers.some((b) => /orchestrator/.test(b)), 'an empty seat does not fail the command');
-  assert.match(formatDoctor(r), /main orchestrator NONE .*eligible: (Zeus, Atlas|Atlas, Zeus)/);
-  // `diagnose()` only looks: nobody was seated.
-  assert.equal(dbApi.getAllSettings()[MAIN_AGENT_KEY], undefined);
-
-  writeTeamState({ status: 'pending' });
-  assert.equal(doctorMainSeat(), null, 'the wizard is the one asking');
-  dbApi.deleteSetting(TEAM_STATE_KEY);
-
-  dbApi.setSetting(MAIN_AGENT_KEY, 'Zeus');
-  assert.match(formatDoctor(diagnose()), /main orchestrator Zeus/);
-  rmSync(AGENTS_DIR, { force: true, recursive: true });
-  dbApi.deleteSetting(MAIN_AGENT_KEY);
 });

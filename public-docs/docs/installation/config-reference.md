@@ -32,7 +32,12 @@ Generated from the configuration schema and the loader's environment override ta
 | `host.gui` | "auto" &#124; "disabled" | "auto" | Native graphical integration policy. | — |
 | `host.binaries` | object | {} | Binary names mapped to absolute paths; null uses PATH discovery. | — |
 | `host.isolation` | object | See child fields | Requested mission filesystem restrictions. | — |
-| `host.isolation.filesystem` | "auto" &#124; "off" | "auto" | Requested mission filesystem confinement mode; availability depends on the host launcher. | — |
+| `host.isolation.filesystem` | "auto" &#124; "enforce" &#124; "off" | "auto" | Mission filesystem confinement: `auto` confines missions where the host supports it and warns elsewhere, `enforce` refuses to start a mission that cannot be confined, `off` disables confinement. | — |
+| `host.isolation.writable` | string[] | [] | Extra paths missions may write; the rest of the user's home is read-only to them. | — |
+| `host.isolation.unixSockets` | "deny" &#124; "allow" | "deny" | Whether missions may open Unix sockets (Docker, ssh-agent, D-Bus). | — |
+| `host.isolation.exceptions` | object | See child fields | Confinement exceptions for some agents or projects. | — |
+| `host.isolation.exceptions.agents` | object | {} | Confinement exceptions by agent name. | — |
+| `host.isolation.exceptions.projects` | object | {} | Confinement exceptions by project slug. | — |
 | `host.isolation.deny` | string[] | [] | Additional paths requested to be hidden from missions. | — |
 | `host.isolation.readOnly` | string[] | [] | Paths requested to remain visible but read-only. | — |
 | `host.isolation.allow` | string[] | [] | Paths exempted from filesystem masking. | — |
