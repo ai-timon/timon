@@ -22,6 +22,7 @@ import {
 import { whenProvidersLoaded } from './backends/registry.js';
 import {
   createWorktree, isGitRepo, currentBranch, refreshWorktreeBase, prepareWorktreeDependencies,
+  refreshMergeMessage, integrateMergeMessage,
   type WorktreeInfo, type RefreshOutcome,
 } from './worktree.js';
 import { agentDir } from './paths.js';
@@ -301,6 +302,24 @@ function mergeLockKey(task: TaskRow): string {
 
 const lastRefresh = new Map<string, RefreshOutcome>();
 
+/** Keeps a refresh outcome for the brief and logs it. A refusal without
+ *  conflict (a hook rejecting the merge message, an unknown base) used to be a
+ *  log line only: the brief now tells the agent too. */
+function recordRefresh(taskId: string, base: string, outcome: RefreshOutcome): void {
+  lastRefresh.delete(taskId);
+  if (outcome.status !== 'up-to-date') lastRefresh.set(taskId, outcome);
+  if (outcome.status === 'merged') {
+    console.log(`[dispatcher] worktree ${taskId} refreshed onto ${base}`);
+  } else if (outcome.status === 'conflict') {
+    console.warn(
+      `[dispatcher] worktree ${taskId}: ${outcome.files.length} conflict(s) with ` +
+      `${base} — left to the agent`,
+    );
+  } else if (outcome.status === 'failed') {
+    console.warn(`[dispatcher] worktree ${taskId} not refreshed onto ${base}: ${outcome.reason}`);
+  }
+}
+
 /**
  * What the agent needs to know about ITS worktree when it starts.
  *
@@ -336,9 +355,21 @@ export function worktreeDirective(
       `the merges of the other tasks) and the merge left ${refresh.files.length} ` +
       `open conflict(s):\n` +
       refresh.files.map((f) => `- \`${f}\``).join('\n') +
-      `\n\nResolve them and commit BEFORE starting your work. NEVER work around ` +
+      `\n\nResolve them and commit BEFORE starting your work (\`git commit --no-edit\` ` +
+      `keeps the merge message already prepared). NEVER work around ` +
       `the conflict with a blanket \`git checkout --ours\` or with \`git reset\`: ` +
       `you would erase work other tasks already merged.`,
+    );
+  } else if (refresh?.status === 'failed') {
+    parts.push(
+      `\n\n## Your branch was NOT brought up to date\n\n` +
+      `The automatic update of your branch with \`${wt.base}\` failed, so you may be ` +
+      `working on a stale base. Git said:\n\n` +
+      `\`\`\`text\n${refresh.reason}\n\`\`\`\n\n` +
+      `Before starting, run it yourself in your worktree:\n\n` +
+      `\`\`\`bash\ngit merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${wt.base}\n\`\`\`\n\n` +
+      `If it still refuses for a reason you cannot fix, \`timon task block\` with ` +
+      `that reason rather than working on the stale base.`,
     );
   } else if (refresh?.status === 'merged') {
     parts.push(
@@ -361,7 +392,8 @@ export function worktreeDirective(
         `git -C ${wt.sourceRepo} push . ${wt.branch}:${wt.base}\n` +
         `\`\`\`\n\n` +
         `\`push .\` only accepts a fast-forward. If it refuses (\`${wt.base}\` moved ` +
-        `while you were working), go back to YOUR worktree, \`git merge ${wt.base}\`, ` +
+        `while you were working), go back to YOUR worktree, ` +
+        `\`git merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${wt.base}\`, ` +
         `resolve, then try again. If it refuses because \`${wt.base}\` is checked out ` +
         `in another worktree, do not work around it: \`timon task block\` with the reason. ` +
         `Never force, and do NOT run \`git checkout ${wt.base}\` in the main ` +
@@ -381,13 +413,23 @@ export function worktreeDirective(
       `file the others just merged — that is what erased ` +
       `2,800 lines on 2026-08-20.\n\n` +
       `Base to move forward: \`${wt.base}\`.\n\n` +
+      `## Merge messages — hard rule\n\n` +
+      `Every merge commit you create carries an explicit English message with ` +
+      `NO task or mission id: git's default (\`Merge branch 'timon/task/<id>' …\`) ` +
+      `is refused by a public repository's commit-msg hook, and would publish ` +
+      `internal ids otherwise. Integrate each source branch with:\n\n` +
+      `\`\`\`bash\ngit merge --no-ff -m "${integrateMergeMessage(wt.base)}" <source-branch>\n\`\`\`\n\n` +
+      `After resolving a conflict, conclude with \`git commit --no-edit\`: the ` +
+      `message given with \`-m\` is kept. The final fast-forward below creates ` +
+      `no commit.\n\n` +
       (offActive
         ? `When your worktree is green, the final merge:\n\n${finish}`
         : `When your worktree is green, the final merge is ONE command, and only ` +
           `one:\n\n` +
           `\`\`\`bash\n${finish}\n\`\`\`\n\n` +
           `If it refuses (\`${wt.base}\` moved while you were working), go back to ` +
-          `YOUR worktree, \`git merge ${wt.base}\`, resolve, then retry the fast-forward. ` +
+          `YOUR worktree, \`git merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${wt.base}\`, ` +
+          `resolve, then retry the fast-forward. ` +
           `Never force.\n\n` +
           `Then get the FULL sha (\`git -C ${wt.sourceRepo} rev-parse HEAD\`, ` +
           `40 hex) for \`timon task done --merged-sha\`.`),
@@ -447,17 +489,7 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       lastRefresh.delete(task.id);
       const outcome = await refreshWorktreeBase(task.worktree_path, task.base_branch);
       await prepareWorktreeDependencies(cfg.cwd, task.worktree_path);
-      if (outcome.status !== 'up-to-date') lastRefresh.set(task.id, outcome);
-      if (outcome.status === 'merged') {
-        console.log(`[dispatcher] worktree ${task.id} refreshed onto ${task.base_branch}`);
-      } else if (outcome.status === 'conflict') {
-        console.warn(
-          `[dispatcher] worktree ${task.id}: ${outcome.files.length} conflict(s) with ` +
-          `${task.base_branch} — left to the agent`,
-        );
-      } else if (outcome.status === 'failed') {
-        console.warn(`[dispatcher] worktree ${task.id} not refreshed: ${outcome.reason}`);
-      }
+      recordRefresh(task.id, task.base_branch, outcome);
       return {
         taskId: task.id,
         path: task.worktree_path,
@@ -507,8 +539,8 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       const info = await createWorktree(task.id, cfg.cwd, base, `timon/merge/${task.id}`);
       dbApi.setTaskWorktree(task.id, info.path, info.branch, base);
       // Idempotent: on re-spawn the worktree already exists and may date
-      // from an earlier `main` — same refresh as for a coder.
-      await refreshWorktreeBase(info.path, base);
+      // from an earlier `main` — same refresh as for a coder, reported the same.
+      recordRefresh(task.id, base, await refreshWorktreeBase(info.path, base));
       console.log(`[dispatcher] worktree merge ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
     } catch (err) {
@@ -773,7 +805,10 @@ export function pipelineDirective(task: TaskRow): string {
     return (
       `\n\n---\nPIPELINE: \`code-self\`. Create NO \`review\` or \`merge\` task — ` +
       `the user chose the fast mode. When your code is ready: merge your ` +
-      `branch into its base YOURSELF (merge --no-ff), then close with ` +
+      `branch into its base YOURSELF with an explicit message that carries no ` +
+      `task id (\`git merge --no-ff -m "${integrateMergeMessage(task.base_branch ?? '<base>')}" ` +
+      `${task.branch_name ?? '<your-branch>'}\`; git's default message names ` +
+      `the task id, which a public repository's hook refuses), then close with ` +
       `\`timon task done <TASK_ID> --comment "..." --merged-sha <SHA of the merge commit>\`. ` +
       `The sha is REQUIRED: without it the task goes back to BLOCKED (guard against ` +
       `never-merged branches). On a conflict you cannot resolve cleanly, ` +

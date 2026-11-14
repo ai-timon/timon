@@ -57,6 +57,7 @@ import { notifyUser } from './notify.js';
 import { warnSandboxCascadeAhead } from './sandbox-cascade.js';
 import { parseReviewVerdict } from './review-verdict.js';
 import { execFileHost } from './host/index.js';
+import { integrateMergeMessage } from './worktree.js';
 
 const exec = execFileHost;
 const MAX_ITERATIONS = 3;
@@ -304,7 +305,8 @@ async function spawnMergeTask(review: TaskRow): Promise<void> {
     `## What to do`,
     `1. From YOUR worktree (the dispatcher created a dedicated one for you — see`,
     `   the "Where you integrate" section at the end of the brief), integrate`,
-    `   \`${branch}\` and resolve conflicts sensibly. NEVER work in the main repo.`,
+    `   \`${branch}\` and resolve conflicts sensibly. NEVER work in the main repo:`,
+    `   \`git merge --no-ff -m "${integrateMergeMessage(base)}" ${branch}\``,
     `2. Check that \`npx tsc --noEmit\` passes (orchestrator/ and app/ if touched) before finishing.`,
     `3. Advance \`${base}\` with the fast-forward given at the end of the brief, then take`,
     `   the FULL sha (40 hex) for \`timon task done --merged-sha\`.`,
@@ -312,7 +314,7 @@ async function spawnMergeTask(review: TaskRow): Promise<void> {
     `5. Never delete a file your branch does not ask to delete: an automatic`,
     `   check detects it and will hand the task back to you for repair.`,
     ``,
-    `No mention of Claude/Anthropic/Co-Authored-By in merge commits.`,
+    `Merge commits carry an explicit English message (\`-m\`) with no task or mission id, and no mention of Claude/Anthropic/Co-Authored-By: git's default message names the task branch, which a public repository's commit-msg hook refuses.`,
   ].filter(Boolean).join('\n');
 
   dbApi.createTask(mergeId, `merge — ${root.title}`, merger, {
