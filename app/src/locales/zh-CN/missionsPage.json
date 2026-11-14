@@ -11,7 +11,9 @@
       "seconds": "{seconds}秒",
       "minutes": "{minutes}分钟",
       "minutesSeconds": "{minutes}分{seconds}秒",
-      "hoursMinutes": "{hours}小时{minutes}分钟"
+      "hoursMinutes": "{hours}小时{minutes}分钟",
+      "compactMinutesSeconds": "{minutes}分{seconds}秒",
+      "compactHoursMinutes": "{hours}小时{minutes}分"
     },
     "stats": {
       "totalCost": "总费用",

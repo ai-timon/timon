@@ -11,7 +11,9 @@
       "seconds": "{seconds}s",
       "minutes": "{minutes}m",
       "minutesSeconds": "{minutes}m {seconds}s",
-      "hoursMinutes": "{hours}h {minutes}m"
+      "hoursMinutes": "{hours}h {minutes}m",
+      "compactMinutesSeconds": "{minutes}m{seconds}s",
+      "compactHoursMinutes": "{hours}h{minutes}m"
     },
     "stats": {
       "totalCost": "Total cost",

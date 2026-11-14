@@ -34,9 +34,9 @@ function fmtElapsed(ms: number): string {
   if (s < 60) return t('missionsPage.duration.seconds', { seconds: number.format(s) });
   const m = Math.floor(s / 60);
   if (m < 60) return s % 60
-    ? t('missionsPage.duration.minutesSeconds', { minutes: number.format(m), seconds: number.format(s % 60) })
+    ? t('missionsPage.duration.compactMinutesSeconds', { minutes: number.format(m), seconds: number.format(s % 60) })
     : t('missionsPage.duration.minutes', { minutes: number.format(m) });
-  return t('missionsPage.duration.hoursMinutes', { hours: number.format(Math.floor(m / 60)), minutes: number.format(m % 60) });
+  return t('missionsPage.duration.compactHoursMinutes', { hours: number.format(Math.floor(m / 60)), minutes: number.format(m % 60) });
 }
 
 /** The strip's avatar: the shared active face, at the tab's size. */
