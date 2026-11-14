@@ -1281,15 +1281,6 @@ export function registerRoutes(
     res.json({ operation: compactOperation(owned.id) });
   });
 
-  /**
-   * Rewind a chat to one of its user messages (docs/specs/rewind.md): that
-   * message and everything after it leave the thread, the agent forgets them at
-   * its next turn, and the message comes back for the composer. A person's own
-   * interactive chat only: never the daemon token nor a mission token, never a
-   * mission the daemon or an agent started, never someone else's (403 rather
-   * than the usual 404: the spec's contract, and the caller already holds an
-   * event id of it).
-   */
   /** The caller's own interactive chat, or null once the refusal is answered. */
   function rewindableChat(req: Request, res: Response): NonNullable<ReturnType<typeof dbApi.getMission>> | null {
     if (!requireAuth(req, res)) return null;
@@ -1309,6 +1300,15 @@ export function registerRoutes(
     return m;
   }
 
+  /**
+   * Rewind a chat to one of its user messages (docs/specs/rewind.md): that
+   * message and everything after it leave the thread, the agent forgets them at
+   * its next turn, and the message comes back for the composer. A person's own
+   * interactive chat only: never the daemon token nor a mission token, never a
+   * mission the daemon or an agent started, never someone else's (403 rather
+   * than the usual 404: the spec's contract, and the caller already holds an
+   * event id of it).
+   */
   app.post('/api/missions/:id/rewind', async (req, res) => {
     const m = rewindableChat(req, res);
     if (!m) return;
