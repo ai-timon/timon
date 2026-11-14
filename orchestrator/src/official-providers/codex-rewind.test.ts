@@ -190,3 +190,16 @@ test('a thread opened in the cut part, or a mission without its folder, throws b
   assert.match(homeless.error.message, /no CODEX_HOME/);
   assert.equal(other.spawns.length + homeless.spawns.length, 0);
 });
+
+test('a failed turn Timon sent again does not shift the kept turn; one the user moved on from still counts', async () => {
+  const { keptTurn } = await import('../../official-providers/provider-codex/lib/rewind.js');
+  const failed = (id: string, text: string) => ({ ...turn(id, text), status: 'failed' });
+  // Retried: "second" failed, then went through; the chat holds it once.
+  const retried = [turn('t1', 'first'), failed('t2', 'second'), turn('t3', 'second'), turn('t4', 'third')];
+  assert.equal(keptTurn(retried, 2, 'second').id, 't3', 'the turn that went through, not the failed attempt');
+  // Not retried: the failed "second" is a message of the chat of its own.
+  const movedOn = [turn('t1', 'first'), failed('t2', 'second'), turn('t3', 'third')];
+  assert.equal(keptTurn(movedOn, 2, 'second').id, 't2');
+  assert.equal(keptTurn(movedOn, 3, 'third').id, 't3');
+  assert.throws(() => keptTurn(movedOn, 2, 'nowhere'), /does not hold the last kept message/);
+});

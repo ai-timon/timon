@@ -78,6 +78,25 @@ function turnUserText(turn) {
 }
 
 /**
+ * The thread's turn that holds the chat's `count`-th kept message. A turn that failed and that
+ * Timon sent again is in the thread twice for one message in the chat: counted without the failed
+ * turns first, then by plain position (a failed turn the user moved on from is a message of its
+ * own). Either way its user text must hold `expected`; otherwise this throws.
+ *
+ * Exported for the test.
+ */
+export function keptTurn(turns, count, expected) {
+    const withoutFailed = turns.filter((turn) => turn?.status !== 'failed')[count - 1];
+    for (const turn of [withoutFailed, turns[count - 1]]) {
+        if (turn && typeof turn.id === 'string' && turnUserText(turn).includes(expected))
+            return turn;
+    }
+    if (turns.length < count)
+        throw new Error(`the thread has ${turns.length} turns, the chat kept ${count} messages`);
+    throw new Error(`turn ${count} of the thread does not hold the last kept message`);
+}
+
+/**
  * JSON-RPC over the newline-delimited pipes of `codex app-server`. An error with no id (the reply to
  * an unknown method, `-32600 unknown variant`) and the end of the process fail every pending call.
  *
@@ -160,12 +179,8 @@ export async function rewindCodexThread(binary, ctx) {
                 throw new Error('thread/turns/list answered without `data`');
             turns.push(...page.data);
             cursor = typeof page.nextCursor === 'string' && page.nextCursor ? page.nextCursor : null;
-        } while (cursor && turns.length < prompts.length);
-        const keep = turns[prompts.length - 1];
-        if (!keep || typeof keep.id !== 'string')
-            throw new Error(`the thread has ${turns.length} turns, the chat kept ${prompts.length} messages`);
-        if (!turnUserText(keep).includes(expected))
-            throw new Error(`turn ${prompts.length} of the thread does not hold the last kept message`);
+        } while (cursor && turns.filter((turn) => turn?.status !== 'failed').length < prompts.length);
+        const keep = keptTurn(turns, prompts.length, expected);
         const forked = await rpc.call('thread/fork', { threadId: ctx.sessionId, lastTurnId: keep.id });
         const id = forked?.thread?.id;
         if (typeof id !== 'string' || !id)
