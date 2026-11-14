@@ -131,3 +131,60 @@ test('the owner rewinds and gets the removed message back', async () => {
   assert.deepEqual(further.json.restored, { text: 'first question', images: [] });
   assert.deepEqual(dbApi.listEvents(m.id).map((e) => e.id), [further.json.rewind_event_id]);
 });
+
+const undo = (id: string, auth: { cookie?: string; bearer?: string } = { cookie: ownerCookie }) =>
+  call(`/api/missions/${id}/rewind/undo`, auth);
+
+test('undo is the owner\'s only, from a session', async () => {
+  const m = chat();
+  assert.equal((await rewind(m.id, m.second)).status, 200);
+  assert.equal((await undo(m.id, {})).status, 401);
+  assert.equal((await undo(m.id, { bearer: TOKEN })).status, 403);
+  assert.equal((await undo(m.id, { cookie: otherCookie })).status, 403);
+  assert.ok(dbApi.getPendingRewind(m.id), 'nothing was taken back');
+});
+
+test('undo takes back every rewind since the last message, with the session', async () => {
+  const m = chat();
+  dbApi.setMissionSession(m.id, 'spoken-session');
+  const all = dbApi.listEvents(m.id).map((e) => e.id);
+  assert.equal((await rewind(m.id, m.second)).status, 200);
+  assert.equal((await rewind(m.id, m.first)).status, 200);
+  assert.equal(dbApi.getMission(m.id)?.session_id, null);
+
+  const res = await undo(m.id);
+  assert.equal(res.status, 200);
+  assert.deepEqual(dbApi.listEvents(m.id).map((e) => e.id), all, 'the thread as it was, without the rewind markers');
+  assert.equal(dbApi.getMission(m.id)?.session_id, 'spoken-session');
+  assert.equal(dbApi.getPendingRewind(m.id), null);
+  assert.equal((await undo(m.id)).status, 409, 'nothing left to undo');
+});
+
+test('undo refuses once something was sent after the rewind, and leaves an older rewind alone', async () => {
+  const m = chat();
+  assert.equal((await rewind(m.id, m.second)).status, 200);
+  dbApi.insertEvent(m.id, 'user', { type: 'user', message: { role: 'user', content: 'new branch' } });
+  const res = await undo(m.id);
+  assert.equal(res.status, 409);
+  assert.equal(res.json.code, 'rewind_not_undoable');
+  assert.equal(dbApi.listEvents(m.id).some((e) => e.id === m.second), false, 'still rewound');
+
+  // A new series after the message: its undo restores only what it hid.
+  dbApi.clearPendingRewind(m.id); // the message's launch spent it
+  const visible = dbApi.listEvents(m.id).map((e) => e.id);
+  assert.equal((await rewind(m.id, m.first)).status, 200);
+  assert.equal((await undo(m.id)).status, 200);
+  assert.deepEqual(dbApi.listEvents(m.id).map((e) => e.id), visible);
+});
+
+test('undo during a turn answers 409', async () => {
+  const m = chat();
+  assert.equal((await rewind(m.id, m.second)).status, 200);
+  let release!: () => void;
+  const held = whileTurnPrepares(m.id, () => new Promise<void>((resolve) => { release = resolve; }));
+  const res = await undo(m.id);
+  release();
+  await held;
+  assert.equal(res.status, 409);
+  assert.equal(res.json.code, 'turn_in_progress');
+});

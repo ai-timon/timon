@@ -10,7 +10,7 @@
  */
 import express, { type Request, type Response } from 'express';
 import { z } from 'zod';
-import { BackendExhaustedError, ContextTooLargeError, TurnInFlightError, clientTurnState, getTurnState, interruptAgent, isAutonomousMission, isRunning, rewindMissionTo, killAgent, listAgents, loadConfig, respawnWithResume, sendToAgent, steerMission, planSwitchContext, setMissionModel, stderrExcerpt, switchMissionBackend, turnPreparing, whileTurnPrepares } from '../../agent.js';
+import { BackendExhaustedError, ContextTooLargeError, TurnInFlightError, clientTurnState, getTurnState, interruptAgent, isAutonomousMission, isRunning, rewindMissionTo, undoMissionRewind, killAgent, listAgents, loadConfig, respawnWithResume, sendToAgent, steerMission, planSwitchContext, setMissionModel, stderrExcerpt, switchMissionBackend, turnPreparing, whileTurnPrepares } from '../../agent.js';
 import { sendAgentMessage, CrossTeamError, UnknownAgentError, UnknownMissionError, InvalidReplyError } from '../../agent-messages.js';
 import { cooldownReason, fallbackFor } from '../../backend-fallback.js';
 import { messageDateTime } from '../../message-dates.js';
@@ -1290,24 +1290,31 @@ export function registerRoutes(
    * than the usual 404: the spec's contract, and the caller already holds an
    * event id of it).
    */
-  app.post('/api/missions/:id/rewind', async (req, res) => {
-    if (!requireAuth(req, res)) return;
+  /** The caller's own interactive chat, or null once the refusal is answered. */
+  function rewindableChat(req: Request, res: Response): NonNullable<ReturnType<typeof dbApi.getMission>> | null {
+    if (!requireAuth(req, res)) return null;
     if (!isPersonAuth(req.auth) || !req.auth.user) {
       forbidden(req, res, { kind: 'scope', reason: 'only the mission owner can rewind it, from a signed-in session' });
-      return;
-    }
-    const parsed = RewindBodySchema.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      res.status(400).json(apiError('invalid_body', 'expected { event_id: number }'));
-      return;
+      return null;
     }
     const m = dbApi.getMission(req.params.id as string);
     if (!m) {
       res.status(404).json(apiError('mission_not_found', 'mission not found'));
-      return;
+      return null;
     }
     if (m.owner_user_id !== req.auth.user.id || isAutonomousMission(m) || m.parent_mission_id) {
       forbidden(req, res, { kind: 'scope', reason: 'only your own interactive chats can be rewound' });
+      return null;
+    }
+    return m;
+  }
+
+  app.post('/api/missions/:id/rewind', async (req, res) => {
+    const m = rewindableChat(req, res);
+    if (!m) return;
+    const parsed = RewindBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json(apiError('invalid_body', 'expected { event_id: number }'));
       return;
     }
     const restored = rewindableUserMessage(m.id, parsed.data.event_id);
@@ -1318,6 +1325,30 @@ export function registerRoutes(
     try {
       const rewindEventId = await rewindMissionTo(m.id, parsed.data.event_id);
       res.json({ rewind_event_id: rewindEventId, restored });
+    } catch (err) {
+      if (err instanceof TurnInFlightError) {
+        res.status(409).json({ error: err.message, code: 'turn_in_progress' });
+        return;
+      }
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
+
+  /**
+   * Undo the rewinds made since the user last sent something
+   * (docs/specs/rewind.md): the thread and the agent's session come back as
+   * they were. 409 once a message was sent after the rewind, or during a turn.
+   */
+  app.post('/api/missions/:id/rewind/undo', (req, res) => {
+    const m = rewindableChat(req, res);
+    if (!m) return;
+    try {
+      const restored = undoMissionRewind(m.id);
+      if (restored === null) {
+        res.status(409).json({ error: 'nothing to undo: a message was sent after the rewind', code: 'rewind_not_undoable' });
+        return;
+      }
+      res.json({ restored });
     } catch (err) {
       if (err instanceof TurnInFlightError) {
         res.status(409).json({ error: err.message, code: 'turn_in_progress' });

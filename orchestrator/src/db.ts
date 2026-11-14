@@ -1358,8 +1358,13 @@ db.exec(`CREATE TABLE IF NOT EXISTS mission_remote_resume (
 db.exec(`CREATE TABLE IF NOT EXISTS mission_rewind_pending (
   mission_id TEXT PRIMARY KEY REFERENCES missions(id) ON DELETE CASCADE,
   session_id TEXT,
-  rewind_event_id INTEGER NOT NULL
+  rewind_event_id INTEGER NOT NULL,
+  series_from INTEGER
 )`);
+// The first rewind of the series an undo takes back (rewinds with nothing sent between).
+if (!(db.prepare(`PRAGMA table_info(mission_rewind_pending)`).all() as { name: string }[]).some((c) => c.name === 'series_from')) {
+  db.exec(`ALTER TABLE mission_rewind_pending ADD COLUMN series_from INTEGER`);
+}
 
 // What the opening of a mission's chat has folded so far (mission-history-page.ts).
 // Derived from `events` and rebuilt from them when absent, so nothing backfills
@@ -6158,10 +6163,50 @@ export const dbApi = {
    *  the session the first one cut (the one the conversation was spoken in). */
   setPendingRewind(id: string, sessionId: string | null, rewindEventId: number): void {
     db.prepare(
-      `INSERT INTO mission_rewind_pending (mission_id, session_id, rewind_event_id) VALUES (?, ?, ?)
+      `INSERT INTO mission_rewind_pending (mission_id, session_id, rewind_event_id, series_from) VALUES (?, ?, ?, ?)
        ON CONFLICT(mission_id) DO UPDATE SET rewind_event_id = excluded.rewind_event_id,
-         session_id = COALESCE(mission_rewind_pending.session_id, excluded.session_id)`,
-    ).run(id, sessionId, rewindEventId);
+         session_id = COALESCE(mission_rewind_pending.session_id, excluded.session_id),
+         series_from = COALESCE(mission_rewind_pending.series_from, excluded.series_from)`,
+    ).run(id, sessionId, rewindEventId, rewindEventId);
+  },
+  /**
+   * Takes back the rewinds made since the user last sent something: the rows
+   * they hid come back, their `rewind` events leave the thread, and the
+   * mission resumes the session it had before. Null when there is nothing to
+   * take back: no pending rewind, or something was written after it (a message
+   * sent, even one whose launch failed). Returns the number of rows restored.
+   */
+  undoRewind(missionId: string): number | null {
+    return db.transaction(() => {
+      const p = db.prepare(`SELECT session_id, rewind_event_id, series_from FROM mission_rewind_pending WHERE mission_id = ?`)
+        .get(missionId) as { session_id: string | null; rewind_event_id: number; series_from: number | null } | undefined;
+      if (!p) return null;
+      const from = p.series_from ?? p.rewind_event_id;
+      const tables = listEventsUnionStmt ? ['events', 'archive.events'] : ['events'];
+      for (const table of tables) {
+        if (db.prepare(`SELECT 1 FROM ${table} WHERE mission_id = ? AND id > ? AND rewound_by IS NULL LIMIT 1`)
+          .get(missionId, p.rewind_event_id)) return null;
+      }
+      const restoredRows: EventRow[] = [];
+      for (const table of tables) {
+        restoredRows.push(...db.prepare(
+          `SELECT * FROM ${table} WHERE mission_id = ? AND rewound_by >= ? AND id < ?`,
+        ).all(missionId, from, from) as EventRow[]);
+        db.prepare(`UPDATE ${table} SET rewound_by = NULL WHERE mission_id = ? AND rewound_by >= ? AND id < ?`)
+          .run(missionId, from, from);
+        // The series' own markers: hidden by themselves, so nothing reads them as a cut any more.
+        db.prepare(`UPDATE ${table} SET rewound_by = id WHERE mission_id = ? AND id >= ? AND type = 'rewind'`)
+          .run(missionId, from);
+      }
+      for (const row of restoredRows) {
+        let payload: unknown;
+        try { payload = JSON.parse(row.payload); } catch { continue; }
+        dbApi.indexMissionEvent(missionId, row.id, row.type, payload, row.timestamp);
+      }
+      if (p.session_id) dbApi.setMissionSession(missionId, p.session_id);
+      else dbApi.clearPendingRewind(missionId);
+      return restoredRows.length;
+    })();
   },
   getPendingRewind(id: string): { session_id: string | null; rewind_event_id: number } | null {
     return (db.prepare(`SELECT session_id, rewind_event_id FROM mission_rewind_pending WHERE mission_id = ?`)

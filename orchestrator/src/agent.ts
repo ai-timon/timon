@@ -3403,6 +3403,19 @@ export async function rewindMissionTo(missionId: string, fromEventId: number): P
 }
 
 /**
+ * Takes back the rewinds made since the user last sent something
+ * (`dbApi.undoRewind`): the thread and the session come back as they were.
+ * Null when there is nothing left to take back. Throws `TurnInFlightError`
+ * while a turn runs or is being prepared.
+ */
+export function undoMissionRewind(missionId: string): number | null {
+  if (running.get(missionId)?.turnActive || turnPreparing(missionId) || turnRetryAwaited(missionId)) {
+    throw new TurnInFlightError('a turn is in progress — the rewind can no longer be undone');
+  }
+  return dbApi.undoRewind(missionId);
+}
+
+/**
  * The first turn after a rewind ("Provider session cut"): the backend's own cut
  * when it has one (`SessionStrategy.rewind`); otherwise, and on any failure of
  * it, a fresh session seeded with a summary of the visible thread, or the
