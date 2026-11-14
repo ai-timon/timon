@@ -16,6 +16,18 @@ import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { z } from 'zod';
+import { COMMAND_WORD_RE } from '../../backends/acp/auth.js';
+
+/** What the agent's `initialize` announced (`readAuthMethods`), re-read before it is kept. */
+const AuthMethodSchema = z.object({
+  id: z.string().min(1).max(128),
+  name: z.string().min(1).max(120),
+  description: z.string().max(500).nullable(),
+  kind: z.enum(['agent', 'terminal', 'env_var']),
+  billedPerToken: z.boolean(),
+  // The same check as when it was read: a state file edited by hand cannot slip a second command into the advice.
+  terminal: z.object({ program: z.string().regex(COMMAND_WORD_RE).nullable(), args: z.array(z.string().regex(COMMAND_WORD_RE)).max(16).readonly() }).nullable(),
+});
 
 export const InstalledAgentSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
@@ -31,6 +43,8 @@ export const InstalledAgentSchema = z.object({
   args: z.array(z.string().max(512)).max(32),
   installedAt: z.number(),
   previousVersion: z.string().regex(/^[A-Za-z0-9._+-]+$/).max(64).optional(),
+  /** How the agent signs in, read from its `initialize`; absent until it was read once. */
+  authMethods: z.array(AuthMethodSchema).max(16).optional(),
 });
 export type InstalledAgent = z.infer<typeof InstalledAgentSchema>;
 

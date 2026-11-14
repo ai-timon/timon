@@ -6,7 +6,7 @@ import '../../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildTarGzWithModes, buildZip } from './archive-fixtures.js';
@@ -53,7 +53,8 @@ function newService(served: Served, extra: Partial<ConstructorParameters<typeof 
   const home = mkdtempSync(join(tmpdir(), 'timon-acp-service-'));
   return {
     home,
-    service: new AcpRegistryService({ home, fetchFn: fakeFetch(served), platform: 'linux', arch: 'x64', ...extra }),
+    // The fixtures are shell scripts, not agents: asked how they sign in, they answer nothing.
+    service: new AcpRegistryService({ home, fetchFn: fakeFetch(served), platform: 'linux', arch: 'x64', inspect: async () => [], ...extra }),
   };
 }
 
@@ -281,4 +282,111 @@ test('windows: the x86_64 zip is used on arm64, with the .cmd launcher and backs
   const view = await service.install('winagent');
   assert.equal(view.installed?.state, 'ok');
   assert.match(registered[0] ?? '', /dist-package[\\/]cursor-agent\.cmd$/);
+});
+
+test('an unverified install is offered the verified build once the registry hashes it; the same bytes keep their folder, nothing updates by itself', { skip: !posix }, async () => {
+  const archive = tarOf('#!/bin/sh\necho one\n');
+  const url = 'https://downloads.example.com/ver.tar.gz';
+  const served: Served = new Map([[REGISTRY_URL, registryDoc([agentEntry({ id: 'ver', archive: url })])], [url, archive]]);
+  let clock = 0;
+  const { service, home } = newService(served, { now: () => (clock += 11 * 60_000) });
+  try {
+    await service.install('ver', { acceptUnverified: true });
+    let view = (await service.list()).agents.find((a) => a.id === 'ver');
+    assert.equal(view?.installed?.integrity, 'unverified');
+    assert.equal(view?.installed?.verifiedUpdate, false, 'no hash published yet: nothing to offer');
+
+    served.set(REGISTRY_URL, registryDoc([agentEntry({ id: 'ver', archive: url, sha256: sha(archive) })]));
+    view = (await service.list()).agents.find((a) => a.id === 'ver');
+    assert.equal(view?.installed?.verifiedUpdate, true, 'the registry now hashes this build');
+    assert.equal(view?.installed?.updateAvailable, false, 'same version');
+    assert.equal(view?.installed?.integrity, 'unverified', 'listing changes nothing');
+
+    const program = join(home, 'providers', 'acp-registry', 'agents', 'ver', '1.0.0', 'dist', 'agent');
+    const before = statSync(program).ino;
+    const verified = await service.install('ver');
+    assert.equal(verified.installed?.integrity, 'sha256');
+    assert.equal(verified.installed?.verifiedUpdate, false);
+    assert.equal(statSync(program).ino, before, 'identical files are not replaced under a running mission');
+    assert.equal(isBackendName(profileIdOf('ver')), true);
+    await assert.rejects(() => service.install('ver'), (e: unknown) => e instanceof AcpRegistryError && e.code === 'already-installed');
+  } finally { service.dispose(); }
+});
+
+test('a newer verified version over an unverified one is offered as such and keeps the old version one generation', { skip: !posix }, async () => {
+  const v1 = tarOf('#!/bin/sh\necho one\n');
+  const v2 = tarOf('#!/bin/sh\necho two\n');
+  const served: Served = new Map([
+    [REGISTRY_URL, registryDoc([agentEntry({ id: 'gv', archive: 'https://downloads.example.com/g1.tar.gz' })])],
+    ['https://downloads.example.com/g1.tar.gz', v1],
+    ['https://downloads.example.com/g2.tar.gz', v2],
+  ]);
+  let clock = 0;
+  const { service, home } = newService(served, { now: () => (clock += 11 * 60_000) });
+  try {
+    await service.install('gv', { acceptUnverified: true });
+    served.set(REGISTRY_URL, registryDoc([agentEntry({ id: 'gv', version: '1.5.0', archive: 'https://downloads.example.com/g2.tar.gz', sha256: sha(v2) })]));
+    const view = (await service.list()).agents.find((a) => a.id === 'gv');
+    assert.equal(view?.installed?.verifiedUpdate, true);
+    assert.equal(view?.installed?.updateAvailable, true);
+    const updated = await service.install('gv');
+    assert.equal(updated.installed?.version, '1.5.0');
+    assert.equal(updated.installed?.integrity, 'sha256');
+    assert.deepEqual(readdirSync(join(home, 'providers', 'acp-registry', 'agents', 'gv')).sort(), ['1.0.0', '1.5.0']);
+  } finally { service.dispose(); }
+});
+
+const ANTIGRAVITY_METHODS = [
+  { id: 'oauth-personal', name: 'Log in with Google', description: 'Log in with your Google account' },
+  { id: 'gemini-api-key', name: 'Gemini API key', description: 'Use an API key with Gemini Developer API' },
+  { id: 'agent-platform', name: 'Gemini Enterprise Agent Platform', description: 'Formerly Vertex AI' },
+];
+
+test('sign-in: the methods are read at install and handed to the provider; asked again, a change re-registers the agent', { skip: !posix }, async () => {
+  const archive = tarOf('#!/bin/sh\n');
+  const served: Served = new Map([
+    [REGISTRY_URL, registryDoc([agentEntry({ id: 'signer', archive: 'https://downloads.example.com/s.tar.gz', sha256: sha(archive) })])],
+    ['https://downloads.example.com/s.tar.gz', archive],
+  ]);
+  let answer: unknown = ANTIGRAVITY_METHODS;
+  const registered: Array<{ methods: unknown }> = [];
+  const { service, home } = newService(served, {
+    inspect: async () => answer,
+    register: (agent) => { registered.push({ methods: agent.authMethods }); return () => {}; },
+  });
+  await service.install('signer');
+  const kept = registered[0]?.methods as Array<{ id: string; billedPerToken: boolean }>;
+  assert.deepEqual(kept.map((m) => [m.id, m.billedPerToken]), [['oauth-personal', false], ['gemini-api-key', true], ['agent-platform', true]]);
+
+  const { methods } = await service.authMethods('signer');
+  assert.deepEqual(methods.filter((m) => m.recommended).map((m) => m.id), ['oauth-personal'], 'never a billed method');
+  assert.equal(registered.length, 1, 'same answer: no re-registration');
+
+  answer = [...ANTIGRAVITY_METHODS, { id: 'login', name: 'Terminal login', type: 'terminal', args: ['--login'] }];
+  const again = await service.authMethods('signer');
+  assert.equal(registered.length, 2, 'a changed answer re-registers');
+  const terminal = again.methods.find((m) => m.id === 'login');
+  assert.equal(terminal?.recommended, true, 'a terminal command is preferred');
+  assert.equal(terminal?.command, `${join(home, 'providers', 'acp-registry', 'agents', 'signer', '1.0.0', 'dist', 'agent')} --login`);
+  const state = JSON.parse(readFileSync(join(home, 'providers', 'acp-registry', 'state.json'), 'utf8')) as { agents: Record<string, { authMethods: unknown[] }> };
+  assert.equal(state.agents.signer?.authMethods.length, 4, 'kept for the next boot');
+
+  answer = Promise.reject(new Error('boom'));
+  (answer as Promise<unknown>).catch(() => undefined);
+  await assert.rejects(() => service.authMethods('signer'), (e: unknown) => e instanceof AcpRegistryError && e.code === 'inspect-failed');
+  await assert.rejects(() => service.authMethods('nobody'), (e: unknown) => e instanceof AcpRegistryError && e.code === 'not-installed');
+  service.dispose();
+});
+
+test('sign-in: an agent that does not answer at install is still installed, without methods', { skip: !posix }, async () => {
+  const archive = tarOf('#!/bin/sh\n');
+  const served: Served = new Map([
+    [REGISTRY_URL, registryDoc([agentEntry({ id: 'mute', archive: 'https://downloads.example.com/m.tar.gz', sha256: sha(archive) })])],
+    ['https://downloads.example.com/m.tar.gz', archive],
+  ]);
+  const { service } = newService(served, { inspect: async () => { throw new Error('no handshake'); } });
+  try {
+    const view = await service.install('mute');
+    assert.equal(view.installed?.state, 'ok');
+  } finally { service.dispose(); }
 });
