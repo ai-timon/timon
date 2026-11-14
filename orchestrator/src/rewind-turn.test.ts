@@ -24,7 +24,7 @@ const { upsertAgent, sendToAgent, killAgent, isRunning, rewindMissionTo, whileTu
 const { dbApi } = await import('./db.js');
 const { registerDialect, registerProfile } = await import('./backends/registry.js');
 
-type Launch = { message: string; resume: string | null; at?: string };
+type Launch = { message: string; resume: string | null; at?: string; pending?: boolean };
 const SUCCESS = { type: 'result', payload: { subtype: 'success', is_error: false, result: 'done' } };
 
 const removals: (() => void)[] = [];
@@ -34,9 +34,10 @@ after(() => {
   for (const remove of removals) remove();
 });
 
-/** `lostAt`: a launch asked to resume at a cut point fails as the CLI does when it cannot find it.
- *  `crashFirst`: the first launch throws, as a missing binary does. */
-function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt = false, crashFirst = false): { agent: string; launches: Launch[] } {
+/** `lostAt`: a launch asked to resume at a cut point fails as the CLI does when it cannot find it
+ *  (or, given a string, exits 1 with that stderr). `crashFirst`: the first launch throws, as a
+ *  missing binary does. A launch records whether a rewind was still pending when it went out. */
+function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt: boolean | string = false, crashFirst = false): { agent: string; launches: Launch[] } {
   const launches: Launch[] = [];
   const dialect: Dialect = {
     defaultCmd: WITNESS_CLI, persistentProcess: false, finishMissionOnExit: false,
@@ -45,11 +46,12 @@ function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt = fa
     isSessionNotFoundError: (stderr) => stderr.includes('No message found'),
     async buildSpawn(opts) {
       launches.push({ message: opts.message, resume: opts.resumeSession, ...(opts.resumeAt ? { at: opts.resumeAt } : {}) });
+      if (typeof lostAt === 'string') launches.at(-1)!.pending = dbApi.getPendingRewind(opts.missionId) !== null;
       if (crashFirst && launches.length === 1) throw new Error('binary not found');
       const lost = lostAt && opts.resumeAt;
       return {
         cmd: WITNESS_CLI,
-        args: ['-e', lost ? `process.stderr.write('No message found\\n'); process.exit(1);`
+        args: ['-e', lost ? `process.stderr.write(${JSON.stringify(typeof lostAt === 'string' ? lostAt : 'No message found')} + '\\n'); process.exit(1);`
           : `console.log(JSON.stringify(${JSON.stringify(SUCCESS)}));`],
         cwd: opts.cfg.cwd, initialStdin: null,
       };
@@ -188,6 +190,26 @@ test('a cut point the provider cannot find falls back to summary mode, and the t
   assert.doesNotMatch(retry!.message, /charlie|delta/);
   assert.match(retry!.message, /lost juliet/);
   assert.deepEqual(logged(id), ['first question alpha', 'lost juliet'], 'the message is logged once');
+});
+
+test('a native cut the CLI refuses as an unknown option falls back to summary mode, and keeps the cut until then', async () => {
+  const { agent, launches } = backend('rewind-at-refused', async (ctx) => ({ resume: ctx.sessionId, resumeAt: 'some-uuid' }),
+    "error: unknown option '--resume-session-at'");
+  const { id, second } = chat(agent);
+  await rewindMissionTo(id, second);
+  assert.equal(await sendToAgent(id, 'refused mike', undefined, null, null, undefined, { replayContext: true }), 'delivered');
+  // The summary runs its own launches first; the turn is the one that carries the recovered context.
+  const isTurn = (l: Launch) => l.message.includes('## Continuation');
+  await until(() => launches.some(isTurn) && !isRunning(id), 'the summary-mode turn');
+  assert.equal(launches[0]!.at, 'some-uuid');
+  const retry = launches.find(isTurn)!;
+  assert.equal(retry.resume, null);
+  assert.equal(retry.at, undefined);
+  assert.match(retry.message, /alpha|bravo/, 'seeded with the visible thread');
+  assert.doesNotMatch(retry.message, /charlie|delta/);
+  assert.equal(retry.pending, true, 'the refused launch did not spend the cut');
+  assert.equal(dbApi.getPendingRewind(id), null, 'spent once the summary turn answered');
+  assert.deepEqual(logged(id), ['first question alpha', 'refused mike'], 'the message is logged once');
 });
 
 test('no rewind while a turn is being prepared', async () => {

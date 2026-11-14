@@ -2447,6 +2447,13 @@ async function spawnTurn(args: {
     if (agent.terminationIntent) cancelTurnRetry(missionId);
     else if (turnRetryPending(missionId)) return;
     const failed = exitCode !== 0;
+    // A cut point the CLI refused without answering (an older build rejects
+    // `--resume-session-at` as an unknown option) is handled as one it cannot
+    // find: summary mode below, instead of a turn with no context at all.
+    if (failed && args.resumeAt && agent.turnActive && !agent.terminationIntent
+        && !agent.rateLimited && !agent.authFailed) {
+      agent.sessionNotFound = true;
+    }
     // The turn ended without the backend ever answering, and nobody asked it to stop: the user
     // would otherwise see "thinking", then nothing (TIM-0049). Say that, and show what it wrote.
     if (agent.turnActive && !agent.interruptedBy && !agent.terminationIntent
@@ -3512,8 +3519,9 @@ export function undoMissionRewind(missionId: string): number | null {
  * when it has one (`SessionStrategy.rewind`); otherwise, and on any failure of
  * it, a fresh session seeded with a summary of the visible thread, or the
  * message alone when nothing is left before the cut. The pending cut is spent
- * once a launch went out: one that throws keeps it, so the next message cuts
- * again instead of starting with no context at all (the session was cleared).
+ * once a turn answers (or a new session is recorded): a launch that throws or
+ * dies first keeps it, so the next message cuts again instead of starting with
+ * no context at all (the session was cleared).
  */
 async function spawnRewoundTurn(
   turn: Parameters<typeof spawnTurn>[0],
@@ -3532,7 +3540,6 @@ async function spawnRewoundTurn(
   }
   if (plan) await spawnTurn({ ...turn, resumeSession: plan.resume, resumeAt: plan.resumeAt });
   else await spawnRecoveredTurn(turn, undefined, undefined, 'summary');
-  dbApi.clearPendingRewind(turn.missionId);
 }
 
 /** Kills a process and waits for its exit. SIGTERM, then SIGKILL after
@@ -6375,6 +6382,8 @@ function processEvent(agent: RunningAgent, ev: NormalizedEvent): void {
     // stop showing "thinking" until the user speaks again.
     agent.turnActive = false;
     agent.turnSince = Date.now();
+    // A turn answered: the launch that carried a pending rewind really went out.
+    dbApi.clearPendingRewind(agent.missionId);
     if (agent.turnOpenedByTimon) agent.budgetSince = agent.turnSince;
     agent.turnOpenedByTimon = false;
     agent.authFailed = false;
