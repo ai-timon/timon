@@ -158,6 +158,21 @@ export function PiIcon({ className }: IconProps) {
   );
 }
 
+/* LLMTR's own mark, from llmtr.com: three dots, a ring and a red star. */
+export function LlmtrIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 53 36" className={className} aria-hidden>
+      <g fill="currentColor">
+        <circle cx="2" cy="18" r="1.8" opacity="0.3"/>
+        <circle cx="8" cy="18" r="1.8" opacity="0.55"/>
+        <circle cx="14" cy="18" r="1.8" opacity="0.85"/>
+      </g>
+      <path d="M 38 18 A 11 11 0 1 0 16 18 A 11 11 0 1 0 38 18 Z M 38 18 A 8 8 0 1 0 22 18 A 8 8 0 1 0 38 18 Z" fill="currentColor" fillRule="evenodd"/>
+      <polygon points="46,13 47.12,16.45 50.76,16.45 47.82,18.59 48.94,22.05 46,19.91 43.06,22.05 44.18,18.59 41.24,16.45 44.88,16.45" fill="#DC2626"/>
+    </svg>
+  );
+}
+
 export function OpenCodeIcon({ className }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" className={className} aria-hidden>
