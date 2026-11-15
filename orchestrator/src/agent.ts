@@ -2458,8 +2458,10 @@ async function spawnTurn(args: {
     // A cut point the CLI refused without answering (an older build rejects
     // `--resume-session-at` as an unknown option) is handled as one it cannot
     // find: summary mode below, instead of a turn with no context at all.
+    // Only when the CLI said nothing: after any output the turn ran, and
+    // replaying it in summary mode would repeat its side effects.
     if (failed && args.resumeAt && agent.turnActive && !agent.terminationIntent
-        && !agent.rateLimited && !agent.authFailed) {
+        && !agent.rateLimited && !agent.authFailed && agent.lastOutputAt === undefined) {
       agent.sessionNotFound = true;
     }
     // The turn ended without the backend ever answering, and nobody asked it to stop: the user

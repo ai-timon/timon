@@ -37,7 +37,7 @@ after(() => {
 /** `lostAt`: a launch asked to resume at a cut point fails as the CLI does when it cannot find it
  *  (or, given a string, exits 1 with that stderr). `crashFirst`: the first launch throws, as a
  *  missing binary does. A launch records whether a rewind was still pending when it went out. */
-function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt: boolean | string = false, crashFirst = false): { agent: string; launches: Launch[] } {
+function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt: boolean | string = false, crashFirst = false, outputFirst = false): { agent: string; launches: Launch[] } {
   const launches: Launch[] = [];
   const dialect: Dialect = {
     defaultCmd: WITNESS_CLI, persistentProcess: false, finishMissionOnExit: false,
@@ -51,7 +51,7 @@ function backend(id: string, nativeRewind?: Dialect['nativeRewind'], lostAt: boo
       const lost = lostAt && opts.resumeAt;
       return {
         cmd: WITNESS_CLI,
-        args: ['-e', lost ? `process.stderr.write(${JSON.stringify(typeof lostAt === 'string' ? lostAt : 'No message found')} + '\\n'); process.exit(1);`
+        args: ['-e', lost ? `${outputFirst ? `console.log(${JSON.stringify(JSON.stringify({ type: 'assistant', payload: assistant('working') }))});` : ''}process.stderr.write(${JSON.stringify(typeof lostAt === 'string' ? lostAt : 'No message found')} + '\\n'); process.exit(1);`
           : `console.log(JSON.stringify(${JSON.stringify(SUCCESS)}));`],
         cwd: opts.cfg.cwd, initialStdin: null,
       };
@@ -210,6 +210,19 @@ test('a native cut the CLI refuses as an unknown option falls back to summary mo
   assert.equal(retry.pending, true, 'the refused launch did not spend the cut');
   assert.equal(dbApi.getPendingRewind(id), null, 'spent once the summary turn answered');
   assert.deepEqual(logged(id), ['first question alpha', 'refused mike'], 'the message is logged once');
+});
+
+test('a native cut that crashes after the CLI produced output is not replayed in summary mode', async () => {
+  const { agent, launches } = backend('rewind-at-late', async (ctx) => ({ resume: ctx.sessionId, resumeAt: 'some-uuid' }),
+    'network down', false, true);
+  const { id, second } = chat(agent);
+  await rewindMissionTo(id, second);
+  await sendToAgent(id, 'late nora', undefined, null, null, undefined, { replayContext: true });
+  await until(() => launches.length > 0 && !isRunning(id), 'the failed turn');
+  // Settle: a wrong fallback would launch the summary turn right after the exit.
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  // Summary launches land in `launches` too: a replay would add at least one.
+  assert.equal(launches.length, 1, 'side effects already happened: no replay');
 });
 
 test('no rewind while a turn is being prepared', async () => {
