@@ -164,6 +164,42 @@ async function branchExists(cwd: string, branch: string): Promise<boolean> {
   }
 }
 
+/**
+ * A base ref handed to `git fetch origin <base>` and then used as `origin/<base>`.
+ * The same shape as a branch name: no options, no `..`, no second remote.
+ */
+function isRemoteBaseName(name: string): boolean {
+  if (!/^[\w./-]{1,200}$/.test(name) || name.includes('..')) return false;
+  return name.split('/').every((part) => part.length > 0 && !part.startsWith('-') && !part.startsWith('.'));
+}
+
+/**
+ * `origin/<base>` after `git fetch origin <base>`, or null when that fetch
+ * cannot be used. A failure is a warning, never a hard error: the caller
+ * keeps the local base. `local` mode does not call this.
+ */
+async function fetchedRemoteBase(cwd: string, base: string): Promise<string | null> {
+  if (!isRemoteBaseName(base)) return null;
+  try {
+    await exec('git', ['-C', cwd, 'fetch', '--no-tags', '--', 'origin', base], {
+      timeout: 30_000,
+      // No terminal behind the daemon: git must fail rather than wait for a password.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+  } catch (error) {
+    console.warn(`[worktree] could not fetch origin ${base} (${(error as Error).message}); using the local base`);
+    return null;
+  }
+  const remote = `origin/${base}`;
+  try {
+    await exec('git', ['-C', cwd, 'rev-parse', '--verify', '--end-of-options', `${remote}^{commit}`], { timeout: 5_000 });
+    return remote;
+  } catch (error) {
+    console.warn(`[worktree] origin/${base} is not available after fetch (${(error as Error).message}); using the local base`);
+    return null;
+  }
+}
+
 /** Sha of the current HEAD. Null if not a repo. */
 export async function headSha(cwd: string): Promise<string | null> {
   try {
@@ -187,6 +223,8 @@ export async function createWorktree(
   repoCwd: string,
   base?: string,
   branchName?: string,
+  /** `pull-request` starts a new branch at `origin/<base>`. `local` is unchanged. */
+  integration: 'local' | 'pull-request' = 'local',
 ): Promise<WorktreeInfo> {
   if (!(await isGitRepo(repoCwd))) {
     throw new Error(`createWorktree: ${repoCwd} is not a git repo`);
@@ -209,9 +247,15 @@ export async function createWorktree(
   // purge) leaves its commits behind. Recreating it with -b would fail
   // and, worse, we would restart from the base, losing sight of that work — so we
   // reattach to the existing branch rather than forge a new one.
-  const addArgs = (await branchExists(repoCwd, branch))
+  const exists = await branchExists(repoCwd, branch);
+  // Only a new branch starts from the forge. Reattaching must not drop commits
+  // that are already on the task branch. A failed fetch keeps the local base.
+  const startRef = !exists && integration === 'pull-request'
+    ? (await fetchedRemoteBase(repoCwd, baseRef)) ?? baseRef
+    : baseRef;
+  const addArgs = exists
     ? ['worktree', 'add', path, branch]
-    : ['worktree', 'add', '-b', branch, path, baseRef];
+    : ['worktree', 'add', '-b', branch, path, startRef];
   await exec('git', ['-C', repoCwd, ...addArgs], { timeout: 30_000 });
   await prepareWorktreeDependencies(repoCwd, path);
   return { taskId, path, branch, base: baseRef, sourceRepo: repoCwd };
@@ -268,14 +312,20 @@ export type RefreshOutcome =
 export async function refreshWorktreeBase(
   worktreePath: string,
   base: string,
+  /** `pull-request` merges `origin/<base>` after a fetch. `local` merges `base`. */
+  integration: 'local' | 'pull-request' = 'local',
 ): Promise<RefreshOutcome> {
   if (!existsSync(worktreePath) || !(await isGitRepo(worktreePath))) {
     return { status: 'failed', reason: `worktree missing or invalid: ${worktreePath}` };
   }
+  // A failed fetch leaves `source` as the local base: the same refresh as `local`.
+  const source = integration === 'pull-request'
+    ? (await fetchedRemoteBase(worktreePath, base)) ?? base
+    : base;
   try {
     // Already up to date: the base is an ancestor of HEAD. A cheap test that avoids
     // creating an empty merge commit on every re-spawn.
-    await exec('git', ['-C', worktreePath, 'merge-base', '--is-ancestor', base, 'HEAD'], {
+    await exec('git', ['-C', worktreePath, 'merge-base', '--is-ancestor', source, 'HEAD'], {
       timeout: 10_000,
     });
     return { status: 'up-to-date' };
@@ -285,7 +335,7 @@ export async function refreshWorktreeBase(
   try {
     await exec(
       'git',
-      ['-C', worktreePath, 'merge', '--no-edit', '-m', refreshMergeMessage(base), base],
+      ['-C', worktreePath, 'merge', '--no-edit', '-m', refreshMergeMessage(base), source],
       { timeout: 120_000 },
     );
     return { status: 'merged', base };

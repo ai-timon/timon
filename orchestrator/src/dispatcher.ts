@@ -527,7 +527,8 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // failure leaves the task starting on its base as-is, which is
       // still preferable to not launching it at all.
       lastRefresh.delete(task.id);
-      const outcome = await refreshWorktreeBase(task.worktree_path, task.base_branch);
+      // Pull-request mode refreshes from origin/<base>. Local mode is the local ref only.
+      const outcome = await refreshWorktreeBase(task.worktree_path, task.base_branch, taskIntegration(task).mode);
       await prepareWorktreeDependencies(cfg.cwd, task.worktree_path);
       recordRefresh(task.id, task.base_branch, outcome);
       return {
@@ -548,7 +549,9 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // `createWorktree` falls back on the CURRENT branch of the shared repo, which
       // may be another agent's — and the `code-self` merge then lands
       // on their work (evening of 2026-09-05).
-      const info = await createWorktree(task.id, cfg.cwd, task.base_branch ?? undefined);
+      const info = await createWorktree(
+        task.id, cfg.cwd, task.base_branch ?? undefined, undefined, taskIntegration(task).mode,
+      );
       dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
       console.log(`[dispatcher] worktree ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
@@ -576,11 +579,12 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // working on, and a merge landing there is a merge on the wrong branch
       // (18/10/2026, SDK API 10 series).
       const base = task.base_branch ?? inheritedBase(task) ?? (await currentBranch(cfg.cwd)) ?? 'main';
-      const info = await createWorktree(task.id, cfg.cwd, base, `timon/merge/${task.id}`);
+      const mode = taskIntegration(task).mode;
+      const info = await createWorktree(task.id, cfg.cwd, base, `timon/merge/${task.id}`, mode);
       dbApi.setTaskWorktree(task.id, info.path, info.branch, base);
       // Idempotent: on re-spawn the worktree already exists and may date
       // from an earlier `main` — same refresh as for a coder, reported the same.
-      recordRefresh(task.id, base, await refreshWorktreeBase(info.path, base));
+      recordRefresh(task.id, base, await refreshWorktreeBase(info.path, base, mode));
       console.log(`[dispatcher] worktree merge ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
     } catch (err) {

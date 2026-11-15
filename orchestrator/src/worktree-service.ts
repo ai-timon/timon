@@ -7,6 +7,8 @@
 import { existsSync } from 'node:fs';
 import { loadConfig } from './agent.js';
 import { dbApi, type TaskRow } from './db.js';
+import { integrationSettings, type IntegrationMode } from './integration-mode.js';
+import { taskProjectSlug } from './task-project.js';
 import { createWorktree, disposeWorktree, isGitRepo, releaseWorktreeFolder, type WorktreeInfo } from './worktree.js';
 
 /** `invalid` (400: no cwd, not a repo, bad base), `busy` (409: the task is
@@ -36,13 +38,22 @@ export function worktreeOfTask(task: TaskRow): {
   };
 }
 
+/** Same project the briefs use. A missing slug stays `local`, so this path does not fetch. */
+function worktreeIntegration(task: TaskRow): IntegrationMode {
+  let slug: string | null = task.project ?? null;
+  if (!slug && task.agent_name) {
+    try { slug = taskProjectSlug(task, loadConfig(task.agent_name)); } catch { slug = null; }
+  }
+  return integrationSettings(slug).mode;
+}
+
 export async function createTaskWorktree(task: TaskRow, base?: string): Promise<WorktreeInfo> {
   const cfg = loadConfig(task.agent_name);
   if (!cfg.cwd) throw new WorktreeServiceError('invalid', 'agent has no cwd');
   if (!(await isGitRepo(cfg.cwd))) throw new WorktreeServiceError('invalid', `agent cwd is not a git repo: ${cfg.cwd}`);
   if (base !== undefined && !BASE_REF.test(base)) throw new WorktreeServiceError('invalid', `invalid base ref: "${base}"`);
   try {
-    const info = await createWorktree(task.id, cfg.cwd, base);
+    const info = await createWorktree(task.id, cfg.cwd, base, undefined, worktreeIntegration(task));
     dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
     return info;
   } catch (err) {

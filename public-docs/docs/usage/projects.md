@@ -59,7 +59,7 @@ If `gh pr merge` only queues the pull request, the task waits until `gh pr view`
 
 `code-group` is not supported in this mode. Each coding task would open its own pull request, and the merge brief only knows how to merge one; ordering those pull requests and resolving conflicts between them is not specified. A `code-group` task is told to block, with the reason `code-group is not supported in pull-request mode`, and not to push. Use `local` integration, or the `full` pipeline, for a group.
 
-Worktrees are still created and refreshed from the local base branch. This mode does not move that branch, so a later task can start from a base that is behind the forge and its pull request then conflicts. How the local base should follow the forge — a fetch and a fast-forward when the base is not checked out, or worktrees created from `origin/<base>` — is an open question for the maintainers. This version does not change that worktree behaviour.
+In this mode a new task branch is created from `origin/<base>` after `git fetch origin <base>`, and an existing worktree is refreshed from that same remote ref. The local base branch is not moved. If the fetch fails, the task uses the local base and the daemon log records a warning. `local` mode still creates and refreshes worktrees from the local base only.
 
 The project role is the normal default for a task; task-specific overrides are useful for exceptions. A project path is not a container path unless the daemon actually executes inside that container.
 
