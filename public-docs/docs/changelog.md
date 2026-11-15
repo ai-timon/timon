@@ -7,6 +7,127 @@ slug: /changelog
 
 Published Timon releases. Preview changes are shown in the app when you install a release candidate.
 
+## 0.1.8 — 2026-11-15
+
+### Added
+- Agents can post a full message in the chat, report or comparison table included, right above a question or the Kanban planner, so you see everything before you choose.
+- Agents can run on Google Antigravity through its `agy` command, signed in with a personal Google account, with an Allow / Deny card before each edit, command or MCP tool it uses. On Linux, sign in with `DBUS_SESSION_BUS_ADDRESS=disabled: agy acp --login`, so that Timon's agents can read the sign-in.
+- The LLM quotas widget shows Antigravity's weekly quota for each model group of your Google plan, as `agy` reports it.
+- Agents graph: right-click an agent and choose **Delete agent** to delete it without opening its editor; it goes to the trash, as from the editor.
+- A superadmin can turn on developer mode, which loads unsigned plugins such as one you wrote yourself, with a switch in Settings › Plugins › Developer mode; the install sheet of an unsigned plugin now says why it will not load, offers to turn the mode on, and asks for confirmation before installing it.
+- Install Timon with one command: `curl -fsSL https://timon-ai.com/install.sh | sh` on Linux and macOS, `irm https://timon-ai.com/install.ps1 | iex` on Windows. The installer checks the package against the signed release list before installing it.
+- **LLMTR** is a built-in provider. Save an inject secret named `LLMTR_API_KEY` (grant it to `global`, or to the `llmtr` backend) and allow the host `llmtr.com` in `pluginPolicy.http.byPlugin` for `provider-llmtr` (or in `pluginPolicy.http.allow`). Until that host is allowed, a turn fails and no request is sent. Missions then call Chat Completions at `https://llmtr.com/v1`; the model id is sent as written. The public model list does not check the key.
+- Agent mascots are now drawn in 3D everywhere, from the first-run setup and the mascot configurator to the chat, the side rails, the Kanban and the Agents graph; **Settings → Appearance → Mascot style** brings back the flat 2D drawing, which is also used when your browser cannot draw in 3D.
+- The mascot configurator offers eleven more accessories without any plugin: a whip, a wizard's hat, a chef's toque, a crown, an idea bulb, a rocket, a chemist's flask, a game controller, a camera, a potted plant and a guitar.
+- The mascot configurator's fur grid now offers two browns and the base colours (yellow, orange, red, pink, purple, blue, teal, green, white, grey, black), then a colour picker: an agent's fur can be any colour.
+- While you dress your agent's mascot during setup, a 3D / 2D switch picks how every mascot is drawn; it is the same choice as Settings → Appearance → Mascot style.
+- A permission card for a shell command that runs a project file (`./run_tests.sh`, `python build.py`, `npm test`, `make check`) now shows that file's first lines, size and fingerprint. It also reads a command wrapped in `sh -c` or `eval`, and refuses the approval if the file changed, appeared or is too large to fingerprint; a remembered approval of such a command holds only while every file it runs is unchanged.
+- A provider's page in Settings › AI models › Providers lists its models with a search and a switch each, shows how many of them the model selector offers and, for a provider you added, edits its name, picture, address and key behind **Edit**; the Claude long-lived token now lives on the Claude page.
+- Provider plugins can add their own sections to their provider's page in Settings › AI models › Providers (plugin API 16, `settings.provider.section`).
+- Plugins can replace a provider's row in the providers list (plugin API 16, `providers.row`).
+- On an installation shared with Multi-user, each permission set gives the Providers screen one of three levels on the Team page: full access, own subscription accounts only, or hidden.
+- If Google ever refuses to sign you in from the built-in browser, **Sign in with Chrome** opens by itself, on the site you were signing in to, and brings you back to it once the sign-in is copied.
+- **Simplified Chinese** for the interface and desktop menus: choose **简体中文** in **Settings → Interface → Language**.
+- `timon init` finishes the setup from a terminal, for example on a server over SSH: it installs the background service if needed, creates your account (the password is typed hidden) and shows which AI tools are ready.
+- `timon` on its own shows where the installation stands (daemon, account, web address) and the next command to type; a command that cannot reach the daemon now says how to start it instead of `fetch failed`.
+- The welcome screen has a 3D / 2D switch next to the light/dark one: the falling mascots change style at once, and the account you then create keeps the choice.
+- Setup asks, optionally, who you use Timon for (yourself, your team or company, or your agency and its clients); agencies can ask to receive the partner offer by email, and withdraw in Settings › Profile.
+
+### Fixed
+- Agents canvas: the node and edge count sits a little higher above the action bar.
+- On the Agents page, "Import agents" and "Export" have icons and the same size as the other actions in the bar.
+- Antigravity no longer opens Google sign-in pages in your browser that end on a "site can't be reached" error: when `agy` is not signed in, Timon shows the sign-in command to run instead.
+- Claude and Codex no longer show "never allowed" in Settings › AI models › Providers while they work; a program a plugin may never run now reads "Blocked: this program cannot be run by a plugin", with why.
+- Codex conversations no longer each keep their own ~95 MB copy of Codex's plugin catalog for 30 days: they share one, and the copies left by finished conversations are deleted, which frees several gigabytes on an install that has run many of them.
+- Behind a company proxy set with `HTTPS_PROXY` or `HTTP_PROXY`, Timon and its missions now send their requests through it instead of connecting directly, without having to set `NODE_USE_ENV_PROXY`.
+- Opening a conversation or switching agents no longer shows a "context window almost full" alert when the gauge shows plenty of room left.
+- Conversations no longer open under a "Today" label that ignored the actual date.
+- The daemon no longer restarts in a tight loop when its database file is replaced while it runs.
+- Dialogs no longer have a thin outline; their shadow sets them apart.
+- The Files panel no longer writes, creates folders or deletes outside an agent's folder through a symbolic link, and no longer touches the `.git` folder under another name; deleting a link now removes the link, not the folder it points to.
+- On Free, a plugin you wrote yourself, or any unsigned plugin, now loads once developer mode is turned on with `"developer": { "unsignedPlugins": true }` in `timon.config.json`.
+- Google sign-in now works in the built-in browser, on Google itself and in a site's "Sign in with Google" popup.
+- Grok missions no longer inherit the permission rules, subagents and plugins of your Claude Code configuration (`~/.claude`).
+- Images pasted or attached in Grok conversations now reach the model for vision analysis instead of being passed only as file references.
+- The project filter of the Home Tasks widget looks like the other filters instead of a plain form field.
+- The web interface's image resizing service, which Timon never used, is switched off.
+- Kanban: the last card of a long column fades out at its foot instead of being cut through.
+- In light mode, the Kanban filters and search no longer fade into the page.
+- In light mode, a switch that is off no longer fades into the dialog behind it.
+- A switch you cannot change, such as a core module's on the Plugins page, is dimmed less and still reads as on.
+- The main agent's avatar shows an "M" instead of an underscore.
+- Links in memory files shown on the Memory page are now rendered through the same safe Markdown renderer as the rest of the app.
+- Removing or rewriting a memory rule, by hand or through the memory curation, now takes effect at the agent's next mission: the agents it could have reached start a fresh conversation instead of resuming one that still held the old rule, and the CLI, the `memory_rule_rm` tool and the injections widget say which agents.
+- On a new installation, a mission started before the first account exists no longer acts with the operator's full access, and a permission request can no longer be approved without signing in.
+- On Linux with Landlock (kernel 5.19 or later) and on macOS, missions now run inside a fence enforced by the operating system: Timon's private files are out of their reach, the rest of your home folder is read-only to them, and Unix sockets (Docker, ssh-agent) are cut. Settings › System › Security shows whether it applies on your computer and lets you require it or grant exceptions to one agent or project; `timon doctor` reports it too.
+- Missions: the Success rate card keeps a clear edge in light mode, and table rows alternate visibly in dark mode.
+- The web interface runs on an updated framework release that closes a security issue on Windows.
+- Notification previews no longer show raw markdown markers such as `**` and backticks.
+- On a server installed from the terminal, `timon` commands reach the background service before any configuration file exists.
+- Only a person can approve a permission request: a mission can still deny its own, but can no longer allow it, or a request from another mission.
+- The chat's permission shield now shows the mode the conversation really runs in, follows changes made in the agent's editor, and the permission card is translated and names the tool readably.
+- On a phone, the chat's panel buttons above the composer sit on a light fill, like the other controls.
+- The Plugins page lines up with the Missions and Kanban pages instead of sitting 4px further right.
+- Remote access now checks its secret and its access tokens in constant time.
+- Settings: content that scrolls fades out at the foot of the dialog instead of being cut through.
+- **Simplified Chinese settings**: built-in setting names, descriptions, units and plugin tabs are translated, and settings search matches both the Chinese text and the original setting keys.
+- **Simplified Chinese surfaces**: chat empty states and file controls, working-agent states, quota panels, recognized backend CLI warnings, the vault disc and its calendar, mission history and statistics now follow the interface language. Commands, note names and user-authored text are preserved.
+- A task an agent created with extra tools, skills or MCP servers its agent does not hold is now blocked when it starts, with a reason, instead of running with them.
+
+### Changed
+- ACP registry agents installed without a published hash now offer the verified build once the registry publishes one, a "Sign-in methods" button shows how each installed agent signs in (sign-in methods billed per token are marked and never suggested), and a mission that needs a sign-in says which step to take.
+- **Add a provider** in Settings › AI models › Providers now opens a page with two ways, the catalog of ACP agents (with a search, and one line per agent saying what is installed and what is offered) or a compatible endpoint, and the new provider opens on its own page; the registry no longer sits under the providers list.
+- Only a person can give an agent tools, skills that pre-authorise tools, or local (stdio) MCP servers it does not already hold: a mission asking for them, for an agent, a task or a mission it starts, is refused. Removing them is still allowed.
+- An agent without a picture shows its initial as a capital letter, as the canvas and your own avatar do.
+- The desktop app no longer downloads spell-check dictionaries from Google on first launch; on Linux, spell checking is therefore off in text fields, while Windows and macOS keep their system spell checker.
+- The event streams no longer accept the API token in the address: send it in an `Authorization` header.
+- Grok agents now offer only the two modes Grok can run: Plan (read-only) and Bypass permissions. An agent left on another mode runs read-only, and its editor says so: pick Bypass permissions to let it edit files and run commands.
+- The interface is easier on the eyes: the same Inter typeface on every system, a calmer light mode, and cards, badges and controls drawn with fills instead of outlines.
+- In light mode, code in the chat uses slightly deeper colours, so comments, strings and keywords are easier to read.
+- In light mode, secondary text such as times, sizes and descriptions is a little darker and easier to read.
+- When Timon listens only on this computer, the app and the daemon, built-in terminal included, now answer only under an IP address, `localhost`, a `*.localhost` or `*.ts.net` name, or a name from the configuration. If you reach such an installation under another name through your own proxy, declare it in `app.publicUrl` or set `daemon.behindTlsProxy`.
+- The 2D mascot style now draws the same characters as the 3D mascots, flat: the same seven head shapes with their ears and black visor, in the fur colour you picked exactly, with each accessory held, worn or perched where the 3D character carries it.
+- The Your AIs step of the first run shows each AI tool as the same row as Settings › AI models › Providers, with one button: Install and sign in installs the tool and starts its sign-in by itself.
+- The privacy page of the documentation now lists everything sent to the Timon team, including the data sent when a licence is activated and when an email code is relayed, and the note under the account form at setup says it accurately.
+- A provider's page in Settings › AI models › Providers now shows its connection, with **Connect**, its subscription accounts and its API key; administrators manage subscription accounts there, and no longer see the Subscription accounts tab.
+- Each provider's page in Settings › AI models › Providers now has a Program section: its version, Install or Update with the vendor's installer, the one path Timon runs, a path of your own under Advanced and, for a plugin, its security authorization; the separate AI tools, CLI binaries and provider plugins panels are gone.
+- The older backends list and its Edit panel are gone from Settings › AI models › Providers: each provider's page holds its models, settings and removal, and a provider file Timon cannot read now shows as Blocked, with the reason on its page.
+- Settings › AI models › Providers opens on the default provider, then your providers grouped as Connected and Other providers, with a search, one status line per provider and a single Check button; a provider is turned on or off from its own page.
+- A custom role's icon is now limited to plain shapes: other icon markup is refused when the role is saved, and ignored in an existing roles file.
+- Setup now asks whether Timon keeps running when you log out, and only turns on Linux user lingering, the macOS launchd daemon or the Windows boot task if you choose so; the answer can be changed in Settings › System › Installation or with `timon service session-mode`.
+- The Subscription accounts tab is gone: everyone adds and signs in their subscription accounts from the Connection section of the provider's page, in Settings › AI models › Providers.
+- When usage statistics are on, each completed agent turn also reports how many days after installation it ran, as a number of days, never a date.
+- A webhook trigger without authentication now refuses calls made by a web page of another site; calls from scripts, `curl` and other servers work as before.
+- In 3D, the welcome screen's falling mascots now tumble in relief: they turn their heads towards where they fly, into the direction you drag them and nod as they land.
+- Replacing the whole Timon interface with a third-party layout plugin now requires a licence that includes White Label; without it the standard interface stays and the plugin is listed as not covered by your licence.
+- Workflow conditions and event filters using `matches` can no longer freeze Timon: patterns now run on the same safe regex engine as trigger filters. `matches` no longer accepts backreferences, lookarounds or named groups: a workflow using one is refused when saved, and an already published version fails its run with the reason until the pattern is rewritten.
+
+### Known issues
+- A Kanban task that depends on a `code` task which never gets a merge (no changes to review, or no reviewer) waits indefinitely; remove that dependency to release it.
+- An agent's island card applied to a page other than the one on screen removes the tabs it replaces, but a replaced terminal keeps running: end it from the Terminal page.
+- Chat: pressing Escape to close a dialog while dictating also cancels the dictation and puts the message back as it was before you clicked the mic.
+- Chat: while a turn is being prepared, a tool the previous turn left unfinished can show as still running, with its old duration, until the new turn starts.
+- Copilot CLI: **Update** in its **Program** section may update another copy than the one shown, or install a new one, when the CLI's path is set under **Program › Advanced**, or when it was installed under an nvm pre-release of Node (such as `v21.0.0-rc.1`); run `copilot update` with the CLI's full path in a terminal instead.
+- The desktop app still embeds Electron 33, which no longer receives security updates; the move to a supported Electron release is planned for the next version.
+- If your organisation disables third-party MCP servers in Copilot, agents on Copilot cannot use Timon's tools and fall back to the `timon` command.
+- macOS: the usage of a Claude subscription account is not shown in the LLM quotas widget nor under the chat composer; Codex accounts are.
+- macOS: while Timon runs with no session open, Git over HTTPS and `gh` fail in missions; Git over SSH works.
+- MCP servers you add over HTTP are not passed to opencode and Hermes agents; Timon's own tools and stdio servers are.
+- Onboarding form details are still in English outside English, French and Simplified Chinese; the step titles are translated.
+- opencode and Hermes have not yet been tried on a tester's own account, so a first mission (Hermes especially) may still fail.
+- opencode decides its own tool permissions: Timon shows no Allow/Deny card for it and cannot restrict what it does. The agent editor says so.
+- Opening the model list of opencode or Hermes leaves one empty session per agent in that agent's own history.
+- Pi has not been tried with a tester's own model provider yet, so a first mission may fail.
+- **Sign in with Chrome** copies cookies only: a site that keeps its sign-in in the page's own storage (many apps built on Firebase) is not signed in by it.
+- **Sign in with Chrome** copies the sign-in into the built-in browser; whether Google keeps it valid there over time has not been verified, and a password or 2FA step has not been tried. Run it again if the session is lost.
+- **TIM-0034** — The installers are not code-signed: Windows SmartScreen or Smart App Control and macOS Gatekeeper warn about them or block them. On Windows, choose **More info → Run anyway** (turn Smart App Control off in Windows Security if it blocks); on macOS, allow the app in **System Settings → Privacy & Security**.
+- Windows: a CLI installed with pnpm or yarn can keep running after Timon stops or crashes; end it from Task Manager, or install it with npm.
+- Windows: a Codex agent in auto or acceptEdits mode cannot `git commit` (Codex keeps `.git` read-only); give its code and merge tasks the bypassPermissions mode, or run them on another backend.
+- Windows: installing a new version of the app closes the built-in terminal's shells.
+- Windows, and Linux without Landlock: missions are not fenced and can read Timon's private files; on an installation with several accounts, set the mission isolation to Required, or give the Spawn missions permission only to people you trust with the whole installation.
+- Windows: on a work or school account of a PC joined to Microsoft Entra ID, Windows may refuse to run Timon's background task; Timon then runs only while its window is open.
+- With Pi as the only backend, conversations keep their default title.
+
 ## 0.1.7 — 2026-11-06
 
 ### Added

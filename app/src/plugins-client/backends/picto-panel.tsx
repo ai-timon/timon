@@ -3,8 +3,9 @@
 /**
  * How a backend added by hand — or one of its models — gets a logo.
  *
- * One line: the brands the product ships, then a picture of one's own, then an
- * emoji. The brands draw in `currentColor` and follow the theme; a picture or
+ * The brands the product ships, wrapping onto as many lines as the width asks,
+ * then a picture of one's own and an emoji, kept at the right of the first
+ * line. The brands draw in `currentColor` and follow the theme; a picture or
  * an emoji covers every provider we have never heard of. The active choice is
  * highlighted, and pressing it again goes back to "no picture".
  * Deliberately INLINE, with no portal: a picker that opened over a row of the
@@ -95,7 +96,7 @@ export function PictoPanel({ value, onChange, className }: {
   return (
     <div
       className={cn(
-        'flex min-w-0 flex-nowrap items-center gap-0.5 rounded-md border border-dashed p-1 transition-colors',
+        'flex min-w-0 flex-nowrap items-start gap-0.5 rounded-md border border-dashed p-1 transition-colors',
         dragOver ? 'border-foreground/50 bg-muted/60' : 'border-transparent',
         className,
       )}
@@ -109,11 +110,13 @@ export function PictoPanel({ value, onChange, className }: {
         accept(firstImageFile(event.dataTransfer?.items ?? null, event.dataTransfer?.files ?? null));
       }}
     >
-      {/* Only the brands scroll sideways on a narrow screen: the picture and
-          emoji buttons stay in view, and the emoji picker, which opens below
-          its button in plain absolute positioning, is not clipped by a
-          scrolling box. */}
-      <div data-picto-brands className="mr-2 flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overscroll-x-contain p-px">
+      {/* The brands wrap rather than scroll: a strip as wide as twenty logos
+          set the min-content width of the dialog around it, which then
+          overflowed sideways. The picture and emoji buttons stay outside the
+          strip, so they keep their place at the right, and the emoji picker,
+          which opens below its button in plain absolute positioning, is never
+          inside a clipping box. */}
+      <div data-picto-brands className="mr-2 flex min-w-0 flex-1 flex-wrap items-center gap-0.5 p-px">
         {BRAND_KEYS.map((key) => (
           <Choice key={key} label={key} active={value.brand === key}
             onClick={() => onChange(value.brand === key ? NONE : { icon: null, brand: key })}>

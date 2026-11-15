@@ -30,8 +30,10 @@
  *    `searchDirs`. No `updateCheck`: `agy` updates itself. `credentialDirs` is `agy`'s own folder,
  *    not the whole `.gemini`: `~/.gemini/antigravity-acp` holds the sign-in of the ACP registry's
  *    Antigravity agent, and masking it from that backend's missions would sign it out. The sign-in
- *    itself lives in the system keychain (verified on Linux with an empty home folder).
+ *    itself lives in the system keychain, except on Linux, where the `agy` Timon starts keeps it in
+ *    that folder (`antigravityKeychainEnv` in `agents.js`: the mission fence refuses the keychain's bus).
  */
+import { antigravitySignInCommand } from './agents.js';
 import { manifestBackend } from './manifest.js';
 
 /** @type {import('@timon-ai/sdk/provider').BackendProfile} */
@@ -100,7 +102,7 @@ export const HERMES_PROFILE = {
 /** @type {import('@timon-ai/sdk/provider').BackendProfile} */
 export const ANTIGRAVITY_PROFILE = {
   // Google Antigravity CLI (`agy acp`) over the Agent Client Protocol. It holds
-  // its own sign-in (`agy acp --login`, kept in the system keychain); Timon
+  // its own sign-in (`agy acp --login`, kept in the system keychain, or in its own folder on Linux); Timon
   // stores none, and passes none of its variables: `envFrom` is empty on
   // purpose, the ones that would move it to per-token billing are emptied by
   // the agent's row (`agents.js`).
@@ -112,7 +114,7 @@ export const ANTIGRAVITY_PROFILE = {
   requiredBinary: manifestBackend('antigravity').binary?.names[0],
   subscription: {
     note: 'Calls go through the personal Google account `agy` is signed in to '
-      + '(`agy acp --login` on the host; Free, Google AI Pro or Ultra plan). '
+      + `(\`${antigravitySignInCommand(process.platform)}\` on the host; Free, Google AI Pro or Ultra plan). `
       + 'Antigravity asks Timon before an edit, a command or an MCP tool: the '
       + 'request appears as an Allow / Deny card. Its own permission rules '
       + 'decide what it never asks about, and Timon\'s permission mode does not '

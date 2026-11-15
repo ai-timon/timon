@@ -95,6 +95,17 @@ export type AcpProviderServices = {
   };
 };
 
+/**
+ * Whether a mission's current process runs inside the mission fence. The daemon sets it at load
+ * (`mission-fence-state.ts`); this module is also part of the published SDK, where nothing sets it
+ * and every session keeps the `authenticateWith` detour.
+ */
+let fenceSource: (missionId: string) => boolean = () => false;
+
+export function setAcpFenceSource(source: (missionId: string) => boolean): void {
+  fenceSource = source;
+}
+
 /** The probe stops itself at 30 s (`models.ts`); the daemon's deadline is the backstop. */
 const PROBE_CONVERSATION_MS = 40_000;
 
@@ -154,6 +165,7 @@ export function defineProvider(services: AcpProviderServices, spec: AcpAgentSpec
           profileId: profileId ?? spec.id,
           ...(spec.signIn ? { signIn: spec.signIn } : {}),
           ...(spec.authenticateWith ? { authenticateWith: spec.authenticateWith } : {}),
+          fenced: () => fenceSource(spawn.missionId),
           ...(extensionRequests ? { extensionRequests } : {}),
           onClose: () => {
             if (sessions.get(spawn.missionId) === driver) sessions.delete(spawn.missionId);

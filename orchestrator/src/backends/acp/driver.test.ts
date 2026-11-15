@@ -463,6 +463,23 @@ test('authenticate refused: the sign-in sentence is what the user reads, and the
   assert.equal(rig.closed(), 1);
 });
 
+test('inside the mission fence, authenticate is never tried: the sign-in step is reported at once', async () => {
+  // The agent's sign-in would wait for a browser redirect a fenced process cannot get.
+  const signIn = { fallback: 'run `cursor-agent login` in a terminal on this machine, then retry' };
+  const fenced = launch({ env: { FAKE_ACP_AUTH: 'authenticate', FAKE_ACP_AUTH_HANG: '1' }, authenticateWith: 'cursor_login', signIn, fenced: () => true });
+  const started = Date.now();
+  await assert.rejects(() => fenced.driver.start(), /sign in first \(Cursor Login\) — run `cursor-agent login`/);
+  assert.ok(Date.now() - started < 10_000, 'no wait on the sign-in method');
+  assert.equal(fenced.closed(), 1);
+
+  // The same agent outside the fence still gets the detour.
+  const open = launch({ env: { FAKE_ACP_AUTH: 'authenticate' }, authenticateWith: 'cursor_login', fenced: () => false });
+  await open.driver.start();
+  open.events.length = 0;
+  await open.driver.prompt('auth');
+  assert.equal(said(open.events), '["cursor_login"]');
+});
+
 test('images: sent as image blocks when the agent takes them, a note otherwise', async () => {
   const image = { media_type: 'image/png', data: 'AAAA' };
   const yes = launch();

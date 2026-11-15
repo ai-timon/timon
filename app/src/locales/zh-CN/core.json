@@ -1130,6 +1130,13 @@
     "mascotsHint": "使用吉祥物头像的智能体会通过它显示当前状态：休息、思考、工作、搜索、等待你的操作，或完成任务后的喜悦。",
     "mascotsAnimate": "启用吉祥物动画",
     "mascotsAnimateHint": "关闭后，吉祥物不会动，但仍会通过眼神显示状态。系统的减少动态效果设置始终优先。",
+    "mascotsStyle": "吉祥物样式",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "立体建模的毛绒头像，带光影效果。",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "平面绘制，对较旧的电脑更轻量。",
+    "mascotsStyleNoWebgl": "此浏览器无法进行 3D 绘制（WebGL2 已关闭或不可用）：吉祥物将以 2D 显示。",
+    "mascotsStyleShared": "适用于所有吉祥物。之后可以在“{settingsPath}”中更改。",
     "variants": {
       "coral": {
         "name": "珊瑚色",

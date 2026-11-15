@@ -110,22 +110,24 @@ test('the installation id is a random UUID, stable from one start to the next', 
 
 /* ── Destination ────────────────────────────────────────────────────────── */
 
-test('no destination under the test runner, a source checkout, or without a loopback capture URL', () => {
-  // The suite itself runs under the test runner: even a "packaged" daemon sends nowhere.
+test('destination: a source install reaches OpenPanel, a test run never does, a named capture server comes first', () => {
+  // The suite runs under the test runner: whatever env a caller hands over, nothing reaches production.
   assert.equal(telemetryDestination(process.env, true), null);
   assert.equal(telemetryDestination({ NODE_ENV: 'test' }, true), null);
-  assert.equal(telemetryDestination({}, false), null);
-  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'https://analytics.timon-ai.com/api' }, false), null);
+  assert.equal(telemetryDestination({}, false), null, 'the runner is read from this process, not only from the env passed');
+  assert.equal(telemetryDestination({}, true, 'stable'), null);
+  // Outside a test: a source checkout sends, like a packaged build.
+  assert.equal(telemetryDestination({}, false, 'dev', false), OPENPANEL_API_URL);
+  assert.equal(telemetryDestination({}, true, 'stable', false), OPENPANEL_API_URL);
+  assert.equal(telemetryDestination({ NODE_ENV: 'test' }, false, 'dev', true), null);
+  // A named loopback capture server comes first, except in a released package.
+  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'http://127.0.0.1:47321/' }, false), 'http://127.0.0.1:47321');
+  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'http://127.0.0.1:47321' }, false, 'dev', false), 'http://127.0.0.1:47321');
+  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'http://127.0.0.1:47321' }, true, 'beta', false), OPENPANEL_API_URL);
+  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'https://analytics.timon-ai.com/api' }, false), null, 'not a capture server: ignored, and under test nothing');
   assert.equal(captureUrl('http://192.168.1.4:8080'), null);
   assert.equal(captureUrl('http://user:pw@127.0.0.1:8080'), null);
   assert.equal(captureUrl('file:///tmp/x'), null);
-  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'http://127.0.0.1:47321/' }, false), 'http://127.0.0.1:47321');
-  // A packaged daemon of a released build outside a test ignores the capture URL.
-  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'http://127.0.0.1:47321' }, true, 'beta'), OPENPANEL_API_URL);
-  assert.equal(telemetryDestination({}, true, 'stable'), OPENPANEL_API_URL);
-  // The marker alone is not enough: a source checkout (no build stamp) never reaches production.
-  assert.equal(telemetryDestination({}, true, 'dev'), null);
-  assert.equal(telemetryDestination({ TIMON_TELEMETRY_CAPTURE_URL: 'http://127.0.0.1:47321' }, true, 'dev'), 'http://127.0.0.1:47321');
 });
 
 test('the timer sends one wave at a time; a silent network ends the wave, never piles up', async () => {
@@ -214,8 +216,10 @@ test('the catalogue is closed: unknown events, extra properties and free text ar
   assert.equal(validateEvent('browser_action', { kind: 'recording', action: 'Visited https://bank.example' }), null);
   assert.deepEqual(validateEvent('onboarding_step', { step: 'account', action: 'completed' }), { step: 'account', action: 'completed' });
   assert.equal(validateEvent('token_usage', { backend: 'claude', model: 'opus', origin: 'user', input_tokens: -1 }), null);
-  assert.equal(validateGlobals({ surface: 'daemon', app_version: '0.1.6', platform: 'linux', arch: 'x64', event_schema_version: 4, license_tier: 'beta' })?.surface, 'daemon');
-  assert.equal(validateGlobals({ surface: 'daemon', app_version: 'dev build', platform: 'linux', arch: 'x64', event_schema_version: 4, license_tier: 'beta' }), null);
+  assert.equal(validateGlobals({ surface: 'daemon', app_version: '0.1.6', platform: 'linux', arch: 'x64', event_schema_version: 5, license_tier: 'beta', build: 'source' })?.surface, 'daemon');
+  assert.equal(validateGlobals({ surface: 'daemon', app_version: 'dev build', platform: 'linux', arch: 'x64', event_schema_version: 5, license_tier: 'beta', build: 'source' }), null);
+  assert.equal(validateGlobals({ surface: 'daemon', app_version: '0.1.6', platform: 'linux', arch: 'x64', event_schema_version: 5, license_tier: 'beta' }), null, 'build is required');
+  assert.equal(validateGlobals({ surface: 'daemon', app_version: '0.1.6', platform: 'linux', arch: 'x64', event_schema_version: 5, license_tier: 'beta', build: 'fork' }), null);
 });
 
 test('names that a person chose map to other', () => {
@@ -333,6 +337,40 @@ test('licence: activated, refreshed, expired', () => {
 });
 
 /* ── Runtime ────────────────────────────────────────────────────────────── */
+
+test('outside a test, a source install sends to OpenPanel marked build: source; a package is marked build: package', async () => {
+  for (const [packaged, build] of [[false, 'source'], [true, 'package']] as const) {
+    const { sent, fetch } = recorder();
+    const rt = startTelemetry({
+      env: {}, packaged, testRunner: false, home: mkdtempSync(join(tmpdir(), 'timon-telemetry-build-')), fetch,
+      preference: { configValue: () => undefined, stored: () => null }, collector: noMission,
+    });
+    rt.track('onboarding_step', { step: 'account', action: 'completed' });
+    await rt.flushNow();
+    await rt.dispose();
+    const event = sent.find((s) => s.body.payload.name === 'onboarding_step');
+    assert.ok(event, `${build}: the event is sent`);
+    assert.ok(event.url.startsWith(OPENPANEL_API_URL), `${build}: to OpenPanel`);
+    assert.equal(event.body.payload.properties.build, build);
+  }
+});
+
+test('outside a test, a source install with sharing off sends nothing', async () => {
+  const { sent, fetch } = recorder();
+  const rt = startTelemetry({
+    env: { TIMON_TELEMETRY: '0' }, packaged: false, testRunner: false, home: mkdtempSync(join(tmpdir(), 'timon-telemetry-build-off-')), fetch,
+    preference: { configValue: () => undefined, stored: () => null }, collector: noMission,
+  });
+  rt.track('onboarding_step', { step: 'account', action: 'completed' });
+  await rt.flushNow();
+  await rt.dispose();
+  assert.equal(sent.length, 0);
+});
+
+test('under the test runner, a source install without a capture server is inert', () => {
+  const rt = startTelemetry({ env: {}, packaged: false, home: mkdtempSync(join(tmpdir(), 'timon-telemetry-inert-')) });
+  assert.equal(rt.active, false);
+});
 
 test('TIMON_TELEMETRY=0: nothing is sent, and no identity is drawn', async () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-telemetry-off-'));

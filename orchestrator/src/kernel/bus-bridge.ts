@@ -34,6 +34,7 @@ declare module '@deepseek-ai/cordis' {
     'timon/turn_complete'(ev: Extract<BusEvent, { kind: 'turn_complete' }>): void;
     'timon/turn_started'(ev: Extract<BusEvent, { kind: 'turn_started' }>): void;
     'timon/onboarding_step'(ev: Extract<BusEvent, { kind: 'onboarding_step' }>): void;
+    'timon/usage_kind_set'(ev: Extract<BusEvent, { kind: 'usage_kind_set' }>): void;
     'timon/compact_progress'(ev: Extract<BusEvent, { kind: 'compact_progress' }>): void;
     'timon/mission_started'(ev: Extract<BusEvent, { kind: 'mission_started' }>): void;
     'timon/mission_child_started'(ev: Extract<BusEvent, { kind: 'mission_child_started' }>): void;

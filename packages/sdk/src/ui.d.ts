@@ -1547,6 +1547,7 @@ declare module '@timon/ui' {
     eyes: 'pill' | 'big' | 'happy' | 'wink' | 'surprised' | 'squint' | 'sleepy' | 'heart' | 'star' | 'code' | `${string}:${string}`;
     acc: 'none' | 'loupe' | 'pen' | 'quill' | 'hammer' | 'wrench' | 'baton' | 'telescope' | 'envelope' | 'calendar'
       | 'clipboard' | 'hourglass' | 'teacher' | 'calculator' | 'chart' | 'brush' | 'globe' | 'megaphone' | 'shield' | 'coffee'
+      | 'whip' | 'wizard' | 'chef' | 'crown' | 'idea' | 'rocket' | 'chemist' | 'gamer' | 'photographer' | 'gardener' | 'musician'
       | `${string}:${string}`;
   };
   /** What an agent is doing (`idle`…`sleeping`) or how it reacts (`happy`…`coding`). Client API 15. */
@@ -1697,8 +1698,10 @@ declare module '@timon/ui' {
    * on (client API 16), in Settings › AI models › Providers. `null` outside it.
    * A section registered by a plugin is painted on the pages of the providers
    * that plugin brings only; registered with the `key` of a common section
-   * (`connection`, `apiKey`, `program`, `settings`, `models`) it takes that
-   * section's place there. `order` places it: the common ones are 100 to 500.
+   * (`connection`, `apiKey`, `models`, `program`, `settings`) it takes that
+   * section's place there. `order` places it: the common ones are 100
+   * (Connection), 200 (API key), 250 (Models), 300 (Program) and 400 (own
+   * settings); without one it comes last.
    */
   export function useProviderPage(): {
     provider: ProviderOverview;

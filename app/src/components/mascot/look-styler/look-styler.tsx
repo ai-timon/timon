@@ -26,11 +26,11 @@
  * host paints it above a plugin's replacement, which never has to know.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react';
-import { Ban, Shuffle } from 'lucide-react';
+import { Ban, Pipette, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AgentMascotHost } from '@/components/mascot/agent-mascot';
 import {
-  accessoryLabelKey, defaultLookFor, eyesLabelKey, furLabelKey, isMascotAccessory, isMascotEyes, isMascotShape,
+  CUSTOM_FUR_RE, accessoryLabelKey, defaultLookFor, eyesLabelKey, furLabelKey, isMascotAccessory, isMascotEyes, isMascotShape,
   lookFurHex, normalizeAgentLook, shapeLabelKey, type AgentLook,
 } from '@/components/mascot/agent-look';
 import { furOf } from '@/components/mascot/mascot-geometry';
@@ -97,6 +97,11 @@ function productOnly<T extends string>(list: readonly T[], packs: LookStylerValu
  */
 const LookStylerHeaderContext = createContext<ReactNode>(null);
 
+const pickClass = (on: boolean): string => cn(
+  'flex flex-col items-center gap-0.5 rounded-[14px] p-[5px] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-muted',
+  on ? 'bg-muted ring-[1.5px] ring-inset ring-foreground/55' : 'bg-card',
+);
+
 function Pick({ on, label, onClick, children, ...rest }: {
   on: boolean; label: string; onClick: () => void; children: ReactNode;
 } & Record<`data-${string}`, string>): ReactElement {
@@ -107,14 +112,48 @@ function Pick({ on, label, onClick, children, ...rest }: {
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={cn(
-        'flex flex-col items-center gap-0.5 rounded-[14px] p-[5px] transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-muted',
-        on ? 'bg-muted ring-[1.5px] ring-inset ring-foreground/55' : 'bg-card',
-      )}
+      className={pickClass(on)}
       {...rest}
     >
       {children}
     </button>
+  );
+}
+
+/** What the colour picker opens on before anyone has mixed a fur. */
+const CUSTOM_FUR_START = '#6b8cff';
+
+/**
+ * The fur grid's last cell: the browser's colour picker, for a fur the lists
+ * do not name. It shows the agent in the fur mixed last, and is selected
+ * while the look wears a colour off the presets. The picker reports while
+ * the user drags: each report is a change of the draft, saved with it.
+ */
+function CustomFurPick({ look, presets, size, onPick }: {
+  look: AgentLook; presets: readonly string[]; size: number; onPick: (color: AgentLook['color']) => void;
+}): ReactElement {
+  const on = CUSTOM_FUR_RE.test(look.color) && !presets.includes(look.color);
+  const [mixed, setMixed] = useState(on ? look.color : CUSTOM_FUR_START);
+  useEffect(() => { if (on) setMixed(look.color); }, [on, look.color]);
+  const label = t('mascot.fur.custom');
+  return (
+    <label data-fur-custom title={label} className={cn(pickClass(on), 'relative cursor-pointer focus-within:ring-2 focus-within:ring-ring')}>
+      <input
+        type="color"
+        aria-label={label}
+        value={mixed}
+        onChange={(event) => {
+          const color = event.target.value.toLowerCase() as AgentLook['color'];
+          setMixed(color);
+          onPick(color);
+        }}
+        className="absolute inset-0 size-full cursor-pointer opacity-0"
+      />
+      <AgentMascotHost look={{ ...look, color: mixed as AgentLook['color'], acc: 'none' }} size={size} shadow={false} fit />
+      <span aria-hidden className="pointer-events-none absolute bottom-1 right-1 grid size-4 place-items-center rounded-full bg-background text-foreground shadow-sm">
+        <Pipette className="size-2.5" />
+      </span>
+    </label>
   );
 }
 
@@ -134,12 +173,14 @@ const Grid = ({ title, dense, children }: { title: string; dense: boolean; child
  * pack is a group of its own so that it reads as something installed, and
  * goes as a whole when its plugin leaves.
  */
-function Cells({ type, ids, packs, dense, cell }: {
+function Cells({ type, ids, packs, dense, cell, after = null }: {
   type: MascotPartType;
   ids: readonly string[];
   packs: LookStylerValue['packs'];
   dense: boolean;
   cell: (id: string) => ReactElement;
+  /** A cell of the product's after its list, before the packs' groups (the fur's colour picker). */
+  after?: ReactNode;
 }): ReactElement {
   const listed = new Set(ids);
   const groups = packs
@@ -148,6 +189,7 @@ function Cells({ type, ids, packs, dense, cell }: {
   return (
     <>
       {productOnly(ids, packs).map(cell)}
+      {after}
       {groups.map(({ pack, parts }) => (
         <div key={pack.pluginId} className="col-span-full" data-mascot-pack={pack.pluginId}>
           <h5 className="mx-0.5 mb-1.5 mt-2 text-[11.5px] font-medium text-muted-foreground">{pack.label}</h5>
@@ -236,7 +278,7 @@ function LookStylerFromValue({ value: v }: { value: LookStylerValue }): ReactEle
             <Pick key={color} data-fur={color} on={look.color === color} label={cellLabel('color', color)} onClick={() => set({ color: color as AgentLook['color'] })}>
               <AgentMascotHost look={{ ...look, color: color as AgentLook['color'], acc: 'none' }} size={cellSize} shadow={false} fit />
             </Pick>
-          )} />
+          )} after={<CustomFurPick look={look} presets={v.choices.colors} size={cellSize} onPick={(color) => set({ color })} />} />
         </Grid>
         <Grid title={t('onboarding.agent.style.eyes')} dense={columns}>
           <Cells type="eyes" ids={v.choices.eyes} packs={v.packs} dense={columns} cell={(eyes) => (
@@ -251,7 +293,7 @@ function LookStylerFromValue({ value: v }: { value: LookStylerValue }): ReactEle
             <Pick key={acc} data-acc={acc} on={look.acc === acc} label={cellLabel('acc', acc)} onClick={() => set({ acc: acc as AgentLook['acc'] })}>
               {acc === 'none'
                 ? <span className="grid place-items-center text-muted-foreground" style={{ width: cellSize, height: cellSize }}><Ban className="size-1/2" aria-hidden /></span>
-                // The tool alone, enlarged: on the whole head it is a few pixels in a corner.
+                // In 2D the tool alone, enlarged (on the flat head it is a few pixels in a corner); in 3D the head wearing it.
                 : <AgentMascotHost look={{ ...look, acc: acc as AgentLook['acc'] }} size={cellSize} shadow={false} part="acc" />}
               {caption('acc', acc)}
             </Pick>

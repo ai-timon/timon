@@ -30,6 +30,11 @@ export const AGENT_LOOK_EXTRA_COLORS = ['#ff5fbf', '#3fa9ff', '#7ed957'] as cons
  */
 export const AGENT_LOOK_MISSION_COLORS = ['#ffc233', '#ff8a2a', '#a35bff'] as const;
 export const AGENT_LOOK_COLORS = [...AGENT_LOOK_FURS, ...AGENT_LOOK_EXTRA_COLORS, ...AGENT_LOOK_MISSION_COLORS] as const;
+/**
+ * Any other fur the colour picker can mix: `#rrggbb`, stored lower case. The
+ * palette above stays the set of named furs; this only widens what is stored.
+ */
+export const AGENT_LOOK_CUSTOM_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
 /** Resting eye expressions a user can pick. */
 export const AGENT_LOOK_EYES = [
@@ -40,10 +45,24 @@ export const AGENT_LOOK_EYES = [
 export const AGENT_LOOK_ACCESSORIES = [
   'none', 'loupe', 'pen', 'quill', 'hammer', 'wrench', 'baton', 'telescope', 'envelope', 'calendar',
   'clipboard', 'hourglass', 'teacher', 'calculator', 'chart', 'brush', 'globe', 'megaphone', 'shield', 'coffee',
+  'whip', 'wizard', 'chef', 'crown', 'idea', 'rocket', 'chemist', 'gamer', 'photographer', 'gardener', 'musician',
 ] as const;
 
 export type AgentLookShape = typeof AGENT_LOOK_SHAPES[number];
 export type AgentLookColor = typeof AGENT_LOOK_COLORS[number];
+type HexDigit =
+  | '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
+  | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+/**
+ * A fur off the palette, `#rrggbb` (`AGENT_LOOK_CUSTOM_COLOR_RE`), stored lower
+ * case. The type can only check the `#` and the first and last digits: the
+ * regular expression is what counts the six.
+ */
+export type AgentLookCustomColor = `#${HexDigit}${string}${HexDigit}`;
+// What the type tells a plugin author at compilation: a mixed fur fits, a colour name or a bare `#` does not.
+type _CustomColorTakesHex = Assert<'#a1B2c3' extends AgentLookCustomColor ? true : false>;
+type _CustomColorRefusesName = Assert<'#red' extends AgentLookCustomColor ? false : true>;
+type _CustomColorRefusesBare = Assert<'#' extends AgentLookCustomColor ? false : true>;
 export type AgentLookEyes = typeof AGENT_LOOK_EYES[number];
 export type AgentLookAccessory = typeof AGENT_LOOK_ACCESSORIES[number];
 
@@ -59,7 +78,7 @@ export const MASCOT_PART_ID_RE = /^[a-z0-9-]{3,40}:[a-z0-9][a-z0-9-]{0,39}$/;
 
 export type AgentLook = {
   shape: AgentLookShape | MascotPartId;
-  color: AgentLookColor | MascotPartId;
+  color: AgentLookColor | AgentLookCustomColor | MascotPartId;
   eyes: AgentLookEyes | MascotPartId;
   acc: AgentLookAccessory | MascotPartId;
 };
@@ -154,13 +173,15 @@ const isPartId = (value: unknown): value is MascotPartId => typeof value === 'st
 function productValue(field: keyof AgentLook, value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const v = field === 'color' ? value.toLowerCase() : value;
+  if (field === 'color' && AGENT_LOOK_CUSTOM_COLOR_RE.test(v)) return v;
   return ACCEPTED[field].includes(v) ? v : null;
 }
 
 /** Where a value is refused: the field, what it got, and what it takes. */
 function fieldRefusal(field: keyof AgentLook, value: unknown, catalog: MascotPartCatalog): string {
   const packs = [...catalog[field]];
-  const more = packs.length ? `, or a part an enabled mascot pack declares: ${packs.join(', ')}` : '';
+  const custom = field === 'color' ? ', or any #rrggbb colour' : '';
+  const more = `${custom}${packs.length ? `, or a part an enabled mascot pack declares: ${packs.join(', ')}` : ''}`;
   if (isPartId(value)) {
     return `look.${field}: ${JSON.stringify(value)} is not declared for this field by an installed and enabled mascot pack `
       + `(expected one of ${ACCEPTED[field].join(', ')}${more})`;

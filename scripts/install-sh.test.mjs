@@ -7,12 +7,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, createPublicKey, generateKeyPairSync, sign } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  RELEASES_SIGNATURE_DOMAIN, composeReleasesPayload, releaseKeyPair, serializeEnvelope, signReleasesPayload,
+  RELEASES_SIGNATURE_DOMAIN, addInstallSignature, composeReleasesPayload, keyIdFor, p256KeyPair, releaseKeyPair, serializeEnvelope,
+  signReleasesPayload,
 } from './release-manifest.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'install.sh');
@@ -20,10 +21,16 @@ const skip = process.platform === 'win32' ? 'install.sh is a POSIX shell script'
 
 const openssl = spawnSync('openssl', ['version'], { encoding: 'utf8' });
 const canVerify = openssl.status === 0 && /^OpenSSL ([3-9]|[1-9]\d)\./.test(openssl.stdout);
+const opensslPath = spawnSync('sh', ['-c', 'command -v openssl'], { encoding: 'utf8' }).stdout.trim();
 
 function pair() {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   return releaseKeyPair(privateKey.export({ type: 'pkcs8', format: 'pem' }), publicKey.export({ type: 'spki', format: 'pem' }));
+}
+
+function p256Pair() {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return p256KeyPair(privateKey.export({ type: 'pkcs8', format: 'pem' }), publicKey.export({ type: 'spki', format: 'pem' }));
 }
 
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -50,6 +57,22 @@ function setup(envelope, key) {
   const keyFile = join(dir, 'key.pem');
   writeFileSync(keyFile, key.publicKey);
   return { dir, manifest, keyFile };
+}
+
+/** Pins a P-256 key in the run, as release-p256-keygen.mjs --pin does in the script. */
+function withP256(ctx, p256) {
+  const file = join(ctx.dir, 'p256.pem');
+  writeFileSync(file, p256.publicKey);
+  return { TIMON_INSTALL_P256_KEY_FILE: file, TIMON_INSTALL_P256_KEY_ID: p256.keyId };
+}
+
+/** An openssl that says it is the LibreSSL of macOS: no Ed25519, P-256 still works. */
+function asLibreSSL(ctx) {
+  const bin = join(ctx.dir, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'openssl'), `#!/bin/sh\nif [ "$1" = version ]; then echo 'LibreSSL 3.3.6'; exit 0; fi\nexec '${opensslPath}' "$@"\n`);
+  chmodSync(join(bin, 'openssl'), 0o755);
+  return { PATH: `${bin}:${process.env.PATH}` };
 }
 
 function run(ctx, key, args, extraEnv = {}) {
@@ -169,6 +192,73 @@ test('a manifest signed by another key, or altered, is refused', { skip: skip ||
   }
 });
 
+test('with LibreSSL, as on macOS, the P-256 signature is checked', { skip: skip || (!opensslPath && 'needs openssl') }, () => {
+  const key = pair();
+  const p256 = p256Pair();
+  const other = p256Pair();
+  const { payload } = composeReleasesPayload({ entry: entry('0.2.0', linuxArtifacts('0.2.0')) });
+  const genuine = addInstallSignature(signReleasesPayload(payload, key), p256);
+  const flipped = Buffer.from(genuine.p256.sig, 'base64');
+  flipped[flipped.length - 1] ^= 1;
+  const altered = JSON.parse(Buffer.from(genuine.payload, 'base64').toString('utf8'));
+  altered.channels.stable.version = '0.2.1';
+  const cases = [
+    ['genuine', genuine, null],
+    ['altered P-256 signature', { ...genuine, p256: { ...genuine.p256, sig: flipped.toString('base64') } }, /signature is INVALID/],
+    ['altered payload', { ...genuine, payload: Buffer.from(JSON.stringify(altered)).toString('base64') }, /signature is INVALID/],
+    ['signed by another P-256 key', addInstallSignature(signReleasesPayload(payload, key), { ...other, keyId: p256.keyId }), /signature is INVALID/],
+    ['unknown P-256 key', addInstallSignature(signReleasesPayload(payload, key), other), /unknown P-256 key/],
+  ];
+  for (const [label, envelope, refused] of cases) {
+    const ctx = setup(envelope, key);
+    try {
+      const r = run(ctx, key, ['--dry-run', '--format', 'deb'], { ...withP256(ctx, p256), ...asLibreSSL(ctx) });
+      if (!refused) {
+        assert.equal(r.code, 0, r.err);
+        assert.match(r.out, /signature: +verified/);
+        assert.doesNotMatch(r.err, /could not check/);
+      } else {
+        assert.equal(r.code, 1, `${label}: ${r.out}`);
+        assert.match(r.err, refused, label);
+        assert.doesNotMatch(r.out, /package:/, label);
+      }
+    } finally {
+      rmSync(ctx.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+test('a manifest without the P-256 signature behaves as before', { skip: skip || (!opensslPath && 'needs openssl') }, () => {
+  const key = pair();
+  const p256 = p256Pair();
+  const { payload } = composeReleasesPayload({ entry: entry('0.2.0', linuxArtifacts('0.2.0')) });
+  const ctx = setup(signReleasesPayload(payload, key), key);
+  try {
+    const r = run(ctx, key, ['--dry-run', '--format', 'deb'], { ...withP256(ctx, p256), ...asLibreSSL(ctx) });
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /signature: +unchecked/);
+    assert.match(r.err, /could not check the manifest signature \(it needs OpenSSL 3\): relying on HTTPS and the package checksum/);
+  } finally {
+    rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
+test('until the installers\' manifest is served, the release manifest is read', { skip }, () => {
+  const key = pair();
+  const { payload } = composeReleasesPayload({ entry: entry('0.2.0', linuxArtifacts('0.2.0')) });
+  const ctx = setup(signReleasesPayload(payload, key), key);
+  try {
+    const r = run(ctx, key, ['--dry-run', '--format', 'deb'], {
+      TIMON_INSTALL_MANIFEST_URL: pathToFileURL(join(ctx.dir, 'missing.json')).href,
+      TIMON_INSTALL_FALLBACK_MANIFEST_URL: pathToFileURL(ctx.manifest).href,
+    });
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /Timon 0\.2\.0 \(stable channel\)/);
+  } finally {
+    rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
 test('an expired manifest is refused', { skip }, () => {
   const key = pair();
   const past = new Date(Date.now() - 10 * 86_400_000);
@@ -243,7 +333,15 @@ test('outside the test hooks, only the pinned manifest and key are read', { skip
   const pem = createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x }, format: 'jwk' }).export({ type: 'spki', format: 'pem' }).toString().trim();
   assert.ok(text.includes(`RELEASE_KEY_ID='${keyId}'`), 'install.sh pins the keyId of keyring.ts');
   assert.ok(text.includes(`RELEASE_PUBLIC_KEY='${pem}'`), 'install.sh pins the public key of keyring.ts');
-  assert.match(text, /MANIFEST_URL='https:\/\/timon-ai\.com\/\.well-known\/timon-releases\.json'/);
+  assert.match(text, /\nMANIFEST_URL='https:\/\/timon-ai\.com\/\.well-known\/timon-releases\.json'/);
+  assert.match(text, /\nINSTALL_MANIFEST_URL='https:\/\/timon-ai\.com\/\.well-known\/timon-releases-install\.json'/);
+  // install.ps1 pins the same P-256 key, its SPKI in base64 on one line.
+  const p256Id = /\nRELEASE_P256_KEY_ID='([^']*)'/.exec(text)[1];
+  const p256Pem = /\nRELEASE_P256_PUBLIC_KEY='([^']*)'/.exec(text)[1];
+  const ps1 = readFileSync(join(dirname(SCRIPT), 'install.ps1'), 'utf8');
+  assert.ok(ps1.includes(`$releaseP256KeyId = '${p256Id}'`), 'install.ps1 pins the P-256 keyId of install.sh');
+  assert.ok(ps1.includes(`$releaseP256PublicKey = '${p256Pem.replace(/-----[^-]+-----|\s/g, '')}'`), 'install.ps1 pins the P-256 key of install.sh');
+  if (p256Pem) assert.equal(keyIdFor(p256Pem), p256Id, 'the pinned P-256 keyId derives from the pinned key');
   assert.match(text, /if \[ "\$\{TIMON_INSTALL_TESTING:-\}" = 1 \]; then/);
   // The script must end by calling main: a truncated download then runs nothing.
   assert.equal(text.trimEnd().split('\n').pop(), 'main "$@"');

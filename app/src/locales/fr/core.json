@@ -866,6 +866,13 @@
     "mascotsHint": "Un agent dont la tête est sa mascotte montre ce qu’il fait : endormi, en réflexion, au travail, en recherche, en attente de vous, content quand sa tâche est terminée.",
     "mascotsAnimate": "Animer les mascottes",
     "mascotsAnimateHint": "Désactivé, une mascotte montre encore son état par ses yeux, sans bouger. Le réglage « réduire les animations » de votre système l’emporte toujours.",
+    "mascotsStyle": "Style des mascottes",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "Une tête en peluche modelée, éclairée et en relief.",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "Le dessin à plat, plus léger pour les ordinateurs anciens.",
+    "mascotsStyleNoWebgl": "Ce navigateur ne peut pas dessiner en 3D (WebGL2 est désactivé ou absent) : les mascottes sont dessinées en 2D.",
+    "mascotsStyleShared": "S’applique à toutes les mascottes. Vous pourrez le changer plus tard dans {settingsPath}.",
     "variants": {
       "coral": {
         "name": "Corail",
@@ -4428,5 +4435,6 @@
       "configUnreadable": "timon.config.json est illisible : corrigez-le avant de modifier l'isolation.",
       "generic": "L'isolation des missions n'a pas pu être enregistrée (erreur {status})."
     }
-  }
+  },
+  "agencyOffer": {"label": "Partenaires", "title": "Offre agence", "status": {"subscribed": "Inscrit · {email}", "none": "Non inscrit", "pending": "En attente d’envoi · {email}", "withdrawing": "Retrait en attente d’envoi", "invalid": "Adresse refusée · {email}", "refused": "Non envoyée · {email}"}, "withdraw": "Se retirer", "subscribe": "S’inscrire", "more": "Plus", "changeEmail": "Changer d’adresse", "dialogTitle": "Recevoir l’offre agence", "emailLabel": "Adresse e-mail", "notice": "Uniquement cette offre, envoyée par Timon à cette adresse. Retrait possible à tout moment ici.", "submit": "M’envoyer l’offre", "cancel": "Annuler", "loadFailed": "L’offre agence n’a pas pu être lue.", "failed": "La demande n’a pas pu être enregistrée. Réessayez.", "invalidEmail": "Saisissez une adresse e-mail valide.", "withdrawn": "Retrait fait : Timon ne vous enverra plus l’offre agence.", "recorded": "Demande enregistrée."}
 }

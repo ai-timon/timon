@@ -1096,6 +1096,17 @@
     "widgetsBorderlessHint": "ウィジェットを輪郭や影なしで描画します。",
     "widgetsTransparent": "透明な背景",
     "widgetsTransparentHint": "ウィジェットから壁紙が透けて見えます。すりガラスと組み合わせるとガラスの見た目になります。",
+    "mascotsTitle": "マスコット",
+    "mascotsHint": "頭がマスコットのエージェントは、何をしているかを表情で示します。眠っている、考えている、作業中、検索中、あなたを待っている、タスクが終わって嬉しい、など。",
+    "mascotsAnimate": "マスコットをアニメーション",
+    "mascotsAnimateHint": "オフにすると、マスコットは動かずに目だけで状態を示します。システムの「視差効果を減らす」設定が常に優先されます。",
+    "mascotsStyle": "マスコットのスタイル",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "ライティングと立体感のある、モデリングされたぬいぐるみの頭。",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "平面のイラスト。古いパソコンでも軽く動きます。",
+    "mascotsStyleNoWebgl": "このブラウザーは 3D で描画できません（WebGL2 がオフか未対応）。マスコットは 2D で表示されます。",
+    "mascotsStyleShared": "すべてのマスコットに適用されます。あとから「{settingsPath}」で変更できます。",
     "variants": {
       "coral": {
         "name": "コーラル",

@@ -28,7 +28,7 @@ await import('../../../tests/helpers/paid-license.js');
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 
 const { bus } = await import('../../bus.js');
-const GLOBAL_KEYS = new Set(['surface', 'app_version', 'platform', 'arch', 'event_schema_version', 'license_tier', 'install_age', 'account_slot']);
+const GLOBAL_KEYS = new Set(['surface', 'app_version', 'platform', 'arch', 'event_schema_version', 'license_tier', 'install_age', 'account_slot', 'build']);
 const { dbApi } = await import('../../db.js');
 const { onboardingStep } = await import('../../onboarding-events.js');
 const { createDaemonAuthMiddleware } = await import('../http/auth.js');

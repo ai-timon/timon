@@ -196,7 +196,8 @@ function SettingsForm({ backend, protocols, onSaved, onClose }: {
   };
 
   return (
-    <div className="space-y-5">
+    // min-w-0: the dialog is a grid, whose column grows to its items' min-content width otherwise.
+    <div className="min-w-0 space-y-5">
       <DialogHeader>
         <DialogTitle className="text-base">{t('providerPage.settings.editTitle', { name: backend.label })}</DialogTitle>
       </DialogHeader>

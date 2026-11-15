@@ -23,19 +23,27 @@ A **personal Google account** signed in to `agy`: the free plan works, and a Goo
    irm https://antigravity.google/cli/install.ps1 | iex
    ```
 
-2. Sign in, in a terminal, under the OS account that runs Timon:
+2. Sign in, in a terminal, under the OS account that runs Timon. The **Connect** button of the provider's page types the right command for your system in Timon's terminal.
 
    ```bash
+   # Linux
+   DBUS_SESSION_BUS_ADDRESS=disabled: agy acp --login
+   ```
+
+   ```bash
+   # macOS and Windows
    agy acp --login
    ```
 
-   It prints a Google sign-in link: open it, choose your personal account, then paste the code the page gives you back into the terminal. Running `agy` once and following its first-run screens signs you in too.
+   It prints a Google sign-in link: open it, choose your personal account, then paste the code the page gives you back into the terminal. On macOS and Windows, running `agy` once and following its first-run screens signs you in too.
+
+   On Linux, `agy` keeps its sign-in in the system keychain unless told otherwise, and a mission cannot reach the keychain from inside its isolation. The variable in front of the command makes `agy` save it in its own folder instead (`~/.gemini/antigravity-cli/antigravity-oauth-token`, readable by your account only), which is where Timon's Antigravity agents read it. A sign-in made with a plain `agy acp --login` keeps working in your terminal, but not in Timon: run the Linux command once more.
 
 3. Restart Timon. **Antigravity (Google)** then appears in the model selectors.
 
 Timon looks for `agy` on the service's PATH, in `~/.local/bin` on Linux and macOS, and in `%LOCALAPPDATA%\agy\bin` on Windows, which is where Google's installers put it.
 
-If Antigravity does not appear, run `timon doctor`: it tells you whether the `agy` command was found. A command installed somewhere else may be missing from the service's PATH; set `host.binaries.agy` to its absolute path in that case. If a mission stops with "sign in first", run `agy acp --login` in a terminal on the machine that runs Timon, then retry.
+If Antigravity does not appear, run `timon doctor`: it tells you whether the `agy` command was found. A command installed somewhere else may be missing from the service's PATH; set `host.binaries.agy` to its absolute path in that case. If a mission stops with "sign in first", run the sign-in command above in a terminal on the machine that runs Timon, then retry: the message names the one for your system.
 
 Antigravity is also listed in the [ACP registry](../plugins/providers.md#agents-from-the-acp-registry), as **Google Antigravity**. That one is a separate download with a sign-in of its own; the backend on this page uses the `agy` you installed and its sign-in.
 
@@ -49,7 +57,7 @@ The LLM quotas widget and the strip under the chat composer show Antigravity's q
 
 To read it, Timon starts `agy` for about a second, asks it for the figures, then stops it. `agy` fetches them with its own sign-in: Timon reads no token and contacts no Google server itself. Reading the quota uses none of it and leaves no conversation in `agy`'s history. A reading is reused for 5 minutes; the widget's ↻ button asks again.
 
-- **Not signed in**: `agy` has no sign-in Timon can use. Run `agy acp --login` under the OS account that runs Timon. `agy` keeps its sign-in in the system keychain, which Timon cannot reach when it runs outside your desktop session (started over SSH, as a Windows service or as a macOS launch daemon): the gauge then says Antigravity is not signed in, even though `agy` works in your terminal.
+- **Not signed in**: `agy` has no sign-in Timon can use. Run the sign-in command of [Set it up](#set-it-up) under the OS account that runs Timon. Timon never starts the sign-in itself, so it never opens a Google page in your browser; after signing in, press ↻ on the gauge (it checks again on its own every 5 minutes). On Linux, Timon reads the sign-in `agy` saved in its own folder, so the gauge says the same thing your agents will find. On macOS and Windows, `agy` keeps its sign-in in the system keychain, which Timon cannot reach when it runs outside your desktop session (started as a Windows service or as a macOS launch daemon): the gauge then says Antigravity is not signed in, even though `agy` works in your terminal.
 - **Unknown**: `agy` did not answer in time, or answered in a way Timon does not recognise. Timon shows no figure rather than a zero. An `agy` too old to report its quota asks you to update it.
 - **Server left running**: `agy` exited and left its local server running, and Timon could not stop it. That server answers any program on your machine without a password, so Timon stops reading the quota on its own: end the remaining `agy` process (Task Manager, Activity Monitor or `kill`), then press ↻.
 

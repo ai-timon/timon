@@ -214,12 +214,20 @@ test('the look: a value off the lists or an extra key is refused, and nothing is
     );
   };
   await refused({ shape: 'star', color: '#7ed957', eyes: 'big' }, /look\.shape: unknown value "star" \(expected one of squircle/);
-  await refused({ shape: 'round', color: '#000000', eyes: 'big' }, /look\.color: unknown value "#000000"/);
+  // Any `#rrggbb` is a fur now: only a value that is not one is off the lists.
+  await refused({ shape: 'round', color: '#12345', eyes: 'big' }, /look\.color: unknown value "#12345"/);
+  await refused({ shape: 'round', color: 'red', eyes: 'big' }, /look\.color: unknown value "red"/);
+  await refused({ shape: 'round', color: '#gggggg', eyes: 'big' }, /look\.color: unknown value "#gggggg"/);
   await refused({ shape: 'round', color: '#7ed957', eyes: 'laser' }, /look\.eyes/);
   await refused({ shape: 'round', color: '#7ed957', eyes: 'big', acc: 'sword' }, /look\.acc/);
   await refused({ shape: 'round', color: '#7ed957', eyes: 'big', hat: 'top' }, /unknown field\(s\): hat/);
   await refused('gem', /look must be an object/);
   assert.deepEqual(loadConfig('hermes-look-strict').look, before);
+  const custom = await as(manager, () => plugin.agents.update('hermes-look-strict', {
+    look: { shape: 'round', color: '#00AbC9', eyes: 'big' },
+  }));
+  assert.deepEqual(custom.look, { shape: 'round', color: '#00abc9', eyes: 'big', acc: 'none' });
+  assert.deepEqual(loadConfig('hermes-look-strict').look, { shape: 'round', color: '#00abc9', eyes: 'big', acc: 'none' });
   await assert.rejects(
     as(manager, () => plugin.agents.create(input('hermes-look-bad', { look: { shape: 'blob', color: '#7ed957', eyes: 'big' } }))),
     code('invalid'),

@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
-  RELEASES_SIGNATURE_DOMAIN, NOTES_MAX, boundNotes, channelsFor, compareVersions, composeReleasesPayload, keyIdFor,
-  releaseKeyPair, serializeEnvelope, signReleasesPayload, validateReleasesPayload, verifyReleaseManifest,
+  RELEASES_SIGNATURE_DOMAIN, NOTES_MAX, addInstallSignature, boundNotes, channelsFor, compareVersions, composeReleasesPayload, keyIdFor,
+  p256KeyPair, releaseKeyPair, serializeEnvelope, signReleasesPayload, validateReleasesPayload, verifyInstallManifest, verifyReleaseManifest,
 } from './release-manifest.mjs';
 
 // A throwaway pair per run: no test ever touches ~/.timon-release.
@@ -163,3 +163,46 @@ test('the release pair must match', () => {
   const rsa = generateKeyPairSync('rsa', { modulusLength: 1024 });
   assert.throws(() => releaseKeyPair(rsa.privateKey.export({ type: 'pkcs8', format: 'pem' }), rsa.publicKey.export({ type: 'spki', format: 'pem' })), /matching Ed25519 pair/);
 });
+
+function p256Pair() {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  return p256KeyPair(privateKey.export({ type: 'pkcs8', format: 'pem' }), publicKey.export({ type: 'spki', format: 'pem' }));
+}
+
+test('the installers\' envelope adds a P-256 signature (DER) of the same signed bytes', () => {
+  const key = pair();
+  const p256 = p256Pair();
+  const { payload } = composeReleasesPayload({ entry: entry('0.1.8'), now });
+  const envelope = signReleasesPayload(payload, key);
+  const install = addInstallSignature(envelope, p256);
+  assert.deepEqual(Object.keys(install), ['keyId', 'payload', 'sig', 'p256']);
+  assert.deepEqual(Object.keys(install.p256), ['keyId', 'sig']);
+  assert.equal(install.payload, envelope.payload);
+  assert.equal(install.sig, envelope.sig, 'the Ed25519 signature is carried over unchanged');
+  assert.match(install.p256.keyId, /^release-[a-f0-9]{16}$/);
+  const der = Buffer.from(install.p256.sig, 'base64');
+  assert.equal(der[0], 0x30, 'a DER SEQUENCE');
+  assert.equal(der[1], der.length - 2);
+  assert.deepEqual(verifyInstallManifest(serializeEnvelope(install), keyringOf(key), p256, { now }), payload);
+  assert.throws(() => verifyReleaseManifest(install, keyringOf(key), { now }), /unexpected field p256/, 'the daemons\' envelope never carries it');
+});
+
+test('the installers\' envelope refuses another P-256 key, an altered signature or payload', () => {
+  const key = pair();
+  const p256 = p256Pair();
+  const other = p256Pair();
+  const { payload } = composeReleasesPayload({ entry: entry('0.1.8'), now });
+  const install = addInstallSignature(signReleasesPayload(payload, key), p256);
+  assert.throws(() => verifyInstallManifest(install, keyringOf(key), other, { now }), /unknown P-256 keyId/);
+  const forged = addInstallSignature(signReleasesPayload(payload, key), { ...other, keyId: p256.keyId });
+  assert.throws(() => verifyInstallManifest(forged, keyringOf(key), p256, { now }), /invalid P-256 signature/);
+  const sig = Buffer.from(install.p256.sig, 'base64');
+  sig[sig.length - 1] ^= 1;
+  assert.throws(() => verifyInstallManifest({ ...install, p256: { ...install.p256, sig: sig.toString('base64') } }, keyringOf(key), p256, { now }), /invalid P-256 signature/);
+  const altered = reencode({ ...payload, expiresAt: '2027-12-31T00:00:00.000Z' });
+  assert.throws(() => verifyInstallManifest({ ...install, payload: altered }, keyringOf(key), p256, { now }), /invalid P-256 signature/);
+  assert.throws(() => verifyInstallManifest({ ...install, p256: undefined }, keyringOf(key), p256, { now }), /envelope/);
+  assert.throws(() => p256KeyPair(other.privateKey.export({ type: 'pkcs8', format: 'pem' }), p256.publicKey), /matching ECDSA P-256 pair/);
+  assert.throws(() => p256KeyPair(generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' }), key.publicKey), /matching ECDSA P-256 pair/);
+});
+

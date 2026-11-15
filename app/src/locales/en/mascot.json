@@ -4,7 +4,7 @@
     "shape": {"squircle": "Classic", "tri": "Pear", "gem": "Egg", "round": "Round", "bean": "Wide", "cloud": "Tall", "hex": "Square"},
     "fur": {
       "sand": "Sand", "cinnamon": "Cinnamon", "cream": "Cream", "cocoa": "Cocoa", "caramel": "Caramel", "taupe": "Taupe",
-      "honey": "Honey", "bark": "Bark", "wheat": "Wheat", "pink": "Pink", "blue": "Blue", "green": "Green", "yellow": "Yellow", "orange": "Orange", "purple": "Purple", "custom": "Custom"
+      "honey": "Honey", "bark": "Bark", "wheat": "Wheat", "pink": "Pink", "blue": "Blue", "green": "Green", "yellow": "Yellow", "orange": "Orange", "purple": "Purple", "red": "Red", "teal": "Teal", "white": "White", "grey": "Grey", "black": "Black", "custom": "Custom"
     },
     "eyes": {
       "pill": "Calm", "big": "Wide open", "happy": "Happy", "wink": "Wink", "surprised": "Surprised",
@@ -14,7 +14,9 @@
       "none": "None", "loupe": "Magnifier", "pen": "Red pen", "quill": "Quill", "hammer": "Hammer", "wrench": "Wrench",
       "baton": "Baton", "telescope": "Spyglass", "envelope": "Envelope", "calendar": "Calendar", "clipboard": "Clipboard",
       "hourglass": "Hourglass", "teacher": "Book and cap", "calculator": "Calculator", "chart": "Chart", "brush": "Brush",
-      "globe": "Globe", "megaphone": "Megaphone", "shield": "Shield", "coffee": "Coffee mug"
+      "globe": "Globe", "megaphone": "Megaphone", "shield": "Shield", "coffee": "Coffee mug",
+      "whip": "Whip", "wizard": "Wizard", "chef": "Chef", "crown": "Crown", "idea": "Idea", "rocket": "Rocket",
+      "chemist": "Chemist", "gamer": "Gamer", "photographer": "Photographer", "gardener": "Gardener", "musician": "Musician"
     },
     "state": {
       "idle": "Idle", "listening": "Listening", "thinking": "Thinking", "working": "Working", "searching": "Searching",

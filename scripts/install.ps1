@@ -4,9 +4,10 @@
 #   & ([scriptblock]::Create((irm https://timon-ai.com/install.ps1))) -DryRun
 #
 # What it does, in order:
-#   1. reads the signed release manifest of timon-ai.com (its keyId and its
-#      expiry are checked; Windows PowerShell has no Ed25519, so the signature
-#      itself is checked by Timon once installed, not here);
+#   1. reads the signed release manifest of timon-ai.com and checks its keyId,
+#      its P-256 signature (Windows PowerShell has no Ed25519; without the
+#      P-256 one, the signature is checked by Timon once installed) and its
+#      expiry;
 #   2. downloads the Windows installer of the stable channel (else beta) and
 #      compares its size and SHA-256 with the manifest BEFORE running it;
 #   3. runs the regular installer and waits for it. Not silently by default:
@@ -42,9 +43,18 @@ function Install-Timon {
   # PowerShell 5.1 a 150 MB download takes minutes instead of seconds.
   $ProgressPreference = 'SilentlyContinue'
 
+  # The installers' manifest: the release manifest plus a P-256 signature
+  # (scripts/release-manifest.mjs). Until the site serves it, the release
+  # manifest the daemons read, without that signature.
+  $installManifestUrl = 'https://timon-ai.com/.well-known/timon-releases-install.json'
   $manifestUrl = 'https://timon-ai.com/.well-known/timon-releases.json'
   # The keyId of orchestrator/src/plugins-bundled/updates/keyring.ts.
   $releaseKeyId = 'release-4253f18d5854243a'
+  # The installers' P-256 key, its SPKI in base64 (docs/internal/scripts/
+  # release-p256-keygen.mjs --pin writes both lines). Empty: not checked.
+  $releaseP256KeyId = 'release-701bbfb6d1c1eed1'
+  $releaseP256PublicKey = 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEyUUvXZE0kGYqgsXTRslQyKnF1Y5MK2wjSflgy5lGkUbEUzJK9zRP1Iv88aOPoObrkPVSyJWVW4fGJE2Q7N5C6w=='
+  $signatureDomain = 'timon-releases-v1'
   $docsUrl = 'https://docs.timon-ai.com/installation/windows'
   $artifactKey = 'win-x64-nsis'
 
@@ -71,8 +81,16 @@ Documentation: https://docs.timon-ai.com/installation/windows
   # Read only when TIMON_INSTALL_TESTING=1.
   $testing = $env:TIMON_INSTALL_TESTING -eq '1'
   if ($testing) {
-    if ($env:TIMON_INSTALL_MANIFEST_URL) { $manifestUrl = $env:TIMON_INSTALL_MANIFEST_URL }
+    if ($env:TIMON_INSTALL_MANIFEST_URL) {
+      $installManifestUrl = $env:TIMON_INSTALL_MANIFEST_URL
+      $manifestUrl = $env:TIMON_INSTALL_MANIFEST_URL
+    }
+    if ($env:TIMON_INSTALL_FALLBACK_MANIFEST_URL) { $manifestUrl = $env:TIMON_INSTALL_FALLBACK_MANIFEST_URL }
     if ($env:TIMON_INSTALL_KEY_ID) { $releaseKeyId = $env:TIMON_INSTALL_KEY_ID }
+    if ($env:TIMON_INSTALL_P256_KEY) {
+      $releaseP256PublicKey = $env:TIMON_INSTALL_P256_KEY
+      $releaseP256KeyId = $env:TIMON_INSTALL_P256_KEY_ID
+    }
   }
 
   function Stop-Install([string]$message) {
@@ -101,6 +119,53 @@ Documentation: https://docs.timon-ai.com/installation/windows
     return [DateTimeOffset]::Parse([string]$value, [Globalization.CultureInfo]::InvariantCulture).UtcDateTime
   }
 
+  # The manifest signs in DER, the encoding openssl reads; .NET wants r || s,
+  # 32 bytes each. $null when it is not a DER ECDSA signature.
+  function ConvertFrom-DerSignature([byte[]]$der) {
+    if ($der.Length -lt 8 -or $der[0] -ne 0x30 -or $der[1] -ne ($der.Length - 2)) { return $null }
+    $out = New-Object byte[] 64
+    $at = 2
+    foreach ($half in 0, 1) {
+      if ($at + 2 -gt $der.Length -or $der[$at] -ne 0x02) { return $null }
+      $length = [int]$der[$at + 1]
+      $start = $at + 2
+      if ($length -lt 1 -or $length -gt 33 -or $start + $length -gt $der.Length) { return $null }
+      $skip = 0
+      while ($skip -lt ($length - 1) -and $der[$start + $skip] -eq 0) { $skip++ }
+      $size = $length - $skip
+      if ($size -gt 32) { return $null }
+      [Array]::Copy($der, $start + $skip, $out, ($half * 32) + 32 - $size, $size)
+      $at = $start + $length
+    }
+    if ($at -ne $der.Length) { return $null }
+    , $out
+  }
+
+  # ECDSA P-256 / SHA-256 with the classes of .NET Framework 4.7 and later
+  # (and of PowerShell 7). $null when this .NET has none of them.
+  function Test-P256Signature([byte[]]$spki, [byte[]]$der, [byte[]]$message) {
+    if (-not ('System.Security.Cryptography.ECParameters' -as [type])) { return $null }
+    # SubjectPublicKeyInfo of a P-256 key: a fixed 26-byte header, then the
+    # uncompressed point 04 || X || Y.
+    $header = [Convert]::FromBase64String('MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgA=')
+    if ($spki.Length -ne 91 -or $spki[26] -ne 4) { return $false }
+    for ($i = 0; $i -lt 26; $i++) { if ($spki[$i] -ne $header[$i]) { return $false } }
+    $signature = ConvertFrom-DerSignature $der
+    if ($null -eq $signature) { return $false }
+    $point = New-Object Security.Cryptography.ECPoint
+    $point.X = [byte[]]$spki[27..58]
+    $point.Y = [byte[]]$spki[59..90]
+    $parameters = New-Object Security.Cryptography.ECParameters
+    $parameters.Curve = [Security.Cryptography.ECCurve]::CreateFromValue('1.2.840.10045.3.1.7')
+    $parameters.Q = $point
+    $ecdsa = [Security.Cryptography.ECDsa]::Create($parameters)
+    try {
+      return $ecdsa.VerifyData($message, $signature, [Security.Cryptography.HashAlgorithmName]::SHA256)
+    } finally {
+      $ecdsa.Dispose()
+    }
+  }
+
   if (-not $testing -and [Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     Stop-Install 'this installer is for Windows; on Linux and macOS run: curl -fsSL https://timon-ai.com/install.sh | sh'
   }
@@ -113,14 +178,39 @@ Documentation: https://docs.timon-ai.com/installation/windows
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   }
 
+  $manifestText = $null
+  try { $manifestText = Get-Remote $installManifestUrl $null } catch { $manifestText = $null }
   try {
-    $envelope = (Get-Remote $manifestUrl $null) | ConvertFrom-Json
+    if ($null -eq $manifestText) { $manifestText = Get-Remote $manifestUrl $null }
+    $envelope = $manifestText | ConvertFrom-Json
   } catch {
     Stop-Install "could not read the release manifest ($manifestUrl): $($_.Exception.Message)"
   }
   if ($envelope.keyId -ne $releaseKeyId) { Stop-Install "the release manifest is signed with an unknown key ($($envelope.keyId))" }
   try {
-    $payload = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([string]$envelope.payload)) | ConvertFrom-Json
+    $payloadBytes = [Convert]::FromBase64String([string]$envelope.payload)
+    $p256Signature = $null
+    if ($envelope.p256) { $p256Signature = [Convert]::FromBase64String([string]$envelope.p256.sig) }
+  } catch {
+    Stop-Install 'the release manifest is malformed'
+  }
+
+  $signatureLine = 'checked by Timon once installed (Windows PowerShell cannot verify Ed25519)'
+  if ($releaseP256PublicKey -and $null -ne $p256Signature) {
+    if ($envelope.p256.keyId -ne $releaseP256KeyId) { Stop-Install "the release manifest is signed with an unknown P-256 key ($($envelope.p256.keyId))" }
+    $domainBytes = [Text.Encoding]::ASCII.GetBytes($signatureDomain)
+    $signed = New-Object byte[] ($domainBytes.Length + 1 + $payloadBytes.Length)
+    [Array]::Copy($domainBytes, 0, $signed, 0, $domainBytes.Length)
+    [Array]::Copy($payloadBytes, 0, $signed, $domainBytes.Length + 1, $payloadBytes.Length)
+    $valid = Test-P256Signature ([Convert]::FromBase64String($releaseP256PublicKey)) $p256Signature $signed
+    if ($valid -eq $false) {
+      Stop-Install 'the release manifest signature is INVALID: nothing was installed. Report it at https://timon-ai.com'
+    }
+    if ($valid) { $signatureLine = 'verified' }
+  }
+
+  try {
+    $payload = [Text.Encoding]::UTF8.GetString($payloadBytes) | ConvertFrom-Json
   } catch {
     Stop-Install 'the release manifest is malformed'
   }
@@ -157,7 +247,7 @@ Documentation: https://docs.timon-ai.com/installation/windows
   Write-Output "  package:   $name ($([math]::Round($size / 1MB)) MB)"
   Write-Output "  from:      $url"
   Write-Output "  sha256:    $sha"
-  Write-Output '  signature: checked by Timon once installed (Windows PowerShell cannot verify Ed25519)'
+  Write-Output "  signature: $signatureLine"
   if ($Silent) { Write-Output '  install:   silent installer (/S)' } else { Write-Output '  install:   the Timon installer window' }
 
   if ($DryRun) {

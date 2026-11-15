@@ -10,12 +10,20 @@
  * signature made by the same release key for anything else (the daemon
  * inventory, `release-manifest.sig`) can never be replayed as an update
  * manifest, and the reverse.
+ *
+ * The installers read a second file, INSTALL_RELEASES_URL: the same envelope
+ * plus `p256: { keyId, sig }`, an ECDSA P-256 / SHA-256 signature (DER) of the
+ * same signed bytes. macOS (LibreSSL) and Windows PowerShell (.NET Framework)
+ * cannot verify Ed25519 but verify P-256 natively. It is a separate file
+ * because the daemons already installed accept exactly `{ keyId, payload, sig }`
+ * at RELEASES_URL and would refuse any extra field.
  */
 import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 
 export const RELEASES_SCHEMA = 1;
 export const RELEASES_SIGNATURE_DOMAIN = 'timon-releases-v1\0';
 export const RELEASES_URL = 'https://timon-ai.com/.well-known/timon-releases.json';
+export const INSTALL_RELEASES_URL = 'https://timon-ai.com/.well-known/timon-releases-install.json';
 export const CHANNELS = Object.freeze(['beta', 'stable']);
 /** Release notes are plain text in the payload; anything longer is cut and points to `notesUrl`. */
 export const NOTES_MAX = 64 * 1024;
@@ -75,6 +83,19 @@ export function releaseKeyPair(privatePem, publicPem) {
   if (privateKey.asymmetricKeyType !== 'ed25519' || publicKey.asymmetricKeyType !== 'ed25519'
     || !createPublicKey(privateKey).export({ type: 'spki', format: 'der' }).equals(publicKey.export({ type: 'spki', format: 'der' }))) {
     throw new Error('Release signing keys must be a matching Ed25519 pair');
+  }
+  const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  return { privateKey, publicKey: publicKeyPem, keyId: keyIdFor(publicKeyPem) };
+}
+
+/** Both PEM texts of the installer pair; refuses anything but a matching ECDSA P-256 pair. */
+export function p256KeyPair(privatePem, publicPem) {
+  const privateKey = createPrivateKey(privatePem);
+  const publicKey = createPublicKey(publicPem);
+  const isP256 = (key) => key.asymmetricKeyType === 'ec' && key.asymmetricKeyDetails?.namedCurve === 'prime256v1';
+  if (!isP256(privateKey) || !isP256(publicKey)
+    || !createPublicKey(privateKey).export({ type: 'spki', format: 'der' }).equals(publicKey.export({ type: 'spki', format: 'der' }))) {
+    throw new Error('Installer signing keys must be a matching ECDSA P-256 pair');
   }
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
   return { privateKey, publicKey: publicKeyPem, keyId: keyIdFor(publicKeyPem) };
@@ -217,4 +238,39 @@ export function verifyReleaseManifest(input, keyring, { now = new Date(), minIss
   if (!allowExpired && issued > now.getTime() + CLOCK_SKEW_MS) fail(`issued in the future (${payload.issuedAt})`);
   if (minIssuedAt && issued < Date.parse(minIssuedAt)) fail(`older than the last accepted manifest (${payload.issuedAt} < ${minIssuedAt})`);
   return payload;
+}
+
+const P256 = { dsaEncoding: 'der' };
+
+/**
+ * The installers' envelope: a verified release envelope plus its P-256
+ * signature. DER, the encoding `openssl dgst -verify` reads (LibreSSL
+ * included); install.ps1 converts it for .NET.
+ */
+export function addInstallSignature(envelope, { privateKey, keyId }) {
+  if (typeof keyId !== 'string' || !KEY_ID.test(keyId)) throw new Error('invalid keyId');
+  exactKeys(envelope, ['keyId', 'payload', 'sig'], 'envelope');
+  const bytes = strictBase64(envelope.payload, 'payload');
+  const sig = sign('sha256', signedBytes(bytes), { key: privateKey, ...P256 });
+  return { keyId: envelope.keyId, payload: envelope.payload, sig: envelope.sig, p256: { keyId, sig: sig.toString('base64') } };
+}
+
+/**
+ * Verifies the installers' envelope: the P-256 signature against `p256Key`
+ * (`{ keyId, publicKey }`), then the release envelope inside it exactly as
+ * verifyReleaseManifest does. Returns the payload; any failure throws.
+ */
+export function verifyInstallManifest(input, keyring, p256Key, options = {}) {
+  let envelope = input;
+  if (typeof input === 'string' || Buffer.isBuffer(input)) {
+    if (input.length > ENVELOPE_MAX) fail('envelope too large');
+    try { envelope = JSON.parse(input.toString()); } catch { fail('envelope is not JSON'); }
+  }
+  exactKeys(envelope, ['keyId', 'payload', 'sig', 'p256'], 'envelope');
+  exactKeys(envelope.p256, ['keyId', 'sig'], 'envelope.p256');
+  if (envelope.p256.keyId !== p256Key?.keyId) fail(`unknown P-256 keyId ${JSON.stringify(envelope.p256.keyId).slice(0, 80)}`);
+  const bytes = strictBase64(envelope.payload, 'payload');
+  const signature = strictBase64(envelope.p256.sig, 'p256.sig');
+  if (!verify('sha256', signedBytes(bytes), { key: p256Key.publicKey, ...P256 }, signature)) fail('invalid P-256 signature');
+  return verifyReleaseManifest({ keyId: envelope.keyId, payload: envelope.payload, sig: envelope.sig }, keyring, options);
 }

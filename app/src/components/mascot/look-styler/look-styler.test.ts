@@ -266,3 +266,35 @@ test('a screen\'s header sits among the product\'s choices, and above a plugin\'
   assert.ok(!w.document.querySelector('[data-replacement] [data-test-switch]'), 'painted by the host, outside the replacement');
   await w.act(() => { dispose(); });
 });
+
+test('the fur grid ends with a colour picker: it shows a fur off the presets, and hands back the colour mixed, lower case', async (t) => {
+  const { resetSlotsForTests } = await import('@/lib/plugin-host/slots');
+  const { LookStylerHost } = await import('./look-styler');
+  resetSlotsForTests();
+  const w = await mount(t);
+  const picked: Array<{ color: string }> = [];
+  await w.render(React.createElement(LookStylerHost, {
+    look: { shape: 'round', color: '#123456' as never, eyes: 'pill', acc: 'none' },
+    onChange: (look) => { picked.push(look); },
+    name: 'Nova',
+  }));
+  const input = () => w.document.querySelector<HTMLInputElement>('label[data-fur-custom] input[type="color"]')!;
+  assert.ok(input(), 'the picker cell');
+  assert.equal(input().value, '#123456', 'it opens on the agent\'s own fur');
+  assert.equal(w.document.querySelectorAll('button[data-fur][aria-pressed="true"]').length, 0, 'no preset is selected');
+  // The way a browser reports a pick: the value set natively, then an input event React listens to.
+  await w.act(() => {
+    const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input()), 'value')!.set!;
+    setter.call(input(), '#ABCDEF');
+    input().dispatchEvent(new window.Event('input', { bubbles: true }));
+  });
+  assert.equal(picked.pop()?.color, '#abcdef');
+
+  // A preset keeps its own cell: picking it leaves the picker on the fur mixed last.
+  await w.render(React.createElement(LookStylerHost, {
+    look: { shape: 'round', color: '#7a4f35', eyes: 'pill', acc: 'none' },
+    onChange: () => undefined,
+    name: 'Nova',
+  }));
+  assert.equal(w.document.querySelector('button[data-fur="#7a4f35"]')?.getAttribute('aria-pressed'), 'true');
+});

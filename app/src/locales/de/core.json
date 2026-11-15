@@ -1096,6 +1096,17 @@
     "widgetsBorderlessHint": "Widgets werden ohne Umriss und Schatten gezeichnet.",
     "widgetsTransparent": "Transparenter Hintergrund",
     "widgetsTransparentHint": "Widgets lassen das Hintergrundbild durchscheinen; mit Milchglas kombinieren für einen Glas-Look.",
+    "mascotsTitle": "Maskottchen",
+    "mascotsHint": "Ein Agent, dessen Kopf sein Maskottchen ist, zeigt, was er tut: schlafend, nachdenkend, arbeitend, suchend, auf dich wartend, zufrieden, wenn seine Aufgabe erledigt ist.",
+    "mascotsAnimate": "Maskottchen animieren",
+    "mascotsAnimateHint": "Aus: Ein Maskottchen zeigt seinen Zustand weiterhin mit den Augen, ohne sich zu bewegen. Die Einstellung „Bewegung reduzieren“ deines Systems hat immer Vorrang.",
+    "mascotsStyle": "Maskottchen-Stil",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "Ein modellierter Plüschkopf, beleuchtet und plastisch.",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "Die flache Zeichnung, leichter für ältere Computer.",
+    "mascotsStyleNoWebgl": "Dieser Browser kann nicht in 3D zeichnen (WebGL2 ist deaktiviert oder fehlt): Maskottchen werden in 2D gezeichnet.",
+    "mascotsStyleShared": "Gilt für alle Maskottchen. Du kannst es später unter {settingsPath} ändern.",
     "variants": {
       "coral": {
         "name": "Koralle",

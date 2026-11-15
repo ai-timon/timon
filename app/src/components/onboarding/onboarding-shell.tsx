@@ -3,7 +3,8 @@
 /**
  * The onboarding's frame (docs/ONBOARDING.md): one full-screen stage, the
  * progress dots above it, "Back" in one corner, the light/dark switch in the
- * other, and the current step from
+ * other (with the 3D / 2D mascot switch beside it on the welcome, whose
+ * avalanche shows the choice at once), and the current step from
  * `steps/registry.tsx` inside. It decides nothing about any step — it moves
  * between them, as a View Transition unless the reader asked for reduced
  * motion.
@@ -19,6 +20,7 @@ import { getLocale, t } from '@/lib/i18n';
 import { welcomeLanding } from '@/app/setup/agent/setup-landing';
 import { cn } from '@/lib/utils';
 import { usePrefersReducedMotion } from '@/components/mascot/agent-mascot';
+import { MascotStyleToggle } from '@/components/mascot/look-styler/mascot-style-switch';
 import { applyLanguage } from './language';
 import { SchemeSwitch } from './scheme-switch';
 import { OnboardingProvider, type OnboardingNav } from './onboarding-context';
@@ -163,7 +165,10 @@ export function OnboardingShell({
             {t('onboarding.back')}
           </Button>
         )}
-        <SchemeSwitch className="absolute right-4 top-3.5 z-20" />
+        <div className="absolute right-4 top-3.5 z-20 flex items-center gap-2">
+          {at.step === 'splash' && <MascotStyleToggle />}
+          <SchemeSwitch />
+        </div>
         <main className="absolute inset-0 flex flex-col items-center justify-center overflow-auto p-8">
           {Step && <Gate step={at.step}><Step key={at.step} /></Gate>}
         </main>

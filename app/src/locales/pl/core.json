@@ -1096,6 +1096,17 @@
     "widgetsBorderlessHint": "Widżety są rysowane bez konturu i cienia.",
     "widgetsTransparent": "Przezroczyste tło",
     "widgetsTransparentHint": "Przez widżety prześwituje tapeta; połącz z matowym szkłem, by uzyskać efekt szkła.",
+    "mascotsTitle": "Maskotki",
+    "mascotsHint": "Agent, którego głową jest maskotka, pokazuje, co robi: śpi, myśli, pracuje, szuka, czeka na ciebie, cieszy się, gdy skończy zadanie.",
+    "mascotsAnimate": "Animuj maskotki",
+    "mascotsAnimateHint": "Po wyłączeniu maskotka nadal pokazuje swój stan oczami, ale się nie porusza. Systemowe ustawienie ograniczenia ruchu zawsze ma pierwszeństwo.",
+    "mascotsStyle": "Styl maskotek",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "Wymodelowana pluszowa głowa, oświetlona i trójwymiarowa.",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "Płaski rysunek, lżejszy dla starszych komputerów.",
+    "mascotsStyleNoWebgl": "Ta przeglądarka nie potrafi rysować w 3D (WebGL2 jest wyłączony lub niedostępny): maskotki są rysowane w 2D.",
+    "mascotsStyleShared": "Dotyczy wszystkich maskotek. Możesz to później zmienić w {settingsPath}.",
     "variants": {
       "coral": {
         "name": "Koral",

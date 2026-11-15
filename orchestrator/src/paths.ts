@@ -179,6 +179,11 @@ export const LICENSE_ENROLLMENT_FILE = join(TIMON_HOME, 'license.enrollment-secr
  *  contact, highest `srv` accepted). Zone `secrets`: restored elsewhere it
  *  would carry a clock anchor that belongs to another machine (L-5). */
 export const LICENSE_STATE_FILE = join(TIMON_HOME, 'license.state.json');
+/** The agency offer each account asked for: its address while the request is
+ *  active, its state and the site's withdrawal token
+ *  (`plugins-bundled/settings/partner-lead.ts`). `0600`, zone `secrets`: personal
+ *  data under its own consent, never exported nor shown to a mission. */
+export const PARTNER_LEADS_FILE = join(TIMON_HOME, 'partner-leads.json');
 
 export const projectDir = (slug: string) => join(PROJECTS_DIR, slug);
 export const projectRolesFile = (slug: string) => join(projectDir(slug), 'roles.json');
@@ -209,7 +214,7 @@ export const ZONES = {
     'legacy-account-tables.json',
   ],
   /** NEVER exported, never logged. */
-  secrets: ['secrets.env', 'remote-key', 'remote.db', 'daemon-token', 'update-token', 'plugin-token-key', 'secret-key', 'secret-key.next', 'secret-key.location', 'license.jwt', 'device-id', 'install-id', 'license.key', 'license.state.json', 'license.enrollment-secret'],
+  secrets: ['secrets.env', 'remote-key', 'remote.db', 'daemon-token', 'update-token', 'plugin-token-key', 'secret-key', 'secret-key.next', 'secret-key.location', 'license.jwt', 'device-id', 'install-id', 'license.key', 'license.state.json', 'license.enrollment-secret', 'partner-leads.json'],
   /** Exported through `VACUUM INTO`, not by file copy (wal/shm).
    *  `integrations.db` carries the per-user connections and the messaging
    *  receipts (deduplication, checkpoints): outside the export, an import lost them

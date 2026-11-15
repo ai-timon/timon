@@ -31,8 +31,9 @@
  *
  *  4. The user message goes out through `--prompt-file`, for the same reason —
  *     and that is what exempts this dialect from declaring a `maxPromptBytes`.
- *     Only the multimodal case goes back through argv (`--prompt-json`), with
- *     an explicit guard further down.
+ *     Text-only turns write `prompt.txt`; multimodal turns write ACP content
+ *     blocks to `prompt.json` (`--prompt-file` parses `.json` files as
+ *     content-block arrays, so images stay out of argv as well).
  *
  *  5. MCP: `<GROK_HOME>/config.toml`, section `[mcp_servers.<name>]`. Same role
  *     as the per-mission CODEX_HOME — TIMON servers are partitioned per
@@ -68,9 +69,7 @@
  */
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import { createGrokUsage } from './usage.js';
 import { manifestBackend } from './manifest.js';
 
@@ -310,51 +309,21 @@ function configToml(servers, realHome) {
     return [compatToml(), shellPolicyToml(realHome), servers ?? ''].join('\n');
 }
 
-/** MIME → extension, so that the CLI does not have to guess the format. */
-const IMAGE_EXT = {
-    'image/png': 'png',
-    'image/jpeg': 'jpg',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-};
-/** Writes the turn's images under `<GROK_HOME>/images/` and returns their
- *  absolute paths. The CLI has no command-line base64 input other than
- *  `--prompt-json`; we do not want megabytes travelling through argv, so we
- *  hand it resource links to those files instead.
- *
- * @param {import('@timon-ai/sdk/provider').ProviderScratchDir} scratch
- * @param {Array<{ media_type: string, data: string }> | undefined} images
- * @returns {string[]}
- */
-function writeTurnImages(scratch, images) {
-    if (!images || images.length === 0)
-        return [];
-    const paths = [];
-    for (const img of images) {
-        const ext = IMAGE_EXT[img.media_type?.toLowerCase()] ?? 'png';
-        paths.push(scratch.writeFile(`images/${randomUUID()}.${ext}`, Buffer.from(img.data, 'base64')));
-    }
-    return paths;
-}
 /**
- * Beyond this we refuse to send the turn through argv (`--prompt-json`) and
- * fall back on the prompt file, even if that means referencing the images by
- * path only. MAX_ARG_STRLEN is 128 KiB on Linux and going over it kills the
- * spawn with E2BIG, before the CLI even starts: the margin covers the other
- * arguments.
+ * ACP content blocks for a multimodal turn, written to `<GROK_HOME>/prompt.json`
+ * and passed via `--prompt-file` (which dispatches `.json` files to the CLI's
+ * content-block JSON parser without sending base64 through argv).
+ *
+ * @param {string} message
+ * @param {Array<{ media_type: string, data: string }>} images
+ * @returns {string}
  */
-const MAX_PROMPT_JSON_BYTES = 96_000;
-/** ACP content blocks for a multimodal turn. Verified shape: a
- *  `resource_link` to a local file is indeed opened by the agent (the inline
- *  `image` block also exists — `{type, data, mimeType}` — but it embeds the
- *  base64 in the argument). The name is the file's, split on the OS separator
- *  (`node:path`), and the uri is a real `file:` URL (`file:///C:/…` on Windows). */
-function promptJson(message, imagePaths) {
+function promptJson(message, images) {
     const blocks = [];
     if (message)
         blocks.push({ type: 'text', text: message });
-    for (const p of imagePaths) {
-        blocks.push({ type: 'resource_link', uri: pathToFileURL(p).href, name: basename(p) });
+    for (const img of images) {
+        blocks.push({ type: 'image', data: img.data, mimeType: img.media_type });
     }
     return JSON.stringify(blocks);
 }
@@ -526,20 +495,13 @@ export function createGrokProvider(services, log) {
                 args.push('--reasoning-effort', opts.cfg.reasoningEffort);
             if (opts.resumeSession)
                 args.push('-r', opts.resumeSession);
-            const imagePaths = writeTurnImages(grokHome, opts.images);
-            const json = imagePaths.length ? promptJson(opts.message, imagePaths) : null;
-            if (json && Buffer.byteLength(json, 'utf8') <= MAX_PROMPT_JSON_BYTES) {
-                args.push('--prompt-json', json);
-            }
-            else {
-                // File rewritten on every turn: the CLI reads it at startup, it does not
-                // have to outlive the process.
-                const withImages = imagePaths.length
-                    // Marker kept in French: the tests assert on it.
-                    ? `${opts.message}\n\n[Images jointes]\n${imagePaths.join('\n')}`
-                    : opts.message;
-                args.push('--prompt-file', grokHome.writeFile('prompt.txt', withImages));
-            }
+            // File rewritten on every turn: the CLI reads it at startup, it does not
+            // have to outlive the process. Multimodal turns write ACP blocks to `.json`
+            // so `--prompt-file` invokes the CLI's JSON parser without touching argv.
+            const promptPath = opts.images?.length
+                ? grokHome.writeFile('prompt.json', promptJson(opts.message, opts.images))
+                : grokHome.writeFile('prompt.txt', opts.message);
+            args.push('--prompt-file', promptPath);
             return {
                 cmd: profile.cmd,
                 args,

@@ -1,0 +1,12 @@
+{
+  "mascot": {
+    "acc": {
+      "none": "なし", "loupe": "虫眼鏡", "pen": "赤ペン", "quill": "羽根ペン", "hammer": "ハンマー", "wrench": "レンチ",
+      "baton": "指揮棒", "telescope": "望遠鏡", "envelope": "封筒", "calendar": "カレンダー", "clipboard": "クリップボード", "hourglass": "砂時計",
+      "teacher": "本と角帽", "calculator": "電卓", "chart": "グラフ", "brush": "絵筆", "globe": "地球儀", "megaphone": "メガホン",
+      "shield": "盾", "coffee": "コーヒーマグ", "whip": "鞭", "wizard": "魔法使い", "chef": "シェフ", "crown": "王冠",
+      "idea": "ひらめき", "rocket": "ロケット", "chemist": "化学者", "gamer": "ゲーマー", "photographer": "写真家", "gardener": "庭師",
+      "musician": "ミュージシャン"
+    }
+  }
+}

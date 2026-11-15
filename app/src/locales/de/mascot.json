@@ -1,0 +1,12 @@
+{
+  "mascot": {
+    "acc": {
+      "none": "Keines", "loupe": "Lupe", "pen": "Rotstift", "quill": "Schreibfeder", "hammer": "Hammer", "wrench": "Schraubenschlüssel",
+      "baton": "Taktstock", "telescope": "Fernrohr", "envelope": "Briefumschlag", "calendar": "Kalender", "clipboard": "Klemmbrett", "hourglass": "Sanduhr",
+      "teacher": "Buch und Doktorhut", "calculator": "Taschenrechner", "chart": "Diagramm", "brush": "Pinsel", "globe": "Globus", "megaphone": "Megafon",
+      "shield": "Schild", "coffee": "Kaffeebecher", "whip": "Peitsche", "wizard": "Zauberer", "chef": "Koch", "crown": "Krone",
+      "idea": "Idee", "rocket": "Rakete", "chemist": "Chemiker", "gamer": "Gamer", "photographer": "Fotograf", "gardener": "Gärtner",
+      "musician": "Musiker"
+    }
+  }
+}

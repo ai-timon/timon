@@ -29,6 +29,7 @@ import { listProjects } from '../../projects.js';
 import { listSkills } from '../../skills.js';
 import { listMcp } from '../../mcp.js';
 import { TelemetryCollector, missionFactsFrom, type CollectorDeps } from './collector.js';
+import { installationUsageKind } from '../../onboarding-usage-kind.js';
 import {
   EVENT_SCHEMA_VERSION, archValue, backendValue, licenseTierValue, platformValue, validateEvent, validateGlobals, versionValue,
   type GlobalProperties, type TelemetryEventName,
@@ -73,6 +74,11 @@ export type TelemetryOptions = {
   intervalMs?: number;
   preference?: PreferenceSources;
   now?: () => number;
+  /**
+   * Tests only, with an injected `fetch`: whether to treat this process as a
+   * test run (detected by default), to exercise the production destination.
+   */
+  testRunner?: boolean;
   /** Tests: deps of the collector; the database by default. */
   collector?: Partial<CollectorDeps>;
 };
@@ -181,6 +187,8 @@ function installationSnapshot(): Record<string, unknown> {
     out.bundled_plugins_active = gallery.filter((p) => p.source === 'bundled' && p.state === 'active').length;
     out.third_party_plugins = gallery.filter((p) => p.source === 'third-party' && !p.builtin).length;
   } catch { /* gallery not attached yet */ }
+  const usage = installationUsageKind();
+  if (usage) out.usage_kind = usage;
   if (agents.length) {
     const backends = new Set(agents.map((a) => backendValue(a.backend)).filter((b) => b !== 'other'));
     out.backends = [...backends].sort();
@@ -200,7 +208,8 @@ const INERT: TelemetryRuntime = {
 
 export function startTelemetry(opts: TelemetryOptions = {}): TelemetryRuntime {
   const env = opts.env ?? process.env;
-  const apiUrl = telemetryDestination(env, opts.packaged ?? packagedDaemon(env));
+  const packaged = opts.packaged ?? packagedDaemon(env);
+  const apiUrl = telemetryDestination(env, packaged, undefined, opts.testRunner);
   if (!apiUrl) return INERT;
 
   const now = opts.now ?? Date.now;
@@ -232,7 +241,7 @@ export function startTelemetry(opts: TelemetryOptions = {}): TelemetryRuntime {
     const firstDay = identity().firstSeenDay;
     return validateGlobals({
       surface, app_version: version, platform: platformValue(), arch: archValue(),
-      event_schema_version: EVENT_SCHEMA_VERSION, license_tier: tier,
+      event_schema_version: EVENT_SCHEMA_VERSION, license_tier: tier, build: packaged ? 'package' : 'source',
       ...(slot ? { account_slot: slot } : {}),
       ...(firstDay ? { install_age: installAgeOf(firstDay, utcDay(now())) } : {}),
     });
@@ -354,12 +363,13 @@ export function startTelemetry(opts: TelemetryOptions = {}): TelemetryRuntime {
     ...databaseDeps(),
     now,
     milestone: (m) => reachMilestone(m),
+    usageKind: installationUsageKind,
     installCreatedAt: () => {
       const created = Date.parse(identity().createdAt ?? '');
       return Number.isFinite(created) ? created : null;
     },
     ...opts.collector,
-  }, (name, props) => track(name, props));
+  }, (name, props, context) => track(name, props, 'daemon', context));
   try { collector.setInitialLicense(licenseState().status === 'valid'); } catch { /* not loaded */ }
 
   const onBus = (ev: BusEvent): void => {

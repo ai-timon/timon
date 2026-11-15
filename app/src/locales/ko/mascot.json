@@ -1,0 +1,12 @@
+{
+  "mascot": {
+    "acc": {
+      "none": "없음", "loupe": "돋보기", "pen": "빨간 펜", "quill": "깃펜", "hammer": "망치", "wrench": "렌치",
+      "baton": "지휘봉", "telescope": "망원경", "envelope": "봉투", "calendar": "달력", "clipboard": "클립보드", "hourglass": "모래시계",
+      "teacher": "책과 학사모", "calculator": "계산기", "chart": "차트", "brush": "붓", "globe": "지구본", "megaphone": "확성기",
+      "shield": "방패", "coffee": "커피 머그", "whip": "채찍", "wizard": "마법사", "chef": "셰프", "crown": "왕관",
+      "idea": "아이디어", "rocket": "로켓", "chemist": "화학자", "gamer": "게이머", "photographer": "사진가", "gardener": "정원사",
+      "musician": "음악가"
+    }
+  }
+}

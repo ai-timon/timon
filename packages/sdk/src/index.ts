@@ -146,7 +146,7 @@ export type {
  * the agent shows (`avatar`: emoji, image or mascot, `null` = not picked).
  */
 export type {
-  PluginAgentLook, PluginAgentLookAccessory, PluginAgentLookColor, PluginAgentLookEyes,
+  PluginAgentLook, PluginAgentLookAccessory, PluginAgentLookColor, PluginAgentLookCustomColor, PluginAgentLookEyes,
   PluginAgentLookInput, PluginAgentLookShape, PluginAgentAvatarMode, PluginMascotPartId,
 } from '../../../orchestrator/src/plugins/contract/agents.js';
 

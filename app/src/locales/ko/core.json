@@ -1096,6 +1096,17 @@
     "widgetsBorderlessHint": "위젯을 윤곽선이나 그림자 없이 그립니다.",
     "widgetsTransparent": "투명한 배경",
     "widgetsTransparentHint": "위젯에 배경화면이 비칩니다. 반투명 유리와 함께 쓰면 유리 느낌이 납니다.",
+    "mascotsTitle": "마스코트",
+    "mascotsHint": "머리가 마스코트인 에이전트는 무엇을 하고 있는지 보여 줍니다. 자는 중, 생각 중, 작업 중, 검색 중, 당신을 기다리는 중, 작업을 마쳐 기쁜 상태 등.",
+    "mascotsAnimate": "마스코트 애니메이션",
+    "mascotsAnimateHint": "끄면 마스코트는 움직이지 않고 눈으로만 상태를 보여 줍니다. 시스템의 동작 줄이기 설정이 항상 우선합니다.",
+    "mascotsStyle": "마스코트 스타일",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "조명과 입체감이 있는 모델링된 봉제 인형 머리.",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "평면 그림으로, 오래된 컴퓨터에서도 가볍습니다.",
+    "mascotsStyleNoWebgl": "이 브라우저는 3D로 그릴 수 없습니다(WebGL2가 꺼져 있거나 없음). 마스코트는 2D로 그려집니다.",
+    "mascotsStyleShared": "모든 마스코트에 적용됩니다. 나중에 {settingsPath}에서 바꿀 수 있습니다.",
     "variants": {
       "coral": {
         "name": "코랄",

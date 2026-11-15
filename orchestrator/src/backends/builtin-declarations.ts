@@ -70,6 +70,13 @@ export type BuiltinDeclarations = Omit<ProviderDeclarations, 'binary'> & {
   /** What to do once that command runs, when the CLI does not sign in by itself (`/login` inside `claude`). */
   readonly signInThen?: string;
   /**
+   * Variables the sign-in command runs with, by POSIX system: written in front of it (`NAME=value cmd`),
+   * so that the CLI saves its sign-in where the missions Timon starts will read it (`agy` keeps it in its
+   * own file rather than the Linux keychain, which the mission fence cannot reach). Values are plain words
+   * a shell reads as written; Windows has no such form and takes none.
+   */
+  readonly signInEnv?: SignInEnv;
+  /**
    * A fresh install seeds its main agent on this provider when its CLI runs on the host, in the order
    * of this table. A product decision, not a capability: the providers whose model list comes from
    * the agent itself (the ACP ones) are not offered to someone who has not chosen yet.
@@ -113,6 +120,19 @@ export type BuiltinDeclarations = Omit<ProviderDeclarations, 'binary'> & {
   readonly apiKeyProviders?: ReadonlyArray<{ readonly id: string; readonly label: string; readonly brand: string }>;
 };
 
+/** `BuiltinDeclarations.signInEnv`: the variables of the sign-in command, for the systems whose shell reads `NAME=value cmd`. */
+export type SignInEnv = Readonly<Partial<Record<'linux' | 'darwin', Readonly<Record<string, string>>>>>;
+
+/**
+ * The sign-in line a person runs on `platform`: the declared variables of that system, then the command.
+ * The schema already refused a name or a value a shell would read otherwise.
+ */
+export function signInLine(command: string, env: SignInEnv | undefined, platform: NodeJS.Platform): string {
+  const vars = platform === 'linux' || platform === 'darwin' ? env?.[platform] : undefined;
+  const prefix = Object.entries(vars ?? {}).map(([name, value]) => `${name}=${value} `).join('');
+  return `${prefix}${command}`;
+}
+
 /** One entry of `timon.provider.backends`: a backend id of the product and what it declares. */
 export type ProductBackend = BuiltinDeclarations & {
   readonly id: string;
@@ -124,6 +144,9 @@ const LABEL = z.string().min(1).max(80);
 const COMMAND = z.string().min(1).max(500);
 /** A vendor page or channel: the onboarding links to it or fetches it, so never anything but https. */
 const HTTPS_URL = z.string().max(300).url().refine((value) => value.startsWith('https://'), 'expected an https:// URL');
+/** A variable of the sign-in command: an upper-case name, a value a POSIX shell reads as written (no quote, space or `$`). */
+const SIGN_IN_VARS = z.record(z.string().regex(/^[A-Z_][A-Z0-9_]{0,63}$/, 'invalid variable name'), z.string().max(200).regex(/^[A-Za-z0-9_.,:/@%+=-]*$/, 'a value a shell would not read as written'))
+  .refine((vars) => Object.keys(vars).length <= 8, 'at most 8 variables');
 const NPM_PACKAGE = z.string().regex(/^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/, 'invalid npm package name').max(214);
 
 /** The fields only the product reads; the public ones (`binary`, `credentialDirs`) are checked like a plugin's. */
@@ -134,6 +157,7 @@ const ProductBackendSchema = z.object({
   credentialDirs: z.array(z.string()).max(4).optional(),
   signInCommand: COMMAND.optional(),
   signInThen: COMMAND.optional(),
+  signInEnv: z.object({ linux: SIGN_IN_VARS.optional(), darwin: SIGN_IN_VARS.optional() }).strict().optional(),
   seedsMainAgent: z.literal(true).optional(),
   setupCard: z.object({ label: LABEL, order: z.number().int(), suggested: z.literal(true).optional() }).strict().optional(),
   modelBrands: z.array(z.object({ match: LABEL, brand: LABEL }).strict()).max(16).optional(),

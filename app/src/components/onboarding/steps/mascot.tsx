@@ -5,7 +5,8 @@
  * (docs/ONBOARDING.md, `Upgrade welcome`): an account made before the new
  * onboarding has just signed in again, and is offered to dress its main
  * agent's mascot with the shared configurator (`LookStylerHost`, the one of
- * the agent step and of the editor's Avatar tab).
+ * the agent step and of the editor's Avatar tab), with the 3D / 2D switch of
+ * Settings → Appearance above it.
  *
  * "Keep this look" saves the look and makes the mascot the agent's head;
  * "Not now" changes nothing. Either way the welcome closes for good
@@ -18,6 +19,7 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { defaultLookFor, normalizeAgentLook, type AgentLook } from '@/components/mascot/agent-look';
 import { LookStylerHost } from '@/components/mascot/look-styler/look-styler';
+import { MascotStyleSwitch } from '@/components/mascot/look-styler/mascot-style-switch';
 import { fetchMe, meCan } from '@/lib/auth';
 import { authLanding } from '@/lib/auth-landing';
 import { t } from '@/lib/i18n';
@@ -96,7 +98,7 @@ export function MascotStep(): ReactElement | null {
       <h1 className="text-[28px] font-bold leading-tight tracking-[-0.02em]">{t('onboarding.mascot.title', { name: agent.name })}</h1>
       <p className="mt-1.5 max-w-[560px] text-sm leading-snug text-muted-foreground">{t('onboarding.mascot.subtitle', { name: agent.name })}</p>
       <div className="mt-5 min-h-0 w-full flex-1 overflow-auto rounded-[18px] bg-muted/40 p-3 text-left">
-        <LookStylerHost look={agent.look} onChange={onLook} name={agent.name} role={agent.role} />
+        <LookStylerHost look={agent.look} onChange={onLook} name={agent.name} role={agent.role} header={<MascotStyleSwitch />} />
       </div>
       <p role="status" aria-live="polite" className="mt-3 min-h-4 text-[12.5px] leading-4 text-destructive">
         {failed ? t('onboarding.mascot.failed') : null}

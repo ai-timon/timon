@@ -84,7 +84,10 @@ test('Antigravity: Google\'s own installer on each system, and its sign-in on th
     assert.equal(card.installCommand, installer, platform);
   }
   const found = setupBackends('linux', (name) => (name === 'agy' ? '/home/ann/.local/bin/agy' : null), () => null, NO_VERSION).find((b) => b.name === 'agy')!;
-  assert.equal(found.signInCommand, '/home/ann/.local/bin/agy acp --login');
+  // On Linux agy then saves its sign-in in its own file, which a fenced mission reads; the keychain's bus is out of its reach.
+  assert.equal(found.signInCommand, 'DBUS_SESSION_BUS_ADDRESS=disabled: /home/ann/.local/bin/agy acp --login');
+  const mac = setupBackends('darwin', (name) => (name === 'agy' ? '/Users/ann/.local/bin/agy' : null), () => null, NO_VERSION).find((b) => b.name === 'agy')!;
+  assert.equal(mac.signInCommand, '/Users/ann/.local/bin/agy acp --login', 'macOS keeps the keychain');
 });
 
 test('sign-in lines are built on the resolved path, quoted for the shell that will read them', () => {

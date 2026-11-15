@@ -43,7 +43,7 @@ const FRAMING_REFUSED: readonly string[] = [
   'secret-key', 'secret-key.next', 'secret-key.location', 'secret-key.old',
   'plugin-token-key', 'setup-token', 'update-token', 'remote-key', 'remote.db', 'secrets.env',
   'license.jwt', 'license.key', 'license.state.json', 'license.enrollment-secret', 'license.state.json.tmp-7',
-  'device-id', 'install-id', 'cli-daemons.json',
+  'device-id', 'install-id', 'partner-leads.json', 'partner-leads.json.tmp-7', 'cli-daemons.json',
   'timon.db', 'timon.db-wal', 'timon.db-shm', 'timon.db-journal',
   'integrations.db', 'integrations.db-wal', 'integrations.db-shm',
   'timon.config.json', 'timon.config.json.bak-20261025',

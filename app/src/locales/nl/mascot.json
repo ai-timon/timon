@@ -1,0 +1,12 @@
+{
+  "mascot": {
+    "acc": {
+      "none": "Geen", "loupe": "Vergrootglas", "pen": "Rode pen", "quill": "Ganzenveer", "hammer": "Hamer", "wrench": "Moersleutel",
+      "baton": "Dirigeerstok", "telescope": "Verrekijker", "envelope": "Envelop", "calendar": "Kalender", "clipboard": "Klembord", "hourglass": "Zandloper",
+      "teacher": "Boek en baret", "calculator": "Rekenmachine", "chart": "Grafiek", "brush": "Penseel", "globe": "Wereldbol", "megaphone": "Megafoon",
+      "shield": "Schild", "coffee": "Koffiemok", "whip": "Zweep", "wizard": "Tovenaar", "chef": "Kok", "crown": "Kroon",
+      "idea": "Idee", "rocket": "Raket", "chemist": "Scheikundige", "gamer": "Gamer", "photographer": "Fotograaf", "gardener": "Tuinier",
+      "musician": "Muzikant"
+    }
+  }
+}

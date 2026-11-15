@@ -24,12 +24,12 @@
  */
 
 import { modelPreferences, mergeModelPreferences } from './model-preferences.js';
-import { activeProfiles, dialectDeclarations } from './registry.js';
+import { activeProfiles, dialectDeclarations, getDialect, installedProfiles } from './registry.js';
 import { isSecretRef } from './credentials.js';
 import { discoveredModels, refreshAll, type DiscoverySource } from './model-discovery.js';
 import { profileBaseUrl, resolveModelReasoning, type DeclaredReasoningControl, type ModelReasoning, type ReasoningControl } from './reasoning.js';
 import type { ProviderModelCache, UnverifiedSubject } from './provider-declarations.js';
-import { BUILTIN_DECLARATIONS } from './builtin-declarations.js';
+import { BUILTIN_DECLARATIONS, signInLine } from './builtin-declarations.js';
 import { baseBackendId } from './instance-id.js';
 import { resolveCapabilities } from './capabilities.js';
 import { resolveSupportedPermissionMode } from './permission-models.js';
@@ -331,7 +331,7 @@ function unverifiedOf(dialect: string): Pick<CatalogBackend, 'unverified'> {
 function productHints(id: string): Pick<CatalogBackend, 'signInCommand' | 'signInThen'> {
   const declared = BUILTIN_DECLARATIONS[baseBackendId(id)];
   return {
-    ...(declared?.signInCommand ? { signInCommand: declared.signInCommand } : {}),
+    ...(declared?.signInCommand ? { signInCommand: signInLine(declared.signInCommand, declared.signInEnv, process.platform) } : {}),
     ...(declared?.signInThen ? { signInThen: declared.signInThen } : {}),
   };
 }
@@ -354,14 +354,31 @@ export function catalogBackend(id: string | null | undefined): CatalogBackend | 
 }
 
 /**
+ * The only permission modes `backend` honours (`PermissionStrategy.supportedModes`),
+ * or undefined when it honours every one. The catalogue lists active profiles
+ * only, so an installed profile that is inactive right now (its CLI not found,
+ * disabled in settings, no credentials) is read from its dialect: the guards
+ * judge an agent stored on it by what it runs there once it is back, and the
+ * declaration belongs to the provider, not to the binary being on this machine.
+ */
+export function supportedPermissionModesOf(backend: string | null | undefined): readonly string[] | undefined {
+  if (!backend) return undefined;
+  const entry = catalogBackend(backend);
+  if (entry) return entry.supportedPermissionModes;
+  const base = baseBackendId(backend);
+  const profile = installedProfiles().find((p) => p.id === base);
+  return profile ? getDialect(profile.dialect)?.supportedPermissionModes : undefined;
+}
+
+/**
  * The permission mode an agent asking for `mode` really runs in on `backend`:
  * on a provider that declares the only modes it honours
  * (`PermissionStrategy.supportedModes`), any other mode is `plan`
  * (`resolveSupportedPermissionMode`). Untouched on a backend that honours
- * every mode, and on one the catalogue does not know.
+ * every mode, and on one no installed provider knows.
  */
 export function resolvedPermissionModeFor(backend: string | null | undefined, mode: string | null | undefined): string | undefined {
-  return resolveSupportedPermissionMode(mode, catalogBackend(backend)?.supportedPermissionModes);
+  return resolveSupportedPermissionMode(mode, supportedPermissionModesOf(backend));
 }
 
 /**

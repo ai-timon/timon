@@ -29,15 +29,16 @@ const CONSOLE = 'https://console.example.com'
  * Providers.
  *
  * `settings.provider.section` is a list slot declared at boot. The page paints
- * the product's common sections (Connection, API key, Program, own settings,
- * Models) and, on the page of a provider this plugin brings, the sections this
+ * the product's common sections (Connection, API key, Models, Program, own
+ * settings) and, on the page of a provider this plugin brings, the sections this
  * plugin registered — never on another provider's page.
  *
  * The component receives no props: it reads `useProviderPage()`, the provider
  * on screen as the daemon describes it. Registered with `key: 'settings'`, it
  * takes the place of the common "own settings" section on this provider's page;
- * without a key it would be added after Models, or where `order` puts it (the
- * common sections are 100, 200, 300, 400 and 500).
+ * without a key it would be added last, after own settings, or where `order`
+ * puts it (Connection 100, API key 200, Models 250, Program 300, own settings
+ * 400).
  *
  * What a section must respect:
  *   - draw itself as the product's do: a `ProviderSection` (a short label over

@@ -27,12 +27,26 @@ import { GLASS_SCOPES, GLASS_TUNING_ENABLED } from '@/lib/glass-scope';
 import { GlassTuningSettings } from './ui-theme-glass-tuning';
 import { GlassProfilesSection } from '@/components/glass-profiles';
 import { mascotAnimationPref, useMascotAnimation } from '@/components/mascot/mascot-animation-pref';
+import { MASCOT_STYLES, mascotStylePref, useMascotStyle, useWebGL2, type MascotStyle } from '@/components/mascot/mascot-style-pref';
 
 type CatalogPayload = { plugins?: AppearanceCatalogRow[] };
 
-/** "Animate mascots": the live states of the agents' mascots (docs/AGENT-MASCOT.md). */
+const MASCOT_STYLE_KEYS: Record<MascotStyle, { label: string; hint: string }> = {
+  '3d': { label: 'appearance.mascotsStyle3d', hint: 'appearance.mascotsStyle3dHint' },
+  '2d': { label: 'appearance.mascotsStyle2d', hint: 'appearance.mascotsStyle2dHint' },
+};
+
+/**
+ * "Animate mascots" and "Mascot style": the live states of the agents'
+ * mascots (docs/AGENT-MASCOT.md), and whether they are drawn in 3D or 2D.
+ */
 export function MascotAnimationSetting(): ReactElement {
   const animate = useMascotAnimation();
+  const style = useMascotStyle();
+  const webgl2 = useWebGL2();
+  const chooseStyle = (next: MascotStyle): void => {
+    void mascotStylePref().set(next).then((ok) => { if (!ok) toast.error(t('appearance.saveError')); });
+  };
   return (
     <fieldset className="py-4">
       <legend className="text-[14px] font-semibold leading-snug">{t('appearance.mascotsTitle')}</legend>
@@ -46,6 +60,32 @@ export function MascotAnimationSetting(): ReactElement {
         />
         <span className="text-[13px] leading-snug">{t('appearance.mascotsAnimate')}<span className="mt-0.5 block text-[11px] text-muted-foreground">{t('appearance.mascotsAnimateHint')}</span></span>
       </label>
+      <div role="radiogroup" aria-label={t('appearance.mascotsStyle')} className="mt-4 flex flex-col gap-1" data-mascot-style-choice="">
+        <span className="text-[13px] leading-snug">{t('appearance.mascotsStyle')}{!webgl2 && <span className="mt-0.5 block text-[11px] text-muted-foreground" data-mascot-style-no-webgl="">{t('appearance.mascotsStyleNoWebgl')}</span>}</span>
+        {MASCOT_STYLES.map((option) => {
+          const checked = style === option;
+          return (
+            <label
+              key={option}
+              className={cn(
+                'flex cursor-pointer items-start gap-2.5 rounded-lg px-2 py-1.5 text-[13px] leading-snug',
+                checked ? 'bg-foreground/[0.08] text-foreground' : 'text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground',
+              )}
+            >
+              <input
+                type="radio"
+                name="appearance-mascot-style"
+                value={option}
+                checked={checked}
+                onChange={() => chooseStyle(option)}
+                className="mt-0.5 size-3.5 shrink-0 cursor-pointer appearance-none rounded-full border-[1.5px] border-muted-foreground/60 bg-transparent transition-colors checked:border-[4px] checked:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-mascot-style={option}
+              />
+              <span className={cn(checked && 'font-medium')}>{t(MASCOT_STYLE_KEYS[option].label)}<span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">{t(MASCOT_STYLE_KEYS[option].hint)}</span></span>
+            </label>
+          );
+        })}
+      </div>
     </fieldset>
   );
 }

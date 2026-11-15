@@ -33,6 +33,15 @@ function underTest(env: NodeJS.ProcessEnv): boolean {
   return Boolean(env.NODE_TEST_CONTEXT) || env.NODE_ENV === 'test';
 }
 
+/**
+ * Whether this process runs under a test runner: what the caller passed, or
+ * this process's own environment. A test that hands `startTelemetry` an `env`
+ * of its own still runs under the runner, and must not reach production.
+ */
+export function runningUnderTest(env: NodeJS.ProcessEnv = process.env): boolean {
+  return underTest(env) || underTest(process.env);
+}
+
 /** A loopback `http:` URL without credentials, or `null`. */
 export function captureUrl(raw: string | undefined): string | null {
   if (!raw) return null;
@@ -45,21 +54,30 @@ export function captureUrl(raw: string | undefined): string | null {
 
 /**
  * Where events go, or `null` for nowhere (and then nothing is even queued).
- *  - a packaged daemon of a released build (`beta` or `stable` stamp) outside
- *    a test: OpenPanel, the capture URL is ignored. Two locks, the daemon's
- *    marker and the build's stamp, so a marker copied onto a source checkout
- *    is not enough;
- *  - anything else (source checkout, sandbox, test runner): only a local
- *    capture server named explicitly — never the production endpoint.
+ *
+ * The code is public and people install Timon from its sources: those
+ * installations count as much as the packaged ones, so they send too, marked
+ * `build: 'source'` (`runtime.ts`). What must never reach production is a test
+ * run and the maintainer's own development, hence:
+ *  - a packaged daemon of a released build (`beta` or `stable` stamp): OpenPanel,
+ *    outside a test only; the capture URL is ignored, so an environment
+ *    variable cannot divert a tester's events;
+ *  - anything else: a local capture server when one is named, first;
+ *  - then nothing under a test runner, whatever `env` the caller passed;
+ *  - otherwise OpenPanel. The maintainer's installs turn it off like anyone
+ *    (`TIMON_TELEMETRY=0`, or `telemetry.enabled: false` in the config).
  */
 export function telemetryDestination(
   env: NodeJS.ProcessEnv = process.env,
   packaged: boolean = packagedDaemon(env),
   channel: BuildChannel = buildInfo().channel,
+  testRunner: boolean = runningUnderTest(env),
 ): string | null {
-  if (packaged && underTest(env)) return null;
-  if (packaged && channel !== 'dev') return OPENPANEL_API_URL;
-  return captureUrl(env[CAPTURE_URL_ENV]);
+  if (packaged && channel !== 'dev') return testRunner ? null : OPENPANEL_API_URL;
+  const capture = captureUrl(env[CAPTURE_URL_ENV]);
+  if (capture) return capture;
+  if (testRunner) return null;
+  return OPENPANEL_API_URL;
 }
 
 export type TrackPayload = {

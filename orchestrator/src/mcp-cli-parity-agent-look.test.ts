@@ -10,7 +10,7 @@ import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
 import { cli, session, withDaemon } from '../tests/helpers/mcp-cli-parity.js';
 import {
-  AGENT_AVATAR_MODES, AGENT_LOOK_ACCESSORIES, AGENT_LOOK_COLORS, AGENT_LOOK_EYES, AGENT_LOOK_SHAPES, MASCOT_PART_ID_RE,
+  AGENT_AVATAR_MODES, AGENT_LOOK_ACCESSORIES, AGENT_LOOK_COLORS, AGENT_LOOK_CUSTOM_COLOR_RE, AGENT_LOOK_EYES, AGENT_LOOK_SHAPES, MASCOT_PART_ID_RE,
 } from './agent-look.js';
 
 const LOOK = { shape: 'round', color: '#d4a373', eyes: 'happy', acc: 'coffee' };
@@ -117,6 +117,7 @@ test('the agent_update and agent_create schemas offer exactly the values the dae
       assert.equal(look.properties.shape!.anyOf[1]!.pattern, MASCOT_PART_ID_RE.source, name);
       assert.deepEqual(look.properties.color!.anyOf[0]!.enum, [...AGENT_LOOK_COLORS], name);
       assert.equal(look.properties.color!.anyOf[1]!.pattern, MASCOT_PART_ID_RE.source, name);
+      assert.equal(look.properties.color!.anyOf[2]!.pattern, AGENT_LOOK_CUSTOM_COLOR_RE.source, name);
       assert.deepEqual(look.properties.eyes!.anyOf[0]!.enum, [...AGENT_LOOK_EYES], name);
       assert.equal(look.properties.eyes!.anyOf[1]!.pattern, MASCOT_PART_ID_RE.source, name);
       assert.deepEqual(look.properties.acc!.anyOf[0]!.enum, [...AGENT_LOOK_ACCESSORIES], name);

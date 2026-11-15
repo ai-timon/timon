@@ -1,0 +1,12 @@
+{
+  "mascot": {
+    "acc": {
+      "none": "Nessuno", "loupe": "Lente d'ingrandimento", "pen": "Penna rossa", "quill": "Penna d'oca", "hammer": "Martello", "wrench": "Chiave inglese",
+      "baton": "Bacchetta", "telescope": "Cannocchiale", "envelope": "Busta", "calendar": "Calendario", "clipboard": "Portablocco", "hourglass": "Clessidra",
+      "teacher": "Libro e tocco", "calculator": "Calcolatrice", "chart": "Grafico", "brush": "Pennello", "globe": "Mappamondo", "megaphone": "Megafono",
+      "shield": "Scudo", "coffee": "Tazza di caffè", "whip": "Frusta", "wizard": "Mago", "chef": "Chef", "crown": "Corona",
+      "idea": "Idea", "rocket": "Razzo", "chemist": "Chimico", "gamer": "Giocatore", "photographer": "Fotografo", "gardener": "Giardiniere",
+      "musician": "Musicista"
+    }
+  }
+}

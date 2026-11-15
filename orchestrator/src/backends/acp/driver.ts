@@ -77,6 +77,12 @@ export type AcpDriverOptions = {
    * signed in does not need it.
    */
   authenticateWith?: string;
+  /**
+   * The agent runs inside the mission fence: `authenticateWith` is then never tried. A sign-in method may
+   * open a browser and wait for its redirect, which a fenced process cannot reach (no display, no keychain
+   * bus): the wait would end only at its timeout, with the user's message unanswered meanwhile.
+   */
+  fenced?: () => boolean;
   /** The agent's own blocking requests the provider answers (`AcpAgentSpec.extensionRequests`). */
   extensionRequests?: Readonly<Record<string, AcpExtensionHandler>>;
   clientVersion?: string;
@@ -287,7 +293,8 @@ export class AcpSessionDriver implements SessionDriver {
       const resumed = sessionId !== null;
       if (sessionId === null) {
         try {
-          const created = await newSessionAuthenticating(this.transport, init, { cwd: this.opts.cwd, mcpServers: servers }, this.opts.authenticateWith);
+          const authenticateWith = this.opts.fenced?.() ? undefined : this.opts.authenticateWith;
+          const created = await newSessionAuthenticating(this.transport, init, { cwd: this.opts.cwd, mcpServers: servers }, authenticateWith);
           sessionId = created.sessionId;
           result = created.result;
         } catch (err) {

@@ -1096,6 +1096,17 @@
     "widgetsBorderlessHint": "Os widgets são desenhados sem contorno nem sombra.",
     "widgetsTransparent": "Fundo transparente",
     "widgetsTransparentHint": "Os widgets deixam o papel de parede aparecer; combine com o vidro fosco para um visual de vidro.",
+    "mascotsTitle": "Mascotes",
+    "mascotsHint": "Um agente cuja cabeça é o seu mascote mostra o que está fazendo: dormindo, pensando, trabalhando, pesquisando, esperando por você, feliz quando termina a tarefa.",
+    "mascotsAnimate": "Animar os mascotes",
+    "mascotsAnimateHint": "Desativado, o mascote ainda mostra o estado pelos olhos, sem se mexer. A configuração de reduzir movimento do seu sistema sempre prevalece.",
+    "mascotsStyle": "Estilo dos mascotes",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "Uma cabeça de pelúcia modelada, iluminada e em relevo.",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "O desenho plano, mais leve para computadores antigos.",
+    "mascotsStyleNoWebgl": "Este navegador não consegue desenhar em 3D (o WebGL2 está desativado ou ausente): os mascotes são desenhados em 2D.",
+    "mascotsStyleShared": "Vale para todos os mascotes. Você pode mudar isso depois em {settingsPath}.",
     "variants": {
       "coral": {
         "name": "Coral",

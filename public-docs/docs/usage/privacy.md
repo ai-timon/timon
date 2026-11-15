@@ -3,11 +3,12 @@ title: Privacy and what Timon sends
 sidebar_position: 9
 ---
 
-Timon runs on your computer, and your agents' work stays there. Three things leave it for the Timon team, each for its own reason:
+Timon runs on your computer, and your agents' work stays there. A few things leave it for the Timon team, each for its own reason:
 
 - [**usage statistics**](#usage-statistics), anonymous and optional, so we know what to fix first;
 - [**your email address and its codes**](#your-email-address), so a verification or reset code can reach you;
-- [**licence data**](#your-licence), so your licence key works on this computer.
+- [**licence data**](#your-licence), so your licence key works on this computer;
+- [**the agency offer**](#the-agency-offer), only if you ask for it.
 
 What your agents send to the AI providers you connect goes to those providers, under their own terms, and never through us.
 
@@ -15,11 +16,11 @@ What your agents send to the AI providers you connect goes to those providers, u
 
 Timon can send **anonymous usage statistics** to the Timon team: which features are used, how often agent turns succeed, where setup stops. They tell us what to fix first. Sharing is **on by default** and you can turn it off at any time.
 
-Only the installed app sends them. Timon run from a source checkout sends nothing.
+This applies however you installed Timon: the installed app and Timon run from its source code both send them, and both turn them off the same way (see [Turning statistics off](#turning-statistics-off)).
 
 ### What is sent
 
-Each event carries the Timon version, your operating system and processor type, and your licence tier (Free, Beta…). An event caused by a person also carries the rank of their account on this installation (1 for the first account created, 2 for the next…), never the account itself. The events themselves are:
+Each event carries the Timon version, whether it is the installed app or Timon run from source, your operating system and processor type, and your licence tier (Free, Beta…). An event caused by a person also carries the rank of their account on this installation (1 for the first account created, 2 for the next…), never the account itself. The events themselves are:
 
 - the app starting, being updated, and the desktop app being opened;
 - the app being opened by a person, at most once a day per account;
@@ -33,7 +34,7 @@ Each event carries the Timon version, your operating system and processor type, 
 - tasks being completed: their kind, roughly how long they took, a review's verdict and whether the work was merged;
 - the first time you reach a step such as your first agent, project or completed task, and how many days ago Timon was installed, in ranges;
 - that an error happened in a part of the app (for example *Agents*), never the error itself;
-- each setup step you complete or skip;
+- each setup step you complete or skip, and who you said you use Timon for (*for me*, *for my team or company*, *for my agency or my clients*) when you answer or change it; that answer also comes with the setup steps and the daily summary;
 - missions and agent turns: when they start and end, how long a turn took, whether it succeeded, how many tokens it used, which AI provider ran it, and how many days after installation the turn ran (a number of days, never a date);
 - which **built-in** tools agents used (for example the file editor or the terminal), as counts;
 - task, plugin, licence and built-in browser actions: what kind of action, never what it acted on.
@@ -46,7 +47,7 @@ The AI model is sent only when it is one of the models Timon lists for that prov
 - the names of your projects, agents, skills, routines or MCP servers, and the names of their tools;
 - paths, web addresses and commands;
 - error messages;
-- your email, user name, account or computer name;
+- your email, user name, account or computer name, nor whether you asked for the agency offer;
 - your licence key.
 
 ### Who you are to us
@@ -91,3 +92,19 @@ When you enter a licence key, and then regularly while it is active, Timon sends
 On activation, Timon also sends your operating system (Windows, macOS or Linux) and the short name of the computer (the part before the first dot, at most 32 characters), so that you can tell your computers apart in the list of machines that use your key. If you give this computer a name of your own in Timon, that name is sent too.
 
 None of this travels with usage statistics, and turning them off does not change it: your licence needs it. Removing the licence from this computer tells the server, with the key and the installation identifier only, that the seat is free again.
+
+## The agency offer
+
+If you said you use Timon for an agency, the setup screen and **Settings › Profile** offer to email you the agency offer. Nothing is sent unless you tick the box yourself; it is a consent of its own, separate from usage statistics, so it is sent even when statistics are off.
+
+When you ask for it, Timon sends the Timon team, and nothing else:
+
+- the email address you entered, in lowercase;
+- that you use Timon for an agency;
+- the language of the app, so the email is in it;
+- the Timon version;
+- the date of the consent text you accepted.
+
+The team uses that address to send you this offer only. If your computer is offline, the request waits and is sent when Timon next starts or is back online. Timon keeps, in the Timon folder, your address while the request waits or is active, and a withdrawal token the server returns; neither ever goes into usage statistics.
+
+To withdraw, open **Settings › Profile**: the **Agency offer** row shows whether you are subscribed, and **Withdraw** tells the Timon team to stop. If you are offline, the withdrawal waits and is sent as soon as possible.

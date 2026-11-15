@@ -297,7 +297,7 @@ mission already running keeps working. Two rules protect missions:
 
 In **Settings → AI models → Providers**, each provider has its own page: a header
 (logo, name, status, how many agents use it), then sections in this order —
-Connection, API key, Program, its own settings, Models. A section with nothing to
+Connection, API key, Models, Program, its own settings. A section with nothing to
 say is not shown. The page's address names the provider
 (`?settings=models/backends&provider=<id>`), so a link can open it directly.
 
@@ -346,10 +346,10 @@ export function apply(ctx) {
   information mark), and no field shown in permanence: a form opens after a
   click, in a dialog or under its row (the row's `children`).
 - `order` places the section: the common ones are at 100 (Connection), 200 (API
-  key), 300 (Program), 400 (own settings) and 500 (Models). Without `order`, it
-  comes after Models.
-- With the `key` of a common section (`connection`, `apiKey`, `program`,
-  `settings`, `models`), your section takes that section's place on your
+  key), 250 (Models), 300 (Program) and 400 (own settings). Without `order`, it
+  comes last, after the provider's own settings.
+- With the `key` of a common section (`connection`, `apiKey`, `models`, `program`,
+  `settings`), your section takes that section's place on your
   provider's page only. `settings` is the one meant for a provider's own
   settings.
 - Render nothing (`return null`) when your section does not apply: the page

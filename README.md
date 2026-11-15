@@ -136,6 +136,23 @@ And everything else a team of agents needs:
 
 ## 🚀 Quick start
 
+Install with one command. On Linux and macOS, in a terminal:
+
+```bash
+curl -fsSL https://timon-ai.com/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://timon-ai.com/install.ps1 | iex
+```
+
+The command picks the package of your system, downloads it from the release list that Timon
+publishes signed, and checks its size and checksum against that list before installing anything.
+
+Or download the package for your system:
+
 <p align="center">
   <a href="https://github.com/ai-timon/timon/releases/latest"><img alt="Download for Windows" src=".github/assets/download-windows.svg" height="56"></a>
   <a href="https://github.com/ai-timon/timon/releases/latest"><img alt="Download for macOS" src=".github/assets/download-macos.svg" height="56"></a>

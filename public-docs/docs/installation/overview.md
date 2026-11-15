@@ -47,7 +47,7 @@ You can read the script before running it: open [install.sh](https://timon-ai.co
 | `--no-service`, `--no-launch` | | Install the package only |
 | | `-Silent` | Run the installer without its window (it then skips Node.js and Git: install them first) |
 
-On Linux the script checks the signature of the release list when OpenSSL 3 is installed; otherwise, and on macOS and Windows, it says so and relies on HTTPS and the package checksum, and Timon checks the signature again once installed. The packages are also attached to each release on GitHub, to download by hand.
+On Linux, macOS and Windows the command checks the signature of the release list before it downloads anything, and stops if the signature does not match. On a system where it cannot check it, it says so and relies on HTTPS and the package checksum, and Timon checks the signature again once installed. The packages are also attached to each release on GitHub, to download by hand.
 
 ## Choose an installation mode
 

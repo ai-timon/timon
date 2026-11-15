@@ -73,7 +73,8 @@ if (posix) {
     "const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');",
     "require('node:readline').createInterface({ input: process.stdin }).on('line', (l) => { const m = JSON.parse(l);",
     "  if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1, authMethods: [{ id: 'oauth-personal', name: 'Google' }] } });",
-    "  else if (m.method === 'authenticate') send(cfg.mode === 'auth' ? { id: m.id, error: { code: -32000, message: 'Authentication required' } } : { id: m.id, result: {} });",
+    // A real agy opens the Google sign-in page in the browser here: the stand-in only records the call.
+    "  else if (m.method === 'authenticate') { fs.appendFileSync(path.join(cfg.record, 'authenticate'), m.params.methodId + '\\n'); send({ id: m.id, result: {} }); }",
     "  else if (m.method === 'session/new') {",
     "    if (cfg.mode === 'auth') send({ id: m.id, error: { code: -32000, message: 'Authentication required for someone@example.test' } });",
     "    else if (cfg.mode === 'hang') { /* never answers */ }",
@@ -101,7 +102,7 @@ const usageModule = await import('../../official-providers/provider-acp/lib/anti
   readCapped(response: Response, max: number): Promise<string | null>;
   createAntigravityUsage(opts: {
     services: typeof ctx.provider; names: readonly string[]; env: Record<string, string>;
-    authenticateWith?: string; signIn: string; timeoutMs?: number;
+    signIn: string; timeoutMs?: number;
   }): {
     getUsage(profile?: { cmd?: string; env?: Record<string, string> }, options?: { force?: boolean; now?: number }): Promise<{ windows: Record<string, { utilization: number; resets_at: string } | null>; extra: null }>;
     forget(): void;
@@ -221,7 +222,7 @@ test('an answer is read in a stream and abandoned past its ceiling, never held w
 /* ── Through the daemon's process: a stand-in agy ─────────────────────────── */
 
 let unique = 0;
-type Run = { record: string; pids(): number[]; children(): number[]; requests(): string[]; seen(): { log: string; dirMode: number; AGY_ADC_AUTH?: string; GEMINI_API_KEY?: string; keys: string[] } };
+type Run = { record: string; pids(): number[]; children(): number[]; requests(): string[]; authenticated(): string[]; seen(): { log: string; dirMode: number; AGY_ADC_AUTH?: string; GEMINI_API_KEY?: string; keys: string[] } };
 
 function scenario(mode: string, answers: unknown[] = [SUMMARY]): Run {
   // One record folder per scenario, the stand-in writes into it.
@@ -233,13 +234,14 @@ function scenario(mode: string, answers: unknown[] = [SUMMARY]): Run {
     pids: () => read('pid').split('\n').filter(Boolean).map(Number),
     children: () => read('children').split('\n').filter(Boolean).map(Number),
     requests: () => read('requests').split('\n').filter(Boolean),
+    authenticated: () => read('authenticate').split('\n').filter(Boolean),
     seen: () => JSON.parse(read('seen.json')) as ReturnType<Run['seen']>,
   };
 }
 
 function probe(timeoutMs?: number) {
   return createAntigravityUsage({
-    services: ctx.provider, names: ['agy'], env: SWITCHES, authenticateWith: 'oauth-personal', signIn: SIGN_IN,
+    services: ctx.provider, names: ['agy'], env: SWITCHES, signIn: SIGN_IN,
     ...(timeoutMs ? { timeoutMs } : {}),
   });
 }
@@ -301,6 +303,7 @@ test('auth_required at session/new is "not signed in", with the sign-in step and
     assert.doesNotMatch(err.message, /someone@example/);
     return true;
   });
+  assert.deepEqual(run.authenticated(), [], 'never `authenticate`: agy would open a sign-in page in the browser');
   assert.deepEqual(run.requests(), [], 'no server, no request');
   assertCleanedUp(run);
 });
@@ -403,8 +406,11 @@ test('a reading is reused for 5 minutes; ↻ asks again; two callers share one p
 test('a failure is cached too, so polling does not start agy every 30 s', { skip: !posix }, async () => {
   const run = scenario('auth');
   const usage = probe();
-  await assert.rejects(usage.getUsage(), (err: Error) => isUsageNotSignedInError(err));
-  await assert.rejects(usage.getUsage(), (err: Error) => isUsageNotSignedInError(err));
+  const now = Date.now();
+  await assert.rejects(usage.getUsage(undefined, { now }), (err: Error) => isUsageNotSignedInError(err));
+  await assert.rejects(usage.getUsage(undefined, { now }), (err: Error) => isUsageNotSignedInError(err));
+  // Not signed in is kept like a reading (5 min), not like a passing failure (1 min).
+  await assert.rejects(usage.getUsage(undefined, { now: now + 2 * 60_000 }), (err: Error) => isUsageNotSignedInError(err));
   assert.equal(run.pids().length, 1);
   await assert.rejects(usage.getUsage(undefined, { force: true }));
   assert.equal(run.pids().length, 2);

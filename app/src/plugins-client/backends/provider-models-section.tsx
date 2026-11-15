@@ -263,7 +263,8 @@ function ModelForm({ model, fresh, saved, thinkingControls, busy, onCancel, onSa
   const contextText = contextWindowTextOf(draft);
   const contextInvalid = parseContextWindow(contextText) === undefined;
   return (
-    <form className="space-y-5" onSubmit={(event) => { event.preventDefault(); if (draft.slug.trim()) void onSave({ ...draft, slug: draft.slug.trim() }); }}>
+    // min-w-0: the dialog is a grid, whose column grows to its items' min-content width otherwise.
+    <form className="min-w-0 space-y-5" onSubmit={(event) => { event.preventDefault(); if (draft.slug.trim()) void onSave({ ...draft, slug: draft.slug.trim() }); }}>
       <DialogHeader>
         <DialogTitle className="text-base">{fresh ? t('backendsSettings.models.add') : t('providerPage.models.editTitle', { name: model.label || model.slug })}</DialogTitle>
       </DialogHeader>

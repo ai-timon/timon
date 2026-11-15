@@ -30,7 +30,7 @@ import { statSync, type Stats } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { config } from './config/load.js';
-import { BUILTIN_DECLARATIONS } from './backends/builtin-declarations.js';
+import { BUILTIN_DECLARATIONS, signInLine, type SignInEnv } from './backends/builtin-declarations.js';
 import { cliVersionInfo, type CliVersionInfo } from './provider-cli-versions.js';
 import { authStatusNow, installedProfiles } from './backends/registry.js';
 import { refreshProviderSignIn } from './backends/sign-in-state.js';
@@ -222,6 +222,7 @@ type ProviderCli = {
   label: string;
   signInCommand: string | undefined;
   signInThen: string | undefined;
+  signInEnv: SignInEnv | undefined;
   installDocs: string | undefined;
   installer: boolean;
   seedsMainAgent: boolean;
@@ -242,6 +243,7 @@ export function providerClis(): ProviderCli[] {
       label: binary.standaloneInstaller?.label ?? declared.setupCard.label,
       signInCommand: declared.signInCommand,
       signInThen: declared.signInThen,
+      signInEnv: declared.signInEnv,
       installDocs: declared.installDocs,
       installer: binary.standaloneInstaller !== undefined,
       seedsMainAgent: declared.seedsMainAgent === true,
@@ -292,7 +294,7 @@ export function setupBackends(
       installable: plan !== null,
       installCommand: plan?.display ?? null,
       installDocs: cli.installDocs ?? null,
-      signInCommand: [invocation(path, program, platform), ...rest].join(' '),
+      signInCommand: signInLine([invocation(path, program, platform), ...rest].join(' '), cli.signInEnv, platform),
       signInThen: cli.signInThen ?? null,
       seedsMainAgent: cli.seedsMainAgent,
       ...version,

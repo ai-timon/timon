@@ -8,12 +8,15 @@
  * Escape; what it holds is the shared configurator (`LookStylerHost`, slot
  * `agent.lookstyler`), the same one the agent editor's Avatar tab opens. The
  * step owns it: leaving the step unmounts it, so the panel never outlives it.
+ * Above the choices sits the 3D / 2D switch, the preference of Settings →
+ * Appearance → Mascot style.
  */
 import { useEffect, useRef, type ReactElement } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { AgentLook } from '@/components/mascot/agent-look';
 import { LookStylerHost } from '@/components/mascot/look-styler/look-styler';
+import { MascotStyleSwitch } from '@/components/mascot/look-styler/mascot-style-switch';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
@@ -59,7 +62,7 @@ export function LookStylerPanel({ open, name, role = null, look, onChange, onClo
       </div>
       {/* Mounted only while open: a closed panel animates no mascot and paints no grid. */}
       <div className="mx-4 mt-1 flex min-h-0 flex-1 flex-col">
-        {open && <LookStylerHost look={look} onChange={onChange} name={name} role={role} />}
+        {open && <LookStylerHost look={look} onChange={onChange} name={name} role={role} header={<MascotStyleSwitch />} />}
       </div>
       <div className="flex gap-2 px-4 pb-4 pt-3">
         <Button ref={done} type="button" className="min-w-0 flex-1" data-style-done onClick={onClose}>{t('onboarding.agent.style.done')}</Button>

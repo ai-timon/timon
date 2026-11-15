@@ -26,7 +26,10 @@ dbApi.createMission(target, 'acme.coder', 'code', undefined, OWNER);
 dbApi.setMissionPermissionModeOverride(caller, 'auto');
 
 {
-  const { mountOfficialProviders } = await import('../../../tests/helpers/official-providers.js');
+  // grok's profile exists only where its CLI is found: the stand-in keeps the
+  // test off the developer's own install, which a clean machine (the CI) lacks.
+  const { mountOfficialProviders, stubCliBinaries } = await import('../../../tests/helpers/official-providers.js');
+  await stubCliBinaries('grok');
   await mountOfficialProviders();
 }
 

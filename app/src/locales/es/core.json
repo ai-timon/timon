@@ -1096,6 +1096,17 @@
     "widgetsBorderlessHint": "Los widgets se dibujan sin contorno ni sombra.",
     "widgetsTransparent": "Fondo transparente",
     "widgetsTransparentHint": "Los widgets dejan ver el fondo de pantalla; combínalo con el cristal esmerilado para un aspecto de cristal.",
+    "mascotsTitle": "Mascotas",
+    "mascotsHint": "Un agente cuya cabeza es su mascota muestra lo que hace: dormido, pensando, trabajando, buscando, esperándote, contento cuando termina su tarea.",
+    "mascotsAnimate": "Animar las mascotas",
+    "mascotsAnimateHint": "Desactivado, una mascota sigue mostrando su estado con los ojos, sin moverse. El ajuste de reducir movimiento de tu sistema siempre tiene prioridad.",
+    "mascotsStyle": "Estilo de las mascotas",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "Una cabeza de peluche modelada, iluminada y con relieve.",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "El dibujo plano, más ligero para ordenadores antiguos.",
+    "mascotsStyleNoWebgl": "Este navegador no puede dibujar en 3D (WebGL2 está desactivado o no existe): las mascotas se dibujan en 2D.",
+    "mascotsStyleShared": "Se aplica a todas las mascotas. Puedes cambiarlo más tarde en {settingsPath}.",
     "variants": {
       "coral": {
         "name": "Coral",

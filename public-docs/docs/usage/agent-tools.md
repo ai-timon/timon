@@ -213,7 +213,7 @@ image from another site.
 
 `agent_update` also takes `look`, the mascot drawn for an agent that has no
 profile picture: `shape` (`squircle`, `tri`, `gem`, `round`, `bean`, `cloud`,
-`hex`), `color` (one of the fifteen colours the mascot offers), `eyes`
+`hex`), `color` (one of the fifteen colours the mascot offers, or any other `#rrggbb`), `eyes`
 (`pill`, `big`, `happy`, `wink`, `surprised`, `squint`, `sleepy`, `heart`,
 `star`, `code`) and, optionally, `acc`, the accessory it holds (`none` by
 default). `look: null` removes it. A value outside these lists is refused with

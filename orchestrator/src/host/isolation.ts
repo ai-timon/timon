@@ -138,13 +138,13 @@ export const MISSION_TIMON_ZONES = Object.freeze({
     'daemon-token', 'plugin-token-key', 'setup-token', 'update-token', 'remote-key', 'remote.db',
     'secrets.env', 'secret-key', 'secret-key.next', 'secret-key.location',
     'license.jwt', 'license.key', 'license.state.json', 'license.enrollment-secret',
-    'device-id', 'install-id', 'cli-daemons.json', 'legacy-account-tables.json',
+    'device-id', 'install-id', 'partner-leads.json', 'cli-daemons.json', 'legacy-account-tables.json',
     'timon.db', 'timon.db-wal', 'timon.db-shm', 'integrations.db', 'integrations.db-wal', 'integrations.db-shm',
     'timon.config.json', 'daemon.lock', 'daemon.lock.json',
     'plugins-data', 'browser-profiles', 'browser-native', 'desktop-profile', 'mcp', 'run', 'backups', 'archive',
   ]),
   refusedPrefixes: Object.freeze([
-    'secret-key', 'license.', 'timon.db', 'integrations.db', 'timon.config.json', 'remote.db', 'daemon.lock',
+    'secret-key', 'license.', 'partner-leads.json', 'timon.db', 'integrations.db', 'timon.config.json', 'remote.db', 'daemon.lock',
   ]),
 });
 

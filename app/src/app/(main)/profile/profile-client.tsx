@@ -2,7 +2,8 @@
 
 /**
  * The account's own page: name, picture, login email, password, and the
- * licence key of the instance (`LicenseSection`).
+ * licence key of the instance (`LicenseSection`), and the agency offer
+ * (`AgencyOfferRow`) for an account that uses Timon for an agency.
  *
  * Reachable by EVERY signed-in account (see `SELF_SERVICE_PAGES`), for the
  * same reason password rotation is: an identity one has to ask a superadmin to
@@ -26,6 +27,7 @@ import { LogoCropDialog, type LogoCropSource } from '@/components/logo-crop-dial
 import type { PublicUser } from '@/lib/auth';
 import { t } from '@/lib/i18n';
 import { LicenseSection } from './license-section';
+import { AgencyOfferRow } from '@/components/settings/agency-offer-row';
 
 /** Section chrome, so the three blocks below read as one page. */
 function Section({
@@ -337,6 +339,7 @@ export function ProfileClient(): ReactElement {
         <EmailSection user={user} />
         <PasswordSection />
         <LicenseSection canEdit={user.is_superadmin} />
+        <AgencyOfferRow accountEmail={user.email} />
       </div>
     </div>
   );

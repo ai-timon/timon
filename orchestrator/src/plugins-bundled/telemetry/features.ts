@@ -63,7 +63,7 @@ export const API_AREAS = [
   'files', 'git', 'git-remote', 'global-instructions', 'gpt-live', 'graph', 'grepai', 'groups',
   'health', 'host', 'human', 'integrations', 'invitations', 'islands', 'kanban', 'layout', 'license', 'machines',
   'mcp', 'mcp-apps', 'memory', 'messages', 'mission-titles', 'missions', 'native-browser', 'nav', 'navigate', 'notifications',
-  'onboarding', 'orchestrator', 'permissions', 'pipelines', 'plugin-connections', 'plugins', 'prefs', 'project-todo',
+  'onboarding', 'orchestrator', 'partners', 'permissions', 'pipelines', 'plugin-connections', 'plugins', 'prefs', 'project-todo',
   'projects', 'push', 'roles', 'routines', 'secrets', 'series', 'settings', 'setup', 'skill-attachments',
   'skill-weights', 'skills', 'stats', 'stop', 'stream', 'tasks', 'teams', 'telemetry', 'terminal', 'todo-outcomes',
   'trace', 'triggers', 'ui-documents', 'update', 'updates', 'uploads', 'usage', 'users', 'vault', 'video-factory',

@@ -35,6 +35,7 @@ const { getHost } = await import('./host/index.js');
 const { deleteAgent, renameAgent, spawnAgent, upsertAgent } = await import('./agent.js');
 const { config, setConfig } = await import('./config/load.js');
 const { TIMON_HOME } = await import('./paths.js');
+const { missionFenced } = await import('./mission-fence-state.js');
 
 assert.ok((await mountOfficialProviders()).includes('provider-codex'));
 setConfig({ ...config(), host: { ...config().host, isolation: { ...config().host.isolation, filesystem: 'auto' } } });
@@ -108,6 +109,7 @@ test('the CLI is spawned through the fence launcher, its own temporary folder as
   assert.equal(run.env.TMPDIR, tmp);
   assert.equal(run.env.DISABLE_AUTOUPDATER, '1');
   assert.ok(run.policy.rw.includes(tmp));
+  assert.equal(missionFenced(run.missionId), true, 'the session driver learns the process is fenced');
 });
 
 test('the CLI\'s package managers download into its agent\'s cache, which the policy opens', async () => {
@@ -166,12 +168,14 @@ test('without a fence on the machine, auto launches the bare CLI with the plain 
     seen.cmd = cmd; seen.args = args; seen.env = (opts?.env ?? {}) as NodeJS.ProcessEnv;
     return child as unknown as ChildProcessWithoutNullStreams;
   }) as typeof host.spawn;
+  let missionId = '';
   try {
-    await spawnAgent('fence.witness', 'ping');
+    missionId = await spawnAgent('fence.witness', 'ping');
   } finally {
     host.spawn = original.spawn;
     host.fence = original.fence;
   }
+  assert.equal(missionFenced(missionId), false);
   assert.match(seen.cmd, /codex$/);
   assert.equal(sandboxLevel(seen.args), 'workspace-write', 'unfenced, codex keeps its own sandbox');
   assert.equal(seen.env.DISABLE_AUTOUPDATER, undefined);

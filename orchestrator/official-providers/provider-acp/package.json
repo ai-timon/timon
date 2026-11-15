@@ -135,6 +135,11 @@
             ".gemini/antigravity-cli"
           ],
           "signInCommand": "agy acp --login",
+          "signInEnv": {
+            "linux": {
+              "DBUS_SESSION_BUS_ADDRESS": "disabled:"
+            }
+          },
           "setupCard": {
             "label": "Antigravity",
             "order": 8

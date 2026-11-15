@@ -361,6 +361,39 @@
         "workflows": "Workflows",
         "plugins": "Plugins"
       }
+    },
+    "usage": {
+      "title": "Pour qui utilisez-vous Timon ?",
+      "optional": "Facultatif",
+      "solo": {
+        "title": "Pour moi",
+        "description": "Mes projets et mon travail au quotidien."
+      },
+      "team": {
+        "title": "Pour mon équipe ou mon entreprise",
+        "description": "Plusieurs personnes, des agents et des projets partagés."
+      },
+      "agency": {
+        "title": "Pour mon agence / mes clients",
+        "description": "Je crée et fais tourner des agents pour des clients.",
+        "badge": "Programme partenaires"
+      },
+      "offer": {
+        "title": "Pensé pour les agences",
+        "early": "Accès anticipé à Timon Pro et contact direct avec l’équipe",
+        "partners": "Une place dans le programme partenaires",
+        "discount": "Les 10 premières agences sélectionnées ont 50 % de remise à vie sur Timon Pro.",
+        "consent": "M’envoyer l’offre agence à",
+        "emailLabel": "Adresse e-mail pour l’offre agence",
+        "notice": "Uniquement cette offre, envoyée par Timon à cette adresse. Retrait possible à tout moment dans {settingsPath}.",
+        "invalidEmail": "Saisissez une adresse e-mail valide, ou décochez la case.",
+        "failed": "La demande d’offre n’a pas pu être enregistrée. Réessayez, ou décochez la case.",
+        "refused": "Cette adresse a été refusée. Vérifiez-la, ou décochez la case."
+      },
+      "failed": "Votre réponse n’a pas pu être enregistrée. Réessayez.",
+      "continue": "Continuer",
+      "sending": "Envoi…",
+      "pickProfile": "Choisissez ce qui vous amène pour continuer."
     }
   }
 }

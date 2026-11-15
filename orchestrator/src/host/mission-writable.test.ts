@@ -42,17 +42,17 @@ test('the home folders the fence lets missions write are refused too', { skip: p
 
 // Pure win32 arithmetic, whatever the system running the test.
 test('win32: drive letters, case, another volume, and `~\\` are told apart', () => {
-  const win = { platform: 'win32' as const, timonHome: 'C:\\Users\\Rom\\.timon', extraRoots: ['C:\\Users\\Rom\\shared-bin'] };
-  assert.ok(missionWritableProblem('C:\\Users\\Rom\\.timon\\worktrees\\t\\git.exe', win));
-  assert.ok(missionWritableProblem('c:\\users\\ROM\\.TIMON\\Worktrees\\t\\git.exe', win), 'case-insensitive');
-  assert.ok(missionWritableProblem('C:/Users/Rom/.timon/tmp/git.exe', win), 'forward slashes');
-  assert.ok(missionWritableProblem('C:\\Users\\Rom\\.timon\\plugins\\..\\worktrees\\git.exe', win), 'no escape through `..`');
-  assert.equal(missionWritableProblem('C:\\Users\\Rom\\.timon\\plugins\\p\\bin\\x.exe', win), null);
-  assert.equal(missionWritableProblem('c:\\USERS\\rom\\.timon\\PLUGINS\\p\\x.exe', win), null);
-  assert.equal(missionWritableProblem('D:\\Users\\Rom\\.timon\\worktrees\\git.exe', win), null, 'another volume');
-  assert.equal(missionWritableProblem('C:\\Users\\Rom\\.timon-old\\git.exe', win), null, 'a sibling sharing the prefix');
+  const win = { platform: 'win32' as const, timonHome: 'C:\\Users\\user\\.timon', extraRoots: ['C:\\Users\\user\\shared-bin'] };
+  assert.ok(missionWritableProblem('C:\\Users\\user\\.timon\\worktrees\\t\\git.exe', win));
+  assert.ok(missionWritableProblem('c:\\users\\USER\\.TIMON\\Worktrees\\t\\git.exe', win), 'case-insensitive');
+  assert.ok(missionWritableProblem('C:/Users/user/.timon/tmp/git.exe', win), 'forward slashes');
+  assert.ok(missionWritableProblem('C:\\Users\\user\\.timon\\plugins\\..\\worktrees\\git.exe', win), 'no escape through `..`');
+  assert.equal(missionWritableProblem('C:\\Users\\user\\.timon\\plugins\\p\\bin\\x.exe', win), null);
+  assert.equal(missionWritableProblem('c:\\USERS\\user\\.timon\\PLUGINS\\p\\x.exe', win), null);
+  assert.equal(missionWritableProblem('D:\\Users\\user\\.timon\\worktrees\\git.exe', win), null, 'another volume');
+  assert.equal(missionWritableProblem('C:\\Users\\user\\.timon-old\\git.exe', win), null, 'a sibling sharing the prefix');
   assert.equal(missionWritableProblem('\\\\server\\share\\.timon\\worktrees\\git.exe', win), null);
-  assert.ok(missionWritableProblem('c:\\users\\rom\\SHARED-BIN\\git.exe', win), 'a fence write root, any case');
+  assert.ok(missionWritableProblem('c:\\users\\user\\SHARED-BIN\\git.exe', win), 'a fence write root, any case');
   assert.equal(missionWritableProblem('C:\\Program Files\\Git\\cmd\\git.exe', win), null);
   for (const relative of ['~\\bin\\git.exe', '~/bin/git.exe', 'C:git.exe', 'bin\\git.exe', '.', '']) {
     assert.ok(missionWritableProblem(relative, win), `relative: ${relative}`);

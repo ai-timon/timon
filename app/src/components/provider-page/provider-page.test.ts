@@ -31,16 +31,19 @@ function provider(id: string, over: Partial<ProviderOverview> = {}): ProviderOve
 
 test('the common sections keep their order; a plugin section lands on its own provider only', async () => {
   const { sectionsFor, PROVIDER_SECTION_KEYS, PROVIDER_SECTION_ORDER } = await import('./provider-sections');
-  const acme = entry('acme-provider', { order: 250 });
+  const acme = entry('acme-provider', { order: 350 });
   const other = entry('other-plugin');
   const common = PROVIDER_SECTION_KEYS.map((key) => entry('@timon/backends', { key, order: PROVIDER_SECTION_ORDER[key], fallback: true }));
   // The registry's own order puts defaults last; the page must not.
   const registry = [acme, other, ...common];
 
   assert.deepEqual(sectionsFor(registry, 'acme-provider').map((e) => e.key ?? e.pluginId),
-    ['connection', 'apiKey', 'acme-provider', 'program', 'settings', 'models']);
+    ['connection', 'apiKey', 'models', 'program', 'acme-provider', 'settings']);
   assert.deepEqual(sectionsFor(registry, 'claude-like').map((e) => e.key), [...PROVIDER_SECTION_KEYS]);
   assert.deepEqual(sectionsFor(registry, null).map((e) => e.key), [...PROVIDER_SECTION_KEYS], 'a hand-added backend has no plugin');
+  // Models sits right under how the provider is reached, before the rest.
+  assert.deepEqual([...PROVIDER_SECTION_KEYS], ['connection', 'apiKey', 'models', 'program', 'settings']);
+  assert.deepEqual(PROVIDER_SECTION_KEYS.map((key) => PROVIDER_SECTION_ORDER[key]), [100, 200, 250, 300, 400]);
 });
 
 test('a provider plugin takes the place of a common section by its key, on its page only', async () => {
@@ -48,8 +51,8 @@ test('a provider plugin takes the place of a common section by its key, on its p
   const settings = entry('@timon/backends', { key: 'settings', order: PROVIDER_SECTION_ORDER.settings, fallback: true });
   const models = entry('@timon/backends', { key: 'models', order: PROVIDER_SECTION_ORDER.models, fallback: true });
   const own = entry('acme-provider', { key: 'settings', order: PROVIDER_SECTION_ORDER.settings });
-  assert.deepEqual(sectionsFor([own, settings, models], 'acme-provider').map((e) => e.pluginId), ['acme-provider', '@timon/backends']);
-  assert.deepEqual(sectionsFor([own, settings, models], 'beta').map((e) => e.id), [settings.id, models.id]);
+  assert.deepEqual(sectionsFor([own, settings, models], 'acme-provider').map((e) => e.pluginId), ['@timon/backends', 'acme-provider']);
+  assert.deepEqual(sectionsFor([own, settings, models], 'beta').map((e) => e.id), [models.id, settings.id]);
 });
 
 test('a third-party entry that calls itself a default is still not a common section', async () => {
@@ -169,7 +172,7 @@ test('the page paints its header and a provider plugin\'s section with the provi
     assert.ok(seen.every((id) => id === 'acme-provider'));
     // The common sections are there, in order, and paint nothing yet.
     const order = Array.from(document.querySelectorAll('[data-provider-section]')).map((el) => el.getAttribute('data-provider-section'));
-    assert.deepEqual(order, ['connection', 'apiKey', 'program', 'settings', 'models', 'acme-provider']);
+    assert.deepEqual(order, ['connection', 'apiKey', 'models', 'program', 'settings', 'acme-provider']);
 
     const crumb = document.querySelector('nav button');
     assert.equal(crumb?.textContent, 'Providers');

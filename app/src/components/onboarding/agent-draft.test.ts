@@ -80,7 +80,8 @@ test('names are drawn from the language\'s pool, never the one shown', () => {
   assert.equal(creationName(draft({ name: '  Kiwi ' }), pool), 'Kiwi');
   assert.ok(pool.includes(creationName(draft({ name: '' }), pool)), 'no name: one is drawn');
   const look = randomLook(() => 0.999);
-  assert.deepEqual(look, { shape: 'hex', color: '#7ed957', eyes: 'code', acc: 'coffee' });
+  // A draw of 0.999 takes the last of each list: the black fur, the musician.
+  assert.deepEqual(look, { shape: 'hex', color: '#2b2b2b', eyes: 'code', acc: 'musician' });
 });
 
 test('templates send the look and the missions as directives, nothing else', () => {

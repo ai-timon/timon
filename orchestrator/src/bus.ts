@@ -9,6 +9,7 @@ import { redactDeep } from './secrets/redact.js';
 import { dropRedactStream, flushRedactStream, redactStreamChunk } from './secrets/redact-stream.js';
 import type { ProjectEventOrigin } from './plugins/contract/origin.js';
 import type { OnboardingStepAction, OnboardingStepName } from './onboarding-events.js';
+import type { UsageKind } from './onboarding-usage-kind.js';
 export type { ProjectEventOrigin } from './plugins/contract/origin.js';
 
 /** A task link, as it stood before the cascade of a delete removed it. */
@@ -119,6 +120,9 @@ export type BusEvent =
   // from closed lists, nothing the person typed. No `missionId`, so the
   // browser stream never relays it.
   | { kind: 'onboarding_step'; step: OnboardingStepName; action: OnboardingStepAction }
+  // An account answered, or changed, who it uses Timon for
+  // (`onboarding-usage-kind.ts`). No `missionId`: never relayed to a browser.
+  | { kind: 'usage_kind_set'; usageKind: UsageKind; userId: string }
   // A compaction of `missionId` moved on (`mission-compact.ts`): one per phase,
   // transient like `event_delta` (the outcome is persisted as a `compact`
   // event; `GET /api/missions/:id/compact` says what is under way after a

@@ -14,6 +14,7 @@ import { bestRateLimit } from '../../rate-limit.js';
 import { parseReviewVerdict } from '../../review-verdict.js';
 import { durationBucketOf, installAgeDaysOf, messageChannelOf, waitBucketOf, type Milestone } from './features.js';
 import type { PluginPublic } from '../../plugins/public.js';
+import type { UsageKind } from '../../onboarding-usage-kind.js';
 import {
   backendValue, licenseReasonValue, missionEndReasonValue, modelValue, originValue, taskPipelineValue,
   taskStatusValue, taskTypeValue, toolValue, type TelemetryEventName, type TurnOrigin,
@@ -36,9 +37,14 @@ export type CollectorDeps = {
   installCreatedAt?(): number | null;
   /** A first-time milestone was reached; the runtime keeps it from repeating. */
   milestone?(milestone: Milestone): void;
+  /** Who the installation's first account uses Timon for, `null` when unanswered. */
+  usageKind?(): UsageKind | null;
 };
 
-export type Emit = (name: TelemetryEventName, props: Record<string, unknown>) => void;
+/** The account an event is about, when a person is behind it; the runtime turns it into a rank. */
+export type EmitContext = { userId?: string | null };
+
+export type Emit = (name: TelemetryEventName, props: Record<string, unknown>, context?: EmitContext) => void;
 
 const MAX_OPEN_TURNS = 1_000;
 const TURN_TTL_MS = 24 * 3_600_000;
@@ -131,7 +137,11 @@ export class TelemetryCollector {
       case 'license_changed': return this.onLicense(ev.status, ev.reason);
       case 'browser_recording': return this.emit('browser_action', { kind: 'recording', action: ev.event });
       case 'browser_annotation': return this.emit('browser_action', { kind: 'annotation', action: ev.event });
-      case 'onboarding_step': return this.emit('onboarding_step', { step: ev.step, action: ev.action });
+      case 'onboarding_step': {
+        const usage = this.deps.usageKind?.() ?? null;
+        return this.emit('onboarding_step', { step: ev.step, action: ev.action, ...(usage ? { usage_kind: usage } : {}) });
+      }
+      case 'usage_kind_set': return this.emit('usage_kind_set', { usage_kind: ev.usageKind }, { userId: ev.userId });
       default: return;
     }
   }

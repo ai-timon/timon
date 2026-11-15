@@ -142,7 +142,8 @@ test('a provider page edits its models and its own settings, each saved apart', 
     await until(() => document.querySelector('[data-provider-section="provider-claude"] [data-claude-token]') !== null, 'the Claude token section');
     assert.ok(!document.querySelector('[data-provider-section="provider-claude"] input'), 'the token field waits for Set');
     const order = Array.from(document.querySelectorAll('[data-provider-section]')).map((el) => el.getAttribute('data-provider-section'));
-    assert.deepEqual(order.slice(-3), ['settings', 'provider-claude', 'models']);
+    assert.deepEqual(order.slice(-2), ['settings', 'provider-claude']);
+    assert.ok(order.indexOf('models') < order.indexOf('program'), 'Models comes before Program');
 
     // A provider added by hand: its connection under Advanced, saved without its models.
     await show('user:deepseek');

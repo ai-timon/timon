@@ -154,7 +154,7 @@ async function renderStep(
 const row = (host: HTMLElement, profile: string): HTMLButtonElement | null => host.querySelector(`[data-profile="${profile}"]`);
 const settle = (react: typeof import('react')): Promise<void> => react.act(async () => { await new Promise((r) => setTimeout(r, 10)); });
 
-test('the step shows three rows with a mascot each; a click records the profile, then moves on', async () => {
+test('the step shows three rows with a mascot each; a click records the profile, "Continue" moves on', async () => {
   await renderStep((call) => (call.method === 'PUT' ? Response.json({ profile: 'automation', at: 2 }) : Response.json({ profile: null, at: null })), async (host, state, React) => {
     const rows = Array.from(host.querySelectorAll('[data-profile]')).map((el) => el.getAttribute('data-profile'));
     assert.deepEqual(rows, ['developer', 'automation', 'beginner']);
@@ -164,6 +164,9 @@ test('the step shows three rows with a mascot each; a click records the profile,
     await settle(React);
     const put = state.calls.filter((c) => c.method === 'PUT');
     assert.deepEqual(put, [{ url: '/api/ui/onboarding/profile', method: 'PUT', body: { profile: 'automation' } }]);
+    assert.equal(state.nexts, 0, 'the second question is on the same step');
+    await React.act(async () => { host.querySelector<HTMLButtonElement>('[data-profile-continue]')?.click(); });
+    await settle(React);
     assert.equal(state.nexts, 1, 'the agent step opens');
   });
 });

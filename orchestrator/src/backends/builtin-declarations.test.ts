@@ -151,7 +151,7 @@ test('timon.provider.backends: an entry is held to the plugin vocabulary plus th
     id: 'acme', rank: 500,
     binary: { names: ['acme'], install: { any: { kind: 'none' } }, standaloneInstaller: { label: 'Acme', posix: 'curl https://acme.invalid | sh', windows: 'irm https://acme.invalid | iex' },
       desktopBuilds: [{ platform: 'win32', root: '${LOCALAPPDATA}/Acme', executable: ['acme.exe'], order: 'newest', folderPattern: '^[0-9a-f]+$' }] },
-    credentialDirs: ['.acme'], signInCommand: 'acme login', setupCard: { label: 'Acme', order: 9 }, modelBrands: [{ match: 'acme', brand: 'acme' }],
+    credentialDirs: ['.acme'], signInCommand: 'acme login', signInEnv: { linux: { ACME_STORE: 'file:' } }, setupCard: { label: 'Acme', order: 9 }, modelBrands: [{ match: 'acme', brand: 'acme' }],
     seedsMainAgent: true, readOnlyTools: true, apiKeyProviders: [{ id: 'acme-cloud', label: 'Acme Cloud', brand: 'acme' }],
   };
   assert.deepEqual(productBackendProblems(good), []);
@@ -164,9 +164,30 @@ test('timon.provider.backends: an entry is held to the plugin vocabulary plus th
     [{ ...good, binary: { names: ['/usr/bin/acme'] } }, /BARE/],
     [{ ...good, binary: { ...good.binary, desktopBuilds: [{ ...good.binary.desktopBuilds[0], folderPattern: '(' }] } }, /regular expression/],
     [{ ...good, credentialDirs: ['.ssh'] }, /credentials that belong to the user/],
+    [{ ...good, signInEnv: { win32: { ACME_STORE: 'file' } } }, /signInEnv/],
+    [{ ...good, signInEnv: { linux: { 'acme store': 'file' } } }, /signInEnv\.linux\.acme store/],
+    [{ ...good, signInEnv: { linux: { ACME_STORE: 'file; rm -rf ~' } } }, /a value a shell would not read as written/],
+    [{ ...good, signInEnv: { linux: { ACME_STORE: '$HOME' } } }, /a value a shell would not read as written/],
   ] as const) {
     assert.match(productBackendProblems(bad).join('; '), why, JSON.stringify(bad).slice(0, 80));
   }
+});
+
+test('a sign-in line carries the variables declared for the system it runs on, in front of the command', async () => {
+  const { signInLine } = await import('./builtin-declarations.js');
+  const env = { linux: { A_STORE: 'disabled:', B_MODE: 'file' }, darwin: { C_MODE: 'x' } };
+  assert.equal(signInLine('agy acp --login', env, 'linux'), 'A_STORE=disabled: B_MODE=file agy acp --login');
+  assert.equal(signInLine('agy acp --login', env, 'darwin'), 'C_MODE=x agy acp --login');
+  assert.equal(signInLine('agy acp --login', env, 'win32'), 'agy acp --login', 'PowerShell has no `NAME=value cmd` form');
+  assert.equal(signInLine('agy acp --login', undefined, 'linux'), 'agy acp --login');
+});
+
+test('Antigravity signs in where its missions read the sign-in: the manifest and the plugin name the same variables', async () => {
+  const { antigravityKeychainEnv } = await import('../../official-providers/provider-acp/lib/agents.js');
+  const declared = BUILTIN_DECLARATIONS.antigravity;
+  assert.ok(declared, 'the official plugin declares the backend');
+  assert.deepEqual(declared.signInEnv?.linux ?? {}, antigravityKeychainEnv('linux'));
+  assert.deepEqual(declared.signInEnv?.darwin ?? {}, antigravityKeychainEnv('darwin'));
 });
 
 test('timon.provider.backends: what a backend declares is what the operator was shown, once per id', async () => {

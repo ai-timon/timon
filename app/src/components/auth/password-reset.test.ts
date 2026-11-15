@@ -25,6 +25,8 @@ async function mount(ctx: TestContext, replies: Record<string, Reply[]>) {
   const calls: { url: string; body: Record<string, unknown> }[] = [];
   install('fetch', async (input: string | URL, init?: RequestInit) => {
     const url = String(input);
+    // The page's mascot reads the account's mascot style; with no session the daemon refuses it.
+    if (url.startsWith('/api/ui/layout')) return new Response('{}', { status: 401 });
     calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {} });
     const reply = replies[url]?.shift();
     if (!reply) return new Response('{}', { status: 500 });

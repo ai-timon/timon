@@ -12,6 +12,8 @@ import { registerIsolationRoutes } from './isolation-routes.js';
 import { registerNavigateRoutes } from './navigate-routes.js';
 import { registerNavRoutes } from './nav-routes.js';
 import { registerOnboardingProfileRoutes } from './onboarding-profile-routes.js';
+import { registerPartnerLeadRoutes } from './partner-lead-routes.js';
+import { partnerLeads } from './partner-lead.js';
 import { registerLayoutProposalRoutes } from './layout-proposals.js';
 import { registerRoutes } from './routes.js';
 import { registerWidgetRoutes } from './widget-routes.js';
@@ -29,6 +31,9 @@ export const manifest: ModuleManifest = {
   inject: ['http', 'db'],
 };
 
+const LEAD_FIRST_TICK_MS = 15_000;
+const LEAD_TICK_MS = 60_000;
+
 export const name = manifest.name;
 export const inject = manifest.inject;
 
@@ -43,6 +48,19 @@ export function apply(ctx: Context): void {
   registerNavigateRoutes(ctx.http.router());
   registerNavRoutes(ctx.http.router());
   registerOnboardingProfileRoutes(ctx.http.router());
+  // The agency offer asked for in the onboarding, and its withdrawal (`partner-lead.ts`).
+  registerPartnerLeadRoutes(ctx.http.router());
+  ctx.effect(() => {
+    // A request that waited (offline, rate limited) goes again at each start,
+    // then on its own growing delay: the minute tick only looks at what is due.
+    const leads = partnerLeads();
+    try { leads.resetSchedule(); } catch { /* unreadable store: nothing is waiting */ }
+    const first = setTimeout(() => { void leads.tick(); }, LEAD_FIRST_TICK_MS);
+    const timer = setInterval(() => { void leads.tick(); }, LEAD_TICK_MS);
+    first.unref();
+    timer.unref();
+    return () => { clearTimeout(first); clearInterval(timer); };
+  });
   registerLayoutProposalRoutes(ctx.http.router());
   // The folders of this machine, for a picker that is not on it (TIM-0136).
   registerDirectoryRoutes(ctx.http.router());

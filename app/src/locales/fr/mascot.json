@@ -4,7 +4,7 @@
     "shape": {"squircle": "Classique", "tri": "Poire", "gem": "Œuf", "round": "Ronde", "bean": "Large", "cloud": "Haute", "hex": "Carrée"},
     "fur": {
       "sand": "Sable", "cinnamon": "Cannelle", "cream": "Crème", "cocoa": "Cacao", "caramel": "Caramel", "taupe": "Taupe",
-      "honey": "Miel", "bark": "Écorce", "wheat": "Blé", "pink": "Rose", "blue": "Bleu", "green": "Vert", "yellow": "Jaune", "orange": "Orange", "purple": "Violet", "custom": "Personnalisé"
+      "honey": "Miel", "bark": "Écorce", "wheat": "Blé", "pink": "Rose", "blue": "Bleu", "green": "Vert", "yellow": "Jaune", "orange": "Orange", "purple": "Violet", "red": "Rouge", "teal": "Turquoise", "white": "Blanc", "grey": "Gris", "black": "Noir", "custom": "Personnalisé"
     },
     "eyes": {
       "pill": "Calmes", "big": "Grands ouverts", "happy": "Joyeux", "wink": "Clin d'œil", "surprised": "Surpris",
@@ -14,7 +14,9 @@
       "none": "Aucun", "loupe": "Loupe", "pen": "Stylo rouge", "quill": "Plume", "hammer": "Marteau", "wrench": "Clé à molette",
       "baton": "Baguette", "telescope": "Longue-vue", "envelope": "Enveloppe", "calendar": "Calendrier", "clipboard": "Presse-papiers",
       "hourglass": "Sablier", "teacher": "Livre et toque", "calculator": "Calculatrice", "chart": "Graphique", "brush": "Pinceau",
-      "globe": "Globe", "megaphone": "Mégaphone", "shield": "Bouclier", "coffee": "Tasse de café"
+      "globe": "Globe", "megaphone": "Mégaphone", "shield": "Bouclier", "coffee": "Tasse de café",
+      "whip": "Fouet", "wizard": "Magicien", "chef": "Cuisinier", "crown": "Couronne", "idea": "Idée", "rocket": "Fusée",
+      "chemist": "Chimiste", "gamer": "Joueur", "photographer": "Photographe", "gardener": "Jardinier", "musician": "Musicien"
     },
     "state": {
       "idle": "Au repos", "listening": "Écoute", "thinking": "Réfléchit", "working": "Travaille", "searching": "Cherche",

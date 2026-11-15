@@ -14,11 +14,16 @@ process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 
 const { agentConfigRefusal, llmChoiceRefusal, permissionModeRefusal, spawnOverrideRefusal, taskOverrideRefusal, RESTRICTED } = await import('./privileged-overrides.js');
 const { MISSION_TOKEN_PERMISSIONS } = await import('./permissions.js');
-const { catalogBackend, resolvedPermissionModeFor } = await import('../backends/catalog.js');
-
+const { catalogBackend, resolvedPermissionModeFor, supportedPermissionModesOf } = await import('../backends/catalog.js');
+const { saveBackendOverlay } = await import('../backends/overlays.js');
+const { inactiveProfiles } = await import('../backends/registry.js');
+const { db } = await import('../db.js');
 
 {
-  const { mountOfficialProviders } = await import('../../tests/helpers/official-providers.js');
+  // grok's profile exists only where its CLI is found: without the stand-in the
+  // suite reads the developer's own install and fails on a clean machine (the CI).
+  const { mountOfficialProviders, stubCliBinaries } = await import('../../tests/helpers/official-providers.js');
+  await stubCliBinaries('grok');
   await mountOfficialProviders();
 }
 
@@ -49,6 +54,7 @@ test('relaxed: the level never exceeds the caller\'s own', () => {
 
 test('supportedModes: a backend that declares them runs every other mode in plan, and only there', () => {
   assert.deepEqual(catalogBackend('grok')?.supportedPermissionModes, ['plan', 'bypassPermissions']);
+  assert.deepEqual(supportedPermissionModesOf('grok'), ['plan', 'bypassPermissions']);
   for (const mode of ['default', 'auto', 'acceptEdits', 'dontAsk', 'read-only', 'workspace-write', 'typo', undefined]) {
     assert.equal(resolvedPermissionModeFor('grok', mode), 'plan', String(mode));
   }
@@ -56,7 +62,7 @@ test('supportedModes: a backend that declares them runs every other mode in plan
   assert.equal(resolvedPermissionModeFor('grok', 'danger-full-access'), 'bypassPermissions');
   // The other providers declare nothing: the mode goes through untouched.
   for (const backend of ['claude', 'codex', 'copilot', 'unknown-backend']) {
-    assert.equal(catalogBackend(backend)?.supportedPermissionModes, undefined, backend);
+    assert.equal(supportedPermissionModesOf(backend), undefined, backend);
     for (const mode of ['default', 'auto', 'acceptEdits', 'bypassPermissions']) {
       assert.equal(resolvedPermissionModeFor(backend, mode), mode, `${backend} ${mode}`);
     }
@@ -111,6 +117,22 @@ test('supportedModes: moving an agent off grok judges the mode it will then run 
   assert.equal(agentConfigRefusal({ backend: 'claude' }, { backend: 'grok', permission_mode: 'auto' }, RESTRICTED), null);
   // Moving onto grok lowers the level: nothing to judge.
   assert.equal(agentConfigRefusal({ backend: 'grok' }, { backend: 'claude', permission_mode: 'auto' }, relaxed('plan')), null);
+});
+
+test('supportedModes: an installed backend that is inactive right now is still judged by what it runs', () => {
+  // Disabled in settings (or its CLI uninstalled, or signed out): the catalogue
+  // no longer lists grok, but an agent stored on it ran read-only there, and
+  // moving it elsewhere is still a raise to judge.
+  try {
+    saveBackendOverlay('grok', { disabled: true });
+    assert.equal(catalogBackend('grok'), undefined);
+    assert.ok(inactiveProfiles().some((p) => p.id === 'grok'));
+    assert.deepEqual(supportedPermissionModesOf('grok'), ['plan', 'bypassPermissions']);
+    assert.equal(resolvedPermissionModeFor('grok', 'auto'), 'plan');
+    assert.match(agentConfigRefusal({ backend: 'claude' }, { backend: 'grok', permission_mode: 'auto' }, relaxed('default')) ?? '', /above/);
+    assert.match(agentConfigRefusal({ permission_mode: 'dontAsk' }, { backend: 'grok' }, RESTRICTED) ?? '', /dontAsk \(runs as plan on backend grok\)/);
+  } finally { db.prepare('DELETE FROM backend_overlays').run(); }
+  assert.ok(catalogBackend('grok'));
 });
 
 test('supportedModes: claude and codex keep the grid they had', () => {

@@ -11,7 +11,7 @@
 import { dbApi, type MissionRow } from './db.js';
 import { loadConfig, type AgentConfig } from './agent-config.js';
 import { defaultBackendName } from './backends/index.js';
-import { catalogBackend } from './backends/catalog.js';
+import { catalogBackend, supportedPermissionModesOf } from './backends/catalog.js';
 import { canonicalPermissionMode, effectiveLevel, permissionModeRefusal, type OverrideAuthority } from './users/privileged-overrides.js';
 
 /**
@@ -79,7 +79,7 @@ export function missionPermissionState(
   const entry = catalogBackend(backend);
   const ladder: readonly string[] = entry?.permissionModel === 'sandbox' ? SANDBOX_LADDER : BRIDGE_LADDER;
   // A rung the backend would run as another one is not a choice.
-  const supported = entry?.supportedPermissionModes;
+  const supported = supportedPermissionModesOf(backend);
   return {
     // The same rounding the permission ceiling applies: showing the label
     // would name a level the sandbox does not have (a tester read

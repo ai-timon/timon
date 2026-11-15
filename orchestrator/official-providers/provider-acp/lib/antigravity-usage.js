@@ -4,7 +4,8 @@
  * account `agy` is signed in to, as `agy` itself reports it.
  *
  * Why this path. Google's quota endpoint refuses any client but Antigravity's own (403 on a direct
- * call with the account's token), and the token sits in the OS keychain. `agy acp` starts a local
+ * call with the account's token), and the token sits in the OS keychain (in `agy`'s own folder on Linux,
+ * `agents.js`). `agy acp` starts a local
  * language server at `session/new`, in its own process, and that server answers
  * `RetrieveUserQuotaSummary` (Connect protocol, JSON over HTTP) with the figures it fetched under ITS
  * identity. So Timon reads no token, calls no Google host, and only asks the program the operator
@@ -22,7 +23,8 @@
  *    the account's name and e-mail) is never called;
  *  - neither the log nor the raw answer is logged or echoed in an error: only the kind of failure is.
  *  - the environment is a mission's own (`profile.env`, then the row's `env`: the two switches that would
- *    move `agy` to per-token billing, emptied), nothing more;
+ *    move `agy` to per-token billing, emptied, and on Linux the keychain's bus switched off, so that the
+ *    reading sees the sign-in a mission sees), nothing more;
  *  - no server outlives the probe, even when `agy` exited first and `stop()` had nothing left to kill:
  *    the port is tried once `agy` is gone, a server still listening is killed by the pid the same log
  *    gives (`Starting language server process with pid N`), and one that cannot be killed fails the
@@ -67,6 +69,8 @@ const LEFTOVER_POLL_MS = 50;
 const CACHE_TTL_MS = 5 * 60_000;
 /** A failure is asked again sooner, but never at the gauge's polling rate. */
 const ERROR_TTL_MS = 60_000;
+/** Not signed in changes only when the person signs in, and then presses ↻: no need to ask every minute. */
+const SIGNED_OUT_TTL_MS = CACHE_TTL_MS;
 /** A probe folder older than this was left by a daemon that died mid-probe. */
 const STALE_DIR_MS = 60_000;
 
@@ -300,7 +304,6 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms).unref?.
  *   services: Pick<ProviderServices, 'binary' | 'runtime'>;
  *   names: readonly string[];
  *   env: Readonly<Record<string, string>>;
- *   authenticateWith?: string;
  *   signIn: string;
  *   timeoutMs?: number;
  *   fetchImpl?: typeof fetch;
@@ -336,29 +339,18 @@ export function createAntigravityUsage(opts) {
   const notSignedIn = () => new UsageNotSignedInError(`Antigravity is not signed in: ${opts.signIn}`);
 
   /**
-   * `session/new`, and on `auth_required` the one `authenticate` a mission would try (it reuses the
-   * sign-in `agy` saved), then `session/new` again. Still refused: not signed in.
+   * `session/new`. `auth_required`: not signed in. Never `authenticate`: `agy` loads a saved sign-in on
+   * its own, and with none saved that call opens the Google sign-in page in the person's browser, for a
+   * process this probe stops seconds later (`ANTIGRAVITY_AUTH_METHOD`, `agents.js`).
    *
-   * @param {import('@timon-ai/sdk/provider').AcpRecord} init
    * @param {InstanceType<ProviderServices['runtime']['acp']['AcpTransport']>} transport
    * @param {string} cwd
    */
-  async function openSession(transport, init, cwd) {
-    const isAuth = (/** @type {unknown} */ err) => err instanceof AcpRpcError && err.code === RPC_AUTH_REQUIRED;
+  async function openSession(transport, cwd) {
     try {
       await transport.newSession({ cwd, mcpServers: [] });
-      return;
     } catch (err) {
-      if (!isAuth(err)) throw err;
-    }
-    const methods = Array.isArray(init.authMethods) ? init.authMethods : [];
-    const announced = opts.authenticateWith !== undefined && methods.some((m) => asRecord(m)?.id === opts.authenticateWith);
-    if (!announced || opts.authenticateWith === undefined) throw notSignedIn();
-    try {
-      await transport.authenticate(opts.authenticateWith, REQUEST_TIMEOUT_MS);
-      await transport.newSession({ cwd, mcpServers: [] });
-    } catch (err) {
-      if (isAuth(err) || err instanceof AcpRpcError) throw notSignedIn();
+      if (err instanceof AcpRpcError && err.code === RPC_AUTH_REQUIRED) throw notSignedIn();
       throw err;
     }
   }
@@ -468,8 +460,8 @@ export function createAntigravityUsage(opts) {
       });
       timedOut.catch(() => undefined);
       const run = (async () => {
-        const init = await open.transport.initialize();
-        await openSession(open.transport, init, open.cwd);
+        await open.transport.initialize();
+        await openSession(open.transport, open.cwd);
         const port = await waitForPort(logFile, () => exited, stopAt);
         return readQuota(port, stopAt);
       })();
@@ -508,7 +500,7 @@ export function createAntigravityUsage(opts) {
   async function getUsage(profile, options = {}) {
     const now = options.now ?? Date.now();
     if (options.force !== true && cache) {
-      const ttl = cache.usage ? CACHE_TTL_MS : ERROR_TTL_MS;
+      const ttl = cache.usage ? CACHE_TTL_MS : isUsageNotSignedInError(cache.error) ? SIGNED_OUT_TTL_MS : ERROR_TTL_MS;
       // A server left behind: each new reading could leave one more, so only the person decides when to retry.
       if (cache.held || now - cache.at < ttl) {
         if (cache.usage) return cache.usage;

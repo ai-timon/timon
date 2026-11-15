@@ -51,6 +51,8 @@ import {
 import { getMcp, refreshToolsCacheFromInit, listMcp } from './mcp.js';
 import { chatAttachmentsRoot } from './chat-attachments.js';
 import { pluginPackageDirs, removeAgentPackageCache, worktreeGitDirs } from './mission-fence-target.js';
+import { forgetMissionFence, missionFenced, recordMissionFence } from './mission-fence-state.js';
+import { setAcpFenceSource } from './backends/acp/provider.js';
 import type { FenceTarget } from './host/isolation.js';
 import { journalDirectSkillReads } from './skill-reads.js';
 import {
@@ -277,6 +279,9 @@ import {
   loadSystemPrompt,
   validName,
 } from './agent-config.js';
+
+// The ACP runtime is shared with the published SDK, so it learns from the daemon which missions are fenced.
+setAcpFenceSource(missionFenced);
 
 /** A single place holds the memory module's id, like `SECRETS_MODULE_ID`
  *  for the vault: renaming it is one line, not a grep. */
@@ -2026,6 +2031,9 @@ async function spawnMissionProcess(
   }
   // A launcher that cannot fence on this machine after all switches the fence off for the next launches.
   void watchFencedLaunch(proc, launch.fence);
+  // The session driver reads it: inside the fence, a sign-in step that opens a browser can never finish.
+  recordMissionFence(missionId, proc, launch.fence?.state === 'fenced');
+  proc.once('close', () => forgetMissionFence(missionId, proc));
   journalInjectedSecrets({ missionId, agent: agentName, injected: vault?.injected ?? [] });
   requested?.consume();
   // On disk, for whoever comes after a daemon that dies without ending it.

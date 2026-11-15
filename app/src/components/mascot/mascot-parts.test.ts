@@ -73,7 +73,14 @@ test('a look wears a registered part, and the job\'s default once its plugin lea
   const base = defaultLookFor('code');
   assert.deepEqual(normalizeAgentLook(packed, base), packed);
   assert.equal(lookFurHex('acme-pack:midnight'), '#1d2b53');
-  assert.equal(headLayout('acme-pack:blob').bottomWidth, 92, 'the pack\'s skull');
+  const blob = headLayout('acme-pack:blob');
+  const classic = headLayout('squircle');
+  // Set in the older box (classic skull 66 high), scaled onto this frame's classic skull and standing on its foot.
+  const k = (classic.bottom - classic.top) / 66;
+  assert.ok(Math.abs(blob.bottomWidth - 92 * k) < 1e-9 && Math.abs(blob.bottom - blob.top - 76 * k) < 1e-9, 'the pack\'s skull');
+  assert.equal(blob.bottom, classic.bottom);
+  assert.deepEqual([blob.visor.w, blob.visor.h], [classic.visor.w, classic.visor.h], 'the visor keeps its one size');
+  assert.doesNotMatch(blob.body + blob.earL + blob.earR, /NaN/);
   const geo = headLayout('round').geo;
   const eyes = exprPoints('acme-pack:gem', geo);
   assert.equal(eyes.L.length, EYE_POINTS, 'resampled like a glyph, so it morphs');

@@ -37,6 +37,7 @@
  * FAKE_ACP_AUTH=1 announces an auth method and refuses session/new (-32000),
  * FAKE_ACP_AUTH=authenticate announces the method `cursor_login` and refuses session/new (-32000) until `authenticate`
  *   has been called with it (FAKE_ACP_AUTH_FAIL=1: `authenticate` itself answers an error; the call is recorded in the `auth` scenario),
+ *   (FAKE_ACP_AUTH_HANG=1: `authenticate` never answers, as a sign-in that waits for a browser redirect),
  * FAKE_ACP_NO_IMAGE=1 does not announce image prompts,
  * FAKE_ACP_NO_CONFIG=1 answers session/set_config_option with -32601 (an agent without it).
  * FAKE_ACP_MUTE=1 reads its stdin and never answers anything (an agent waiting for something else),
@@ -269,6 +270,7 @@ rl.on('line', (line) => {
     case 'authenticate':
       authenticateCalls.push(p.methodId ?? null);
       if (process.env.FAKE_ACP_AUTH_FAIL === '1') return out({ id: msg.id, error: { code: -32000, message: 'not signed in' } });
+      if (process.env.FAKE_ACP_AUTH_HANG === '1') return undefined;
       authenticated = p.methodId === 'cursor_login';
       return out({ id: msg.id, result: {} });
     case 'session/new':

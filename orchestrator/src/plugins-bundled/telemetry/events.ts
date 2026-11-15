@@ -14,6 +14,7 @@
  */
 import { z } from 'zod';
 import { ONBOARDING_STEP_ACTIONS, ONBOARDING_STEPS } from '../../onboarding-events.js';
+import { USAGE_KINDS } from '../../onboarding-usage-kind.js';
 import { builtinProviderIds } from '../../backends/builtin-declarations.js';
 import { baseBackendId } from '../../backends/instance-id.js';
 import {
@@ -21,7 +22,7 @@ import {
   MILESTONES, PAGE_SECTIONS, PREVIOUS_EXITS, RAM_CLASSES, UPGRADE_ACTIONS, WAIT_BUCKETS,
 } from './features.js';
 
-export const EVENT_SCHEMA_VERSION = 4;
+export const EVENT_SCHEMA_VERSION = 5;
 
 /**
  * Backends of the product's own providers, as their official manifests declare
@@ -83,6 +84,8 @@ export const GlobalPropertiesSchema = z.object({
   arch: z.enum(['x64', 'arm64', 'ia32', 'arm', 'other']),
   event_schema_version: z.literal(EVENT_SCHEMA_VERSION),
   license_tier: z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/),
+  /** `package`: the installed app; `source`: a daemon run from a checkout of the public code. */
+  build: z.enum(['package', 'source']),
   /** Rank of the account behind the event (1 = the first one created), never its id. */
   account_slot: z.number().int().min(1).max(10_000).optional(),
   /** Days since this installation's first event, as a cohort. */
@@ -92,6 +95,8 @@ export type GlobalProperties = z.infer<typeof GlobalPropertiesSchema>;
 
 const backend = z.string().regex(BACKEND_ID);
 const origin = z.enum(ORIGINS);
+/** Who the installation's first account uses Timon for: three words, never anything else about it. */
+const usageKind = z.enum(USAGE_KINDS);
 
 export const EVENT_SCHEMAS = {
   app_started: z.object({
@@ -107,7 +112,10 @@ export const EVENT_SCHEMAS = {
   onboarding_step: z.object({
     step: z.enum(ONBOARDING_STEPS),
     action: z.enum(ONBOARDING_STEP_ACTIONS),
+    usage_kind: usageKind.optional(),
   }).strict(),
+  /** An account answered, or changed, who it uses Timon for. The agency offer's address never comes here. */
+  usage_kind_set: z.object({ usage_kind: usageKind }).strict(),
   mission_spawned: z.object({ backend, model, origin, child: z.boolean() }).strict(),
   mission_ended: z.object({
     origin,
@@ -207,6 +215,7 @@ export const EVENT_SCHEMAS = {
     backends: z.array(backend).max(32).optional(),
     ram_class: z.enum(RAM_CLASSES),
     cpu_class: z.enum(CPU_CLASSES),
+    usage_kind: usageKind.optional(),
   }).strict(),
   upgrade_action: z.object({
     action: z.enum(UPGRADE_ACTIONS),

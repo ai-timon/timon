@@ -153,7 +153,7 @@ The configuration loader migrates supported older configuration versions and rej
 
 ## After the update
 
-Updating from a version before 0.1.7 signs you out once. Timon opens its welcome screen: pick your language, choose **Continue**, then sign in with your Timon account (**Forgot your password?** resets it with an emailed code). Next, Timon offers to dress your main agent's mascot: **Keep this look** saves it and shows the mascot as the agent's picture, **Not now** keeps everything as it was. You can change it later in the agent's **Avatar** tab. Paired phones and the `timon` command stay signed in.
+Updating from a version before 0.1.7 signs you out once. Timon opens its welcome screen: pick your language, choose **Continue**, then sign in with your Timon account (**Forgot your password?** resets it with an emailed code). Next, Timon offers to dress your main agent's mascot, with a **3D** / **2D** switch above the choices (the same setting as **Settings → Appearance → Mascot style**): **Keep this look** saves it and shows the mascot as the agent's picture, **Not now** keeps everything as it was. You can change it later in the agent's **Avatar** tab. Paired phones and the `timon` command stay signed in.
 
 ## Verify
 

@@ -361,6 +361,39 @@
         "workflows": "Workflows",
         "plugins": "Plugins"
       }
+    },
+    "usage": {
+      "title": "Who do you use Timon for?",
+      "optional": "Optional",
+      "solo": {
+        "title": "For me",
+        "description": "My own projects and daily work."
+      },
+      "team": {
+        "title": "For my team or company",
+        "description": "Several people, shared agents and projects."
+      },
+      "agency": {
+        "title": "For my agency or my clients",
+        "description": "I build and run agents for clients.",
+        "badge": "Partner program"
+      },
+      "offer": {
+        "title": "Built for agencies",
+        "early": "Early access to Timon Pro and a direct line to the team",
+        "partners": "A place in the partner program",
+        "discount": "The first 10 agencies selected get 50% off Timon Pro for life.",
+        "consent": "Send me the agency offer at",
+        "emailLabel": "Email address for the agency offer",
+        "notice": "Only this offer, sent by Timon to this address. Withdraw anytime in {settingsPath}.",
+        "invalidEmail": "Enter a valid email address, or untick the box.",
+        "failed": "The offer request could not be recorded. Try again, or untick the box.",
+        "refused": "This address was refused. Check it, or untick the box."
+      },
+      "failed": "Your answer could not be saved. Try again.",
+      "continue": "Continue",
+      "sending": "Sending…",
+      "pickProfile": "Choose what brings you here to continue."
     }
   }
 }

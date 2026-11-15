@@ -27,7 +27,7 @@ Even fenced, a mission writes the projects it works on: what it leaves there run
 
 | Level | What the account sees and does |
 |---|---|
-| **Full access** | Like the superadmin: every section of a provider's page (Connection, API key, Program, its own settings, Models), adding and removing providers, switching them on and off. The Program section decides which program Timon runs on this machine: give this level only to people you would let do that. |
+| **Full access** | Like the superadmin: every section of a provider's page (Connection, API key, Models, Program, its own settings), adding and removing providers, switching them on and off. The Program section decides which program Timon runs on this machine: give this level only to people you would let do that. |
 | **Own accounts only** | The list of providers, read only, and on a provider's page the **Connection** section with **its own** [subscription accounts](./subscription-accounts.md): add one, sign it in, rename it, delete it. Nothing else: no program, API key, settings, models, on/off switch or new provider. |
 | **Hidden** | The screen does not appear: no tab, no settings search result, no link from a notification. |
 

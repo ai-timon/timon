@@ -203,7 +203,7 @@ test('models reorder from the keyboard with their handle, and the eye toggles th
   }
 });
 
-test('the picture choices stay on one line: only the brands scroll sideways, the emoji picker is outside that box', async () => {
+test('the picture choices wrap inside the dialog: the brands go to the line, the emoji picker is outside their box', async () => {
   const ui = await mount();
   try {
     assert.ok(!ui.section('settings')!.querySelector('[data-picto-brands]'), 'the picture waits behind Edit');
@@ -212,12 +212,39 @@ test('the picture choices stay on one line: only the brands scroll sideways, the
     const brands = document.querySelector<HTMLElement>('[data-provider-settings-dialog] [data-picto-brands]');
     if (!brands) assert.fail('no brand strip');
     const row = brands.parentElement!;
-    // jsdom lays nothing out: the classes are what keeps a phone-width page
-    // from wrapping the row.
-    assert.ok(row.className.includes('flex-nowrap') && !row.className.includes('flex-wrap '), 'the row never wraps');
-    assert.ok(brands.className.includes('overflow-x-auto') && brands.className.includes('min-w-0'), 'the brands shrink and scroll');
+    // jsdom lays nothing out: the classes are what keeps twenty logos from
+    // widening the dialog into a sideways scroll.
+    const classes = (el: Element) => el.className.split(/\s+/);
+    assert.ok(classes(brands).includes('flex-wrap') && classes(brands).includes('min-w-0'), 'the brands shrink and wrap');
+    assert.ok(!classes(brands).some((name) => name.startsWith('overflow-x')), 'the brands never scroll sideways');
+    assert.ok(classes(row).includes('min-w-0'), 'the row shrinks with the dialog');
+    const form = document.querySelector<HTMLElement>('[data-provider-settings-dialog]')!.querySelector('[data-picto-brands]')!.closest('[class*="space-y-5"]');
+    assert.ok(form && classes(form).includes('min-w-0'), 'the form does not set the dialog column to its min-content width');
     const emoji = row.querySelector<HTMLElement>('button[aria-label="An emoji"]');
-    assert.ok(!!emoji && !brands.contains(emoji), 'the emoji button sits outside the scrolling strip');
+    assert.ok(!!emoji && !brands.contains(emoji), 'the emoji button sits outside the brand strip');
+  } finally {
+    await ui.unmount();
+  }
+});
+
+test('the dialog of one model fits its width: the form shrinks, the brands wrap', async () => {
+  const ui = await mount();
+  try {
+    const trigger = ui.section('models')!.querySelector<HTMLElement>('button[data-row-menu]')!;
+    await ui.act(async () => { trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    await ui.until(() => document.querySelector('[role="menu"]') !== null, 'the models menu');
+    const item = Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((el) => el.textContent === 'Add a model');
+    if (!item) assert.fail('no "Add a model" item');
+    await ui.act(async () => { item.click(); });
+    await ui.until(() => !!document.querySelector('[data-model-dialog] [data-picto-brands]'), 'the model dialog');
+    const dialog = document.querySelector<HTMLElement>('[data-model-dialog]')!;
+    const classes = (el: Element) => el.className.split(/\s+/);
+    // jsdom lays nothing out: the classes are what keeps the slug, label and
+    // context fields, the logos and the buttons inside the dialog's width.
+    assert.ok(classes(dialog.querySelector('form')!).includes('min-w-0'), 'the form does not set the dialog column to its min-content width');
+    const brands = dialog.querySelector<HTMLElement>('[data-picto-brands]')!;
+    assert.ok(classes(brands).includes('flex-wrap'), 'the logos wrap');
+    assert.ok(!classes(brands).some((name) => name.startsWith('overflow-x')), 'the logos never scroll sideways');
   } finally {
     await ui.unmount();
   }

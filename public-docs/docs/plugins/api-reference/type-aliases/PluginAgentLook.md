@@ -15,7 +15,7 @@
 
 ### color
 
-> **color**: [`PluginAgentLookColor`](PluginAgentLookColor.md) \| [`PluginMascotPartId`](PluginMascotPartId.md)
+> **color**: [`PluginAgentLookColor`](PluginAgentLookColor.md) \| [`PluginAgentLookCustomColor`](PluginAgentLookCustomColor.md) \| [`PluginMascotPartId`](PluginMascotPartId.md)
 
 ***
 

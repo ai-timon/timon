@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { BuildSpawnOpts, ImageAttachment, NativeProviderDefinition, ProfileRuntime } from '../backends/types.js';
 
@@ -89,33 +89,47 @@ test('the user message goes out through --prompt-file', async () => {
   assert.ok(!sp.args.includes('--prompt-json'), 'both prompt channels at once');
 });
 
-test('a multimodal turn goes through --prompt-json and resource links to real file: URLs', async () => {
-  const png: ImageAttachment = { media_type: 'image/png', data: Buffer.from('x').toString('base64') };
-  const sp = await provider.launch(opts({ images: [png] }), PROFILE);
-  const json = argAfter(sp.args, '--prompt-json');
-  assert.ok(json, '--prompt-json missing for a turn with an image');
-  const blocks = JSON.parse(json!) as Array<Record<string, string>>;
-  assert.equal(blocks[0]?.type, 'text');
-  assert.equal(blocks[0]?.text, MESSAGE);
-  assert.equal(blocks[1]?.type, 'resource_link');
-  const uri = blocks[1]?.uri ?? '';
-  assert.ok(uri.startsWith('file://'), `unexpected uri: ${uri}`);
-  const file = fileURLToPath(uri);
-  assert.ok(existsSync(file), 'image not written to disk');
-  assert.ok(file.startsWith(sp.env!.GROK_HOME!), 'the image lives in the mission\'s folder');
-  // TODO #403: the name is the file's, split by `node:path`, not on a `/` it may not contain.
-  assert.equal(blocks[1]?.name, basename(file));
-  assert.ok(!json!.includes(png.data), 'the base64 of the image travels in argv');
+test('a multimodal turn writes ACP image blocks to prompt.json via --prompt-file', async () => {
+  const png: ImageAttachment = { media_type: 'image/png', data: Buffer.from('png-bytes').toString('base64') };
+  const jpg: ImageAttachment = { media_type: 'image/jpeg', data: Buffer.from('jpg-bytes').toString('base64') };
+  const sp = await provider.launch(opts({ images: [png, jpg] }), PROFILE);
+  assert.ok(!sp.args.includes('--prompt-json'), '--prompt-json puts multimodal payloads in argv');
+  assert.ok(!sp.args.some((a) => a.includes(png.data) || a.includes(jpg.data)), 'image base64 must stay out of argv');
+  const file = argAfter(sp.args, '--prompt-file');
+  assert.ok(file && file.endsWith('prompt.json'), `expected prompt.json via --prompt-file, got: ${file}`);
+  assert.ok(file.startsWith(sp.env!.GROK_HOME!), 'prompt.json lives in the mission folder');
+  const blocks = JSON.parse(readFileSync(file, 'utf8')) as Array<Record<string, string>>;
+  assert.deepEqual(blocks, [
+    { type: 'text', text: MESSAGE },
+    { type: 'image', data: png.data, mimeType: 'image/png' },
+    { type: 'image', data: jpg.data, mimeType: 'image/jpeg' },
+  ]);
 });
 
-test('a huge message goes back through the file even with an image', async () => {
-  const png: ImageAttachment = { media_type: 'image/png', data: Buffer.from('x').toString('base64') };
+test('an image-only turn omits the empty text block from prompt.json', async () => {
+  const png: ImageAttachment = { media_type: 'image/png', data: Buffer.from('only-image').toString('base64') };
+  const sp = await provider.launch(opts({ message: '', images: [png] }), PROFILE);
+  const file = argAfter(sp.args, '--prompt-file');
+  assert.ok(file && file.endsWith('prompt.json'));
+  const blocks = JSON.parse(readFileSync(file, 'utf8')) as Array<Record<string, string>>;
+  assert.deepEqual(blocks, [{ type: 'image', data: png.data, mimeType: 'image/png' }]);
+});
+
+test('a huge message with large images stays in prompt.json without touching argv', async () => {
+  const largePng: ImageAttachment = { media_type: 'image/png', data: Buffer.alloc(150_000, 1).toString('base64') };
   const big = 'x'.repeat(200_000);
-  const sp = await provider.launch(opts({ message: big, images: [png] }), PROFILE);
-  assert.ok(!sp.args.includes('--prompt-json'), '200 KB argv: E2BIG at spawn');
-  const written = readFileSync(argAfter(sp.args, '--prompt-file')!, 'utf8');
-  assert.ok(written.startsWith(big), 'message truncated');
-  assert.ok(written.includes('[Images jointes]'), 'images not referenced in the fallback');
+  const sp = await provider.launch(opts({ message: big, images: [largePng] }), PROFILE);
+  assert.ok(!sp.args.includes('--prompt-json'), 'huge argv: E2BIG at spawn');
+  assert.ok(sp.args.every((a) => a.length < 4096), 'large payload leaked into argv');
+  const file = argAfter(sp.args, '--prompt-file')!;
+  assert.ok(file.endsWith('prompt.json'), 'expected .json prompt file for multimodal turn');
+  const raw = readFileSync(file, 'utf8');
+  assert.ok(!raw.includes('[Images jointes]'), 'legacy plain-text image fallback must not be used');
+  const blocks = JSON.parse(raw) as Array<Record<string, string>>;
+  assert.deepEqual(blocks, [
+    { type: 'text', text: big },
+    { type: 'image', data: largePng.data, mimeType: 'image/png' },
+  ]);
 });
 
 test('permission_mode: never raised — only an explicit bypassPermissions gets always-approve, the rest runs in plan', async () => {
@@ -336,16 +350,17 @@ test('TODO #401: the sign-in file reaches the mission when the OS refuses symbol
   custom.cleanup();
 });
 
-test('TODO #403: a folder with spaces, a # and accents gives a resource link a CLI can open', async () => {
+test('a folder with spaces, a # and accents passes prompt.json cleanly via --prompt-file', async () => {
   const png: ImageAttachment = { media_type: 'image/png', data: Buffer.from('x').toString('base64') };
   const { custom, launch } = contextWithScratch((id) => join(TMP_HOME, 'dossier avec espace #é', id));
   const sp = await launch.call(undefined, opts({ images: [png] }), PROFILE);
-  const blocks = JSON.parse(argAfter(sp.args, '--prompt-json')!) as Array<Record<string, string>>;
-  const uri = blocks[1]!.uri!;
-  assert.match(uri, /%20/, 'a space is percent-encoded in a file: URL');
-  assert.doesNotMatch(uri, /#/, 'a # would start the URL\'s fragment');
-  assert.ok(existsSync(fileURLToPath(uri)), 'the URL leads back to the image');
-  assert.equal(blocks[1]!.name, basename(fileURLToPath(uri)));
+  const file = argAfter(sp.args, '--prompt-file')!;
+  assert.ok(file.endsWith('prompt.json') && existsSync(file), 'prompt.json written inside special-char folder');
+  const blocks = JSON.parse(readFileSync(file, 'utf8')) as Array<Record<string, string>>;
+  assert.deepEqual(blocks, [
+    { type: 'text', text: MESSAGE },
+    { type: 'image', data: png.data, mimeType: 'image/png' },
+  ]);
   custom.cleanup();
 });
 

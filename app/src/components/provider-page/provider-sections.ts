@@ -13,19 +13,22 @@ import type { SlotEntry } from '@/lib/plugin-host/slots';
 export const PROVIDER_SECTION_SLOT = 'settings.provider.section';
 
 /** The common sections, in page order. */
-export const PROVIDER_SECTION_KEYS = ['connection', 'apiKey', 'program', 'settings', 'models'] as const;
+export const PROVIDER_SECTION_KEYS = ['connection', 'apiKey', 'models', 'program', 'settings'] as const;
 export type ProviderSectionKey = typeof PROVIDER_SECTION_KEYS[number];
 
 /**
- * Their ranks, with room between them: a plugin's section without an `order`
- * lands after Models, one with `order: 450` between its own settings and Models.
+ * Their ranks, with room between them. Models comes right under how the
+ * provider is reached (Connection, then the API key that goes with it), at 250
+ * so that Program and own settings keep the ranks plugins already target. A
+ * plugin's section without an `order` lands last, after own settings; one with
+ * `order: 450` right after own settings.
  */
 export const PROVIDER_SECTION_ORDER: Readonly<Record<ProviderSectionKey, number>> = {
   connection: 100,
   apiKey: 200,
+  models: 250,
   program: 300,
   settings: 400,
-  models: 500,
 };
 
 /** Product modules register under this prefix; a third-party id never starts with it. */

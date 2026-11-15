@@ -1,7 +1,9 @@
 /**
  * The onboarding profile of an account: an anonymous caller is refused, a
  * mission writes for the account that launched it and no other, the browser
- * reads its own, and only the three known profiles are stored.
+ * reads its own, and only the three known profiles are stored. Its sister row,
+ * who the account uses Timon for, follows the same rules and is announced on
+ * the bus only when the answer is new or changes.
  */
 import { createTestAccount } from '../../../tests/helpers/accounts.js';
 import '../../test-home.js';
@@ -15,6 +17,7 @@ import express from 'express';
 await import('../../../tests/helpers/paid-license.js');
 const { registerOnboardingProfileRoutes } = await import('./onboarding-profile-routes.js');
 const { dbApi } = await import('../../db.js');
+const { bus } = await import('../../bus.js');
 
 const owner = createTestAccount(dbApi, { email: 'p-owner@example.com', name: 'owner', passwordHash: 'x', isSuperadmin: true });
 const stranger = createTestAccount(dbApi, { email: 'p-stranger@example.com', name: 'stranger', passwordHash: 'x', isSuperadmin: true });
@@ -49,8 +52,8 @@ const asStranger: Fake = { kind: 'session', userId: stranger.id };
 const asAgent: Fake = { kind: 'api-token', userId: owner.id, missionId: 'p-mission' };
 const asForeignAgent: Fake = { kind: 'api-token', userId: stranger.id, missionId: 'p-mission' };
 
-async function call(method: string, who: Fake | null, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
-  const res = await fetch(`${base}/api/onboarding/profile`, {
+async function call(method: string, who: Fake | null, body?: unknown, path = '/api/onboarding/profile'): Promise<{ status: number; json: Record<string, unknown> }> {
+  const res = await fetch(`${base}${path}`, {
     method,
     headers: { 'content-type': 'application/json', ...(who ? { 'x-test-auth': JSON.stringify(who) } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -92,4 +95,38 @@ test('the onboarding screen writes from its browser session, for that account on
   assert.equal((await call('PUT', asStranger, { profile: 'beginner' })).status, 200);
   assert.equal((await call('GET', asStranger)).json.profile, 'beginner');
   assert.equal((await call('GET', asOwner)).json.profile, 'automation', 'one account\'s choice never lands on another');
+});
+
+const USAGE = '/api/onboarding/usage-kind';
+
+test('usage kind: an anonymous caller is refused', async () => {
+  assert.equal((await call('GET', null, undefined, USAGE)).status, 401);
+  assert.equal((await call('PUT', null, { usageKind: 'agency' }, USAGE)).status, 401);
+});
+
+test('usage kind: unanswered reads as null, only the three kinds are stored, the CLI token cannot write', async () => {
+  assert.equal((await call('GET', asOwner, undefined, USAGE)).json.usageKind, null);
+  assert.equal((await call('PUT', asOwner, { usageKind: 'freelance' }, USAGE)).status, 400);
+  assert.equal((await call('PUT', asOwner, { usageKind: 'solo', email: 'x@example.com' }, USAGE)).status, 400);
+  assert.equal((await call('PUT', { kind: 'daemon-token', userId: owner.id }, { usageKind: 'solo' }, USAGE)).status, 403);
+  assert.equal((await call('PUT', asForeignAgent, { usageKind: 'solo' }, USAGE)).status, 403);
+});
+
+test('usage kind: a person writes their own; the bus hears a new answer and a change, not a repeat', async () => {
+  const heard: unknown[] = [];
+  const listen = (ev: { kind: string }): void => { if (ev.kind === 'usage_kind_set') heard.push(ev); };
+  bus.on('event', listen);
+  try {
+    assert.equal((await call('PUT', asOwner, { usageKind: 'team' }, USAGE)).status, 200);
+    assert.equal((await call('PUT', asOwner, { usageKind: 'team' }, USAGE)).status, 200);
+    assert.equal((await call('PUT', asOwner, { usageKind: 'agency' }, USAGE)).status, 200);
+  } finally {
+    bus.off('event', listen);
+  }
+  assert.deepEqual(heard, [
+    { kind: 'usage_kind_set', usageKind: 'team', userId: owner.id },
+    { kind: 'usage_kind_set', usageKind: 'agency', userId: owner.id },
+  ]);
+  assert.equal((await call('GET', asOwner, undefined, USAGE)).json.usageKind, 'agency');
+  assert.equal((await call('GET', asStranger, undefined, USAGE)).json.usageKind, null, 'one account\'s answer never lands on another');
 });

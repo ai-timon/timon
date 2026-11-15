@@ -33,6 +33,9 @@ const { openLaunchSeal, closeLaunchSeal } = await import('../backends/launch-sea
 
 const { spawnOverrideRefusal } = await import('../users/privileged-overrides.js');
 const { acpInitEvent } = await import('../backends/acp/events.js');
+const { antigravityKeychainEnv, antigravitySignIn, antigravitySignInCommand } = await import('../../official-providers/provider-acp/lib/agents.js');
+/** The sign-in sentence of THIS platform, as a pattern: on Linux the command switches the keychain off. */
+const AGY_SIGN_IN = new RegExp(antigravitySignIn(process.platform).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 type BuildSpawnOpts = import('../backends/types.js').BuildSpawnOpts;
 type NormalizedEvent = import('../backends/types.js').NormalizedEvent;
 type Dialect = import('../backends/types.js').Dialect;
@@ -154,6 +157,25 @@ test('Antigravity runs on the Google sign-in only: the switches to per-token bil
   }
 });
 
+test('Antigravity keeps its sign-in where a fenced mission reads it: on Linux every agy Timon starts is pointed at no D-Bus', async () => {
+  // The fence refuses Unix sockets, so the Secret Service is out of a mission's reach; agy then reads the
+  // sign-in from its own folder, which the provider declares and the fence grants (`agents.js`).
+  assert.deepEqual(antigravityKeychainEnv('linux'), { DBUS_SESSION_BUS_ADDRESS: 'disabled:' });
+  for (const platform of ['darwin', 'win32'] as const) assert.deepEqual(antigravityKeychainEnv(platform), {}, `${platform} keeps the keychain`);
+  assert.equal(antigravitySignInCommand('linux'), 'DBUS_SESSION_BUS_ADDRESS=disabled: agy acp --login');
+  assert.equal(antigravitySignInCommand('darwin'), 'agy acp --login');
+  assert.equal(antigravitySignInCommand('win32'), 'agy acp --login');
+  assert.match(antigravitySignIn('linux'), /^run `DBUS_SESSION_BUS_ADDRESS=disabled: agy acp --login` in a terminal on this machine/);
+  const expected = antigravityKeychainEnv(process.platform).DBUS_SESSION_BUS_ADDRESS;
+  for (const oneShot of [false, true]) {
+    const spawn = await buildUnderSeal('antigravity', opts({ oneShot }));
+    assert.equal(spawn.env?.DBUS_SESSION_BUS_ADDRESS, expected, `oneShot=${oneShot}`);
+  }
+  for (const id of ['opencode', 'hermes'] as const) {
+    assert.equal((await buildUnderSeal(id, opts())).env?.DBUS_SESSION_BUS_ADDRESS, undefined, `${id} keeps its own bus`);
+  }
+});
+
 test('the Antigravity profile names its binary, invents no model and passes no variable of its own', () => {
   const profile = installedProfiles().find((candidate) => candidate.id === 'antigravity');
   assert.ok(profile, 'the plugin registers the profile');
@@ -164,8 +186,7 @@ test('the Antigravity profile names its binary, invents no model and passes no v
   assert.equal(Object.keys(profile.envFrom ?? {}).length, 0, 'no key of the host environment reaches agy through the profile');
 });
 
-test('Antigravity reuses the saved Google sign-in: an `auth_required` is answered by `authenticate oauth-personal`, never by a billed method', async () => {
-  const sessionId = 'agy-session-1';
+test('Antigravity never sends `authenticate`: an `auth_required` is the sign-in step, not a browser page nobody can finish', async () => {
   const { createAcpReplayPeer } = await import('../../../packages/sdk/src/testing/index.js');
   const peer = createAcpReplayPeer([
     { on: 'initialize', reply: { protocolVersion: 1, agentCapabilities: { loadSession: true }, agentInfo: { name: 'Antigravity ACP Server', version: 'scripted' }, authMethods: [
@@ -175,8 +196,9 @@ test('Antigravity reuses the saved Google sign-in: an `auth_required` is answere
       { id: 'agent-platform', name: 'Gemini Enterprise Agent Platform' },
     ] } },
     { on: 'session/new', error: { code: -32000, message: 'Authentication required' } },
+    // agy 1.5.9 answers this by opening the Google sign-in page in the person's browser.
     { on: 'authenticate', reply: {} },
-    { on: 'session/new', reply: { sessionId } },
+    { on: 'session/new', reply: { sessionId: 'agy-session-1' } },
   ]);
   const spawn = opts();
   const seal = openLaunchSeal(spawn.missionId, 'antigravity', spawn, () => 'issued-token');
@@ -186,10 +208,11 @@ test('Antigravity reuses the saved Google sign-in: an `auth_required` is answere
     host: { emit: () => undefined, requestPermission: async () => ({ allow: false }) },
   });
   try {
-    const info = await driver.start();
-    assert.equal(info.sessionId, sessionId);
-    const methods = peer.received.filter((message) => message.method === 'authenticate').map((message) => (message.params as { methodId?: string }).methodId);
-    assert.deepEqual(methods, ['oauth-personal']);
+    await assert.rejects(driver.start(), (err: Error) => {
+      assert.match(err.message, AGY_SIGN_IN);
+      return true;
+    });
+    assert.deepEqual(peer.received.filter((message) => message.method === 'authenticate'), []);
   } finally {
     driver.close();
     peer.close();
@@ -331,7 +354,7 @@ test('through the backend: Hermes asks, TIMON answers; opencode is declared as d
 });
 
 test('a refused sign-in names the login step of the agent\'s own row', async () => {
-  const cases = [['opencode', /run `opencode auth login`/], ['hermes', /run `hermes --setup`/], ['antigravity', /run `agy acp --login`/]] as const;
+  const cases = [['opencode', /run `opencode auth login`/], ['hermes', /run `hermes --setup`/], ['antigravity', AGY_SIGN_IN]] as const;
   for (const [id, expected] of cases) {
     const previous = process.env.FAKE_ACP_AUTH;
     process.env.FAKE_ACP_AUTH = '1';
@@ -424,7 +447,7 @@ function acpScript(id: string, sessionId: string, authMethod: string): import('.
 const SESSION_CASES = [
   { id: 'opencode', cmd: 'opencode', args: ['acp'], authMethod: 'opencode-login', signIn: /run `opencode auth login` in a terminal on this machine, then retry/ },
   { id: 'hermes', cmd: 'hermes-acp', args: [], authMethod: 'hermes-setup', signIn: /run `hermes --setup` in a terminal on this machine, then retry/ },
-  { id: 'antigravity', cmd: 'agy', args: ['acp'], authMethod: 'oauth-personal', signIn: /run `agy acp --login` in a terminal on this machine and sign in with your personal Google account, then retry/ },
+  { id: 'antigravity', cmd: 'agy', args: ['acp'], authMethod: 'oauth-personal', signIn: AGY_SIGN_IN },
 ] as const;
 
 for (const c of SESSION_CASES) {

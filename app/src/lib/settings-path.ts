@@ -17,3 +17,8 @@ export function settingsPath(category: SettingsCategoryId, tab?: string): string
   if (tab) parts.push(t(`settingsDialog.tab.${category}.${tab}`));
   return parts.join(SEPARATOR);
 }
+
+/** The account's own panes at the foot of the dialog (`Settings → Profile`), which are not categories. */
+export function settingsAccountPath(view: 'profile' | 'license'): string {
+  return [t('nav.settings'), t(view === 'profile' ? 'session.profile' : 'session.license')].join(SEPARATOR);
+}

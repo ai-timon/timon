@@ -110,18 +110,21 @@ async function renderShell(
 const shown = (host: HTMLElement): string | null => host.querySelector('[data-step]')?.getAttribute('data-step') ?? null;
 const dots = (host: HTMLElement): string[] => Array.from(host.querySelectorAll('[data-dot]')).map((el) => el.getAttribute('data-dot') ?? '');
 const backButton = (host: HTMLElement): HTMLButtonElement | undefined =>
-  Array.from(host.querySelectorAll('button')).find((b) => !b.hasAttribute('data-next') && !b.hasAttribute('data-open-sub'));
+  Array.from(host.querySelectorAll('button')).find((b) => !b.hasAttribute('data-next') && !b.hasAttribute('data-open-sub') && !b.hasAttribute('data-mascot-style'));
+const styleToggle = (host: HTMLElement): Element | null => host.querySelector('[data-mascot-style-toggle]');
 
 test('« Continue » walks the steps; the dots and the address follow; a skipped step is skipped', async () => {
   await renderShell('http://localhost/onboarding', async (host, click, dom) => {
     assert.equal(shown(host), 'splash');
     assert.deepEqual(dots(host), [], 'no dots on the welcome');
     assert.equal(backButton(host), undefined, 'nothing to go back to');
+    assert.ok(styleToggle(host), 'the 3D / 2D switch sits by the light/dark one on the welcome');
     await click(host.querySelector('[data-next]'));
     assert.equal(shown(host), 'background', 'the background question first: the install carries its answer');
     assert.deepEqual(dots(host), ['current', 'todo', 'todo', 'todo', 'todo']);
     await click(host.querySelector('[data-next]'));
     assert.equal(shown(host), 'account');
+    assert.equal(styleToggle(host), null, 'only on the welcome: the mascot step has its own');
     assert.deepEqual(dots(host), ['done', 'current', 'todo', 'todo', 'todo']);
     assert.equal(dom.window.location.search, '?step=account');
     await click(host.querySelector('[data-next]'));

@@ -19,7 +19,7 @@ import type { BundledClientPlugin } from './types';
 export const providerClaudeClient: BundledClientPlugin = {
   module: 'provider-claude',
   apply(ctx) {
-    // Its own settings, right after the common ones and before Models.
-    ctx.register({ slot: PROVIDER_SECTION_SLOT, order: (PROVIDER_SECTION_ORDER.settings + PROVIDER_SECTION_ORDER.models) / 2 }, ClaudeTokenPanel);
+    // Its own settings: right after the common own-settings section, last on the page.
+    ctx.register({ slot: PROVIDER_SECTION_SLOT, order: PROVIDER_SECTION_ORDER.settings + 50 }, ClaudeTokenPanel);
   },
 };

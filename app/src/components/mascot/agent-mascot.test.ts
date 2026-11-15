@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import test, { type TestContext } from 'node:test';
 import React from 'react';
 import { ACC, EYES, FURS, SHAPES, accFor, defaultLookFor, isAgentLook, normalizeAgentLook, DEFAULT_LOOK } from './agent-look';
-import { EXPRESSIONS, EYE_POINTS, exprPoints, headLayout } from './mascot-geometry';
+import { EXPRESSIONS, EYE_POINTS, exprPoints, furOf, headLayout } from './mascot-geometry';
+import { accessoryAnchor, accessoryPlace } from './mascot-accessories';
 import { MASCOT_STATES, STATES, stateExpression } from './mascot-states';
 
 // The test runner compiles JSX to `React.createElement`; the app's build does not need this.
@@ -26,13 +27,46 @@ test('every skull renders with every accessory, spilling or fitted, without a Na
         assert.ok(!html.includes('NaN') && !html.includes('undefined'), `${shape}/${acc}/${fit}: no broken number`);
         assert.equal(html.includes(`data-mascot-acc="${acc}"`), acc !== 'none', `${shape}/${acc}: the tool is drawn`);
         assert.equal(html.includes('data-mascot-cap'), acc === 'teacher', 'the mortarboard comes with the book');
-        if (acc !== 'none') assert.ok(html.includes(fit ? 'translate(78 78)' : 'translate(85 85)'), 'fit keeps the tool in the box');
         count += 1;
       }
     }
   }
-  assert.equal(count, 7 * 20 * 2);
-  assert.equal(ACC.length - 1, 19, 'nineteen tools and none');
+  assert.equal(count, 7 * 31 * 2);
+  assert.equal(ACC.length - 1, 30, 'thirty tools and none');
+});
+
+test('a fitted tool stays inside the box, on every skull', () => {
+  for (const shape of SHAPES) {
+    const L = headLayout(shape);
+    for (const acc of ACC) {
+      if (acc === 'none') continue;
+      const at = accessoryPlace(acc, L, true);
+      const reach = 16 * at.s;
+      assert.ok(at.x - reach >= -0.01 && at.x + reach <= 100.01 && at.y - reach >= -0.01 && at.y + reach <= 100.01, `${shape}/${acc}: inside the box`);
+    }
+  }
+  // Each tool hangs where the 3D character carries it.
+  assert.equal(accessoryAnchor('crown'), 'hat');
+  assert.equal(accessoryAnchor('loupe'), 'eye');
+  assert.equal(accessoryAnchor('pen'), 'ear');
+  assert.equal(accessoryAnchor('globe'), 'ground');
+  assert.equal(accessoryAnchor('hammer'), 'hand');
+  assert.equal(accessoryAnchor('acme-pack:cap'), 'hand', 'a tool from a pack is held');
+  const L = headLayout('squircle');
+  assert.ok(accessoryPlace('crown', L, false).y < L.top, 'a hat sits on the top of the skull');
+  assert.ok(accessoryPlace('hammer', L, false).x > 50 + L.belly, 'a held tool is beside the body');
+});
+
+test('the fur is the colour of the look exactly, presets and picked colours alike', async () => {
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const { AgentMascot } = await import('./agent-mascot');
+  for (const color of [...FURS, '#123456']) {
+    assert.equal(furOf(color), color);
+    const html = renderToStaticMarkup(React.createElement(AgentMascot, { color, size: 48 }));
+    assert.ok(html.includes(`stop-color="${color}"`), `${color}: painted as is`);
+  }
+  assert.equal(furOf('#ABCDEF'), '#abcdef');
+  assert.equal(furOf('not-a-colour'), DEFAULT_LOOK.color);
 });
 
 test('a part drawn alone: the screen with its eyes, or the tool centred, never the fur', async () => {
@@ -41,16 +75,16 @@ test('a part drawn alone: the screen with its eyes, or the tool centred, never t
   for (const shape of SHAPES) {
     const L = headLayout(shape);
     const screen = renderToStaticMarkup(React.createElement(AgentMascot, { shape, eyes: 'heart', acc: 'wrench', size: 48, part: 'screen' }));
-    assert.match(screen, new RegExp(`viewBox="${L.screen.x - 2} ${L.screen.y - 2} ${L.screen.w + 4} ${L.screen.h + 4}"`), `${shape}: framed on the screen`);
+    assert.match(screen, new RegExp(`viewBox="${L.visor.x - 2} ${L.visor.y - 2} ${L.visor.w + 4} ${L.visor.h + 4}"`), `${shape}: framed on the screen`);
     assert.ok(screen.includes('timon-mascot-eyes'), 'the eyes are drawn');
-    assert.ok(!screen.includes(L.head), `${shape}: no fur`);
+    assert.ok(!screen.includes(L.body), `${shape}: no fur`);
     assert.ok(!screen.includes('data-mascot-acc'), 'no tool');
     assert.ok(!screen.includes('NaN'));
   }
   for (const acc of ACC.filter((a) => a !== 'none')) {
     const html = renderToStaticMarkup(React.createElement(AgentMascot, { acc, size: 48, part: 'acc' }));
     assert.ok(html.includes(`data-mascot-acc="${acc}"`) && html.includes('translate(50 50)'), `${acc}: the tool, centred`);
-    assert.ok(!html.includes('timon-mascot-eyes') && !html.includes(headLayout(DEFAULT_LOOK.shape).head), `${acc}: neither eyes nor fur`);
+    assert.ok(!html.includes('timon-mascot-eyes') && !html.includes(headLayout(DEFAULT_LOOK.shape).body), `${acc}: neither eyes nor fur`);
     assert.ok(!html.includes('data-mascot-cap'), 'the cell shows the tool, not the mortarboard');
   }
 });
@@ -60,8 +94,8 @@ test('two mascots on one page never share a filter id', async () => {
   const { AgentMascot } = await import('./agent-mascot');
   const html = renderToStaticMarkup(React.createElement('div', null, React.createElement(AgentMascot), React.createElement(AgentMascot)));
   const ids = [...html.matchAll(/<filter id="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(ids.length, 12);
-  assert.equal(new Set(ids).size, 12);
+  assert.equal(ids.length, 6);
+  assert.equal(new Set(ids).size, 6);
   assert.ok(ids.every((id) => /^[a-zA-Z0-9]+$/.test(id ?? '')), 'ids usable in url(#…)');
 });
 
@@ -110,7 +144,8 @@ test('defaultLookFor reads the onboarding tables, by role and by missions', () =
 
 test('a look read from elsewhere keeps its valid fields and falls back field by field', () => {
   assert.deepEqual(normalizeAgentLook({ shape: 'hex', color: '#FFC233', eyes: 'laser', acc: 'coffee' }), { shape: 'hex', color: '#ffc233', eyes: 'pill', acc: 'coffee' });
-  assert.equal(normalizeAgentLook({ color: '#abcdef' }).color, DEFAULT_LOOK.color, 'a colour the daemon would not store falls back');
+  assert.equal(normalizeAgentLook({ color: '#ABCDEF' }).color, '#abcdef', 'a fur off the lists from the colour picker is kept, lower case');
+  assert.equal(normalizeAgentLook({ color: '#abcdeg' }).color, DEFAULT_LOOK.color, 'a colour the daemon would not store falls back');
   assert.deepEqual(normalizeAgentLook(null), DEFAULT_LOOK);
   assert.deepEqual(normalizeAgentLook({ color: 'red' }, defaultLookFor('code')), defaultLookFor('code'));
   assert.equal(isAgentLook({ shape: 'hex', color: '#abc', eyes: 'pill', acc: 'none' }), false, 'three-digit colours are refused');

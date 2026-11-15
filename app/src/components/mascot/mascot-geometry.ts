@@ -1,10 +1,11 @@
 /**
- * The mascot's geometry, pure: skull outlines, fur colours and the eye
- * glyphs. Every glyph is a closed outline resampled to the same number of
+ * The mascot's geometry, pure: skull outlines (taken from the 3D models,
+ * `mascot-2d-data.ts`), fur colours and the eye glyphs. Every glyph is a closed outline resampled to the same number of
  * points, so any expression can morph into any other point by point.
  */
 
-import { NATURAL_FURS, type MascotShape } from './agent-look';
+import { DEFAULT_LOOK, type MascotShape } from './agent-look';
+import { SKULLS_2D, type Skull2D } from './mascot-2d-data';
 import { mascotPartOf } from './mascot-parts';
 import type { MascotPartId } from '@/lib/mascot/parts-contract';
 
@@ -13,35 +14,106 @@ export type Outline = Point[];
 
 /* ---------- Skulls ---------- */
 
-/** Top width, bottom width, height and corner radius, in a 100×100 box whose head sits on y = 92. */
-type Skull = { tw: number; bw: number; h: number; r: number };
-const SKULLS: Readonly<Record<MascotShape, Skull>> = {
-  squircle: { tw: 82, bw: 82, h: 66, r: 26 },
-  tri: { tw: 62, bw: 88, h: 70, r: 24 },
-  gem: { tw: 86, bw: 66, h: 72, r: 28 },
-  round: { tw: 74, bw: 74, h: 74, r: 36 },
-  bean: { tw: 94, bw: 94, h: 54, r: 24 },
-  cloud: { tw: 62, bw: 66, h: 82, r: 28 },
-  hex: { tw: 80, bw: 80, h: 72, r: 11 },
+/**
+ * The head of a skull in the 100×100 box, framed like a 3D tile: the body's
+ * outline, the ears, the visor and the measures the accessories hang on.
+ * The product's seven come from the 3D models (`mascot-2d-data.ts`); a pack's
+ * skull is built from its four numbers.
+ */
+export type HeadLayout = Skull2D & {
+  /** Where the eyes sit on the visor. */
+  geo: ScreenGeometry;
 };
+
+/** Where the eyes sit on the screen: scale, the two eye centres, the middle, the vertical centre. */
+export type ScreenGeometry = { k: number; c1: number; c2: number; cm: number; cy: number };
+
+// The 3D visor's eye layout (`three/eyes.ts`): eyes 0.30 visor heights either side of the middle, the eye line
+// 0.02 above it, and a glyph's 13.6 units from the middle landing on that spot. Same numbers, same face.
+const EYE_X = 0.3;
+const EYE_Y = 0.02;
+const GLYPH_TO_EYE = 13.6;
+
+function screenGeometry(v: Skull2D['visor']): ScreenGeometry {
+  const cx = v.x + v.w / 2;
+  return { k: (v.h * EYE_X) / GLYPH_TO_EYE, c1: cx - v.h * EYE_X, c2: cx + v.h * EYE_X, cm: cx, cy: v.y + v.h / 2 - v.h * EYE_Y };
+}
+
+/** Shifts every coordinate pair of an absolute path made of `M`, `C` and `Z` (what the generator writes). */
+function shiftPath(d: string, dx: number, dy: number): string {
+  let i = 0;
+  return d.replace(/-?\d+(?:\.\d+)?/g, (n) => f1(Number(n) + (i++ % 2 === 0 ? dx : dy)));
+}
+const f1 = (v: number): string => String(Math.round(v * 10) / 10);
+
+/**
+ * A pack's skull: its four numbers were set in the older drawing's box (head
+ * on y = 92, the classic skull 66 high), so they are scaled onto the classic
+ * skull of this frame and set on its foot. Ears and visor are the classic
+ * skull's, moved to the pack's sides and top: the visor keeps its one size.
+ */
+function packSkull(sk: { top: number; bottom: number; height: number; radius: number }): Skull2D {
+  const C = SKULLS_2D.squircle;
+  const s = (C.bottom - C.top) / 66;
+  const h = sk.height * s;
+  const tw = sk.top * s;
+  const bw = sk.bottom * s;
+  const top = C.bottom - h;
+  const body = roundedPoly([[50 - tw / 2, top], [50 + tw / 2, top], [50 + bw / 2, C.bottom], [50 - bw / 2, C.bottom]], sk.radius * s);
+  // Ears ride at the same share of the height as on the classic skull, against the pack's flank there.
+  const share = (C.ears.R[1] - C.top) / (C.bottom - C.top);
+  const flank = (tw + (bw - tw) * share) / 2;
+  const classicFlank = (C.topWidth + (C.bottomWidth - C.topWidth) * share) / 2;
+  const dx = flank - classicFlank;
+  const dy = top + share * h - C.ears.R[1];
+  const visorShare = (C.visor.y - C.top) / (C.bottom - C.top);
+  const visorY = Math.min(C.bottom - C.visor.h - 4, top + visorShare * h);
+  return {
+    body,
+    earL: shiftPath(C.earL, -dx, dy),
+    earR: shiftPath(C.earR, dx, dy),
+    ears: { L: [C.ears.L[0] - dx, C.ears.L[1] + dy], R: [C.ears.R[0] + dx, C.ears.R[1] + dy] },
+    visor: { ...C.visor, y: visorY },
+    top,
+    bottom: C.bottom,
+    earsTop: Math.min(top, C.earsTop + dy),
+    halfWidth: Math.max(tw, bw) / 2 + (C.halfWidth - Math.max(C.topWidth, C.bottomWidth) / 2),
+    topWidth: tw,
+    bottomWidth: bw,
+    belly: (tw + (bw - tw) * 0.7) / 2,
+  };
+}
 
 /**
  * The skull of a shape: the product's, or a pack's (four numbers checked
  * against `SKULL_BOUNDS` when it registered — a pack cannot draw a free
- * outline, so ears, mask, screen and accessory still land on it). Unknown,
- * or its pack gone: the classic skull.
+ * outline, so ears, visor and accessory still land on it). Unknown, or its
+ * pack gone: the classic skull.
  */
-function skullOf(shape: string): Skull {
-  const own = (SKULLS as Readonly<Record<string, Skull>>)[shape];
+const packSkulls = new WeakMap<object, Skull2D>();
+function skullOf(shape: string): Skull2D {
+  const own = (SKULLS_2D as Readonly<Record<string, Skull2D>>)[shape];
   if (own) return own;
   const pack = mascotPartOf('shape', shape);
-  return pack ? { tw: pack.skull.top, bw: pack.skull.bottom, h: pack.skull.height, r: pack.skull.radius } : SKULLS.squircle;
+  if (!pack) return SKULLS_2D.squircle;
+  let skull = packSkulls.get(pack);
+  if (!skull) { skull = packSkull(pack.skull); packSkulls.set(pack, skull); }
+  return skull;
 }
 
-/** The head's extent in the 100×100 box: what a scene that stacks heads (the onboarding's avalanche) collides. */
-export function skullSize(shape: MascotShape | MascotPartId): { tw: number; bw: number; h: number } {
-  const H = skullOf(shape);
-  return { tw: H.tw, bw: H.bw, h: H.h };
+export function headLayout(shape: MascotShape | MascotPartId): HeadLayout {
+  const S = skullOf(shape);
+  return { ...S, geo: screenGeometry(S.visor) };
+}
+
+/**
+ * The head's extent in the 100×100 box: what a scene that stacks heads (the
+ * onboarding's avalanche) collides. `bottom` is where it stands: the skulls
+ * are centred in their tile like the 3D ones, so each stands a little apart.
+ */
+export function skullSize(shape: MascotShape | MascotPartId): { tw: number; bw: number; h: number; bottom: number } {
+  const S = skullOf(shape);
+  return { tw: S.topWidth, bw: S.bottomWidth, h: S.bottom - S.top, bottom: S.bottom };
 }
 
 /* ---------- Colours ---------- */
@@ -65,10 +137,13 @@ export function luma(hex: string): number {
   const [r, g, b] = channels(hex);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
-/** A natural pelt as is; any other colour blended into a meerkat brown, so a dyed head stays fur. */
-export function furOf(color: string, tint = 0.55): string {
+/**
+ * The fur a look paints: its colour exactly, like the 3D head (a preset, a
+ * natural pelt or any `#rrggbb`); anything else, the default pelt.
+ */
+export function furOf(color: string): string {
   const c = color.toLowerCase();
-  return (NATURAL_FURS as readonly string[]).includes(c) ? c : mix(c, '#c9935f', tint);
+  return /^#[0-9a-f]{6}$/.test(c) ? c : DEFAULT_LOOK.color;
 }
 
 /** A closed polygon with quadratic rounded corners, as an SVG path. */
@@ -91,48 +166,6 @@ export function roundedPoly(pts: readonly Point[], r: number): string {
   return `${d}Z`;
 }
 const f2 = (v: number): string => v.toFixed(2);
-
-/* ---------- Head layout ---------- */
-
-/** Where the eyes sit on the screen: scale, the two eye centres, the middle, the vertical centre. */
-export type ScreenGeometry = { k: number; c1: number; c2: number; cm: number; cy: number };
-
-export type HeadLayout = {
-  top: number;
-  bottomWidth: number;
-  head: string;
-  screen: { x: number; y: number; w: number; h: number };
-  ring: { x: number; y: number; w: number; h: number };
-  ears: { y: number; r: number; left: number; right: number };
-  geo: ScreenGeometry;
-};
-
-export function headLayout(shape: MascotShape | MascotPartId): HeadLayout {
-  const H = skullOf(shape);
-  const top = 92 - H.h;
-  const mid = (H.tw + H.bw) / 2;
-  const cy = top + H.h * 0.55;
-  const head = roundedPoly([[50 - H.tw / 2, top], [50 + H.tw / 2, top], [50 + H.bw / 2, 92], [50 - H.bw / 2, 92]], H.r);
-  // The screen takes 64 % × 44 % of the head; the fur ring around it 84 % × 68 %.
-  const sw = mid * 0.64;
-  const sh = H.h * 0.44;
-  const mw = mid * 0.84;
-  const mh = H.h * 0.68;
-  // Meerkat ears sit low on the skull.
-  const earT = 0.6;
-  const earY = top + H.h * earT;
-  const e = 11 * Math.min(1.1, H.h / 66);
-  const wAt = H.tw + (H.bw - H.tw) * earT;
-  return {
-    top,
-    bottomWidth: H.bw,
-    head,
-    screen: { x: 50 - sw / 2, y: cy - sh / 2, w: sw, h: sh },
-    ring: { x: 50 - mw / 2, y: cy - mh / 2, w: mw, h: mh },
-    ears: { y: earY, r: e, left: 50 - wAt / 2 + 2, right: 50 + wAt / 2 - 2 },
-    geo: { k: sh / 29, c1: 50 - sw * 0.26, c2: 50 + sw * 0.26, cm: 50, cy: cy + 0.5 },
-  };
-}
 
 /* ---------- Eye glyphs ---------- */
 

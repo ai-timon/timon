@@ -866,6 +866,13 @@
     "mascotsHint": "An agent whose head is its mascot shows what it is doing: asleep, thinking, working, searching, waiting for you, happy when its task is done.",
     "mascotsAnimate": "Animate mascots",
     "mascotsAnimateHint": "Off, a mascot still shows its state by its eyes, without moving. Your system's reduced-motion setting always wins.",
+    "mascotsStyle": "Mascot style",
+    "mascotsStyle3d": "3D",
+    "mascotsStyle3dHint": "A modelled plush head, lit and in relief.",
+    "mascotsStyle2d": "2D",
+    "mascotsStyle2dHint": "The flat drawing, lighter for older computers.",
+    "mascotsStyleNoWebgl": "This browser cannot draw in 3D (WebGL2 is off or missing): mascots are drawn in 2D.",
+    "mascotsStyleShared": "Applies to every mascot. You can change it later in {settingsPath}.",
     "variants": {
       "coral": {
         "name": "Coral",
@@ -4428,5 +4435,6 @@
       "configUnreadable": "timon.config.json cannot be read: fix it before changing the isolation.",
       "generic": "The mission isolation could not be saved (error {status})."
     }
-  }
+  },
+  "agencyOffer": {"label": "Partners", "title": "Agency offer", "status": {"subscribed": "Subscribed · {email}", "none": "Not subscribed", "pending": "Waiting to be sent · {email}", "withdrawing": "Withdrawal waiting to be sent", "invalid": "Address refused · {email}", "refused": "Not sent · {email}"}, "withdraw": "Withdraw", "subscribe": "Subscribe", "more": "More", "changeEmail": "Change the address", "dialogTitle": "Get the agency offer", "emailLabel": "Email address", "notice": "Only this offer, sent by Timon to this address. Withdraw anytime here.", "submit": "Send me the offer", "cancel": "Cancel", "loadFailed": "The agency offer could not be read.", "failed": "The request could not be recorded. Try again.", "invalidEmail": "Enter a valid email address.", "withdrawn": "Withdrawn: Timon will no longer send you the agency offer.", "recorded": "Request recorded."}
 }

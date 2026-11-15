@@ -76,6 +76,7 @@ contexts are distinct; import these contracts as types in plugin code.
 - [PluginAgentLook](type-aliases/PluginAgentLook.md)
 - [PluginAgentLookAccessory](type-aliases/PluginAgentLookAccessory.md)
 - [PluginAgentLookColor](type-aliases/PluginAgentLookColor.md)
+- [PluginAgentLookCustomColor](type-aliases/PluginAgentLookCustomColor.md)
 - [PluginAgentLookEyes](type-aliases/PluginAgentLookEyes.md)
 - [PluginAgentLookInput](type-aliases/PluginAgentLookInput.md)
 - [PluginAgentLookShape](type-aliases/PluginAgentLookShape.md)

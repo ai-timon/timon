@@ -1,11 +1,15 @@
 'use client';
 
 /**
- * The agent's mascot: a plush meerkat head whose face is a black screen where
- * the eyes are light (docs/AGENT-MASCOT.md).
+ * The agent's mascot: a plush head whose face is a black visor where the eyes
+ * are light (docs/AGENT-MASCOT.md).
  *
- * - `AgentMascot` paints it from props — the product's drawing, and the
- *   default occupant of the `agent.mascot` slot.
+ * - `AgentMascot` paints it from props — the product's 2D drawing: the 3D
+ *   characters seen flat (outlines generated from the models,
+ *   `mascot-2d-data.ts`), plain SVG and CSS, cheap enough for a page of heads.
+ * - `ProductAgentMascot`, the default occupant of the `agent.mascot` slot,
+ *   draws the 3D head (`three/agent-mascot-3d.tsx`) unless the user picked
+ *   the 2D style or the browser has no WebGL2; then `AgentMascot`.
  * - `AgentMascotHost` is what a screen mounts: it normalises the request,
  *   hands it to the slot's occupant through `useAgentMascot()`, and paints
  *   `AgentMascot` itself while no occupant is registered (module off, a page
@@ -13,42 +17,29 @@
  *   or a plugin could not replace it there.
  */
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type CSSProperties, type ReactElement } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement } from 'react';
 import { SlotSingle, useSlotEntries } from '@/lib/plugin-host/render';
 import { AGENT_MASCOT_SLOT } from '@/lib/plugin-host/slots';
 import { DEFAULT_LOOK, lookFurHex, normalizeAgentLook, type AgentLook } from './agent-look';
 import { useMascotPartsVersion } from './mascot-parts';
 import { AgentMascotProvider, useAgentMascot, type AgentMascotValue } from './agent-mascot-context';
 import { MascotAccessoryArt, MascotAccessoryIcon } from './mascot-accessories';
-import { exprPoints, furOf, headLayout, isDrawableEyes, luma, mix, ptsPath, shade, type MascotEyesKey } from './mascot-geometry';
+import { exprPoints, furOf, headLayout, isDrawableEyes, luma, ptsPath, shade, type MascotEyesKey } from './mascot-geometry';
 import { startMascotMotion, type MascotMotion } from './mascot-motion';
 import { isMascotState, stateExpression, type MascotState } from './mascot-states';
+import { usePrefersReducedMotion } from './reduced-motion';
+import { useMascot3D } from './mascot-style-pref';
+import { AgentMascot3D } from './three/agent-mascot-3d';
 
-const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
-
-function subscribeMotion(onChange: () => void): () => void {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
-  const mq = window.matchMedia(REDUCED_MOTION);
-  mq.addEventListener?.('change', onChange);
-  return () => mq.removeEventListener?.('change', onChange);
-}
-function readMotion(): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(REDUCED_MOTION).matches;
-}
-/** The server paints a still mascot; the client wakes it once it knows the user's preference. */
-const serverMotion = (): boolean => true;
-
-/** `true` when the user asked the system for reduced motion; follows the setting live. */
-export function usePrefersReducedMotion(): boolean {
-  return useSyncExternalStore(subscribeMotion, readMotion, serverMotion);
-}
+// Screens import it from here, beside the mascot it drives.
+export { usePrefersReducedMotion };
 
 const useIsomorphicLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 export type AgentMascotProps = {
   /** A product skull or a pack's (`<pluginId>:<slug>`); one whose pack is gone draws the classic skull. */
   shape?: AgentLook['shape'];
-  /** `#rrggbb` (a natural fur as is, any other colour blended into fur), or a pack's fur. */
+  /** `#rrggbb`, painted as is, or a pack's fur. */
   color?: string;
   /** The look's eyes — any expression, beyond the pickers' `EYES`, or a pack's eyes. */
   eyes?: MascotEyesKey;
@@ -76,6 +67,12 @@ export type AgentMascotProps = {
 /** A part drawn on its own (`AgentMascotProps.part`). */
 export type MascotDrawnPart = 'screen' | 'acc';
 
+/** The inner ear: the ear's own outline, shrunk about its centre and pushed outwards, where the 3D ear is hollow. */
+function innerEar(c: readonly [number, number], out: number): string {
+  const x = c[0] + out * 1.2;
+  return `translate(${x.toFixed(2)} ${(c[1] + 0.6).toFixed(2)}) scale(.56) translate(${(-c[0]).toFixed(2)} ${(-c[1]).toFixed(2)})`;
+}
+
 /** A stable number from a React id: the fur's noise seed, so two mascots side by side are not the same plush. */
 function seedOf(id: string): number {
   let h = 0;
@@ -101,10 +98,11 @@ export function AgentMascot({
   const shown = current ? stateExpression(current, base) : base;
   const eyePts = useMemo(() => exprPoints(shown, L.geo), [shown, L, partsVersion]);
 
+  // The look's colour exactly, as the 3D head paints it: shading comes from the gradients, not from the colour.
   const fur = furOf(lookFurHex(color));
-  const light = luma(fur) > 0.56;
-  const mask = light ? mix(fur, '#4a2814', 0.72) : mix(fur, '#f2d9b8', 0.78);
-  const { screen: s, ring: m, ears: e } = L;
+  const light = luma(fur) > 0.6;
+  const s = L.visor;
+  const earInner = shade(fur, light ? -0.38 : -0.5);
 
   const svgRef = useRef<SVGSVGElement>(null);
   const eyesRef = useRef<SVGGElement>(null);
@@ -167,55 +165,45 @@ export function AgentMascot({
       {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })}
     >
       <defs>
-        <radialGradient id={`${id}g`} cx="40%" cy="22%" r="90%">
-          <stop offset="0" stopColor={shade(fur, 0.32)} /><stop offset=".55" stopColor={fur} /><stop offset="1" stopColor={shade(fur, -0.32)} />
+        {/* The plush's volume: lit from the upper left like the 3D head, darker towards the foot and the flanks. */}
+        <radialGradient id={`${id}g`} cx="38%" cy="26%" r="82%">
+          <stop offset="0" stopColor={shade(fur, 0.26)} /><stop offset=".5" stopColor={fur} /><stop offset="1" stopColor={shade(fur, -0.34)} />
         </radialGradient>
-        <radialGradient id={`${id}m`} cx="50%" cy="40%" r="70%">
-          <stop offset="0" stopColor={shade(mask, 0.12)} /><stop offset="1" stopColor={shade(mask, -0.12)} />
+        <radialGradient id={`${id}r`} cx="50%" cy="40%" r="70%">
+          <stop offset="0" stopColor={shade(fur, 0.08)} /><stop offset="1" stopColor={shade(fur, -0.4)} />
         </radialGradient>
-        <linearGradient id={`${id}s`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#2b2b2e" /><stop offset=".35" stopColor="#0c0c0d" /><stop offset="1" stopColor="#050505" />
-        </linearGradient>
         <linearGradient id={`${id}b`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset=".55" stopColor={shade(fur, 0.45)} stopOpacity="0" /><stop offset="1" stopColor={shade(fur, 0.45)} stopOpacity={light ? 0.55 : 0.25} />
+          <stop offset=".62" stopColor="#000" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".24" />
+        </linearGradient>
+        {/* Fur grain: a small tile of short strands, dark and light, repeated over the body. Cheaper than noise. */}
+        <pattern id={`${id}p`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform={`rotate(${(seed % 7) * 9 - 27})`}>
+          <path d="M.6 1.2q.9 1 .5 2.6M3.4 .4q.8 1.1.3 2.5M2 3.6q.9 1 .4 2.2M4.9 3q.8 1.1.3 2.4" fill="none" stroke="#000" strokeOpacity={light ? 0.13 : 0.2} strokeWidth=".55" strokeLinecap="round" />
+          <path d="M1.7 .3q.8 1 .4 2.3M4.3 2.1q.8 1 .4 2.2M.9 4.2q.7.9.3 1.7" fill="none" stroke="#fff" strokeOpacity={light ? 0.22 : 0.13} strokeWidth=".5" strokeLinecap="round" />
+        </pattern>
+        <linearGradient id={`${id}s`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#202024" /><stop offset=".45" stopColor="#09090a" /><stop offset="1" stopColor="#030303" />
         </linearGradient>
         <linearGradient id={`${id}h`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#fff" stopOpacity=".28" /><stop offset="1" stopColor="#fff" stopOpacity="0" />
+          <stop offset="0" stopColor="#fff" stopOpacity=".34" /><stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
-        {/* Fur: the outline frayed by noise, then a dark and a light grain. */}
-        <filter id={`${id}f`} x="-15%" y="-15%" width="130%" height="130%">
-          <feTurbulence type="fractalNoise" baseFrequency="1.3" numOctaves={2} seed={seed} />
-          <feDisplacementMap in="SourceGraphic" scale="5" xChannelSelector="R" yChannelSelector="G" />
-          <feGaussianBlur stdDeviation=".25" />
-        </filter>
-        <filter id={`${id}k`} x="-15%" y="-15%" width="130%" height="130%">
-          <feTurbulence type="fractalNoise" baseFrequency="1.5" numOctaves={2} seed={seed + 5} />
-          <feDisplacementMap in="SourceGraphic" scale="3.2" xChannelSelector="R" yChannelSelector="G" />
-          <feGaussianBlur stdDeviation=".45" />
-        </filter>
-        <filter id={`${id}t`} x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="2.6" numOctaves={1} seed={seed + 3} />
-          <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  3 0 0 0 -1.5" />
-          <feComposite in2="SourceGraphic" operator="in" />
-        </filter>
-        <filter id={`${id}w`} x="0" y="0" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="2.3" numOctaves={1} seed={seed + 9} />
-          <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 3 0 0 -1.75" />
-          <feComposite in2="SourceGraphic" operator="in" />
+        {/* The fur's edge: the outline frayed by one noise, so the plush has no hard contour. */}
+        <filter id={`${id}f`} x="-10%" y="-10%" width="120%" height="120%">
+          <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves={1} seed={seed} />
+          <feDisplacementMap in="SourceGraphic" scale="2.6" xChannelSelector="R" yChannelSelector="G" />
         </filter>
         {/* The eyes' glow: light on a screen, not paint. */}
         <filter id={`${id}e`} filterUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="1.7" result="b" />
-          <feFlood floodColor="#ff9a4a" floodOpacity=".95" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="1.3" result="b" />
+          <feFlood floodColor="#ff9438" floodOpacity=".95" />
           <feComposite in2="b" operator="in" result="glow" />
           <feMerge><feMergeNode in="glow" /><feMergeNode in="glow" /><feMergeNode in="SourceGraphic" /></feMerge>
         </filter>
         <filter id={`${id}a`} filterUnits="userSpaceOnUse" x="-10" y="-10" width="130" height="130">
           <feDropShadow dx="0" dy="1" stdDeviation=".7" floodColor="#000" floodOpacity=".38" />
         </filter>
-        <clipPath id={`${id}c`}><rect x={s.x} y={s.y} width={s.w} height={s.h} rx={s.h * 0.32} /></clipPath>
+        <clipPath id={`${id}c`}><rect x={s.x} y={s.y} width={s.w} height={s.h} rx={s.r} /></clipPath>
       </defs>
-      {whole && shadow && <ellipse cx="50" cy="95" rx={L.bottomWidth * 0.42} ry="3.4" fill="#000" opacity=".42" />}
+      {whole && shadow && <ellipse cx="50" cy={L.bottom + 2} rx={L.bottomWidth * 0.46} ry="3" fill="#000" opacity=".3" />}
       {part === 'acc' && (
         <g filter={`url(#${id}a)`} data-mascot-acc={acc}>
           <MascotAccessoryIcon acc={acc} />
@@ -223,32 +211,33 @@ export function AgentMascot({
       )}
       {part !== 'acc' && <g>
         {whole && <g filter={`url(#${id}f)`}>
-          <circle cx={e.left} cy={e.y} r={e.r} fill={`url(#${id}g)`} />
-          <circle cx={e.right} cy={e.y} r={e.r} fill={`url(#${id}g)`} />
-          <ellipse cx={e.left - 2} cy={e.y + 0.5} rx={e.r * 0.4} ry={e.r * 0.6} fill={shade(fur, -0.6)} opacity=".8" />
-          <ellipse cx={e.right + 2} cy={e.y + 0.5} rx={e.r * 0.4} ry={e.r * 0.6} fill={shade(fur, -0.6)} opacity=".8" />
-          <path d={L.head} fill={`url(#${id}g)`} />
-          <path d={L.head} fill={`url(#${id}b)`} />
-          <path d={L.head} fill="#000" opacity=".22" filter={`url(#${id}t)`} />
-          <path d={L.head} fill="#fff" opacity=".18" filter={`url(#${id}w)`} />
+          <path d={L.earL} fill={`url(#${id}r)`} />
+          <path d={L.earR} fill={`url(#${id}r)`} />
+          <path d={L.earL} fill={earInner} opacity=".75" transform={innerEar(L.ears.L, -1)} />
+          <path d={L.earR} fill={earInner} opacity=".75" transform={innerEar(L.ears.R, 1)} />
+          <path d={L.body} fill={`url(#${id}g)`} data-mascot-body="" />
+          <path d={L.body} fill={`url(#${id}p)`} />
+          <path d={L.body} fill={`url(#${id}b)`} />
         </g>}
-        {whole && <rect x={m.x} y={m.y} width={m.w} height={m.h} rx={m.h * 0.4} fill={`url(#${id}m)`} filter={`url(#${id}k)`} />}
-        {whole && <rect x={m.x} y={m.y} width={m.w} height={m.h} rx={m.h * 0.4} fill="#000" opacity=".18" filter={`url(#${id}t)`} />}
-        <rect x={s.x - 0.8} y={s.y - 0.8} width={s.w + 1.6} height={s.h + 1.6} rx={s.h * 0.34} fill="#1d1d1f" />
-        <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={s.h * 0.32} fill={`url(#${id}s)`} />
+        {/* The fur sinks a little around the visor. */}
+        {whole && <rect x={s.x - 1.6} y={s.y - 1.6} width={s.w + 3.2} height={s.h + 3.2} rx={s.r + 1.6} fill={shade(fur, -0.45)} opacity=".45" />}
+        <rect x={s.x - 0.7} y={s.y - 0.7} width={s.w + 1.4} height={s.h + 1.4} rx={s.r + 0.7} fill="#18181b" />
+        <rect x={s.x} y={s.y} width={s.w} height={s.h} rx={s.r} fill={`url(#${id}s)`} />
         <g clipPath={`url(#${id}c)`}>
           <g ref={eyesRef} className="timon-mascot-eyes">
-            <g ref={blinkRef} className="timon-mascot-blink" fill="#fff4e6" filter={`url(#${id}e)`}>
+            <g ref={blinkRef} className="timon-mascot-blink" fill="#fff1df" filter={`url(#${id}e)`}>
               <path ref={lRef} d={ptsPath(eyePts.L)} />
               <path ref={rRef} d={ptsPath(eyePts.R)} />
               <path ref={mRef} d={ptsPath(eyePts.M)} />
             </g>
           </g>
-          <rect x={s.x + 3} y={s.y + 1.2} width={s.w - 6} height={s.h * 0.3} rx={s.h * 0.15} fill={`url(#${id}h)`} />
+          {/* The visor's gloss: the window's reflection along the top, and one sharp highlight. */}
+          <ellipse cx={s.x + s.w * 0.4} cy={s.y + s.h * 0.17} rx={s.w * 0.36} ry={s.h * 0.15} fill={`url(#${id}h)`} />
+          <circle cx={s.x + s.w * 0.83} cy={s.y + s.h * 0.26} r={s.h * 0.05} fill="#fff" opacity=".55" />
         </g>
         {whole && acc !== 'none' && (
           <g filter={`url(#${id}a)`} data-mascot-acc={acc}>
-            <MascotAccessoryArt acc={acc} top={L.top} fit={fit} />
+            <MascotAccessoryArt acc={acc} layout={L} fit={fit} />
           </g>
         )}
       </g>}
@@ -264,6 +253,26 @@ export function ProductAgentMascot(): ReactElement | null {
 }
 
 function AgentMascotFromValue({ value: v, part = null }: { value: AgentMascotValue; part?: MascotDrawnPart | null }): ReactElement {
+  const threeD = useMascot3D();
+  // The eyes' screen alone is a flat glyph on black: the 2D drawing frames it
+  // tight. An accessory's cell shows the 3D head wearing it, the camera
+  // stepping back so that the tool fits.
+  if (threeD && part !== 'screen') {
+    // The 2D drawing of the same character stands in while three.js and the models load.
+    const flat = <AgentMascot {...v.look} color={v.fur} size={v.size} state={v.state} shadow={v.shadow} />;
+    return (
+      <AgentMascot3D
+        fallback={flat}
+        {...v.look}
+        color={v.fur}
+        size={v.size}
+        live={v.live}
+        state={v.state}
+        shadow={v.shadow}
+        label={v.label}
+      />
+    );
+  }
   return (
     <AgentMascot
       part={part}
