@@ -160,10 +160,18 @@ test('pull-request code-self: a forge merge stays done while the worktree is sti
   assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, forgeSha).mergedIntoBase, false);
 
   const absent = 'a'.repeat(40);
+  // No remote: an unknown sha is not on the forge. It must not close the task.
+  const unknown = inspectGitBranch(repo, 'task', 'main', pipeline, absent, 'pull-request');
+  assert.equal(unknown.mergedIntoBase, false);
+  assert.match(evaluateCodeDone({ ...task, merged_commit_sha: absent }, unknown)!, /not contained in base main/);
+  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, absent).mergedIntoBase, false);
+
+  // A remote we cannot fetch leaves the sha unknown: the merge may exist only on the forge.
+  git('remote', 'add', 'origin', 'http://127.0.0.1:9/timon-code-gate-missing.git');
   const unfetched = inspectGitBranch(repo, 'task', 'main', pipeline, absent, 'pull-request');
   assert.equal(unfetched.mergedIntoBase, null);
   assert.equal(evaluateCodeDone({ ...task, merged_commit_sha: absent }, unfetched), null);
-  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, absent).mergedIntoBase, false);
+  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, forgeSha, 'pull-request').mergedIntoBase, true);
 
   const outside = inspectGitBranch(repo, 'task', 'main', pipeline, side, 'pull-request');
   assert.equal(outside.mergedIntoBase, false);

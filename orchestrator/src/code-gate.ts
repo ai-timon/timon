@@ -54,7 +54,8 @@ function safeBranch(name: string): boolean {
   return name.split('/').every((part) => part.length > 0 && !part.startsWith('-') && !part.startsWith('.'));
 }
 
-type GitRun = (args: string[], timeout?: number) => { code: number; stdout: string };
+type GitCallOpts = { timeout?: number; env?: NodeJS.ProcessEnv };
+type GitRun = (args: string[], timeoutOrOpts?: number | GitCallOpts) => { code: number; stdout: string };
 
 /** Local ancestry. An unknown commit is a failed merge: code-self integrated here. */
 function mergedOnLocalBase(git: GitRun, baseBranch: string, mergedSha: string): boolean | null {
@@ -69,7 +70,9 @@ function mergedOnLocalBase(git: GitRun, baseBranch: string, mergedSha: string): 
 
 /**
  * Ancestry against `origin/<base>`, not the local branch. Fetch when the
- * remote exists; a failed fetch leaves an unfetched commit `unknown`.
+ * remote exists. A commit this clone does not have is not a merge once that
+ * fetch succeeded, or when no remote is configured: an invented sha must not
+ * close the task. It stays unknown only when the fetch itself failed.
  */
 function mergedOnOrigin(git: GitRun, baseBranch: string, mergedSha: string): boolean | null {
   if (!/^[0-9a-f]{7,40}$/i.test(mergedSha)) return false;
@@ -82,17 +85,25 @@ function mergedOnOrigin(git: GitRun, baseBranch: string, mergedSha: string): boo
   if (remoteConfigured) {
     const fetched = git([
       'fetch', '--no-tags', '--', 'origin', `${baseBranch}:refs/remotes/origin/${baseBranch}`,
-    ], 10_000);
+    ], {
+      timeout: 10_000,
+      // No terminal behind the daemon: git must fail rather than wait for a password.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
     refreshed = fetched.code === 0;
   }
   const remoteRef = `refs/remotes/origin/${baseBranch}`;
   const base = git(['rev-parse', '--verify', '--end-of-options', `${remoteRef}^{commit}`]);
   const commit = git(['rev-parse', '--verify', '--end-of-options', `${mergedSha}^{commit}`]);
-  if (base.code !== 0 || commit.code !== 0) return null;
+  // Unknown commit: false when we could look, null only when the fetch failed.
+  if (commit.code !== 0) return refreshed ? false : null;
+  if (base.code !== 0) return refreshed ? false : null;
   const ancestor = git(['merge-base', '--is-ancestor', commit.stdout.trim(), base.stdout.trim()]);
   if (ancestor.code === 0) return true;
+  // Both objects are in this clone, so ancestry is known. A failed fetch must
+  // not turn a side commit into "unknown" and let the task close.
   if (ancestor.code !== 1) return null;
-  return refreshed ? false : null;
+  return false;
 }
 
 export function inspectGitBranch(
@@ -109,18 +120,22 @@ export function inspectGitBranch(
   try {
     const host = getHost();
     // Arguments never pass through a shell; refs cannot execute commands.
-    const git: GitRun = (args, timeout = 5_000) => host.exec('git', args, {
-      cwd: worktreePath,
-      timeout,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    const git: GitRun = (args, timeoutOrOpts = 5_000) => {
+      const opts = typeof timeoutOrOpts === 'number' ? { timeout: timeoutOrOpts } : timeoutOrOpts;
+      return host.exec('git', args, {
+        cwd: worktreePath,
+        timeout: opts.timeout ?? 5_000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+        ...(opts.env ? { env: opts.env } : {}),
+      });
+    };
     if (pipeline === 'code-self') {
       if (!mergedSha) return unknown;
       // A pull request merges on the forge. Local `main` does not move, so it
       // is not the base this gate checks. `origin/<base>` is, after a fetch
-      // when that remote exists. A commit this clone has not fetched is
-      // `unknown` (the same as `shaInBase`): the worktree still being here
-      // must not block a merge that only the forge has.
+      // when that remote exists. A commit this clone still does not have after
+      // that fetch, or when no remote is configured, is not a merge. It stays
+      // unknown only when the fetch failed: the sha may exist only on the forge.
       const mergedIntoBase = integration === 'pull-request'
         ? mergedOnOrigin(git, baseBranch, mergedSha)
         : mergedOnLocalBase(git, baseBranch, mergedSha);
