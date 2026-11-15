@@ -463,6 +463,15 @@ export function worktreeDirective(
           `Then get the FULL sha (\`git -C ${wt.sourceRepo} rev-parse HEAD\`, ` +
           `40 hex) for \`timon task done --merged-sha\`.`),
     );
+  } else if (task.type === 'code' && taskIntegration(task).mode === 'pull-request' && task.pipeline === 'code-group') {
+    // The push section would contradict the refusal: a group has no single pull request to open.
+    parts.push(
+      `\n\n## Integration — pull request\n\n` +
+      `This project's integration mode is \`pull-request\`, and \`code-group\` is not ` +
+      `supported in that mode. Do not push, do not open a pull request, and do not ` +
+      `integrate locally. \`timon task block\` with the reason ` +
+      `\`code-group is not supported in pull-request mode\`.`,
+    );
   } else if (task.type === 'code' && taskIntegration(task).mode === 'pull-request') {
     parts.push(codeIntegrationSection(wt.branch, wt.base));
   }

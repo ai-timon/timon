@@ -129,3 +129,43 @@ test('code-self: inspect actual merge ancestry, not commits ahead of base', (t) 
     assert.match(evaluateCodeDone(pendingTask, inspectGitBranch(repo, 'task', 'main', pendingPipeline))!, /NO commits/);
   }
 });
+
+test('pull-request code-self: a forge merge stays done while the worktree is still there', (t) => {
+  const pipeline = 'code-self';
+  const repo = mkdtempSync(join(tmpdir(), 'timon-code-gate-pr-'));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const git = (...args: string[]) => {
+    const result = getHost().exec('git', args, { cwd: repo, timeout: 5_000 });
+    assert.equal(result.code, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git('init', '-b', 'main');
+  git('config', 'user.name', 'Test');
+  git('config', 'user.email', 'test@example.invalid');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'base');
+  git('checkout', '-b', 'forge-main');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'forge merge');
+  const forgeSha = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/main', forgeSha);
+  git('checkout', '-b', 'side');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'not on the forge');
+  const side = git('rev-parse', 'HEAD');
+  git('checkout', 'main');
+
+  const task = codeTask({ pipeline, worktree_path: repo, branch_name: 'task', merged_commit_sha: forgeSha });
+  const onForge = inspectGitBranch(repo, 'task', 'main', pipeline, forgeSha, 'pull-request');
+  assert.equal(onForge.mergedIntoBase, true);
+  assert.equal(evaluateCodeDone(task, onForge), null);
+  // Local main never received that commit. The old gate blocked on it.
+  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, forgeSha).mergedIntoBase, false);
+
+  const absent = 'a'.repeat(40);
+  const unfetched = inspectGitBranch(repo, 'task', 'main', pipeline, absent, 'pull-request');
+  assert.equal(unfetched.mergedIntoBase, null);
+  assert.equal(evaluateCodeDone({ ...task, merged_commit_sha: absent }, unfetched), null);
+  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, absent).mergedIntoBase, false);
+
+  const outside = inspectGitBranch(repo, 'task', 'main', pipeline, side, 'pull-request');
+  assert.equal(outside.mergedIntoBase, false);
+  assert.match(evaluateCodeDone({ ...task, merged_commit_sha: side }, outside)!, /not contained in base main/);
+});

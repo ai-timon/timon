@@ -297,7 +297,7 @@ chains landed (for example 1/7). A blocked sibling task keeps the idea open; a
 | `code-self` | The coding agent integrates its own branch and supplies the merge SHA |
 | `code-group` | Coding tasks form a group integrated by a designated final merge task |
 
-A project whose integration is `pull-request` ([Projects](projects.md)) pushes the branch and merges the pull request on the forge, on the same pipeline. Local integration stays the default.
+A project whose integration is `pull-request` ([Projects](projects.md)) pushes the branch and merges the pull request on the forge. `code-group` is not supported in that mode: the task blocks instead of opening a pull request. Local integration stays the default. Worktrees still start from the local base; how that base should follow the forge is an open question, stated on the Projects page.
 
 ![Full pipeline: code, then review when the code has a diff, then merge on a pass verdict, then doc when an agent holds the librarian role. Changes requested return to another code round, three rounds at most, then the task is blocked. code-self and code-group have no automatic review.](/img/diagrams/kanban-pipeline.svg)
 

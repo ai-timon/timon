@@ -122,21 +122,31 @@ async function passingMerge(slug: string, strategyFlag: 'squash' | 'rebase'): Pr
 
 test('the merge brief follows the mode and the forge strategy', async () => {
   const squash = await passingMerge('intmerge', 'squash');
-  assert.match(squash, /gh pr merge <n> --squash --delete-branch/);
-  assert.equal(squash.split('gh pr merge <n> --squash --delete-branch').length - 1, 1);
+  assert.match(squash, /gh pr merge <n> --repo <owner\/name> --squash --delete-branch/);
+  assert.equal(squash.split('gh pr merge <n> --repo <owner/name> --squash --delete-branch').length - 1, 1);
+  assert.match(squash, /gh pr checks <n> --repo <owner\/name> --watch --fail-fast/);
+  assert.match(squash, /en file de fusion/);
+  assert.match(squash, /mergeCommit/);
+  assert.match(squash, /worktree list --porcelain/);
+  assert.match(squash, /Do not block because a check is pending/);
+  assert.doesNotMatch(squash, /pending or failed check/);
   assert.doesNotMatch(squash, /merge --ff-only/);
   assert.doesNotMatch(squash, /git merge --no-ff/);
   assert.match(squash, /timon task block/);
 
   const rebase = await passingMerge('intrebase', 'rebase');
-  assert.match(rebase, /gh pr merge <n> --rebase --delete-branch/);
+  assert.match(rebase, /gh pr merge <n> --repo <owner\/name> --rebase --delete-branch/);
   assert.doesNotMatch(rebase, /--squash/);
   assert.doesNotMatch(rebase, /git merge --no-ff/);
 
   writeMeta('intwt', { integration: 'pull-request' });
   const task = mkTask('merge', 'intwt', { base: 'main' });
   const brief = worktreeDirective(task, wt(task, `timon/merge/${task.id}`, 'main'), 'feature');
-  assert.match(brief, /gh pr merge <n> --squash --delete-branch/);
+  assert.match(brief, /gh pr merge <n> --repo <owner\/name> --squash --delete-branch/);
+  assert.match(brief, /git -C \/repo worktree list --porcelain/);
+  assert.match(brief, /en file de fusion/);
+  assert.match(brief, /code-group is not supported in pull-request mode/);
+  assert.doesNotMatch(brief, /check is pending or failed/);
   assert.doesNotMatch(brief, /merge --ff-only/);
   assert.doesNotMatch(brief, /push \./);
   assert.doesNotMatch(brief, /git merge --no-ff/);
@@ -161,14 +171,29 @@ test('a coding brief in pull-request mode pushes and opens one pull request', ()
   const stored = dbApi.getTask(self.id)!;
   const selfBrief = pipelineDirective(stored);
   assert.match(selfBrief, /the user chose the fast mode/);
-  assert.match(selfBrief, /gh pr merge <n> --squash --delete-branch/);
+  assert.match(selfBrief, /gh pr merge <n> --repo <owner\/name> --squash --delete-branch/);
+  assert.match(selfBrief, /gh pr checks <n> --repo <owner\/name> --watch --fail-fast/);
+  assert.match(selfBrief, /en file de fusion/);
+  assert.match(selfBrief, /worktree list --porcelain/);
+  assert.match(selfBrief, /--json mergeCommit/);
+  assert.match(selfBrief, /Do not block because a check is pending/);
+  assert.doesNotMatch(selfBrief, /a check is pending or failed/);
   assert.doesNotMatch(selfBrief, /git merge --no-ff/);
 
-  const group = pipelineDirective(mkTask('code', 'intcode', { pipeline: 'code-group' }));
+  const groupTask = mkTask('code', 'intcode', { pipeline: 'code-group', base: 'main' });
+  const group = pipelineDirective(groupTask);
   assert.match(group, /the user chose the fast mode/);
   assert.match(group, /pull-request/);
+  assert.match(group, /not supported in that mode/);
+  assert.match(group, /code-group is not supported in pull-request mode/);
   assert.match(group, /Do not integrate locally/);
   assert.doesNotMatch(group, /git merge --no-ff/);
+  assert.doesNotMatch(group, /gh pr merge/);
+  assert.doesNotMatch(group, /gh pr create/);
+  const groupBrief = worktreeDirective(groupTask, wt(groupTask, 'timon/task/group', 'main'));
+  assert.match(groupBrief, /code-group is not supported in pull-request mode/);
+  assert.doesNotMatch(groupBrief, /gh pr create/);
+  assert.doesNotMatch(groupBrief, /git push/);
 });
 
 test('a chained fix keeps the pull-request branch as its base and does not fast-forward it', async () => {
@@ -203,10 +228,15 @@ test('a chained fix keeps the pull-request branch as its base and does not fast-
   assert.ok(merge, 'merge task created');
   assert.equal(merge.base_branch, 'timon/task/open-pr');
   const text = merge.description ?? '';
-  assert.match(text, /gh pr list --head timon\/task\/fix-1 --state open/);
-  assert.match(text, /gh pr list --head timon\/task\/open-pr --state open/);
-  assert.match(text, /gh pr merge <n> --squash --delete-branch/);
-  assert.match(text, new RegExp(`timon worktree dispose ${root.id}`));
+  assert.match(text, /gh pr list --repo <owner\/name> --head timon\/task\/fix-1 --state open/);
+  assert.match(text, /gh pr list --repo <owner\/name> --head timon\/task\/open-pr --state open/);
+  assert.match(text, /gh pr merge <n> --repo <owner\/name> --squash --delete-branch/);
+  assert.match(text, /worktree list --porcelain/);
+  assert.match(text, /gh repo view --json nameWithOwner/);
+  assert.match(text, /--json mergeCommit/);
+  assert.match(text, /en file de fusion/);
+  assert.doesNotMatch(text, new RegExp(`timon worktree dispose ${root.id}`));
+  assert.match(text, new RegExp(`Do not remove the worktree of code task \`${root.id}\``));
   assert.doesNotMatch(text, /merge --ff-only/);
   assert.doesNotMatch(text, /git merge --no-ff/);
   assert.doesNotMatch(text, /git push /);

@@ -11,6 +11,7 @@ import { AgentConfig, killAgent, listAgents } from '../../agent.js';
 import { backendIdForModel, catalogClaimsModel } from '../../backends/catalog.js';
 import { asBackendName } from '../../backends/index.js';
 import { evaluateCodeDone, inspectGitBranch, shaInBase } from '../../code-gate.js';
+import { integrationSettings } from '../../integration-mode.js';
 import { config } from '../../config/load.js';
 import { FALLBACK_SCOPES, TASK_TYPES, db, dbApi, isCodeOnlyPipeline, isFallbackScope, isTaskType, normalizeTaskStatusInput, rowVisible, type TaskDeleteOutcome, type TaskDeleteResult, type TaskRow, type TaskType } from '../../db.js';
 import { forbidden, forbiddenBody, rejectIfDenied, requireAuth, viewerFromRequest } from '../../users/identity.js';
@@ -364,6 +365,15 @@ function parseSummary(raw: unknown): string | undefined {
  * process (`stopClosedTaskMission`) — it is the process's exit that publishes
  * `mission_complete`, hence that primes the verification-loop and the doc task.
  */
+/** Same project the brief was written for. A missing slug stays `local`. */
+function integrationModeOf(task: TaskRow): 'local' | 'pull-request' {
+  let slug: string | null = task.project ?? null;
+  if (!slug && task.agent_name) {
+    try { slug = taskProjectSlug(task, loadConfig(task.agent_name)); } catch { slug = null; }
+  }
+  return integrationSettings(slug).mode;
+}
+
 /** Where git can tell whether a task's sha landed: its worktree, else its agent's repository. */
 function taskRepo(task: TaskRow): string | null {
   if (task.worktree_path && existsSync(task.worktree_path)) return task.worktree_path;
@@ -396,7 +406,10 @@ export function closeTask(
   dbApi.setTaskDoneSummary(taskId, status === 'DONE' ? opts.summary ?? null : null);
   // Prefix the report so missing work or merge evidence stays visible in review.
   if (status === 'DONE' && task.type === 'code' && task.branch_name) {
-    const git = inspectGitBranch(task.worktree_path, task.branch_name, task.base_branch, task.pipeline, task.merged_commit_sha);
+    const git = inspectGitBranch(
+      task.worktree_path, task.branch_name, task.base_branch, task.pipeline, task.merged_commit_sha,
+      integrationModeOf(task),
+    );
     const annotation = evaluateCodeDone(task, git);
     if (annotation) doneComment = doneComment ? `${annotation}\n\n${doneComment}` : annotation;
   }

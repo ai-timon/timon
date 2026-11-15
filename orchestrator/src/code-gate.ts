@@ -47,13 +47,61 @@ export function evaluateCodeDone(
   return parts.join('\n');
 }
 
-/** Git failures remain unknown, rather than claiming that work was lost. */
+/** Git failures remain unknown, rather than claiming that work was lost.
+ *  A branch name that can be a refspec: no options, no second remote, no `..`. */
+function safeBranch(name: string): boolean {
+  if (!/^[\w./-]{1,200}$/.test(name) || name.includes('..')) return false;
+  return name.split('/').every((part) => part.length > 0 && !part.startsWith('-') && !part.startsWith('.'));
+}
+
+type GitRun = (args: string[], timeout?: number) => { code: number; stdout: string };
+
+/** Local ancestry. An unknown commit is a failed merge: code-self integrated here. */
+function mergedOnLocalBase(git: GitRun, baseBranch: string, mergedSha: string): boolean | null {
+  const base = git(['rev-parse', '--verify', '--end-of-options', `${baseBranch}^{commit}`]);
+  if (base.code !== 0) return null;
+  if (!/^[0-9a-f]{7,40}$/i.test(mergedSha)) return false;
+  const commit = git(['rev-parse', '--verify', '--end-of-options', `${mergedSha}^{commit}`]);
+  if (commit.code !== 0) return false;
+  const ancestor = git(['merge-base', '--is-ancestor', commit.stdout.trim(), base.stdout.trim()]);
+  return ancestor.code === 0 ? true : ancestor.code === 1 ? false : null;
+}
+
+/**
+ * Ancestry against `origin/<base>`, not the local branch. Fetch when the
+ * remote exists; a failed fetch leaves an unfetched commit `unknown`.
+ */
+function mergedOnOrigin(git: GitRun, baseBranch: string, mergedSha: string): boolean | null {
+  if (!/^[0-9a-f]{7,40}$/i.test(mergedSha)) return false;
+  if (!safeBranch(baseBranch)) return null;
+  const remoteUrl = git(['config', '--get', 'remote.origin.url']);
+  const remoteConfigured = remoteUrl.code === 0 && remoteUrl.stdout.trim().length > 0;
+  // No remote: the remote-tracking ref already in the clone is the evidence.
+  // A configured remote that we could not refresh is not evidence against the sha.
+  let refreshed = !remoteConfigured;
+  if (remoteConfigured) {
+    const fetched = git([
+      'fetch', '--no-tags', '--', 'origin', `${baseBranch}:refs/remotes/origin/${baseBranch}`,
+    ], 10_000);
+    refreshed = fetched.code === 0;
+  }
+  const remoteRef = `refs/remotes/origin/${baseBranch}`;
+  const base = git(['rev-parse', '--verify', '--end-of-options', `${remoteRef}^{commit}`]);
+  const commit = git(['rev-parse', '--verify', '--end-of-options', `${mergedSha}^{commit}`]);
+  if (base.code !== 0 || commit.code !== 0) return null;
+  const ancestor = git(['merge-base', '--is-ancestor', commit.stdout.trim(), base.stdout.trim()]);
+  if (ancestor.code === 0) return true;
+  if (ancestor.code !== 1) return null;
+  return refreshed ? false : null;
+}
+
 export function inspectGitBranch(
   worktreePath: string | null,
   branchName: string | null,
   baseBranch: string | null,
   pipeline: TaskRow['pipeline'] = null,
   mergedSha: string | null = null,
+  integration: 'local' | 'pull-request' = 'local',
 ): GitInspection {
   const unknown: GitInspection = { commitCount: null, uncommittedFiles: [], mergedIntoBase: null };
   if (!worktreePath || !branchName || !baseBranch) return unknown;
@@ -61,20 +109,22 @@ export function inspectGitBranch(
   try {
     const host = getHost();
     // Arguments never pass through a shell; refs cannot execute commands.
-    const git = (args: string[]) => host.exec('git', args, {
+    const git: GitRun = (args, timeout = 5_000) => host.exec('git', args, {
       cwd: worktreePath,
-      timeout: 5_000,
+      timeout,
       stdio: ['ignore', 'pipe', 'ignore'],
     });
     if (pipeline === 'code-self') {
       if (!mergedSha) return unknown;
-      const base = git(['rev-parse', '--verify', '--end-of-options', `${baseBranch}^{commit}`]);
-      if (base.code !== 0) return unknown;
-      if (!/^[0-9a-f]{7,40}$/i.test(mergedSha)) return { ...unknown, mergedIntoBase: false };
-      const commit = git(['rev-parse', '--verify', '--end-of-options', `${mergedSha}^{commit}`]);
-      if (commit.code !== 0) return { ...unknown, mergedIntoBase: false };
-      const ancestor = git(['merge-base', '--is-ancestor', commit.stdout.trim(), base.stdout.trim()]);
-      return { ...unknown, mergedIntoBase: ancestor.code === 0 ? true : ancestor.code === 1 ? false : null };
+      // A pull request merges on the forge. Local `main` does not move, so it
+      // is not the base this gate checks. `origin/<base>` is, after a fetch
+      // when that remote exists. A commit this clone has not fetched is
+      // `unknown` (the same as `shaInBase`): the worktree still being here
+      // must not block a merge that only the forge has.
+      const mergedIntoBase = integration === 'pull-request'
+        ? mergedOnOrigin(git, baseBranch, mergedSha)
+        : mergedOnLocalBase(git, baseBranch, mergedSha);
+      return { ...unknown, mergedIntoBase };
     }
     const rev = git(['rev-list', '--count', 'HEAD', `^${baseBranch}`]);
     if (rev.code !== 0) return unknown;
