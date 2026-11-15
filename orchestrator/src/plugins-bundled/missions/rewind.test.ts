@@ -136,6 +136,24 @@ test('the owner rewinds and gets the removed message back', async () => {
 const undo = (id: string, auth: { cookie?: string; bearer?: string } = { cookie: ownerCookie }) =>
   call(`/api/missions/${id}/rewind/undo`, auth);
 
+test('a superadmin session is refused on someone else\'s chat and on an id that does not exist', async () => {
+  // The first account is the superadmin: scopedDb hands it every row, so the owner comparison is the only guard.
+  assert.equal(dbApi.getUserByEmail('owner@example.com')?.is_superadmin, true);
+  const m = chat();
+  const otherId = dbApi.getUserByEmail('other@example.com')!.id;
+  const theirs = randomUUID();
+  dbApi.createMission(theirs, 'rewind.agent', 'hello', { channel: 'chat' }, otherId);
+  const second = dbApi.insertEvent(theirs, 'user', { type: 'user', message: { role: 'user', content: 'theirs' } }).id;
+  dbApi.finishMission(theirs, 'completed', 0);
+  const foreign = await rewind(theirs, second);
+  const missing = await rewind(randomUUID(), m.second);
+  assert.equal(foreign.status, 403);
+  assert.deepEqual(missing.json, foreign.json, 'a foreign id and a missing id answer alike');
+  assert.equal((await undo(theirs)).status, 403);
+  assert.equal((await undo(randomUUID())).status, 403);
+  assert.equal(dbApi.getPendingRewind(theirs), null);
+});
+
 test('undo is the owner\'s only, from a session', async () => {
   const m = chat();
   assert.equal((await rewind(m.id, m.second)).status, 200);

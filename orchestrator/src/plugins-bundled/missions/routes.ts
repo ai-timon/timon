@@ -1284,18 +1284,16 @@ export function registerRoutes(
   });
 
   /** The caller's own interactive chat, or null once the refusal is answered. */
-  function rewindableChat(req: Request, res: Response): NonNullable<ReturnType<typeof dbApi.getMission>> | null {
+  function rewindableChat(req: Request, res: Response, scope: ReturnType<typeof scopedDb>): NonNullable<ReturnType<typeof dbApi.getMission>> | null {
     if (!requireAuth(req, res)) return null;
     if (!isPersonAuth(req.auth) || !req.auth.user) {
       forbidden(req, res, { kind: 'scope', reason: 'only the mission owner can rewind it, from a signed-in session' });
       return null;
     }
-    const m = dbApi.getMission(req.params.id as string);
-    if (!m) {
-      res.status(404).json(apiError('mission_not_found', 'mission not found'));
-      return null;
-    }
-    if (m.owner_user_id !== req.auth.user.id || isAutonomousMission(m) || m.parent_mission_id) {
+    // Scoped to the viewer: someone else's chat and a missing id read the same,
+    // so the 403 below never tells whether the id exists.
+    const m = scope.getMission(req.params.id as string);
+    if (!m || m.owner_user_id !== req.auth.user.id || isAutonomousMission(m) || m.parent_mission_id) {
       forbidden(req, res, { kind: 'scope', reason: 'only your own interactive chats can be rewound' });
       return null;
     }
@@ -1312,7 +1310,7 @@ export function registerRoutes(
    * event id of it).
    */
   app.post('/api/missions/:id/rewind', async (req, res) => {
-    const m = rewindableChat(req, res);
+    const m = rewindableChat(req, res, scopedDb(viewerFromRequest(req)));
     if (!m) return;
     const parsed = RewindBodySchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -1342,7 +1340,7 @@ export function registerRoutes(
    * they were. 409 once a message was sent after the rewind, or during a turn.
    */
   app.post('/api/missions/:id/rewind/undo', (req, res) => {
-    const m = rewindableChat(req, res);
+    const m = rewindableChat(req, res, scopedDb(viewerFromRequest(req)));
     if (!m) return;
     try {
       const restored = undoMissionRewind(m.id);
