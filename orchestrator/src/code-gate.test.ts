@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getHost } from './host/index.js';
@@ -176,4 +176,61 @@ test('pull-request code-self: a forge merge stays done while the worktree is sti
   const outside = inspectGitBranch(repo, 'task', 'main', pipeline, side, 'pull-request');
   assert.equal(outside.mergedIntoBase, false);
   assert.match(evaluateCodeDone({ ...task, merged_commit_sha: side }, outside)!, /not contained in base main/);
+});
+
+test('pull-request code-self: a stacked pull request is on its destination, not on the task base', (t) => {
+  const pipeline = 'code-self';
+  const repo = mkdtempSync(join(tmpdir(), 'timon-code-gate-stack-'));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const git = (...args: string[]) => {
+    const result = getHost().exec('git', args, { cwd: repo, timeout: 5_000 });
+    assert.equal(result.code, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git('init', '-b', 'main');
+  git('config', 'user.name', 'Test');
+  git('config', 'user.email', 'test@example.invalid');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'base');
+  git('checkout', '-b', 'pr-head');
+  writeFileSync(join(repo, 'feature.txt'), 'feature\n');
+  git('add', 'feature.txt');
+  git('-c', 'commit.gpgsign=false', 'commit', '-m', 'feature');
+  const feature = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/pr-head', feature);
+  git('checkout', 'main');
+  // Squash: the merge commit is new. It is not an ancestor of the pull-request head.
+  git('merge', '--squash', 'pr-head');
+  git('-c', 'commit.gpgsign=false', 'commit', '-m', 'squash onto destination');
+  const squash = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/main', squash);
+
+  const task = codeTask({
+    pipeline,
+    worktree_path: repo,
+    branch_name: 'task',
+    base_branch: 'pr-head',
+    merged_commit_sha: squash,
+  });
+  // The task base is the existing pull request's head. The squash landed on main.
+  const onTaskBase = inspectGitBranch(repo, 'task', 'pr-head', pipeline, squash, 'pull-request');
+  assert.equal(onTaskBase.mergedIntoBase, false);
+  assert.equal(onTaskBase.checkedBase, 'pr-head');
+  assert.match(evaluateCodeDone(task, onTaskBase)!, /not contained in base pr-head/);
+
+  const onDestination = inspectGitBranch(repo, 'task', 'pr-head', pipeline, squash, 'pull-request', null, 'main');
+  assert.equal(onDestination.mergedIntoBase, true);
+  assert.equal(onDestination.checkedBase, 'main');
+  assert.equal(evaluateCodeDone(task, onDestination), null);
+  // `origin/main` is the same destination. It must not be fetched as `origin/origin/main`.
+  const qualified = inspectGitBranch(repo, 'task', 'pr-head', pipeline, squash, 'pull-request', null, 'origin/main');
+  assert.equal(qualified.mergedIntoBase, true);
+  assert.equal(qualified.checkedBase, 'main');
+
+  // The feature commit sits on the pull-request head. It is not the merge onto main.
+  const featureOnDestination = inspectGitBranch(repo, 'task', 'pr-head', pipeline, feature, 'pull-request', null, 'main');
+  assert.equal(featureOnDestination.mergedIntoBase, false);
+  assert.match(
+    evaluateCodeDone({ ...task, merged_commit_sha: feature }, featureOnDestination)!,
+    /not contained in base main/,
+  );
 });

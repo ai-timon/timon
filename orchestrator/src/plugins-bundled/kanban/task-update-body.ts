@@ -49,6 +49,8 @@ export const TASK_UPDATE_FIELDS = {
   clear_fallback: z.boolean(),
   clear_permission_mode: z.boolean(),
   merged_commit_sha: z.string(),
+  /** Pull-request destination read at merge (`baseRefName`). Not stored. */
+  merged_base: z.string().max(200),
   /** A TO DO idea (number) to attach, `null` to detach; checked against the caller's scope. */
   todo_id: z.unknown(),
   /** Human summary, read only when this call closes the task as DONE. */
@@ -90,7 +92,7 @@ export function parseTaskUpdateBody(raw: unknown): { ok: true; value: TaskUpdate
 }
 
 /** What closing a task carries: `timon task done` / `timon task block` send nothing else. */
-const CLOSING_FIELDS: ReadonlySet<string> = new Set(['status', 'done_comment', 'blocked_reason', 'done_summary', 'merged_commit_sha']);
+const CLOSING_FIELDS: ReadonlySet<string> = new Set(['status', 'done_comment', 'blocked_reason', 'done_summary', 'merged_commit_sha', 'merged_base']);
 
 /**
  * A body that only closes the task (DONE or BLOCKED, with its note). The one

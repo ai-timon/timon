@@ -136,9 +136,9 @@ Tasks (Kanban backlog):
                    [--deps id1,id2] [--scheduled ISO8601]
                    [--extra-skills s1,s2] [--extra-mcp mcp1,mcp2]
                    [--allow "Bash(timon:*),Read(/tmp/*)"]
-  timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--summary TEXT]
+  timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]
   timon task block <id> --reason TEXT
-  timon task mark-as-done [id] --comment TEXT|--comment-file PATH|--comment-stdin [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]
+  timon task mark-as-done [id] --comment TEXT|--comment-file PATH|--comment-stdin [--verdict pass|changes_requested] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]
                                                closes THE current mission's task (no id to copy)
   timon task mark-merged <id> --sha SHA [--comment TEXT]
                                                branch merged outside Timon: records its merge commit
@@ -680,7 +680,7 @@ usage: timon task create --title TEXT --agent NAME [--description D] [--priority
 ### timon task done id [--comment TEXT | --comment-file PATH | --comment-stdin] …
 
 ```text
-usage: timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--summary TEXT]
+usage: timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]
 ```
 
 ### timon task mark-merged id --sha SHA [--comment TEXT]
@@ -693,7 +693,7 @@ usage: timon task mark-merged <id> --sha SHA [--comment TEXT]
 
 ```text
 usage: timon task mark-as-done [id] --comment TEXT | --comment-file PATH | --comment-stdin
-       [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]
+       [--verdict pass|changes_requested] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]
 ```
 
 ### timon task mark-as-failed [id] --reason TEXT

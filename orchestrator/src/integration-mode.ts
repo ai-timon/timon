@@ -135,7 +135,15 @@ function mergeAndShaStep(strategy: MergeStrategy): string {
     `gh pr view <n> ${GH_REPO} --json mergeCommit --jq .mergeCommit.oid`,
     '```',
     ``,
-    `A full sha means the pull request is merged and only the local branch deletion failed, because the branch was still checked out. Close DONE with \`timon task done --merged-sha\` and that sha. No sha means the forge refused: \`timon task block\` with the reason. Do not check that branch out in the main repository, and run no \`git add\`, \`git commit\`, \`git checkout\`, \`git reset\` or \`git update-ref\` there.`,
+    `Read the destination in the same moment. A pull request whose head is this task's base merges onto that destination, not onto this task's base:`,
+    ``,
+    '```bash',
+    `gh pr view <n> ${GH_REPO} --json baseRefName`,
+    '```',
+    ``,
+    `\`baseRefName\` is the branch the sha must belong to. Pass it as \`--merged-base\` on the close. The gate checks \`origin/<baseRefName>\`. It is not written on the task: \`base_ref\` stays the worktree pin.`,
+    ``,
+    `A full sha means the pull request is merged and only the local branch deletion failed, because the branch was still checked out. Close DONE with \`timon task done --merged-sha <sha> --merged-base <baseRefName>\`. No sha means the forge refused: \`timon task block\` with the reason. Do not check that branch out in the main repository, and run no \`git add\`, \`git commit\`, \`git checkout\`, \`git reset\` or \`git update-ref\` there.`,
   ].join('\n');
 }
 
@@ -253,7 +261,9 @@ export function pullRequestMergeWorktreeSection(args: {
     `sha. Past that, \`timon task block\` with the reason \`${MERGE_QUEUE_WAIT}\`. ` +
     `If \`gh pr merge\` exits non-zero, a full sha from \`gh pr view <n> ${GH_REPO} ` +
     `--json mergeCommit\` still closes the task DONE: the pull request merged and ` +
-    `only the local branch deletion failed. No merge commit means the forge refused. ` +
+    `only the local branch deletion failed. Pass \`baseRefName\` from ` +
+    `\`gh pr view <n> ${GH_REPO} --json baseRefName\` as \`--merged-base\`. ` +
+    `No merge commit means the forge refused. ` +
     `Never force.\n\n` +
     `\`code-group\` is not supported in \`pull-request\` mode. If this task consolidates ` +
     `a group, do not merge one pull request and leave the others open: \`timon task ` +
@@ -277,7 +287,7 @@ export function pullRequestCodeSelfDirective(strategy: MergeStrategy): string {
     `${waitForChecksStep()}\n\n` +
     `${mergeAndShaStep(strategy)}\n\n` +
     `Close with \`timon task done <TASK_ID> --comment "..." --merged-sha <SHA of the ` +
-    `pull request's merge commit>\`. The sha is REQUIRED: without it the task goes ` +
+    `pull request's merge commit> --merged-base <baseRefName>\`. The sha is REQUIRED: without it the task goes ` +
     `back to BLOCKED (guard against never-merged branches). Close before you remove ` +
     `any worktree. Your cwd is that worktree: removing it first makes this close ` +
     `fail, and the task never finishes.\n\n` +

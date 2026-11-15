@@ -29,6 +29,8 @@ export const parseTaskCloseBody = strictParser({
   verdict: z.unknown().optional(),
   /** Hex shape and base checked by the route. */
   merged_sha: z.unknown().optional(),
+  /** Pull-request destination (`baseRefName`). Shape checked by the route. */
+  merged_base: z.unknown().optional(),
   /** Clamped or ignored by `parseSummary`: a closing never fails on its summary. */
   summary: z.unknown().optional(),
 });

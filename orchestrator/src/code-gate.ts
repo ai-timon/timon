@@ -7,6 +7,8 @@ export type GitInspection = {
   commitCount: number | null;
   uncommittedFiles: string[];
   mergedIntoBase?: boolean | null;
+  /** Branch the pull-request gate tested (`baseRefName`, or the task base). */
+  checkedBase?: string;
 };
 
 type CodeTask = Pick<TaskRow, 'type' | 'branch_name' | 'worktree_path' | 'base_branch'
@@ -24,7 +26,8 @@ export function evaluateCodeDone(
       return `⚠️ [code-gate] No merged_sha declared for ${task.pipeline} task ${task.branch_name}.`;
     }
     if (git.mergedIntoBase === false) {
-      return `⚠️ [code-gate] Declared merged_sha ${task.merged_commit_sha} is missing or is not contained in base ${task.base_branch}.`;
+      const baseName = git.checkedBase || task.base_branch;
+      return `⚠️ [code-gate] Declared merged_sha ${task.merged_commit_sha} is missing or is not contained in base ${baseName}.`;
     }
     // An unavailable repository must not be reported as a failed merge.
     return null;
@@ -49,9 +52,31 @@ export function evaluateCodeDone(
 
 /** Git failures remain unknown, rather than claiming that work was lost.
  *  A branch name that can be a refspec: no options, no second remote, no `..`. */
-function safeBranch(name: string): boolean {
+export function isGitBranchName(name: string): boolean {
   if (!/^[\w./-]{1,200}$/.test(name) || name.includes('..')) return false;
   return name.split('/').every((part) => part.length > 0 && !part.startsWith('-') && !part.startsWith('.'));
+}
+
+/**
+ * Destination of the pull request that was merged, from `gh pr view --json
+ * baseRefName`. `origin/<name>` is the same branch: the gate already fetches
+ * `origin/<name>`, so a second `origin/` would look up a ref that does not
+ * exist and skip the check. An unusable name is `null`.
+ */
+export function normalizeMergeBase(name: string): string | null {
+  const trimmed = name.trim();
+  const bare = trimmed.startsWith('origin/') ? trimmed.slice('origin/'.length) : trimmed;
+  return bare && isGitBranchName(bare) ? bare : null;
+}
+
+/** Close-body field. Absent is `null`. A present but unusable name is a 400. */
+export function parseMergeBase(raw: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (raw === undefined || raw === null) return { ok: true, value: null };
+  if (typeof raw !== 'string') return { ok: false, error: 'merged_base must be a branch name' };
+  if (!raw.trim()) return { ok: true, value: null };
+  const name = normalizeMergeBase(raw);
+  if (!name) return { ok: false, error: 'merged_base must be a branch name' };
+  return { ok: true, value: name };
 }
 
 type GitCallOpts = { timeout?: number; env?: NodeJS.ProcessEnv };
@@ -76,7 +101,7 @@ function mergedOnLocalBase(git: GitRun, baseBranch: string, mergedSha: string): 
  */
 function mergedOnOrigin(git: GitRun, baseBranch: string, mergedSha: string): boolean | null {
   if (!/^[0-9a-f]{7,40}$/i.test(mergedSha)) return false;
-  if (!safeBranch(baseBranch)) return null;
+  if (!isGitBranchName(baseBranch)) return null;
   const remoteUrl = git(['config', '--get', 'remote.origin.url']);
   const remoteConfigured = remoteUrl.code === 0 && remoteUrl.stdout.trim().length > 0;
   // No remote: the remote-tracking ref already in the clone is the evidence.
@@ -115,6 +140,12 @@ export function inspectGitBranch(
   integration: 'local' | 'pull-request' = 'local',
   /** Ref stored on the task (`origin/<base>` or `<base>`). The local branch name is the fallback. */
   compareRef: string | null = null,
+  /**
+   * Destination of the pull request merged at close (`baseRefName`). A stacked
+   * pull request lands there, not on `origin/<task.base_branch>`. Absent keeps
+   * the task base. Not stored: `base_ref` stays the worktree pin.
+   */
+  mergeBase: string | null = null,
 ): GitInspection {
   const unknown: GitInspection = { commitCount: null, uncommittedFiles: [], mergedIntoBase: null };
   if (!worktreePath || !branchName || !baseBranch) return unknown;
@@ -137,14 +168,22 @@ export function inspectGitBranch(
     if (pipeline === 'code-self') {
       if (!mergedSha) return unknown;
       // A pull request merges on the forge. Local `main` does not move, so it
-      // is not the base this gate checks. `origin/<base>` is, after a fetch
-      // when that remote exists. A commit this clone still does not have after
-      // that fetch, or when no remote is configured, is not a merge. It stays
-      // unknown only when the fetch failed: the sha may exist only on the forge.
+      // is not the base this gate checks. The close may name the pull request's
+      // destination (`baseRefName`): a stacked pull request lands there, not on
+      // `origin/<task base>`. An unusable name falls back to the task base.
+      // A commit this clone still does not have after the fetch, or when no
+      // remote is configured, is not a merge. It stays unknown only when the
+      // fetch failed: the sha may exist only on the forge.
+      const named = mergeBase ? normalizeMergeBase(mergeBase) : null;
+      const destination = integration === 'pull-request' && named ? named : baseBranch;
       const mergedIntoBase = integration === 'pull-request'
-        ? mergedOnOrigin(git, baseBranch, mergedSha)
+        ? mergedOnOrigin(git, destination, mergedSha)
         : mergedOnLocalBase(git, counted, mergedSha);
-      return { ...unknown, mergedIntoBase };
+      return {
+        ...unknown,
+        mergedIntoBase,
+        ...(integration === 'pull-request' ? { checkedBase: destination } : {}),
+      };
     }
     const rev = git(['rev-list', '--count', 'HEAD', `^${counted}`]);
     if (rev.code !== 0) return unknown;

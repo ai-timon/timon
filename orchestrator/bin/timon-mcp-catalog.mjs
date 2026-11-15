@@ -326,6 +326,9 @@ const TOOLS = [
       '`comment` is mandatory: it is the work return the orchestrator reads. ' +
       'For a `review` task, also pass `verdict`. For a `merge` (or a ' +
       '`code-self` pipeline you merged yourself), pass `merged_sha`. ' +
+      'When that merge is a pull request, also pass `merged_base`: the ' +
+      '`baseRefName` from `gh pr view <n> --json baseRefName`. A stacked ' +
+      'pull request lands on that branch, and the gate checks the sha there. ' +
       'Pass `summary` too: the one line the human reads in the chat.',
     inputSchema: {
       type: 'object',
@@ -357,6 +360,14 @@ const TOOLS = [
             'Merge commit sha (7-40 hex, prefer the full 40 from `git rev-parse HEAD`). ' +
             'Mandatory to close a `merge` task and a `code-self` pipeline: without it ' +
             'the guard sends the task back to BLOCKED.',
+        },
+        merged_base: {
+          type: 'string',
+          description:
+            'Destination branch of the pull request just merged (`gh pr view ' +
+            '<n> --json baseRefName`). The gate checks the sha on `origin/<merged_base>`. ' +
+            'Required when a stacked pull request\'s head is this task\'s base: the ' +
+            'merge commit is not on `origin/<task base>`. Not stored on the task.',
         },
         id: {
           type: 'string',
@@ -1457,6 +1468,7 @@ async function runTool(rawName, args, ctx) {
       const body = { outcome: 'done', comment: args.comment };
       if (args.verdict !== undefined) body.verdict = args.verdict;
       if (args.merged_sha !== undefined) body.merged_sha = args.merged_sha;
+      if (args.merged_base !== undefined) body.merged_base = args.merged_base;
       if (args.summary !== undefined) body.summary = args.summary;
       if (args.id !== undefined) body.id = args.id;
       const r = await call('POST', '/api/tasks/close', body);

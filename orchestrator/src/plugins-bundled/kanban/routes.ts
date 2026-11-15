@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { AgentConfig, killAgent, listAgents } from '../../agent.js';
 import { backendIdForModel, catalogClaimsModel } from '../../backends/catalog.js';
 import { asBackendName } from '../../backends/index.js';
-import { evaluateCodeDone, inspectGitBranch, shaInBase } from '../../code-gate.js';
+import { evaluateCodeDone, inspectGitBranch, parseMergeBase, shaInBase } from '../../code-gate.js';
 import { pinnedBaseRef, pinnedIntegration } from '../../integration-mode.js';
 import { config } from '../../config/load.js';
 import { FALLBACK_SCOPES, TASK_TYPES, db, dbApi, isCodeOnlyPipeline, isFallbackScope, isTaskType, normalizeTaskStatusInput, rowVisible, type TaskDeleteOutcome, type TaskDeleteResult, type TaskRow, type TaskType } from '../../db.js';
@@ -388,7 +388,7 @@ export function closeTask(
   taskId: string,
   task: TaskRow,
   status: 'DONE' | 'BLOCKED',
-  opts: { doneComment?: string; blockedReason?: string; summary?: string },
+  opts: { doneComment?: string; blockedReason?: string; summary?: string; mergeBase?: string | null },
 ): void {
   let doneComment = opts.doneComment;
   // Before the transition, like the merge sha: `task_done` builds the return
@@ -401,6 +401,7 @@ export function closeTask(
       task.worktree_path, task.branch_name, task.base_branch, task.pipeline, task.merged_commit_sha,
       pinnedIntegration(task).mode,
       pinnedBaseRef(task),
+      opts.mergeBase ?? null,
     );
     const annotation = evaluateCodeDone(task, git);
     if (annotation) doneComment = doneComment ? `${annotation}\n\n${doneComment}` : annotation;
@@ -1193,6 +1194,11 @@ export function registerRoutes(app: Router): void {
       }
       verdict = body.verdict;
     }
+    const mergeBase = parseMergeBase(body.merged_base);
+    if (!mergeBase.ok) {
+      res.status(400).json({ error: mergeBase.error });
+      return;
+    }
     if (body.merged_sha !== undefined) {
       if (typeof body.merged_sha !== 'string' || !MERGED_SHA_RE.test(body.merged_sha)) {
         res.status(400).json({ error: 'merged_sha must be 7-40 hex chars' });
@@ -1212,7 +1218,11 @@ export function registerRoutes(app: Router): void {
     const doneComment = verdict && !/^verdict\s*[:=]/i.test(comment)
       ? `verdict: ${verdict}\n\n${comment}`
       : comment;
-    closeTask(taskId, task, 'DONE', { doneComment, summary: parseSummary(body.summary) });
+    closeTask(taskId, task, 'DONE', {
+      doneComment,
+      summary: parseSummary(body.summary),
+      mergeBase: mergeBase.value,
+    });
     res.json({ task: scope.getTask(taskId) });
   });
 
@@ -1347,6 +1357,11 @@ export function registerRoutes(app: Router): void {
     // The merge sha's shape and base, checked with the rest: every refusal
     // comes before the first write, so a 400 or 409 leaves the task untouched.
     const sha = typeof body.merged_commit_sha === 'string' ? body.merged_commit_sha : null;
+    const mergeBase = parseMergeBase(body.merged_base);
+    if (!mergeBase.ok) {
+      res.status(400).json({ error: mergeBase.error });
+      return;
+    }
     if (sha !== null) {
       if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
         res.status(400).json({ error: 'merged_commit_sha must be 7-40 hex chars' });
@@ -1397,6 +1412,7 @@ export function registerRoutes(app: Router): void {
           doneComment: body.done_comment ?? undefined,
           blockedReason: body.blocked_reason ?? undefined,
           summary: parseSummary(body.done_summary),
+          mergeBase: mergeBase.value,
         });
       } else {
         dbApi.updateTaskStatus(req.params.id, nextStatus as Parameters<typeof dbApi.updateTaskStatus>[1], {
