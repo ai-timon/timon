@@ -1,7 +1,12 @@
 /**
  * Pull-request worktrees start from `origin/<base>` after a fetch. Local mode
  * stays on the local ref and does not fetch. A failed fetch falls back to the
- * local base and warns, instead of failing the task.
+ * local base and warns, instead of failing the task, when no remote ref is
+ * stored yet.
+ *
+ * A requeued pull-request task whose frozen ref is `origin/<base>` does not
+ * use that cache when the fetch fails. The refresh fails, and the brief says
+ * the remote base could not be re-read.
  *
  * A detached pull-request branch is refreshed from that same ref when the task
  * is requeued. A refresh that fails without a conflict tells the agent to
@@ -185,6 +190,53 @@ test('a detached pull-request branch picks up a later origin commit when the tas
     assert.equal(existsSync(join(again.path, 'task.txt')), true);
     assert.equal(git(again.path, 'merge-base', '--is-ancestor', laterSha, 'HEAD'), '');
     assert.equal(git(local, 'rev-parse', 'main'), localSha);
+  } finally {
+    if (info) await disposeWorktree(info, true);
+    rmSync(join(local, '..'), { recursive: true, force: true });
+    rmSync(origin, { recursive: true, force: true });
+  }
+});
+
+test('a requeued pull-request task fails the refresh when the pinned remote cannot be fetched', async () => {
+  const { origin, local, remoteSha } = forgeAhead();
+  const slug = `unread-${randomUUID().slice(0, 8)}`;
+  writeMeta(slug, { integration: 'pull-request' });
+  const agent = `unread.coder.${randomUUID().slice(0, 8)}`;
+  mkAgent(agent, local);
+  const id = codeTask(agent, slug);
+  let info: WorktreeInfo | null = null;
+  try {
+    info = await resolveWorktree(dbApi.getTask(id)!);
+    assert.ok(info);
+    assert.equal(dbApi.getTask(id)!.base_ref, 'origin/main');
+    assert.equal(git(info.path, 'rev-parse', 'HEAD'), remoteSha);
+    const head = git(info.path, 'rev-parse', 'HEAD');
+    // The forge moved, and this clone never fetched that commit. The cached
+    // `origin/main` is already an ancestor of HEAD, which is what used to
+    // come back as up-to-date once the fetch failed.
+    pushFile(origin, 'later.txt', 'unreachable\n');
+    git(info.path, 'remote', 'set-url', 'origin', 'http://127.0.0.1:9/timon-missing.git');
+
+    const again = await resolveWorktree(dbApi.getTask(id)!);
+    assert.ok(again);
+    info = again;
+    const brief = worktreeDirective(dbApi.getTask(id)!, again);
+    assert.match(brief, /NOT brought up to date/);
+    assert.match(brief, /remote base `origin\/main` could not be re-read/);
+    assert.match(brief, /could not re-read the remote base origin\/main/);
+    assert.doesNotMatch(brief, /up-to-date/);
+    assert.doesNotMatch(brief, /git merge/);
+    assert.equal(existsSync(join(again.path, 'later.txt')), false);
+    assert.equal(git(again.path, 'rev-parse', 'HEAD'), head);
+
+    const direct = await refreshWorktreeBase(again.path, 'main', 'pull-request', 'origin/main');
+    assert.equal(direct.status, 'failed');
+    assert.notEqual(direct.status, 'up-to-date');
+    if (direct.status === 'failed') {
+      assert.equal(direct.remoteUnread, true);
+      assert.equal(direct.ref, 'origin/main');
+    }
+    assert.equal(git(again.path, 'rev-parse', 'HEAD'), head);
   } finally {
     if (info) await disposeWorktree(info, true);
     rmSync(join(local, '..'), { recursive: true, force: true });

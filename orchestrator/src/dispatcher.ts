@@ -379,6 +379,20 @@ export function worktreeDirective(
       `the conflict with a blanket \`git checkout --ours\` or with \`git reset\`: ` +
       `you would erase work other tasks already merged.`,
     );
+  } else if (refresh?.status === 'failed' && refresh.remoteUnread) {
+    // The frozen remote ref was not fetched. Merging the cached name would
+    // replay whatever this clone last saw, which is how a failed fetch used
+    // to come back as up to date.
+    const ref = refresh.ref;
+    parts.push(
+      `\n\n## Your branch was NOT brought up to date\n\n` +
+      `The remote base \`${ref}\` could not be re-read, so the refresh failed. ` +
+      `The cached ref was not compared and is not current. Do not merge it: ` +
+      `it may be behind the forge.\n\n` +
+      `\`\`\`text\n${refresh.reason}\n\`\`\`\n\n` +
+      `Reach the remote and start again. If you cannot, \`timon task block\` ` +
+      `with that reason rather than working on a base that was not re-read.`,
+    );
   } else if (refresh?.status === 'failed') {
     // `refresh.ref` is the ref the refresh merged (`origin/<base>` when the
     // pull-request fetch worked). The local base name can be behind that ref.

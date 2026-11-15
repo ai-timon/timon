@@ -178,10 +178,17 @@ function isRemoteBaseName(name: string): boolean {
 
 /**
  * `origin/<base>` after `git fetch origin <base>`, or null when that fetch
- * cannot be used. A failure is a warning, never a hard error: the caller
- * keeps the local base. `local` mode does not call this.
+ * cannot be used. `fallback: 'local'` (the default) warns and lets the caller
+ * keep the local base. `fallback: 'none'` is a frozen `origin/<base>`: the
+ * caller fails the refresh and must not read the cached ref. `local` mode
+ * does not call this.
  */
-async function fetchedRemoteBase(cwd: string, base: string): Promise<string | null> {
+async function fetchedRemoteBase(
+  cwd: string,
+  base: string,
+  fallback: 'local' | 'none' = 'local',
+): Promise<string | null> {
+  const tail = fallback === 'none' ? 'the remote base was not re-read' : 'using the local base';
   if (!isRemoteBaseName(base)) return null;
   try {
     await exec('git', ['-C', cwd, 'fetch', '--no-tags', '--', 'origin', base], {
@@ -190,7 +197,7 @@ async function fetchedRemoteBase(cwd: string, base: string): Promise<string | nu
       env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
     });
   } catch (error) {
-    console.warn(`[worktree] could not fetch origin ${base} (${(error as Error).message}); using the local base`);
+    console.warn(`[worktree] could not fetch origin ${base} (${(error as Error).message}); ${tail}`);
     return null;
   }
   const remote = `origin/${base}`;
@@ -198,7 +205,7 @@ async function fetchedRemoteBase(cwd: string, base: string): Promise<string | nu
     await exec('git', ['-C', cwd, 'rev-parse', '--verify', '--end-of-options', `${remote}^{commit}`], { timeout: 5_000 });
     return remote;
   } catch (error) {
-    console.warn(`[worktree] origin/${base} is not available after fetch (${(error as Error).message}); using the local base`);
+    console.warn(`[worktree] origin/${base} is not available after fetch (${(error as Error).message}); ${tail}`);
     return null;
   }
 }
@@ -297,8 +304,9 @@ export type RefreshOutcome =
    *  without a conflict). Not fatal: the caller carries on with the base as it is, and
    *  any half-done merge is aborted so the agent does not start inside it.
    *  `ref` is the ref this attempt merged, so the brief retries that one and
-   *  not a stale local name. */
-  | { status: 'failed'; reason: string; ref: string };
+   *  not a stale local name. `remoteUnread` means the frozen `origin/<base>`
+   *  could not be fetched: the cached ref was not compared. */
+  | { status: 'failed'; reason: string; ref: string; remoteUnread?: true };
 
 /**
  * Brings an existing worktree up to date with its base.
@@ -324,7 +332,7 @@ export async function refreshWorktreeBase(
   /** `pull-request` merges `origin/<base>` after a fetch. `local` merges `base`.
    *  Ignored when `pinnedRef` is set: that ref is the one the task stored. */
   integration: 'local' | 'pull-request' = 'local',
-  /** Ref frozen on the task. `origin/…` is fetched, then merged. A failed fetch does not fall back to the local base. */
+  /** Ref frozen on the task. `origin/…` is fetched, then merged. A failed fetch fails the refresh and does not compare the cached ref. */
   pinnedRef?: string | null,
 ): Promise<RefreshOutcome> {
   if (!existsSync(worktreePath) || !(await isGitRepo(worktreePath))) {
@@ -332,10 +340,24 @@ export async function refreshWorktreeBase(
   }
   let source: string;
   if (pinnedRef) {
-    // Update the remote-tracking ref the task already chose. The local branch is not a substitute.
+    // A frozen `origin/<base>` is re-read before any comparison. The cached
+    // remote-tracking ref is not a substitute: it may already be an ancestor
+    // of HEAD, and treating that as up to date would hide a fetch that failed.
     const remoteBranch = /^origin\/(.+)$/.exec(pinnedRef)?.[1];
-    if (remoteBranch) await fetchedRemoteBase(worktreePath, remoteBranch);
-    source = pinnedRef;
+    if (remoteBranch) {
+      const fetched = await fetchedRemoteBase(worktreePath, remoteBranch, 'none');
+      if (!fetched) {
+        return {
+          status: 'failed',
+          reason: `could not re-read the remote base ${pinnedRef}`,
+          ref: pinnedRef,
+          remoteUnread: true,
+        };
+      }
+      source = fetched;
+    } else {
+      source = pinnedRef;
+    }
   } else if (integration === 'pull-request') {
     // Callers that have not stored a ref yet (tests, a task from before the pin
     // that still passes the mode). A failed fetch keeps the local base.
