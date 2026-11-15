@@ -2871,7 +2871,8 @@ const setTaskBaseBranchStmt = db.prepare(
 const setTaskIntegrationStmt = db.prepare(
   `UPDATE tasks SET integration_mode = ?, integration_strategy = ?, base_ref = ?, updated_at = ? WHERE id = ?`,
 );
-// The first dispatch wins. A later reattach must not replace the ref the branch was started from.
+// The first `origin/…` ref wins. A failed fetch leaves the column null, so a
+// later dispatch can still store it. A local base name is never written.
 const setTaskBaseRefStmt = db.prepare(
   `UPDATE tasks SET base_ref = ?, updated_at = ? WHERE id = ? AND base_ref IS NULL`,
 );

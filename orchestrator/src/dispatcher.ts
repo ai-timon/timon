@@ -317,8 +317,12 @@ function taskIntegration(task: TaskRow): { mode: IntegrationMode; strategy: Merg
   return pinnedIntegration(task);
 }
 
-function rememberBaseRef(taskId: string, startedFrom: string | null | undefined): void {
-  if (startedFrom) dbApi.setTaskBaseRef(taskId, startedFrom);
+function rememberBaseRef(taskId: string, ref: string | null | undefined): void {
+  // Only an `origin/…` ref is stored. Writing the local base name would win
+  // the first write, and a later dispatch would never fetch again. A failed
+  // fetch leaves the column null, so the next one can still pin `origin/<base>`.
+  // Local mode never produces an `origin/…` ref, so this does not record one.
+  if (ref?.startsWith('origin/')) dbApi.setTaskBaseRef(taskId, ref);
 }
 
 /** Keeps a refresh outcome for the brief and logs it. A refusal without
@@ -543,10 +547,15 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // failure leaves the task starting on its base as-is, which is
       // still preferable to not launching it at all.
       lastRefresh.delete(task.id);
-      // The ref stored on the task. A row from before the pin has none: local base, no fetch.
+      // The ref stored on the task. A row from before the pin has none: local
+      // base, no fetch. A pull-request row whose fetch has not succeeded yet
+      // also has none: this refresh tries again, and stores `origin/<base>`
+      // only when that fetch works.
+      const mode = taskIntegration(task).mode;
       const outcome = await refreshWorktreeBase(
-        task.worktree_path, task.base_branch, taskIntegration(task).mode, task.base_ref,
+        task.worktree_path, task.base_branch, mode, task.base_ref,
       );
+      rememberBaseRef(task.id, outcome.ref);
       await prepareWorktreeDependencies(cfg.cwd, task.worktree_path);
       recordRefresh(task.id, task.base_branch, outcome);
       return {
@@ -575,13 +584,18 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       rememberBaseRef(task.id, info.startedFrom);
       // Detach keeps `branch_name` and drops the folder, so the next dispatch
       // lands here and reattaches that branch. A live folder is refreshed
-      // above. A reattached branch is refreshed from the ref stored the first
-      // time, not from whatever the project says now. A new branch already
+      // above. Local mode stops here: reattaching does not merge the base,
+      // which is what this path did before the remote base. Pull-request mode
+      // refreshes a reattached branch from the stored `origin/…` ref, or tries
+      // the fetch again when that ref is still unset. A new branch already
       // started there and is not refreshed a second time.
-      const pinnedRef = task.base_ref ?? info.startedFrom ?? null;
-      if (pinnedRef && task.branch_name) {
+      if (mode === 'pull-request' && task.branch_name) {
         lastRefresh.delete(task.id);
-        const outcome = await refreshWorktreeBase(info.path, info.base, mode, pinnedRef);
+        const pinned = task.base_ref ?? info.startedFrom ?? null;
+        const outcome = await refreshWorktreeBase(
+          info.path, info.base, mode, pinned?.startsWith('origin/') ? pinned : null,
+        );
+        rememberBaseRef(task.id, outcome.ref);
         await prepareWorktreeDependencies(cfg.cwd, info.path);
         recordRefresh(task.id, info.base, outcome);
       }
@@ -616,9 +630,16 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       dbApi.setTaskWorktree(task.id, info.path, info.branch, base);
       rememberBaseRef(task.id, info.startedFrom);
       // Idempotent: on re-spawn the worktree already exists and may date
-      // from an earlier base — same refresh as for a coder, from the stored ref.
-      const pinnedRef = task.base_ref ?? info.startedFrom ?? null;
-      recordRefresh(task.id, base, await refreshWorktreeBase(info.path, base, mode, pinnedRef));
+      // from an earlier base — same refresh as for a coder, from the stored
+      // `origin/…` ref. A local name is not passed as a pin: local mode merges
+      // its base, and a pull-request fetch that has not succeeded yet is tried
+      // again here.
+      const pinned = task.base_ref ?? info.startedFrom ?? null;
+      const outcome = await refreshWorktreeBase(
+        info.path, base, mode, pinned?.startsWith('origin/') ? pinned : null,
+      );
+      rememberBaseRef(task.id, outcome.ref);
+      recordRefresh(task.id, base, outcome);
       console.log(`[dispatcher] worktree merge ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
     } catch (err) {

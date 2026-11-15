@@ -50,7 +50,9 @@ export async function createTaskWorktree(task: TaskRow, base?: string): Promise<
   try {
     const info = await createWorktree(task.id, cfg.cwd, base, undefined, worktreeIntegration(task));
     dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
-    if (info.startedFrom) dbApi.setTaskBaseRef(task.id, info.startedFrom);
+    // Same rule as the dispatcher: only `origin/…` is stored. A failed fetch
+    // leaves the column unset, and local mode does not record its base name.
+    if (info.startedFrom?.startsWith('origin/')) dbApi.setTaskBaseRef(task.id, info.startedFrom);
     return info;
   } catch (err) {
     throw new WorktreeServiceError('failed', (err as Error).message);

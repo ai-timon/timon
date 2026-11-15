@@ -38,7 +38,11 @@ export type WorktreeInfo = {
   /** Branch name the briefs name (`main`), not the remote-tracking ref. */
   base: string;
   sourceRepo: string;
-  /** Ref a new branch was created from (`origin/<base>` or `<base>`). Absent when an existing branch was reattached. */
+  /** Ref a new branch was created from, when that ref may be stored.
+   *  `origin/<base>` after a pull-request fetch, or `<base>` in local mode.
+   *  Absent when an existing branch was reattached, and when a pull-request
+   *  fetch failed: the branch still starts at the local base, but that local
+   *  name is not returned, so the caller does not store it. */
   startedFrom?: string | null;
 };
 
@@ -260,13 +264,13 @@ export async function createWorktree(
   const exists = await branchExists(repoCwd, branch);
   // Only a new branch starts from the forge. Reattaching checks out the commits
   // already on the task branch; the dispatcher then refreshes that branch from
-  // the ref it stored the first time. A failed fetch keeps the local base, and
-  // that local name is what gets stored: it is the ref this branch used.
-  const startedFrom = exists
-    ? null
-    : integration === 'pull-request'
-      ? (await fetchedRemoteBase(repoCwd, baseRef)) ?? baseRef
-      : baseRef;
+  // the `origin/…` ref it stored. A failed fetch still creates the branch at
+  // the local base, but `startedFrom` stays unset: storing that local name
+  // would freeze the task there, and the next dispatch would not fetch again.
+  const remote = !exists && integration === 'pull-request'
+    ? await fetchedRemoteBase(repoCwd, baseRef)
+    : null;
+  const startedFrom = exists ? null : integration === 'pull-request' ? remote : baseRef;
   const addArgs = exists
     ? ['worktree', 'add', path, branch]
     : ['worktree', 'add', '-b', branch, path, startedFrom ?? baseRef];
@@ -292,14 +296,15 @@ export function integrateMergeMessage(base: string): string {
 
 /** What an attempt to bring a worktree up to date with its base gave. */
 export type RefreshOutcome =
-  /** The branch already contained the whole base — nothing moved. */
-  | { status: 'up-to-date' }
+  /** The branch already contained the whole base — nothing moved.
+   *  `ref` is the ref that was compared (`origin/<base>` when the fetch worked). */
+  | { status: 'up-to-date'; ref: string }
   /** The base was integrated cleanly into the branch. */
-  | { status: 'merged'; base: string }
+  | { status: 'merged'; base: string; ref: string }
   /** Conflicts: the merge is left AS IS in the worktree, for the agent to
    *  settle. It is not aborted — an agent coding on a stale base
    *  produces work that will overwrite the others' at the final merge. */
-  | { status: 'conflict'; base: string; files: string[] }
+  | { status: 'conflict'; base: string; files: string[]; ref: string }
   /** Operation impossible (worktree missing, unknown base, merge refused by git
    *  without a conflict). Not fatal: the caller carries on with the base as it is, and
    *  any half-done merge is aborted so the agent does not start inside it.
@@ -371,7 +376,7 @@ export async function refreshWorktreeBase(
     await exec('git', ['-C', worktreePath, 'merge-base', '--is-ancestor', source, 'HEAD'], {
       timeout: 10_000,
     });
-    return { status: 'up-to-date' };
+    return { status: 'up-to-date', ref: source };
   } catch {
     /* not an ancestor → there is indeed something to integrate */
   }
@@ -381,7 +386,7 @@ export async function refreshWorktreeBase(
       ['-C', worktreePath, 'merge', '--no-edit', '-m', refreshMergeMessage(base), source],
       { timeout: 120_000 },
     );
-    return { status: 'merged', base };
+    return { status: 'merged', base, ref: source };
   } catch (err) {
     // A failing merge leaves the index in a conflicted state. The files
     // concerned are listed so that the agent knows where to look without fumbling.
@@ -406,7 +411,7 @@ export async function refreshWorktreeBase(
       // succeed as a no-op and leave the task behind the forge.
       return { status: 'failed', reason: mergeFailureReason(err), ref: source };
     }
-    return { status: 'conflict', base, files };
+    return { status: 'conflict', base, files, ref: source };
   }
 }
 

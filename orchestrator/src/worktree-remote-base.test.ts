@@ -1,15 +1,17 @@
 /**
  * Pull-request worktrees start from `origin/<base>` after a fetch. Local mode
  * stays on the local ref and does not fetch. A failed fetch falls back to the
- * local base and warns, instead of failing the task, when no remote ref is
- * stored yet.
+ * local base and warns, instead of failing the task. `base_ref` stays unset,
+ * so the next dispatch tries the fetch again and stores `origin/<base>` when
+ * it succeeds.
  *
  * A requeued pull-request task whose frozen ref is `origin/<base>` does not
  * use that cache when the fetch fails. The refresh fails, and the brief says
  * the remote base could not be re-read.
  *
  * A detached pull-request branch is refreshed from that same ref when the task
- * is requeued. A refresh that fails without a conflict tells the agent to
+ * is requeued. A detached local branch is not: reattaching it creates no merge
+ * commit. A refresh that fails without a conflict tells the agent to
  * retry `origin/<base>` in pull-request mode, and the local base in local mode.
  */
 import './test-home.js';
@@ -125,6 +127,37 @@ test('a failed fetch in pull-request mode keeps the local base and warns', async
   }
 });
 
+test('a failed first fetch leaves base_ref unset, and the next dispatch pins origin/main', async () => {
+  const { origin, local, localSha, remoteSha } = forgeAhead();
+  const slug = `retry-fetch-${randomUUID().slice(0, 8)}`;
+  writeMeta(slug, { integration: 'pull-request' });
+  const agent = `retry.fetch.${randomUUID().slice(0, 8)}`;
+  mkAgent(agent, local);
+  const id = codeTask(agent, slug);
+  let info: WorktreeInfo | null = null;
+  try {
+    git(local, 'remote', 'set-url', 'origin', 'http://127.0.0.1:9/timon-missing.git');
+    info = await resolveWorktree(dbApi.getTask(id)!);
+    assert.ok(info);
+    assert.equal(dbApi.getTask(id)!.base_ref, null);
+    assert.equal(git(info.path, 'rev-parse', 'HEAD'), localSha);
+    assert.equal(existsSync(join(info.path, 'from-origin.txt')), false);
+
+    git(local, 'remote', 'set-url', 'origin', origin);
+    const again = await resolveWorktree(dbApi.getTask(id)!);
+    assert.ok(again);
+    info = again;
+    assert.equal(dbApi.getTask(id)!.base_ref, 'origin/main');
+    assert.equal(existsSync(join(again.path, 'from-origin.txt')), true);
+    assert.equal(git(again.path, 'merge-base', '--is-ancestor', remoteSha, 'HEAD'), '');
+    assert.equal(git(local, 'rev-parse', 'main'), localSha);
+  } finally {
+    if (info) await disposeWorktree(info, true);
+    rmSync(join(local, '..'), { recursive: true, force: true });
+    rmSync(origin, { recursive: true, force: true });
+  }
+});
+
 function mkAgent(name: string, cwd: string): void {
   mkdirSync(agentDir(name), { recursive: true });
   writeFileSync(join(agentDir(name), 'config.json'), JSON.stringify({ cwd, role: 'coder' }));
@@ -194,6 +227,54 @@ test('a detached pull-request branch picks up a later origin commit when the tas
     if (info) await disposeWorktree(info, true);
     rmSync(join(local, '..'), { recursive: true, force: true });
     rmSync(origin, { recursive: true, force: true });
+  }
+});
+
+test('a reattached local task receives no merge commit', async () => {
+  const repo = mkdtempSync(join(tmpdir(), 'timon-wt-local-reattach-'));
+  const slug = `local-reattach-${randomUUID().slice(0, 8)}`;
+  writeMeta(slug, { integration: 'local' });
+  const agent = `local.reattach.${randomUUID().slice(0, 8)}`;
+  mkAgent(agent, repo);
+  const id = codeTask(agent, slug);
+  let info: WorktreeInfo | null = null;
+  try {
+    execFileSync('git', ['init', '-q', '-b', 'main', repo]);
+    git(repo, 'config', 'user.email', 'test@example.invalid');
+    git(repo, 'config', 'user.name', 'Test');
+    writeFileSync(join(repo, 'local.txt'), 'local\n');
+    git(repo, 'add', 'local.txt');
+    git(repo, 'commit', '-qm', 'local base');
+
+    info = await resolveWorktree(dbApi.getTask(id)!);
+    assert.ok(info);
+    assert.equal(dbApi.getTask(id)!.integration_mode, 'local');
+    assert.equal(dbApi.getTask(id)!.base_ref, null);
+    writeFileSync(join(info.path, 'task.txt'), 'kept\n');
+    git(info.path, 'add', 'task.txt');
+    git(info.path, 'commit', '-qm', 'task work');
+    const head = git(info.path, 'rev-parse', 'HEAD');
+
+    await releaseWorktreeFolder(info.path);
+    dbApi.detachTaskWorktree(id);
+
+    writeFileSync(join(repo, 'later.txt'), 'on local main\n');
+    git(repo, 'add', 'later.txt');
+    git(repo, 'commit', '-qm', 'local main moved');
+
+    const again = await resolveWorktree(dbApi.getTask(id)!);
+    assert.ok(again);
+    info = again;
+    assert.equal(git(again.path, 'rev-parse', 'HEAD'), head);
+    assert.equal(git(again.path, 'rev-list', '--merges', 'HEAD'), '');
+    assert.equal(existsSync(join(again.path, 'later.txt')), false);
+    assert.equal(existsSync(join(again.path, 'task.txt')), true);
+    assert.equal(dbApi.getTask(id)!.base_ref, null);
+    const brief = worktreeDirective(dbApi.getTask(id)!, again);
+    assert.doesNotMatch(brief, /brought up to date/);
+  } finally {
+    if (info) await disposeWorktree(info, true);
+    rmSync(repo, { recursive: true, force: true });
   }
 });
 
