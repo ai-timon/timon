@@ -35,8 +35,11 @@ export type WorktreeInfo = {
   taskId: string;
   path: string;
   branch: string;
+  /** Branch name the briefs name (`main`), not the remote-tracking ref. */
   base: string;
   sourceRepo: string;
+  /** Ref a new branch was created from (`origin/<base>` or `<base>`). Absent when an existing branch was reattached. */
+  startedFrom?: string | null;
 };
 
 /** Share installed dependencies for tracked packages, without installing or replacing anything. */
@@ -239,7 +242,7 @@ export async function createWorktree(
   if (existsSync(path) && (await isGitRepo(path))) {
     const existingBase = base ?? (await currentBranch(repoCwd)) ?? 'HEAD';
     await prepareWorktreeDependencies(repoCwd, path);
-    return { taskId, path, branch, base: existingBase, sourceRepo: repoCwd };
+    return { taskId, path, branch, base: existingBase, sourceRepo: repoCwd, startedFrom: null };
   }
   mkdirSync(WORKTREES_ROOT, { recursive: true });
   const baseRef = base ?? (await currentBranch(repoCwd)) ?? 'HEAD';
@@ -249,17 +252,20 @@ export async function createWorktree(
   // reattach to the existing branch rather than forge a new one.
   const exists = await branchExists(repoCwd, branch);
   // Only a new branch starts from the forge. Reattaching checks out the commits
-  // already on the task branch; in pull-request mode the dispatcher then
-  // refreshes that branch. A failed fetch keeps the local base.
-  const startRef = !exists && integration === 'pull-request'
-    ? (await fetchedRemoteBase(repoCwd, baseRef)) ?? baseRef
-    : baseRef;
+  // already on the task branch; the dispatcher then refreshes that branch from
+  // the ref it stored the first time. A failed fetch keeps the local base, and
+  // that local name is what gets stored: it is the ref this branch used.
+  const startedFrom = exists
+    ? null
+    : integration === 'pull-request'
+      ? (await fetchedRemoteBase(repoCwd, baseRef)) ?? baseRef
+      : baseRef;
   const addArgs = exists
     ? ['worktree', 'add', path, branch]
-    : ['worktree', 'add', '-b', branch, path, startRef];
+    : ['worktree', 'add', '-b', branch, path, startedFrom ?? baseRef];
   await exec('git', ['-C', repoCwd, ...addArgs], { timeout: 30_000 });
   await prepareWorktreeDependencies(repoCwd, path);
-  return { taskId, path, branch, base: baseRef, sourceRepo: repoCwd };
+  return { taskId, path, branch, base: baseRef, sourceRepo: repoCwd, startedFrom };
 }
 
 /**
@@ -315,16 +321,28 @@ export type RefreshOutcome =
 export async function refreshWorktreeBase(
   worktreePath: string,
   base: string,
-  /** `pull-request` merges `origin/<base>` after a fetch. `local` merges `base`. */
+  /** `pull-request` merges `origin/<base>` after a fetch. `local` merges `base`.
+   *  Ignored when `pinnedRef` is set: that ref is the one the task stored. */
   integration: 'local' | 'pull-request' = 'local',
+  /** Ref frozen on the task. `origin/…` is fetched, then merged. A failed fetch does not fall back to the local base. */
+  pinnedRef?: string | null,
 ): Promise<RefreshOutcome> {
   if (!existsSync(worktreePath) || !(await isGitRepo(worktreePath))) {
-    return { status: 'failed', reason: `worktree missing or invalid: ${worktreePath}`, ref: base };
+    return { status: 'failed', reason: `worktree missing or invalid: ${worktreePath}`, ref: pinnedRef || base };
   }
-  // A failed fetch leaves `source` as the local base: the same refresh as `local`.
-  const source = integration === 'pull-request'
-    ? (await fetchedRemoteBase(worktreePath, base)) ?? base
-    : base;
+  let source: string;
+  if (pinnedRef) {
+    // Update the remote-tracking ref the task already chose. The local branch is not a substitute.
+    const remoteBranch = /^origin\/(.+)$/.exec(pinnedRef)?.[1];
+    if (remoteBranch) await fetchedRemoteBase(worktreePath, remoteBranch);
+    source = pinnedRef;
+  } else if (integration === 'pull-request') {
+    // Callers that have not stored a ref yet (tests, a task from before the pin
+    // that still passes the mode). A failed fetch keeps the local base.
+    source = (await fetchedRemoteBase(worktreePath, base)) ?? base;
+  } else {
+    source = base;
+  }
   try {
     // Already up to date: the base is an ancestor of HEAD. A cheap test that avoids
     // creating an empty merge commit on every re-spawn.

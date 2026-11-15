@@ -16,6 +16,32 @@ const STRATEGIES: readonly MergeStrategy[] = ['squash', 'merge', 'rebase'];
 /** Block reason when a merge queue does not finish. English, so the public tree stays English. */
 const MERGE_QUEUE_WAIT = 'merge queue wait exceeded 30 minutes';
 
+/**
+ * Mode and strategy stored on the task. A missing pin (a row from before the
+ * column existed) is `local`: the project is not read again, so a setting
+ * changed mid-chain cannot retarget a task that already started.
+ */
+export function pinnedIntegration(task: {
+  integration_mode?: string | null;
+  integration_strategy?: string | null;
+}): { mode: IntegrationMode; strategy: MergeStrategy } {
+  if (task.integration_mode === 'pull-request') {
+    const strategy = STRATEGIES.includes(task.integration_strategy as MergeStrategy)
+      ? (task.integration_strategy as MergeStrategy)
+      : 'squash';
+    return { mode: 'pull-request', strategy };
+  }
+  return { mode: 'local', strategy: 'squash' };
+}
+
+/** Ref comparisons and refreshes use. Unset falls back to the local base name. */
+export function pinnedBaseRef(task: {
+  base_ref?: string | null;
+  base_branch?: string | null;
+}): string | null {
+  return task.base_ref || task.base_branch || null;
+}
+
 export function integrationSettings(slug: string | null | undefined): {
   mode: IntegrationMode;
   strategy: MergeStrategy;

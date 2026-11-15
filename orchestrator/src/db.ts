@@ -28,9 +28,10 @@ export {
 };
 export { OWNED_TABLES, ownerSql, rowVisible, viewerSeesAll } from './users/owned.js';
 export type { DbViewer, OwnedTable } from './users/owned.js';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { DB_PATH, LEGACY_ACCOUNT_TABLES_FILE, TIMON_HOME } from './paths.js';
+import { DB_PATH, LEGACY_ACCOUNT_TABLES_FILE, TIMON_HOME, agentDir } from './paths.js';
+import { projectFromCwd } from './task-project.js';
 import {
   LEGACY_ACCOUNT_TABLES,
   moveLegacyAccountTables,
@@ -890,6 +891,13 @@ if (!taskCols.includes('type')) db.exec(`ALTER TABLE tasks ADD COLUMN type TEXT 
 if (!taskCols.includes('worktree_path')) db.exec(`ALTER TABLE tasks ADD COLUMN worktree_path TEXT`);
 if (!taskCols.includes('branch_name')) db.exec(`ALTER TABLE tasks ADD COLUMN branch_name TEXT`);
 if (!taskCols.includes('base_branch')) db.exec(`ALTER TABLE tasks ADD COLUMN base_branch TEXT`);
+// Frozen at creation (mode and strategy) and at the first dispatch (the ref
+// actually used: `origin/<base>` after fetch, or `<base>`). NULL means the row
+// predates the pin: consumers keep today's local behaviour and do not read the
+// project again. Chain children copy the root's values instead of snapshotting.
+if (!taskCols.includes('integration_mode')) db.exec(`ALTER TABLE tasks ADD COLUMN integration_mode TEXT`);
+if (!taskCols.includes('integration_strategy')) db.exec(`ALTER TABLE tasks ADD COLUMN integration_strategy TEXT`);
+if (!taskCols.includes('base_ref')) db.exec(`ALTER TABLE tasks ADD COLUMN base_ref TEXT`);
 if (!taskCols.includes('merged_commit_sha')) db.exec(`ALTER TABLE tasks ADD COLUMN merged_commit_sha TEXT`);
 // of the final merged commit for later audit (the branch itself will be cleaned after
 // merge — the trail stays in events
@@ -2169,6 +2177,12 @@ export type TaskRow = {
   worktree_path: string | null;
   branch_name: string | null;
   base_branch: string | null;
+  /** Integration mode frozen at creation. NULL = a row from before the pin. */
+  integration_mode: 'local' | 'pull-request' | null;
+  /** Forge strategy frozen with the mode. Ignored when the mode is not `pull-request`. */
+  integration_strategy: 'squash' | 'merge' | 'rebase' | null;
+  /** Ref the worktree was started from (`origin/<base>` or `<base>`). NULL until the first dispatch, or on a row from before the pin. */
+  base_ref: string | null;
   merged_commit_sha: string | null;
   backend_override: string | null;
   model_override: string | null;
@@ -2853,6 +2867,13 @@ const setTaskStatusOnlyStmt = db.prepare(
 );
 const setTaskBaseBranchStmt = db.prepare(
   `UPDATE tasks SET base_branch = ?, updated_at = ? WHERE id = ?`,
+);
+const setTaskIntegrationStmt = db.prepare(
+  `UPDATE tasks SET integration_mode = ?, integration_strategy = ?, base_ref = ?, updated_at = ? WHERE id = ?`,
+);
+// The first dispatch wins. A later reattach must not replace the ref the branch was started from.
+const setTaskBaseRefStmt = db.prepare(
+  `UPDATE tasks SET base_ref = ?, updated_at = ? WHERE id = ? AND base_ref IS NULL`,
 );
 const setTaskTodoIdStmt = db.prepare(
   `UPDATE tasks SET todo_id = ?, updated_at = ? WHERE id = ?`,
@@ -4622,6 +4643,62 @@ export function renameAgentInLayout(scope: string, value: unknown, oldName: stri
   return changed;
 }
 
+type IntegrationModePin = 'local' | 'pull-request';
+type IntegrationStrategyPin = 'squash' | 'merge' | 'rebase';
+
+/** Project slug of an agent, from its config file. No import of `agent.ts`: that module loads this one. */
+function readAgentProjectSlug(agentName: string): string | null {
+  try {
+    const raw = JSON.parse(readFileSync(join(agentDir(agentName), 'config.json'), 'utf8')) as {
+      project?: unknown;
+      cwd?: unknown;
+    };
+    if (typeof raw.project === 'string' && raw.project.trim()) return raw.project.trim();
+    return projectFromCwd(typeof raw.cwd === 'string' ? raw.cwd : null);
+  } catch {
+    return null;
+  }
+}
+
+/** One read of `projects`, at task creation. Later reads of the task never come back here. */
+function integrationFromProject(slug: string | null): { mode: IntegrationModePin; strategy: IntegrationStrategyPin } {
+  if (!slug) return { mode: 'local', strategy: 'squash' };
+  const row = db.prepare(
+    `SELECT integration, merge_strategy FROM projects WHERE slug = ?`,
+  ).get(slug) as { integration: string | null; merge_strategy: string | null } | undefined;
+  const mode: IntegrationModePin = row?.integration === 'pull-request' ? 'pull-request' : 'local';
+  const strategy: IntegrationStrategyPin =
+    row?.merge_strategy === 'merge' || row?.merge_strategy === 'rebase' ? row.merge_strategy : 'squash';
+  return { mode, strategy };
+}
+
+function pinTaskIntegration(
+  id: string,
+  agentName: string,
+  opts: {
+    project?: string | null;
+    integrationMode?: IntegrationModePin | null;
+    integrationStrategy?: IntegrationStrategyPin | null;
+    baseRef?: string | null;
+  },
+  now: number,
+): void {
+  if (opts.integrationMode === undefined) {
+    const snap = integrationFromProject(opts.project ?? readAgentProjectSlug(agentName));
+    setTaskIntegrationStmt.run(snap.mode, snap.strategy, opts.baseRef ?? null, now, id);
+    return;
+  }
+  if (opts.integrationMode === null) {
+    setTaskIntegrationStmt.run(null, null, opts.baseRef ?? null, now, id);
+    return;
+  }
+  const strategy: IntegrationStrategyPin =
+    opts.integrationStrategy === 'merge' || opts.integrationStrategy === 'rebase' || opts.integrationStrategy === 'squash'
+      ? opts.integrationStrategy
+      : 'squash';
+  setTaskIntegrationStmt.run(opts.integrationMode, strategy, opts.baseRef ?? null, now, id);
+}
+
 export const dbApi = {
   listBackendOverlays(): BackendOverlayRow[] {
     return db.prepare('SELECT * FROM backend_overlays').all() as BackendOverlayRow[];
@@ -4674,6 +4751,12 @@ export const dbApi = {
        *  children (review, merge, doc, iteration) pass their root's base so the
        *  merge advances THAT branch instead of the repo's active one. */
       baseBranch?: string | null;
+      /** Frozen integration. `undefined` snapshots the project once, now.
+       *  `null` leaves the columns unset (a child of a row that predates the pin). */
+      integrationMode?: 'local' | 'pull-request' | null;
+      integrationStrategy?: 'squash' | 'merge' | 'rebase' | null;
+      /** Ref the worktree uses (`origin/<base>` or `<base>`). Inherited by chain children. */
+      baseRef?: string | null;
       /** Owning account. Absent → inherit from the creator mission / series,
        *  then from `parentTaskId`. */
       ownerUserId?: string | null;
@@ -4726,6 +4809,7 @@ export const dbApi = {
     );
     if (opts.silentReturn) markTaskSilentReturnStmt.run(id);
     if (opts.baseBranch) setTaskBaseBranchStmt.run(opts.baseBranch, now, id);
+    pinTaskIntegration(id, agentName, opts, now);
     if (opts.parentTaskId) setTaskParentStmt.run(opts.parentTaskId, id);
     bus.publish({ kind: 'task_created', taskId: id });
   },
@@ -5202,6 +5286,10 @@ export const dbApi = {
    *  and a `code-self` merge land there (evening of 2026-09-05). */
   setTaskBaseBranch(id: string, base: string): void {
     setTaskBaseBranchStmt.run(base, Date.now(), id);
+  },
+  /** Records the ref the first dispatch actually used. A later call is a no-op. */
+  setTaskBaseRef(id: string, ref: string): void {
+    setTaskBaseRefStmt.run(ref, Date.now(), id);
   },
   /** Repoint ONE requeued task at another backend and release it now. Unlike
    *  `updateTask`, a null model is written as null: COALESCE would keep the slug

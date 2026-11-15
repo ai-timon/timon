@@ -27,7 +27,7 @@ import {
 } from './worktree.js';
 import {
   codeIntegrationSection,
-  integrationSettings,
+  pinnedIntegration,
   pullRequestCodeGroupDirective,
   pullRequestCodeSelfDirective,
   pullRequestMergeWorktreeSection,
@@ -312,14 +312,13 @@ function mergeLockKey(task: TaskRow): string {
 
 const lastRefresh = new Map<string, RefreshOutcome>();
 
-/** Project integration for a brief. A missing project, a missing column, or an
- *  unreadable slug stays `local`, so a task with no project keeps today's text. */
+/** Integration stored on the task. A row from before the pin reads as `local`. */
 function taskIntegration(task: TaskRow): { mode: IntegrationMode; strategy: MergeStrategy } {
-  let slug: string | null = task.project ?? null;
-  if (!slug && task.agent_name) {
-    try { slug = taskProjectSlug(task, loadConfig(task.agent_name)); } catch { slug = null; }
-  }
-  return integrationSettings(slug);
+  return pinnedIntegration(task);
+}
+
+function rememberBaseRef(taskId: string, startedFrom: string | null | undefined): void {
+  if (startedFrom) dbApi.setTaskBaseRef(taskId, startedFrom);
 }
 
 /** Keeps a refresh outcome for the brief and logs it. A refusal without
@@ -530,8 +529,10 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // failure leaves the task starting on its base as-is, which is
       // still preferable to not launching it at all.
       lastRefresh.delete(task.id);
-      // Pull-request mode refreshes from origin/<base>. Local mode is the local ref only.
-      const outcome = await refreshWorktreeBase(task.worktree_path, task.base_branch, taskIntegration(task).mode);
+      // The ref stored on the task. A row from before the pin has none: local base, no fetch.
+      const outcome = await refreshWorktreeBase(
+        task.worktree_path, task.base_branch, taskIntegration(task).mode, task.base_ref,
+      );
       await prepareWorktreeDependencies(cfg.cwd, task.worktree_path);
       recordRefresh(task.id, task.base_branch, outcome);
       return {
@@ -557,13 +558,16 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
         task.id, cfg.cwd, task.base_branch ?? undefined, undefined, mode,
       );
       dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
+      rememberBaseRef(task.id, info.startedFrom);
       // Detach keeps `branch_name` and drops the folder, so the next dispatch
       // lands here and reattaches that branch. A live folder is refreshed
-      // above. A reattached pull-request branch must be too: it still points
-      // at the old base, and a new branch already starts at origin/<base>.
-      if (mode === 'pull-request' && task.branch_name) {
+      // above. A reattached branch is refreshed from the ref stored the first
+      // time, not from whatever the project says now. A new branch already
+      // started there and is not refreshed a second time.
+      const pinnedRef = task.base_ref ?? info.startedFrom ?? null;
+      if (pinnedRef && task.branch_name) {
         lastRefresh.delete(task.id);
-        const outcome = await refreshWorktreeBase(info.path, info.base, mode);
+        const outcome = await refreshWorktreeBase(info.path, info.base, mode, pinnedRef);
         await prepareWorktreeDependencies(cfg.cwd, info.path);
         recordRefresh(task.id, info.base, outcome);
       }
@@ -596,9 +600,11 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       const mode = taskIntegration(task).mode;
       const info = await createWorktree(task.id, cfg.cwd, base, `timon/merge/${task.id}`, mode);
       dbApi.setTaskWorktree(task.id, info.path, info.branch, base);
+      rememberBaseRef(task.id, info.startedFrom);
       // Idempotent: on re-spawn the worktree already exists and may date
-      // from an earlier `main` — same refresh as for a coder, reported the same.
-      recordRefresh(task.id, base, await refreshWorktreeBase(info.path, base, mode));
+      // from an earlier base — same refresh as for a coder, from the stored ref.
+      const pinnedRef = task.base_ref ?? info.startedFrom ?? null;
+      recordRefresh(task.id, base, await refreshWorktreeBase(info.path, base, mode, pinnedRef));
       console.log(`[dispatcher] worktree merge ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
     } catch (err) {

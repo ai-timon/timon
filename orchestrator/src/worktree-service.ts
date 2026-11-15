@@ -7,8 +7,7 @@
 import { existsSync } from 'node:fs';
 import { loadConfig } from './agent.js';
 import { dbApi, type TaskRow } from './db.js';
-import { integrationSettings, type IntegrationMode } from './integration-mode.js';
-import { taskProjectSlug } from './task-project.js';
+import { pinnedIntegration, type IntegrationMode } from './integration-mode.js';
 import { createWorktree, disposeWorktree, isGitRepo, releaseWorktreeFolder, type WorktreeInfo } from './worktree.js';
 
 /** `invalid` (400: no cwd, not a repo, bad base), `busy` (409: the task is
@@ -38,13 +37,9 @@ export function worktreeOfTask(task: TaskRow): {
   };
 }
 
-/** Same project the briefs use. A missing slug stays `local`, so this path does not fetch. */
+/** Mode frozen on the task. A row from before the pin stays `local` and does not fetch. */
 function worktreeIntegration(task: TaskRow): IntegrationMode {
-  let slug: string | null = task.project ?? null;
-  if (!slug && task.agent_name) {
-    try { slug = taskProjectSlug(task, loadConfig(task.agent_name)); } catch { slug = null; }
-  }
-  return integrationSettings(slug).mode;
+  return pinnedIntegration(task).mode;
 }
 
 export async function createTaskWorktree(task: TaskRow, base?: string): Promise<WorktreeInfo> {
@@ -55,6 +50,7 @@ export async function createTaskWorktree(task: TaskRow, base?: string): Promise<
   try {
     const info = await createWorktree(task.id, cfg.cwd, base, undefined, worktreeIntegration(task));
     dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
+    if (info.startedFrom) dbApi.setTaskBaseRef(task.id, info.startedFrom);
     return info;
   } catch (err) {
     throw new WorktreeServiceError('failed', (err as Error).message);

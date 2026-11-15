@@ -61,6 +61,8 @@ If `gh pr merge` only queues the pull request, the task waits until `gh pr view`
 
 In this mode a new task branch is created from `origin/<base>` after `git fetch origin <base>`, and an existing worktree is refreshed from that same remote ref. The local base branch is not moved. If the fetch fails, the task uses the local base and the daemon log records a warning. `local` mode still creates and refreshes worktrees from the local base only.
 
+The mode and the base ref are stored on the task: the mode when the task is created, the ref when its worktree is first prepared (`origin/<base>` after a successful fetch, otherwise the local base). Review, merge and later coding rounds copy those values from the root task. Changing the project setting later does not retarget a task that already has them. A task created before this record keeps local behaviour.
+
 The project role is the normal default for a task; task-specific overrides are useful for exceptions. A project path is not a container path unless the daemon actually executes inside that container.
 
 ## Docker containers

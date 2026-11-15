@@ -113,6 +113,8 @@ export function inspectGitBranch(
   pipeline: TaskRow['pipeline'] = null,
   mergedSha: string | null = null,
   integration: 'local' | 'pull-request' = 'local',
+  /** Ref stored on the task (`origin/<base>` or `<base>`). The local branch name is the fallback. */
+  compareRef: string | null = null,
 ): GitInspection {
   const unknown: GitInspection = { commitCount: null, uncommittedFiles: [], mergedIntoBase: null };
   if (!worktreePath || !branchName || !baseBranch) return unknown;
@@ -129,6 +131,9 @@ export function inspectGitBranch(
         ...(opts.env ? { env: opts.env } : {}),
       });
     };
+    // `origin/<base>` when the task stored one. Passing that ref to `mergedOnOrigin`
+    // would fetch `origin/origin/<base>`, so the forge check still takes the branch name.
+    const counted = compareRef || baseBranch;
     if (pipeline === 'code-self') {
       if (!mergedSha) return unknown;
       // A pull request merges on the forge. Local `main` does not move, so it
@@ -138,10 +143,10 @@ export function inspectGitBranch(
       // unknown only when the fetch failed: the sha may exist only on the forge.
       const mergedIntoBase = integration === 'pull-request'
         ? mergedOnOrigin(git, baseBranch, mergedSha)
-        : mergedOnLocalBase(git, baseBranch, mergedSha);
+        : mergedOnLocalBase(git, counted, mergedSha);
       return { ...unknown, mergedIntoBase };
     }
-    const rev = git(['rev-list', '--count', 'HEAD', `^${baseBranch}`]);
+    const rev = git(['rev-list', '--count', 'HEAD', `^${counted}`]);
     if (rev.code !== 0) return unknown;
     const raw = rev.stdout.trim();
     const parsed = Number(raw);
