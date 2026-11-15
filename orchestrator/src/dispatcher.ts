@@ -381,13 +381,16 @@ export function worktreeDirective(
       `you would erase work other tasks already merged.`,
     );
   } else if (refresh?.status === 'failed') {
+    // `refresh.ref` is the ref the refresh merged (`origin/<base>` when the
+    // pull-request fetch worked). The local base name can be behind that ref.
+    const ref = refresh.ref;
     parts.push(
       `\n\n## Your branch was NOT brought up to date\n\n` +
-      `The automatic update of your branch with \`${wt.base}\` failed, so you may be ` +
+      `The automatic update of your branch with \`${ref}\` failed, so you may be ` +
       `working on a stale base. Git said:\n\n` +
       `\`\`\`text\n${refresh.reason}\n\`\`\`\n\n` +
       `Before starting, run it yourself in your worktree:\n\n` +
-      `\`\`\`bash\ngit merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${wt.base}\n\`\`\`\n\n` +
+      `\`\`\`bash\ngit merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${ref}\n\`\`\`\n\n` +
       `If it still refuses for a reason you cannot fix, \`timon task block\` with ` +
       `that reason rather than working on the stale base.`,
     );
@@ -549,10 +552,21 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // `createWorktree` falls back on the CURRENT branch of the shared repo, which
       // may be another agent's — and the `code-self` merge then lands
       // on their work (evening of 2026-09-05).
+      const mode = taskIntegration(task).mode;
       const info = await createWorktree(
-        task.id, cfg.cwd, task.base_branch ?? undefined, undefined, taskIntegration(task).mode,
+        task.id, cfg.cwd, task.base_branch ?? undefined, undefined, mode,
       );
       dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
+      // Detach keeps `branch_name` and drops the folder, so the next dispatch
+      // lands here and reattaches that branch. A live folder is refreshed
+      // above. A reattached pull-request branch must be too: it still points
+      // at the old base, and a new branch already starts at origin/<base>.
+      if (mode === 'pull-request' && task.branch_name) {
+        lastRefresh.delete(task.id);
+        const outcome = await refreshWorktreeBase(info.path, info.base, mode);
+        await prepareWorktreeDependencies(cfg.cwd, info.path);
+        recordRefresh(task.id, info.base, outcome);
+      }
       console.log(`[dispatcher] worktree ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
     } catch (err) {

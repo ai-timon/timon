@@ -248,8 +248,9 @@ export async function createWorktree(
   // and, worse, we would restart from the base, losing sight of that work — so we
   // reattach to the existing branch rather than forge a new one.
   const exists = await branchExists(repoCwd, branch);
-  // Only a new branch starts from the forge. Reattaching must not drop commits
-  // that are already on the task branch. A failed fetch keeps the local base.
+  // Only a new branch starts from the forge. Reattaching checks out the commits
+  // already on the task branch; in pull-request mode the dispatcher then
+  // refreshes that branch. A failed fetch keeps the local base.
   const startRef = !exists && integration === 'pull-request'
     ? (await fetchedRemoteBase(repoCwd, baseRef)) ?? baseRef
     : baseRef;
@@ -288,8 +289,10 @@ export type RefreshOutcome =
   | { status: 'conflict'; base: string; files: string[] }
   /** Operation impossible (worktree missing, unknown base, merge refused by git
    *  without a conflict). Not fatal: the caller carries on with the base as it is, and
-   *  any half-done merge is aborted so the agent does not start inside it. */
-  | { status: 'failed'; reason: string };
+   *  any half-done merge is aborted so the agent does not start inside it.
+   *  `ref` is the ref this attempt merged, so the brief retries that one and
+   *  not a stale local name. */
+  | { status: 'failed'; reason: string; ref: string };
 
 /**
  * Brings an existing worktree up to date with its base.
@@ -316,7 +319,7 @@ export async function refreshWorktreeBase(
   integration: 'local' | 'pull-request' = 'local',
 ): Promise<RefreshOutcome> {
   if (!existsSync(worktreePath) || !(await isGitRepo(worktreePath))) {
-    return { status: 'failed', reason: `worktree missing or invalid: ${worktreePath}` };
+    return { status: 'failed', reason: `worktree missing or invalid: ${worktreePath}`, ref: base };
   }
   // A failed fetch leaves `source` as the local base: the same refresh as `local`.
   const source = integration === 'pull-request'
@@ -358,7 +361,10 @@ export async function refreshWorktreeBase(
       // The repository's hooks never run here (`host/git-neutral.ts`).
       // Abort it so the task starts on its base as is, and say why.
       await abortPendingMerge(worktreePath);
-      return { status: 'failed', reason: mergeFailureReason(err) };
+      // Same ref the merge just used. In pull-request mode that is `origin/<base>`
+      // when the fetch worked; telling the agent to merge the local base can
+      // succeed as a no-op and leave the task behind the forge.
+      return { status: 'failed', reason: mergeFailureReason(err), ref: source };
     }
     return { status: 'conflict', base, files };
   }
