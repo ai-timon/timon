@@ -40,6 +40,10 @@ export const ProjectMetaBody = z.object({
   workspace_policy: z.enum(['free', 'existing', 'create']).optional(),
   /** Creation, HTTP route only: seed the project's orchestrator with it (needs `cwd`). */
   with_orchestrator: z.boolean().optional(),
+  /** Empty string clears the field (back to the local default). */
+  integration: z.enum(['local', 'pull-request', '']).optional(),
+  /** Empty string clears the field (back to squash). Read only when integration is pull-request. */
+  merge_strategy: z.enum(['squash', 'merge', 'rebase', '']).optional(),
 });
 export type WorkspacePolicy = 'free' | 'existing' | 'create';
 
@@ -63,6 +67,8 @@ export function parseProjectMetaBody(raw: unknown): { meta: ProjectMeta; policy:
   // kind/status: empty string = explicit clear (→ null).
   if (body.kind !== undefined) meta.kind = body.kind.trim() || null;
   if (body.status !== undefined) meta.status = body.status.trim() || null;
+  if (body.integration !== undefined) meta.integration = body.integration || null;
+  if (body.merge_strategy !== undefined) meta.merge_strategy = body.merge_strategy || null;
   return { meta, policy: body.workspace_policy ?? 'free' };
 }
 

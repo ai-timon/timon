@@ -7,6 +7,7 @@
 import { existsSync } from 'node:fs';
 import { loadConfig } from './agent.js';
 import { dbApi, type TaskRow } from './db.js';
+import { pinnedIntegration, type IntegrationMode } from './integration-mode.js';
 import { createWorktree, disposeWorktree, isGitRepo, releaseWorktreeFolder, type WorktreeInfo } from './worktree.js';
 
 /** `invalid` (400: no cwd, not a repo, bad base), `busy` (409: the task is
@@ -36,14 +37,22 @@ export function worktreeOfTask(task: TaskRow): {
   };
 }
 
+/** Mode frozen on the task. A row from before the pin stays `local` and does not fetch. */
+function worktreeIntegration(task: TaskRow): IntegrationMode {
+  return pinnedIntegration(task).mode;
+}
+
 export async function createTaskWorktree(task: TaskRow, base?: string): Promise<WorktreeInfo> {
   const cfg = loadConfig(task.agent_name);
   if (!cfg.cwd) throw new WorktreeServiceError('invalid', 'agent has no cwd');
   if (!(await isGitRepo(cfg.cwd))) throw new WorktreeServiceError('invalid', `agent cwd is not a git repo: ${cfg.cwd}`);
   if (base !== undefined && !BASE_REF.test(base)) throw new WorktreeServiceError('invalid', `invalid base ref: "${base}"`);
   try {
-    const info = await createWorktree(task.id, cfg.cwd, base);
+    const info = await createWorktree(task.id, cfg.cwd, base, undefined, worktreeIntegration(task));
     dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
+    // Same rule as the dispatcher: only `origin/…` is stored. A failed fetch
+    // leaves the column unset, and local mode does not record its base name.
+    if (info.startedFrom?.startsWith('origin/')) dbApi.setTaskBaseRef(task.id, info.startedFrom);
     return info;
   } catch (err) {
     throw new WorktreeServiceError('failed', (err as Error).message);

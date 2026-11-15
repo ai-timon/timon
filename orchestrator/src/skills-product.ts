@@ -246,6 +246,9 @@ timon task done <TASK_ID> --comment "…" --merged-sha <sha of the merge commit>
 The sha is **mandatory** in \`code-self\`: without it the task goes back to
 \`BLOCKED\` (guard against a branch never integrated). A conflict you cannot
 solve cleanly → \`timon task block\` with the reason, never a forced merge.
+When the task brief says the project's integration mode is \`pull-request\`,
+that brief replaces this local integration: the sha is the pull request's
+merge commit.
 
 **The sha must be COMPLETE (40 hex characters).** The short form git shows
 everywhere (\`fe2dd84\`) is refused: seven characters prove nothing. Get the
@@ -416,7 +419,9 @@ timon worktree info <TASK_ID>
 
 1. Work in your cwd as usual (read, write, code).
 2. **Commit your changes on your branch.** Do not push, do not merge (except
-   in \`code-self\`, see the \`timon-task\` skill).
+   in \`code-self\`, see the \`timon-task\` skill). When the task brief says the
+   project's integration mode is \`pull-request\`, that brief is the push
+   authorisation: follow the pushes it names, and no others.
    \`\`\`bash
    git add -A
    git commit -m "<clear message>"
@@ -450,7 +455,10 @@ do not commit.
 ### \`type=merge\` (merger)
 
 You have YOUR worktree (branch \`timon/merge/<TASK_ID>\`). You integrate
-**locally only**: no push unless explicitly authorised.
+**locally only**: no push unless explicitly authorised. When the task brief
+says the project's integration mode is \`pull-request\`, skip the local
+integration in this section and follow that brief: the forge command it
+gives is the only integration, and you do not push the base.
 
 1. **Check the push mandate**: look in the project's instructions (\`AGENTS.md\`,
    \`CLAUDE.md\`…) and your system prompt for an explicit authorisation. Without
@@ -484,6 +492,8 @@ You have YOUR worktree (branch \`timon/merge/<TASK_ID>\`). You integrate
 
 1. **Never push** without an explicit authorisation in the project's
    instructions or your system prompt. The default mandate is local only.
+   A task brief that states integration mode \`pull-request\` is that
+   authorisation, for the pushes it names and no others.
 2. **Never force-push, never rebase a shared branch.**
 3. **Do not touch another task's worktree.** Your \`cwd\` is your scope.
 4. A conflict you cannot resolve → \`timon task block <TASK_ID> --reason "conflict on <files>"\`.

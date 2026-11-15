@@ -25,6 +25,15 @@ import {
   refreshMergeMessage, integrateMergeMessage,
   type WorktreeInfo, type RefreshOutcome,
 } from './worktree.js';
+import {
+  codeIntegrationSection,
+  pinnedIntegration,
+  pullRequestCodeGroupDirective,
+  pullRequestCodeSelfDirective,
+  pullRequestMergeWorktreeSection,
+  type IntegrationMode,
+  type MergeStrategy,
+} from './integration-mode.js';
 import { agentDir } from './paths.js';
 import { notifyUser } from './notify.js';
 import { orchestratorForProject } from './main-agent.js';
@@ -303,6 +312,19 @@ function mergeLockKey(task: TaskRow): string {
 
 const lastRefresh = new Map<string, RefreshOutcome>();
 
+/** Integration stored on the task. A row from before the pin reads as `local`. */
+function taskIntegration(task: TaskRow): { mode: IntegrationMode; strategy: MergeStrategy } {
+  return pinnedIntegration(task);
+}
+
+function rememberBaseRef(taskId: string, ref: string | null | undefined): void {
+  // Only an `origin/…` ref is stored. Writing the local base name would win
+  // the first write, and a later dispatch would never fetch again. A failed
+  // fetch leaves the column null, so the next one can still pin `origin/<base>`.
+  // Local mode never produces an `origin/…` ref, so this does not record one.
+  if (ref?.startsWith('origin/')) dbApi.setTaskBaseRef(taskId, ref);
+}
+
 /** Keeps a refresh outcome for the brief and logs it. A refusal without
  *  conflict (a hook rejecting the merge message, an unknown base) used to be a
  *  log line only: the brief now tells the agent too. */
@@ -361,14 +383,31 @@ export function worktreeDirective(
       `the conflict with a blanket \`git checkout --ours\` or with \`git reset\`: ` +
       `you would erase work other tasks already merged.`,
     );
-  } else if (refresh?.status === 'failed') {
+  } else if (refresh?.status === 'failed' && refresh.remoteUnread) {
+    // The frozen remote ref was not fetched. Merging the cached name would
+    // replay whatever this clone last saw, which is how a failed fetch used
+    // to come back as up to date.
+    const ref = refresh.ref;
     parts.push(
       `\n\n## Your branch was NOT brought up to date\n\n` +
-      `The automatic update of your branch with \`${wt.base}\` failed, so you may be ` +
+      `The remote base \`${ref}\` could not be re-read, so the refresh failed. ` +
+      `The cached ref was not compared and is not current. Do not merge it: ` +
+      `it may be behind the forge.\n\n` +
+      `\`\`\`text\n${refresh.reason}\n\`\`\`\n\n` +
+      `Reach the remote and start again. If you cannot, \`timon task block\` ` +
+      `with that reason rather than working on a base that was not re-read.`,
+    );
+  } else if (refresh?.status === 'failed') {
+    // `refresh.ref` is the ref the refresh merged (`origin/<base>` when the
+    // pull-request fetch worked). The local base name can be behind that ref.
+    const ref = refresh.ref;
+    parts.push(
+      `\n\n## Your branch was NOT brought up to date\n\n` +
+      `The automatic update of your branch with \`${ref}\` failed, so you may be ` +
       `working on a stale base. Git said:\n\n` +
       `\`\`\`text\n${refresh.reason}\n\`\`\`\n\n` +
       `Before starting, run it yourself in your worktree:\n\n` +
-      `\`\`\`bash\ngit merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${wt.base}\n\`\`\`\n\n` +
+      `\`\`\`bash\ngit merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${ref}\n\`\`\`\n\n` +
       `If it still refuses for a reason you cannot fix, \`timon task block\` with ` +
       `that reason rather than working on the stale base.`,
     );
@@ -379,7 +418,16 @@ export function worktreeDirective(
       `state._`,
     );
   }
-  if (task.type === 'merge') {
+  if (task.type === 'merge' && taskIntegration(task).mode === 'pull-request') {
+    const settings = taskIntegration(task);
+    parts.push(pullRequestMergeWorktreeSection({
+      path: wt.path,
+      branch: wt.branch,
+      base: wt.base,
+      sourceRepo: wt.sourceRepo,
+      strategy: settings.strategy,
+    }));
+  } else if (task.type === 'merge') {
     // Base ≠ active branch: the final fast-forward must not move the branch the
     // user is standing on. `activeBranch` unknown (detached HEAD, git error) is
     // treated like "same": the historical ff-only.
@@ -435,6 +483,17 @@ export function worktreeDirective(
           `Then get the FULL sha (\`git -C ${wt.sourceRepo} rev-parse HEAD\`, ` +
           `40 hex) for \`timon task done --merged-sha\`.`),
     );
+  } else if (task.type === 'code' && taskIntegration(task).mode === 'pull-request' && task.pipeline === 'code-group') {
+    // The push section would contradict the refusal: a group has no single pull request to open.
+    parts.push(
+      `\n\n## Integration — pull request\n\n` +
+      `This project's integration mode is \`pull-request\`, and \`code-group\` is not ` +
+      `supported in that mode. Do not push, do not open a pull request, and do not ` +
+      `integrate locally. \`timon task block\` with the reason ` +
+      `\`code-group is not supported in pull-request mode\`.`,
+    );
+  } else if (task.type === 'code' && taskIntegration(task).mode === 'pull-request') {
+    parts.push(codeIntegrationSection(wt.branch, wt.base));
   }
   return parts.join('');
 }
@@ -488,7 +547,15 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // failure leaves the task starting on its base as-is, which is
       // still preferable to not launching it at all.
       lastRefresh.delete(task.id);
-      const outcome = await refreshWorktreeBase(task.worktree_path, task.base_branch);
+      // The ref stored on the task. A row from before the pin has none: local
+      // base, no fetch. A pull-request row whose fetch has not succeeded yet
+      // also has none: this refresh tries again, and stores `origin/<base>`
+      // only when that fetch works.
+      const mode = taskIntegration(task).mode;
+      const outcome = await refreshWorktreeBase(
+        task.worktree_path, task.base_branch, mode, task.base_ref,
+      );
+      rememberBaseRef(task.id, outcome.ref);
       await prepareWorktreeDependencies(cfg.cwd, task.worktree_path);
       recordRefresh(task.id, task.base_branch, outcome);
       return {
@@ -509,8 +576,29 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // `createWorktree` falls back on the CURRENT branch of the shared repo, which
       // may be another agent's — and the `code-self` merge then lands
       // on their work (evening of 2026-09-05).
-      const info = await createWorktree(task.id, cfg.cwd, task.base_branch ?? undefined);
+      const mode = taskIntegration(task).mode;
+      const info = await createWorktree(
+        task.id, cfg.cwd, task.base_branch ?? undefined, undefined, mode,
+      );
       dbApi.setTaskWorktree(task.id, info.path, info.branch, info.base);
+      rememberBaseRef(task.id, info.startedFrom);
+      // Detach keeps `branch_name` and drops the folder, so the next dispatch
+      // lands here and reattaches that branch. A live folder is refreshed
+      // above. Local mode stops here: reattaching does not merge the base,
+      // which is what this path did before the remote base. Pull-request mode
+      // refreshes a reattached branch from the stored `origin/…` ref, or tries
+      // the fetch again when that ref is still unset. A new branch already
+      // started there and is not refreshed a second time.
+      if (mode === 'pull-request' && task.branch_name) {
+        lastRefresh.delete(task.id);
+        const pinned = task.base_ref ?? info.startedFrom ?? null;
+        const outcome = await refreshWorktreeBase(
+          info.path, info.base, mode, pinned?.startsWith('origin/') ? pinned : null,
+        );
+        rememberBaseRef(task.id, outcome.ref);
+        await prepareWorktreeDependencies(cfg.cwd, info.path);
+        recordRefresh(task.id, info.base, outcome);
+      }
       console.log(`[dispatcher] worktree ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
     } catch (err) {
@@ -537,11 +625,21 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       // working on, and a merge landing there is a merge on the wrong branch
       // (18/10/2026, SDK API 10 series).
       const base = task.base_branch ?? inheritedBase(task) ?? (await currentBranch(cfg.cwd)) ?? 'main';
-      const info = await createWorktree(task.id, cfg.cwd, base, `timon/merge/${task.id}`);
+      const mode = taskIntegration(task).mode;
+      const info = await createWorktree(task.id, cfg.cwd, base, `timon/merge/${task.id}`, mode);
       dbApi.setTaskWorktree(task.id, info.path, info.branch, base);
+      rememberBaseRef(task.id, info.startedFrom);
       // Idempotent: on re-spawn the worktree already exists and may date
-      // from an earlier `main` — same refresh as for a coder, reported the same.
-      recordRefresh(task.id, base, await refreshWorktreeBase(info.path, base));
+      // from an earlier base — same refresh as for a coder, from the stored
+      // `origin/…` ref. A local name is not passed as a pin: local mode merges
+      // its base, and a pull-request fetch that has not succeeded yet is tried
+      // again here.
+      const pinned = task.base_ref ?? info.startedFrom ?? null;
+      const outcome = await refreshWorktreeBase(
+        info.path, base, mode, pinned?.startsWith('origin/') ? pinned : null,
+      );
+      rememberBaseRef(task.id, outcome.ref);
+      recordRefresh(task.id, base, outcome);
       console.log(`[dispatcher] worktree merge ${info.path} (branch=${info.branch}) for task ${task.id}`);
       return info;
     } catch (err) {
@@ -868,7 +966,9 @@ export function composeTaskPrompt(
  */
 export function pipelineDirective(task: TaskRow): string {
   if (task.type !== 'code') return '';
+  const integration = taskIntegration(task);
   if (task.pipeline === 'code-self') {
+    if (integration.mode === 'pull-request') return pullRequestCodeSelfDirective(integration.strategy);
     return (
       `\n\n---\nPIPELINE: \`code-self\`. Create NO \`review\` or \`merge\` task — ` +
       `the user chose the fast mode. When your code is ready: merge your ` +
@@ -883,6 +983,7 @@ export function pipelineDirective(task: TaskRow): string {
     );
   }
   if (task.pipeline === 'code-group') {
+    if (integration.mode === 'pull-request') return pullRequestCodeGroupDirective();
     return (
       `\n\n---\nPIPELINE: \`code-group\`. Create NO \`review\` or \`merge\` task — ` +
       `the user chose the fast mode and a final \`merge\` task will consolidate the whole ` +

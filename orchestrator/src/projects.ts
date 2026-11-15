@@ -139,6 +139,12 @@ export type ProjectMeta = {
    *  it is not relaunched any more. Set by the /api/grepai/:slug/start|stop routes,
    *  not by the project form. */
   grepai_watch?: string | null;
+  /** How a finished task branch is integrated. NULL and `local` keep the
+   *  local fast-forward. `pull-request` asks the coder to push and open a
+   *  pull request, and the merger to merge it on the forge. */
+  integration?: 'local' | 'pull-request' | null;
+  /** Forge merge strategy when `integration` is `pull-request`. NULL means squash. */
+  merge_strategy?: 'squash' | 'merge' | 'rebase' | null;
 };
 
 /** Hex colour derived from a text (slug or name). HSL → hex, stable hue
@@ -199,6 +205,7 @@ function rowToMeta(row: ProjectRow): ProjectMeta {
     name: row.name, color: row.color, icon: projectIcon(row.icon), workspace: row.workspace,
     cwd: row.cwd, speech: row.speech, kind: row.kind, status: row.status,
     last_activity: row.last_activity, grepai_watch: row.grepai_watch,
+    integration: row.integration, merge_strategy: row.merge_strategy,
   };
 }
 
@@ -249,6 +256,8 @@ export function writeMeta(slug: string, meta: ProjectMeta): ProjectMeta {
   if ('kind' in meta) fields.kind = meta.kind ?? null;
   if ('status' in meta) fields.status = meta.status || 'active';
   if ('grepai_watch' in meta) fields.grepai_watch = meta.grepai_watch ?? null;
+  if ('integration' in meta) fields.integration = meta.integration ?? null;
+  if ('merge_strategy' in meta) fields.merge_strategy = meta.merge_strategy ?? null;
   fields.color = meta.color || cur?.color || autoColorFor(meta.name || slug);
   dbApi.upsertProject(slug, fields);
   return rowToMeta(dbApi.getProjectRow(slug)!);

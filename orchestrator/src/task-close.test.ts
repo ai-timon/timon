@@ -13,7 +13,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -230,6 +230,78 @@ for (const method of ['POST', 'PUT'] as const) {
     });
   }
 }
+
+test('a stacked pull request is checked against the destination passed at close', async (t) => {
+  const repo = mkdtempSync(join(tmpdir(), 'timon-close-stack-'));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const git = (...args: string[]) => {
+    const result = getHost().exec('git', args, { cwd: repo, timeout: 5_000 });
+    assert.equal(result.code, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git('init', '-b', 'main');
+  git('config', 'user.name', 'Test');
+  git('config', 'user.email', 'test@example.invalid');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'base');
+  git('checkout', '-b', 'pr-head');
+  writeFileSync(join(repo, 'feature.txt'), 'feature\n');
+  git('add', 'feature.txt');
+  git('-c', 'commit.gpgsign=false', 'commit', '-m', 'feature');
+  const feature = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/pr-head', feature);
+  git('checkout', 'main');
+  git('merge', '--squash', 'pr-head');
+  git('-c', 'commit.gpgsign=false', 'commit', '-m', 'squash onto destination');
+  const squash = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/main', squash);
+
+  const open = () => {
+    const taskId = randomUUID();
+    dbApi.createTask(taskId, 'Stacked close', 'p.coder', {
+      type: 'code',
+      pipeline: 'code-self',
+      baseBranch: 'pr-head',
+      integrationMode: 'pull-request',
+      baseRef: 'origin/pr-head',
+    });
+    dbApi.setTaskWorktree(taskId, repo, 'task', 'pr-head');
+    return taskId;
+  };
+
+  await withApi(async (base) => {
+    const warned = open();
+    const without = await close(base, { id: warned, comment: 'Delivered', merged_sha: squash });
+    assert.equal(without.status, 200);
+    assert.match(dbApi.getTask(warned)?.done_comment ?? '', /not contained in base pr-head/);
+    assert.equal(dbApi.getTask(warned)?.base_ref, 'origin/pr-head');
+
+    const posted = open();
+    const post = await close(base, { id: posted, comment: 'Delivered', merged_sha: squash, merged_base: 'main' });
+    assert.equal(post.status, 200);
+    assert.equal(dbApi.getTask(posted)?.done_comment, 'Delivered');
+    assert.equal(dbApi.getTask(posted)?.base_ref, 'origin/pr-head', 'the worktree pin is not the destination');
+
+    const putId = open();
+    const put = await fetch(`${base}/api/tasks/${putId}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        status: 'DONE',
+        done_comment: 'Delivered',
+        merged_commit_sha: squash,
+        merged_base: 'origin/main',
+      }),
+    });
+    assert.equal(put.status, 200);
+    assert.equal(dbApi.getTask(putId)?.done_comment, 'Delivered');
+
+    const refused = open();
+    const bad = await close(base, { id: refused, comment: 'Delivered', merged_sha: squash, merged_base: 'foo..bar' });
+    assert.equal(bad.status, 400);
+    assert.equal(dbApi.getTask(refused)?.status, 'PENDING');
+    assert.equal(dbApi.getTask(refused)?.merged_commit_sha, null);
+  });
+});
 
 test('le résumé humain est stocké, plafonné, et effacé par une clôture qui n\'en donne pas', async () => {
   const { missionId, taskId } = dispatched();

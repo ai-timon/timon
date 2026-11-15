@@ -35,8 +35,15 @@ export type WorktreeInfo = {
   taskId: string;
   path: string;
   branch: string;
+  /** Branch name the briefs name (`main`), not the remote-tracking ref. */
   base: string;
   sourceRepo: string;
+  /** Ref a new branch was created from, when that ref may be stored.
+   *  `origin/<base>` after a pull-request fetch, or `<base>` in local mode.
+   *  Absent when an existing branch was reattached, and when a pull-request
+   *  fetch failed: the branch still starts at the local base, but that local
+   *  name is not returned, so the caller does not store it. */
+  startedFrom?: string | null;
 };
 
 /** Share installed dependencies for tracked packages, without installing or replacing anything. */
@@ -164,6 +171,49 @@ async function branchExists(cwd: string, branch: string): Promise<boolean> {
   }
 }
 
+/**
+ * A base ref handed to `git fetch origin <base>` and then used as `origin/<base>`.
+ * The same shape as a branch name: no options, no `..`, no second remote.
+ */
+function isRemoteBaseName(name: string): boolean {
+  if (!/^[\w./-]{1,200}$/.test(name) || name.includes('..')) return false;
+  return name.split('/').every((part) => part.length > 0 && !part.startsWith('-') && !part.startsWith('.'));
+}
+
+/**
+ * `origin/<base>` after `git fetch origin <base>`, or null when that fetch
+ * cannot be used. `fallback: 'local'` (the default) warns and lets the caller
+ * keep the local base. `fallback: 'none'` is a frozen `origin/<base>`: the
+ * caller fails the refresh and must not read the cached ref. `local` mode
+ * does not call this.
+ */
+async function fetchedRemoteBase(
+  cwd: string,
+  base: string,
+  fallback: 'local' | 'none' = 'local',
+): Promise<string | null> {
+  const tail = fallback === 'none' ? 'the remote base was not re-read' : 'using the local base';
+  if (!isRemoteBaseName(base)) return null;
+  try {
+    await exec('git', ['-C', cwd, 'fetch', '--no-tags', '--', 'origin', base], {
+      timeout: 30_000,
+      // No terminal behind the daemon: git must fail rather than wait for a password.
+      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+    });
+  } catch (error) {
+    console.warn(`[worktree] could not fetch origin ${base} (${(error as Error).message}); ${tail}`);
+    return null;
+  }
+  const remote = `origin/${base}`;
+  try {
+    await exec('git', ['-C', cwd, 'rev-parse', '--verify', '--end-of-options', `${remote}^{commit}`], { timeout: 5_000 });
+    return remote;
+  } catch (error) {
+    console.warn(`[worktree] origin/${base} is not available after fetch (${(error as Error).message}); ${tail}`);
+    return null;
+  }
+}
+
 /** Sha of the current HEAD. Null if not a repo. */
 export async function headSha(cwd: string): Promise<string | null> {
   try {
@@ -187,6 +237,8 @@ export async function createWorktree(
   repoCwd: string,
   base?: string,
   branchName?: string,
+  /** `pull-request` starts a new branch at `origin/<base>`. `local` is unchanged. */
+  integration: 'local' | 'pull-request' = 'local',
 ): Promise<WorktreeInfo> {
   if (!(await isGitRepo(repoCwd))) {
     throw new Error(`createWorktree: ${repoCwd} is not a git repo`);
@@ -201,7 +253,7 @@ export async function createWorktree(
   if (existsSync(path) && (await isGitRepo(path))) {
     const existingBase = base ?? (await currentBranch(repoCwd)) ?? 'HEAD';
     await prepareWorktreeDependencies(repoCwd, path);
-    return { taskId, path, branch, base: existingBase, sourceRepo: repoCwd };
+    return { taskId, path, branch, base: existingBase, sourceRepo: repoCwd, startedFrom: null };
   }
   mkdirSync(WORKTREES_ROOT, { recursive: true });
   const baseRef = base ?? (await currentBranch(repoCwd)) ?? 'HEAD';
@@ -209,12 +261,22 @@ export async function createWorktree(
   // purge) leaves its commits behind. Recreating it with -b would fail
   // and, worse, we would restart from the base, losing sight of that work — so we
   // reattach to the existing branch rather than forge a new one.
-  const addArgs = (await branchExists(repoCwd, branch))
+  const exists = await branchExists(repoCwd, branch);
+  // Only a new branch starts from the forge. Reattaching checks out the commits
+  // already on the task branch; the dispatcher then refreshes that branch from
+  // the `origin/…` ref it stored. A failed fetch still creates the branch at
+  // the local base, but `startedFrom` stays unset: storing that local name
+  // would freeze the task there, and the next dispatch would not fetch again.
+  const remote = !exists && integration === 'pull-request'
+    ? await fetchedRemoteBase(repoCwd, baseRef)
+    : null;
+  const startedFrom = exists ? null : integration === 'pull-request' ? remote : baseRef;
+  const addArgs = exists
     ? ['worktree', 'add', path, branch]
-    : ['worktree', 'add', '-b', branch, path, baseRef];
+    : ['worktree', 'add', '-b', branch, path, startedFrom ?? baseRef];
   await exec('git', ['-C', repoCwd, ...addArgs], { timeout: 30_000 });
   await prepareWorktreeDependencies(repoCwd, path);
-  return { taskId, path, branch, base: baseRef, sourceRepo: repoCwd };
+  return { taskId, path, branch, base: baseRef, sourceRepo: repoCwd, startedFrom };
 }
 
 /**
@@ -234,18 +296,22 @@ export function integrateMergeMessage(base: string): string {
 
 /** What an attempt to bring a worktree up to date with its base gave. */
 export type RefreshOutcome =
-  /** The branch already contained the whole base — nothing moved. */
-  | { status: 'up-to-date' }
+  /** The branch already contained the whole base — nothing moved.
+   *  `ref` is the ref that was compared (`origin/<base>` when the fetch worked). */
+  | { status: 'up-to-date'; ref: string }
   /** The base was integrated cleanly into the branch. */
-  | { status: 'merged'; base: string }
+  | { status: 'merged'; base: string; ref: string }
   /** Conflicts: the merge is left AS IS in the worktree, for the agent to
    *  settle. It is not aborted — an agent coding on a stale base
    *  produces work that will overwrite the others' at the final merge. */
-  | { status: 'conflict'; base: string; files: string[] }
+  | { status: 'conflict'; base: string; files: string[]; ref: string }
   /** Operation impossible (worktree missing, unknown base, merge refused by git
    *  without a conflict). Not fatal: the caller carries on with the base as it is, and
-   *  any half-done merge is aborted so the agent does not start inside it. */
-  | { status: 'failed'; reason: string };
+   *  any half-done merge is aborted so the agent does not start inside it.
+   *  `ref` is the ref this attempt merged, so the brief retries that one and
+   *  not a stale local name. `remoteUnread` means the frozen `origin/<base>`
+   *  could not be fetched: the cached ref was not compared. */
+  | { status: 'failed'; reason: string; ref: string; remoteUnread?: true };
 
 /**
  * Brings an existing worktree up to date with its base.
@@ -268,27 +334,59 @@ export type RefreshOutcome =
 export async function refreshWorktreeBase(
   worktreePath: string,
   base: string,
+  /** `pull-request` merges `origin/<base>` after a fetch. `local` merges `base`.
+   *  Ignored when `pinnedRef` is set: that ref is the one the task stored. */
+  integration: 'local' | 'pull-request' = 'local',
+  /** Ref frozen on the task. `origin/…` is fetched, then merged. A failed fetch fails the refresh and does not compare the cached ref. */
+  pinnedRef?: string | null,
 ): Promise<RefreshOutcome> {
   if (!existsSync(worktreePath) || !(await isGitRepo(worktreePath))) {
-    return { status: 'failed', reason: `worktree missing or invalid: ${worktreePath}` };
+    return { status: 'failed', reason: `worktree missing or invalid: ${worktreePath}`, ref: pinnedRef || base };
+  }
+  let source: string;
+  if (pinnedRef) {
+    // A frozen `origin/<base>` is re-read before any comparison. The cached
+    // remote-tracking ref is not a substitute: it may already be an ancestor
+    // of HEAD, and treating that as up to date would hide a fetch that failed.
+    const remoteBranch = /^origin\/(.+)$/.exec(pinnedRef)?.[1];
+    if (remoteBranch) {
+      const fetched = await fetchedRemoteBase(worktreePath, remoteBranch, 'none');
+      if (!fetched) {
+        return {
+          status: 'failed',
+          reason: `could not re-read the remote base ${pinnedRef}`,
+          ref: pinnedRef,
+          remoteUnread: true,
+        };
+      }
+      source = fetched;
+    } else {
+      source = pinnedRef;
+    }
+  } else if (integration === 'pull-request') {
+    // Callers that have not stored a ref yet (tests, a task from before the pin
+    // that still passes the mode). A failed fetch keeps the local base.
+    source = (await fetchedRemoteBase(worktreePath, base)) ?? base;
+  } else {
+    source = base;
   }
   try {
     // Already up to date: the base is an ancestor of HEAD. A cheap test that avoids
     // creating an empty merge commit on every re-spawn.
-    await exec('git', ['-C', worktreePath, 'merge-base', '--is-ancestor', base, 'HEAD'], {
+    await exec('git', ['-C', worktreePath, 'merge-base', '--is-ancestor', source, 'HEAD'], {
       timeout: 10_000,
     });
-    return { status: 'up-to-date' };
+    return { status: 'up-to-date', ref: source };
   } catch {
     /* not an ancestor → there is indeed something to integrate */
   }
   try {
     await exec(
       'git',
-      ['-C', worktreePath, 'merge', '--no-edit', '-m', refreshMergeMessage(base), base],
+      ['-C', worktreePath, 'merge', '--no-edit', '-m', refreshMergeMessage(base), source],
       { timeout: 120_000 },
     );
-    return { status: 'merged', base };
+    return { status: 'merged', base, ref: source };
   } catch (err) {
     // A failing merge leaves the index in a conflicted state. The files
     // concerned are listed so that the agent knows where to look without fumbling.
@@ -308,9 +406,12 @@ export async function refreshWorktreeBase(
       // The repository's hooks never run here (`host/git-neutral.ts`).
       // Abort it so the task starts on its base as is, and say why.
       await abortPendingMerge(worktreePath);
-      return { status: 'failed', reason: mergeFailureReason(err) };
+      // Same ref the merge just used. In pull-request mode that is `origin/<base>`
+      // when the fetch worked; telling the agent to merge the local base can
+      // succeed as a no-op and leave the task behind the forge.
+      return { status: 'failed', reason: mergeFailureReason(err), ref: source };
     }
-    return { status: 'conflict', base, files };
+    return { status: 'conflict', base, files, ref: source };
   }
 }
 

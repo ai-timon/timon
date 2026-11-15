@@ -42,6 +42,27 @@ timon project update acme-app --speech "Customer portal"
 
 The directory must already exist on the machine. A workspace you name must exist too; add `--create-workspace` to create it. An empty value (`--speech ""`) clears a field.
 
+## How a branch is integrated
+
+By default, a finished coding branch is merged locally into its base. To push the branch and merge it on GitHub instead:
+
+```bash
+timon project update acme-app --integration pull-request
+timon project update acme-app --integration pull-request --merge-strategy rebase
+```
+
+`--merge-strategy` accepts `squash` (the default), `merge`, or `rebase`. Any other value is refused, as is any integration value other than `local` or `pull-request`. `--integration local` restores the local merge. An empty value clears the setting back to that default.
+
+In `pull-request` mode, the mode itself authorises the push. A coding task pushes its branch and opens or updates one pull request against the base. When the base is a branch that already has an open pull request, the task pushes onto that branch and does not open a second pull request. The merge task resolves `<owner/name>` before it removes a worktree, and passes `--repo <owner/name>` on every `gh` command so the forge is still known after that checkout is gone. It waits for checks with `gh pr checks <n> --watch --fail-fast` (or a bounded loop of at most 30 minutes) and blocks only when a check fails, the pull request cannot be merged, or the wait runs out. It removes the worktree whose branch is the pull request head, not whichever task produced the latest commit. It then runs `gh pr merge`. It does not fast-forward the base and it does not push the base. The forge command is a single line, so a later forge can replace it. GitHub, through the `gh` command, is the forge this mode ships with.
+
+If `gh pr merge` only queues the pull request, the task waits until `gh pr view` reports `MERGED`, at most 30 minutes, and then records `mergeCommit`. Past that wait it blocks with the reason `merge queue wait exceeded 30 minutes`. A non-zero `gh pr merge` that still has a merge commit is a merged pull request whose local branch could not be deleted: the task closes done with that sha. A `code-self` task runs those commands from its own worktree, records the merge commit, and removes the worktree only after it has closed: that worktree is the directory it is running in.
+
+`code-group` is not supported in this mode. Each coding task would open its own pull request, and the merge brief only knows how to merge one; ordering those pull requests and resolving conflicts between them is not specified. A `code-group` task is told to block, with the reason `code-group is not supported in pull-request mode`, and not to push. Use `local` integration, or the `full` pipeline, for a group.
+
+In this mode a new task branch is created from `origin/<base>` after `git fetch origin <base>`, and an existing worktree is refreshed from that same remote ref. The local base branch is not moved. If the fetch fails, the task uses the local base, the daemon log records a warning, and the stored ref stays unset. The next dispatch tries the fetch again and stores `origin/<base>` when it succeeds. Once the stored ref is `origin/<base>`, a failed fetch fails the refresh: the cached ref is not treated as current, and the brief says the remote base could not be re-read. `local` mode still creates and refreshes worktrees from the local base only. Reattaching a local branch does not merge that base.
+
+The mode and the base ref are stored on the task: the mode when the task is created, the ref when a fetch of `origin/<base>` succeeds. A failed fetch leaves that ref unset. Review, merge and later coding rounds copy those values from the root task. Changing the project setting later does not retarget a task that already has them. A task created before this record keeps local behaviour.
+
 The project role is the normal default for a task; task-specific overrides are useful for exceptions. A project path is not a container path unless the daemon actually executes inside that container.
 
 ## Docker containers

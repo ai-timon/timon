@@ -326,6 +326,9 @@ const TOOLS = [
       '`comment` is mandatory: it is the work return the orchestrator reads. ' +
       'For a `review` task, also pass `verdict`. For a `merge` (or a ' +
       '`code-self` pipeline you merged yourself), pass `merged_sha`. ' +
+      'When that merge is a pull request, also pass `merged_base`: the ' +
+      '`baseRefName` from `gh pr view <n> --json baseRefName`. A stacked ' +
+      'pull request lands on that branch, and the gate checks the sha there. ' +
       'Pass `summary` too: the one line the human reads in the chat.',
     inputSchema: {
       type: 'object',
@@ -357,6 +360,14 @@ const TOOLS = [
             'Merge commit sha (7-40 hex, prefer the full 40 from `git rev-parse HEAD`). ' +
             'Mandatory to close a `merge` task and a `code-self` pipeline: without it ' +
             'the guard sends the task back to BLOCKED.',
+        },
+        merged_base: {
+          type: 'string',
+          description:
+            'Destination branch of the pull request just merged (`gh pr view ' +
+            '<n> --json baseRefName`). The gate checks the sha on `origin/<merged_base>`. ' +
+            'Required when a stacked pull request\'s head is this task\'s base: the ' +
+            'merge commit is not on `origin/<task base>`. Not stored on the task.',
         },
         id: {
           type: 'string',
@@ -1206,6 +1217,8 @@ const TOOLS = [
         speech: { type: 'string', description: 'Short pitch of the project, shown on its card.' },
         create_workspace: { type: 'boolean', description: 'Create `workspace` when it does not exist yet. Default false: an unknown name is refused.' },
         with_orchestrator: { type: 'boolean', description: 'Also create the project\'s orchestrator (`<slug>.main`, role orchestrator, your backend) unless one exists; the project\'s agents then report to it. Needs `cwd`. Returned as `orchestrator` (null when it could not be created).' },
+        integration: { type: 'string', enum: ['local', 'pull-request'], description: 'How a finished task branch is integrated. `local` (default) fast-forwards the base. `pull-request` pushes the branch and merges a pull request on the forge. Same as `timon project update --integration`.' },
+        merge_strategy: { type: 'string', enum: ['squash', 'merge', 'rebase'], description: 'Forge merge strategy when integration is pull-request. Default squash. Same as `--merge-strategy`.' },
       },
       required: ['slug'],
     },
@@ -1215,7 +1228,7 @@ const TOOLS = [
     title: 'Edit a project',
     description:
       'Edits the metadata of an existing project — `PUT /api/projects/:slug/meta`. Only the ' +
-      'fields you pass change; an empty string clears `workspace`, `speech`, `icon`. ' +
+      'fields you pass change; an empty string clears `workspace`, `speech`, `icon`, `integration`, `merge_strategy`. ' +
       'Requires `projects:manage` on the launcher account. `workspace` follows the same rule as ' +
       'project_create (existing name, or `create_workspace: true`). The `cwd` of a project that ' +
       'already has one is NOT changed from here (role agents, the grepai watcher and task ' +
@@ -1231,6 +1244,8 @@ const TOOLS = [
         cwd: { type: 'string', description: 'Absolute existing path. Only accepted while the project has no cwd yet.' },
         speech: { type: 'string', description: 'Short pitch of the project, shown on its card.' },
         create_workspace: { type: 'boolean', description: 'Create `workspace` when it does not exist yet. Default false.' },
+        integration: { type: 'string', enum: ['local', 'pull-request'], description: 'How a finished task branch is integrated. `local` (default) fast-forwards the base. `pull-request` pushes the branch and merges a pull request on the forge. Same as `timon project update --integration`.' },
+        merge_strategy: { type: 'string', enum: ['squash', 'merge', 'rebase'], description: 'Forge merge strategy when integration is pull-request. Default squash. Same as `--merge-strategy`.' },
       },
       required: ['slug'],
     },
@@ -1453,6 +1468,7 @@ async function runTool(rawName, args, ctx) {
       const body = { outcome: 'done', comment: args.comment };
       if (args.verdict !== undefined) body.verdict = args.verdict;
       if (args.merged_sha !== undefined) body.merged_sha = args.merged_sha;
+      if (args.merged_base !== undefined) body.merged_base = args.merged_base;
       if (args.summary !== undefined) body.summary = args.summary;
       if (args.id !== undefined) body.id = args.id;
       const r = await call('POST', '/api/tasks/close', body);
@@ -1742,7 +1758,7 @@ async function runTool(rawName, args, ctx) {
     }
     case 'project_create': {
       const body = { slug: args.slug, workspace_policy: args.create_workspace === true ? 'create' : 'existing' };
-      for (const key of ['name', 'cwd', 'color', 'icon', 'kind', 'status', 'workspace', 'speech']) {
+      for (const key of ['name', 'cwd', 'color', 'icon', 'kind', 'status', 'workspace', 'speech', 'integration', 'merge_strategy']) {
         if (args[key] !== undefined) body[key] = args[key];
       }
       // Relayed as given: the daemon's schema refuses anything but a boolean.
@@ -1754,7 +1770,7 @@ async function runTool(rawName, args, ctx) {
     }
     case 'project_update': {
       const body = { workspace_policy: args.create_workspace === true ? 'create' : 'existing' };
-      for (const key of ['name', 'color', 'icon', 'workspace', 'cwd', 'speech']) {
+      for (const key of ['name', 'color', 'icon', 'workspace', 'cwd', 'speech', 'integration', 'merge_strategy']) {
         if (args[key] !== undefined) body[key] = args[key];
       }
       const r = await call('PUT', `/api/projects/${encodeURIComponent(args.slug)}/meta`, body);

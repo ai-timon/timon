@@ -859,9 +859,9 @@ Tasks (Kanban backlog):
                    [--deps id1,id2] [--scheduled ISO8601]
                    [--extra-skills s1,s2] [--extra-mcp mcp1,mcp2]
                    [--allow "Bash(timon:*),Read(/tmp/*)"]
-  timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--summary TEXT]
+  timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]
   timon task block <id> --reason TEXT
-  timon task mark-as-done [id] --comment TEXT|--comment-file PATH|--comment-stdin [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]
+  timon task mark-as-done [id] --comment TEXT|--comment-file PATH|--comment-stdin [--verdict pass|changes_requested] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]
                                                closes THE current mission's task (no id to copy)
   timon task mark-merged <id> --sha SHA [--comment TEXT]
                                                branch merged outside Timon: records its merge commit
@@ -903,10 +903,12 @@ Projects (agent roles per project):
                                              sets the agent + model/permission for a role
   timon project create <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]
                        [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]
+                       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]
                                              registers a project; the cwd must already exist on the host
   timon project update <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]
                        [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]
-                                             edits what you pass; an empty value clears workspace, speech, icon, kind
+                       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]
+                                             edits what you pass; an empty value clears workspace, speech, icon, kind, integration, merge strategy
   timon workspace list [--json]                workspaces (poles) with their lead agent and projects
   timon project demo                           creates the demo project (a small sample repository)
 
@@ -2053,7 +2055,7 @@ async function cmdTaskCreate(argv) {
 
 async function cmdTaskDone(argv) {
   const id = argv[0];
-  if (!id) { process.stderr.write('usage: timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--summary TEXT]\n'); process.exit(64); }
+  if (!id) { process.stderr.write('usage: timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]\n'); process.exit(64); }
   // Comment: --comment TEXT (inline, short) OR --comment-file PATH OR
   // --comment-stdin (reads stdin). The last two avoid any shell-quoting
   // truncation when the agent produces a long done_comment (e.g. a verbose
@@ -2071,6 +2073,7 @@ async function cmdTaskDone(argv) {
     comment = await readAll(process.stdin);
   }
   const mergedSha = takeFlag(argv, 'merged-sha');
+  const mergedBase = takeFlag(argv, 'merged-base');
   const summary = takeFlag(argv, 'summary');
   // If the merger agent performed a merge → record the sha BEFORE marking
   // DONE. The orchestrator's merge guard refuses a type='merge' task's DONE
@@ -2083,10 +2086,14 @@ async function cmdTaskDone(argv) {
   }
   const update = { status: 'DONE', done_comment: comment };
   if (summary) update.done_summary = summary;
+  // Destination of the pull request just merged (`baseRefName`). The gate
+  // reads it on this close; it is not a column.
+  if (mergedBase) update.merged_base = mergedBase;
   await http('PUT', `/api/tasks/${id}`, update);
   process.stdout.write(`task ${id} → DONE\n`);
   if (comment) process.stdout.write(`comment: ${comment}\n`);
   if (mergedSha) process.stdout.write(`merged sha: ${mergedSha}\n`);
+  if (mergedBase) process.stdout.write(`merged base: ${mergedBase}\n`);
 }
 
 /**
@@ -2135,16 +2142,18 @@ async function cmdTaskMarkAsDone(argv) {
   const comment = await readClosingComment(argv);
   const verdict = takeFlag(argv, 'verdict');
   const mergedSha = takeFlag(argv, 'merged-sha');
+  const mergedBase = takeFlag(argv, 'merged-base');
   const summary = takeFlag(argv, 'summary');
   if (!comment) {
     process.stderr.write('usage: timon task mark-as-done [id] --comment TEXT | --comment-file PATH | --comment-stdin\n' +
-      '       [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]\n');
+      '       [--verdict pass|changes_requested] [--merged-sha SHA] [--merged-base BRANCH] [--summary TEXT]\n');
     process.exit(64);
   }
   const body = { outcome: 'done', comment };
   if (id) body.id = id;
   if (verdict) body.verdict = verdict;
   if (mergedSha) body.merged_sha = mergedSha;
+  if (mergedBase) body.merged_base = mergedBase;
   if (summary) body.summary = summary;
   const j = await http('POST', '/api/tasks/close', body);
   process.stdout.write(`task ${j.task.id} → DONE\n`);
@@ -2516,10 +2525,15 @@ async function cmdProjectWrite(verb, argv) {
     const value = takeFlag(rest, key);
     if (value !== undefined) body[key] = value;
   }
+  const integration = takeFlag(rest, 'integration');
+  if (integration !== undefined) body.integration = integration;
+  const mergeStrategy = takeFlag(rest, 'merge-strategy');
+  if (mergeStrategy !== undefined) body.merge_strategy = mergeStrategy;
   const slug = rest[0];
   if (!slug || rest.length > 1) {
     process.stderr.write(`usage: timon project ${verb} <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]\n` +
-      '       [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]\n');
+      '       [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]\n' +
+      '       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]\n');
     process.exit(64);
   }
   if (verb === 'create') {

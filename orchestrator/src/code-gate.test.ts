@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getHost } from './host/index.js';
@@ -128,4 +128,109 @@ test('code-self: inspect actual merge ancestry, not commits ahead of base', (t) 
     const pendingTask = { ...task, pipeline: pendingPipeline, merged_commit_sha: null };
     assert.match(evaluateCodeDone(pendingTask, inspectGitBranch(repo, 'task', 'main', pendingPipeline))!, /NO commits/);
   }
+});
+
+test('pull-request code-self: a forge merge stays done while the worktree is still there', (t) => {
+  const pipeline = 'code-self';
+  const repo = mkdtempSync(join(tmpdir(), 'timon-code-gate-pr-'));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const git = (...args: string[]) => {
+    const result = getHost().exec('git', args, { cwd: repo, timeout: 5_000 });
+    assert.equal(result.code, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git('init', '-b', 'main');
+  git('config', 'user.name', 'Test');
+  git('config', 'user.email', 'test@example.invalid');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'base');
+  git('checkout', '-b', 'forge-main');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'forge merge');
+  const forgeSha = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/main', forgeSha);
+  git('checkout', '-b', 'side');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'not on the forge');
+  const side = git('rev-parse', 'HEAD');
+  git('checkout', 'main');
+
+  const task = codeTask({ pipeline, worktree_path: repo, branch_name: 'task', merged_commit_sha: forgeSha });
+  const onForge = inspectGitBranch(repo, 'task', 'main', pipeline, forgeSha, 'pull-request');
+  assert.equal(onForge.mergedIntoBase, true);
+  assert.equal(evaluateCodeDone(task, onForge), null);
+  // Local main never received that commit. The old gate blocked on it.
+  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, forgeSha).mergedIntoBase, false);
+
+  const absent = 'a'.repeat(40);
+  // No remote: an unknown sha is not on the forge. It must not close the task.
+  const unknown = inspectGitBranch(repo, 'task', 'main', pipeline, absent, 'pull-request');
+  assert.equal(unknown.mergedIntoBase, false);
+  assert.match(evaluateCodeDone({ ...task, merged_commit_sha: absent }, unknown)!, /not contained in base main/);
+  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, absent).mergedIntoBase, false);
+
+  // A remote we cannot fetch leaves the sha unknown: the merge may exist only on the forge.
+  git('remote', 'add', 'origin', 'http://127.0.0.1:9/timon-code-gate-missing.git');
+  const unfetched = inspectGitBranch(repo, 'task', 'main', pipeline, absent, 'pull-request');
+  assert.equal(unfetched.mergedIntoBase, null);
+  assert.equal(evaluateCodeDone({ ...task, merged_commit_sha: absent }, unfetched), null);
+  assert.equal(inspectGitBranch(repo, 'task', 'main', pipeline, forgeSha, 'pull-request').mergedIntoBase, true);
+
+  const outside = inspectGitBranch(repo, 'task', 'main', pipeline, side, 'pull-request');
+  assert.equal(outside.mergedIntoBase, false);
+  assert.match(evaluateCodeDone({ ...task, merged_commit_sha: side }, outside)!, /not contained in base main/);
+});
+
+test('pull-request code-self: a stacked pull request is on its destination, not on the task base', (t) => {
+  const pipeline = 'code-self';
+  const repo = mkdtempSync(join(tmpdir(), 'timon-code-gate-stack-'));
+  t.after(() => rmSync(repo, { recursive: true, force: true }));
+  const git = (...args: string[]) => {
+    const result = getHost().exec('git', args, { cwd: repo, timeout: 5_000 });
+    assert.equal(result.code, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git('init', '-b', 'main');
+  git('config', 'user.name', 'Test');
+  git('config', 'user.email', 'test@example.invalid');
+  git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-m', 'base');
+  git('checkout', '-b', 'pr-head');
+  writeFileSync(join(repo, 'feature.txt'), 'feature\n');
+  git('add', 'feature.txt');
+  git('-c', 'commit.gpgsign=false', 'commit', '-m', 'feature');
+  const feature = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/pr-head', feature);
+  git('checkout', 'main');
+  // Squash: the merge commit is new. It is not an ancestor of the pull-request head.
+  git('merge', '--squash', 'pr-head');
+  git('-c', 'commit.gpgsign=false', 'commit', '-m', 'squash onto destination');
+  const squash = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/main', squash);
+
+  const task = codeTask({
+    pipeline,
+    worktree_path: repo,
+    branch_name: 'task',
+    base_branch: 'pr-head',
+    merged_commit_sha: squash,
+  });
+  // The task base is the existing pull request's head. The squash landed on main.
+  const onTaskBase = inspectGitBranch(repo, 'task', 'pr-head', pipeline, squash, 'pull-request');
+  assert.equal(onTaskBase.mergedIntoBase, false);
+  assert.equal(onTaskBase.checkedBase, 'pr-head');
+  assert.match(evaluateCodeDone(task, onTaskBase)!, /not contained in base pr-head/);
+
+  const onDestination = inspectGitBranch(repo, 'task', 'pr-head', pipeline, squash, 'pull-request', null, 'main');
+  assert.equal(onDestination.mergedIntoBase, true);
+  assert.equal(onDestination.checkedBase, 'main');
+  assert.equal(evaluateCodeDone(task, onDestination), null);
+  // `origin/main` is the same destination. It must not be fetched as `origin/origin/main`.
+  const qualified = inspectGitBranch(repo, 'task', 'pr-head', pipeline, squash, 'pull-request', null, 'origin/main');
+  assert.equal(qualified.mergedIntoBase, true);
+  assert.equal(qualified.checkedBase, 'main');
+
+  // The feature commit sits on the pull-request head. It is not the merge onto main.
+  const featureOnDestination = inspectGitBranch(repo, 'task', 'pr-head', pipeline, feature, 'pull-request', null, 'main');
+  assert.equal(featureOnDestination.mergedIntoBase, false);
+  assert.match(
+    evaluateCodeDone({ ...task, merged_commit_sha: feature }, featureOnDestination)!,
+    /not contained in base main/,
+  );
 });

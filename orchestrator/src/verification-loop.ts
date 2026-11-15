@@ -58,6 +58,7 @@ import { warnSandboxCascadeAhead } from './sandbox-cascade.js';
 import { parseReviewVerdict } from './review-verdict.js';
 import { execFileHost } from './host/index.js';
 import { integrateMergeMessage } from './worktree.js';
+import { pinnedIntegration, pullRequestMergeDescription } from './integration-mode.js';
 
 const exec = execFileHost;
 const MAX_ITERATIONS = 3;
@@ -67,12 +68,27 @@ const MAX_ITERATIONS = 3;
 // existing imports keep working.
 export { parseReviewVerdict };
 
+/** Mode and base ref the chain keeps. `null` is passed through: a root from before the pin must not be re-snapshotted. */
+function pinFrom(root: TaskRow): {
+  integrationMode: TaskRow['integration_mode'];
+  integrationStrategy: TaskRow['integration_strategy'];
+  baseRef: string | null;
+} {
+  return {
+    integrationMode: root.integration_mode,
+    integrationStrategy: root.integration_strategy,
+    baseRef: root.base_ref,
+  };
+}
+
 async function diffSummary(task: TaskRow): Promise<{ stat: string; hasChanges: boolean } | null> {
-  if (!task.worktree_path || !task.base_branch) return null;
+  // The ref the worktree was started from. The local branch name is only the fallback for a row from before the pin.
+  const ref = task.base_ref || task.base_branch;
+  if (!task.worktree_path || !ref) return null;
   try {
     const r = await exec(
       'git',
-      ['-C', task.worktree_path, 'diff', '--stat', `${task.base_branch}...HEAD`],
+      ['-C', task.worktree_path, 'diff', '--stat', `${ref}...HEAD`],
       { timeout: 5_000 },
     );
     const stat = r.stdout.trim();
@@ -265,6 +281,7 @@ async function handleCodeDone(task: TaskRow): Promise<void> {
     groupId: root.group_id,
     creatorMissionId: root.creator_mission_id,
     parentTaskId: task.id,
+    ...pinFrom(root),
   });
   dbApi.setTaskVerificationMeta(reviewId, iteration, rootId);
   console.log(
@@ -297,7 +314,16 @@ async function spawnMergeTask(review: TaskRow): Promise<void> {
   const knownBase = root.base_branch ?? review.base_branch ?? null;
   const base = knownBase ?? 'main';
   const mergeId = randomUUID();
-  const description = [
+  const integration = pinnedIntegration(root);
+  const description = integration.mode === 'pull-request'
+    ? pullRequestMergeDescription({
+      reviewId: review.id,
+      rootId,
+      branch,
+      base,
+      strategy: integration.strategy,
+    })
+    : [
     `Automatic merge: review [${review.id}] approved (verdict pass) the branch produced by code task [${rootId}].`,
     ``,
     `**Branch to integrate**: \`${branch}\` → \`${base}\``,
@@ -331,6 +357,7 @@ async function spawnMergeTask(review: TaskRow): Promise<void> {
     groupId: root.group_id,
     creatorMissionId: root.creator_mission_id,
     parentTaskId: review.id,
+    ...pinFrom(root),
   });
   console.log(`[verification] review ${review.id} pass → merge ${mergeId} (merger=${merger})`);
   const created = dbApi.getTask(mergeId);
@@ -450,6 +477,7 @@ async function handleReviewDone(task: TaskRow): Promise<void> {
     planGroup: root.plan_group,
     pipeline: root.pipeline,
     baseBranch: root.base_branch,
+    ...pinFrom(root),
   });
   dbApi.setTaskVerificationMeta(codeId, nextIter, rootId);
   // Pre-fills the worktree → the dispatcher sees the columns are already set
