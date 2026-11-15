@@ -13,6 +13,9 @@ export type MergeStrategy = 'squash' | 'merge' | 'rebase';
 
 const STRATEGIES: readonly MergeStrategy[] = ['squash', 'merge', 'rebase'];
 
+/** Block reason when a merge queue does not finish. English, so the public tree stays English. */
+const MERGE_QUEUE_WAIT = 'merge queue wait exceeded 30 minutes';
+
 export function integrationSettings(slug: string | null | undefined): {
   mode: IntegrationMode;
   strategy: MergeStrategy;
@@ -98,7 +101,7 @@ function mergeAndShaStep(strategy: MergeStrategy): string {
     `gh pr view <n> ${GH_REPO} --json state,mergeCommit`,
     '```',
     ``,
-    `Stop when \`state\` is \`MERGED\` and \`mergeCommit.oid\` is a full sha (40 hex). If the wait exceeds 30 minutes, \`timon task block\` with the reason \`en file de fusion\`.`,
+    `Stop when \`state\` is \`MERGED\` and \`mergeCommit.oid\` is a full sha (40 hex). If the wait exceeds 30 minutes, \`timon task block\` with the reason \`${MERGE_QUEUE_WAIT}\`.`,
     ``,
     `If \`gh pr merge\` exits non-zero, still read the merge commit before you decide the forge refused:`,
     ``,
@@ -221,7 +224,7 @@ export function pullRequestMergeWorktreeSection(args: {
     `\`\`\`bash\n${forgeMergeLine(strategy)}\n\`\`\`\n\n` +
     `If that queues the pull request, wait until \`gh pr view <n> ${GH_REPO} --json ` +
     `state,mergeCommit\` reports \`MERGED\`, at most 30 minutes, before you read the ` +
-    `sha. Past that, \`timon task block\` with the reason \`en file de fusion\`. ` +
+    `sha. Past that, \`timon task block\` with the reason \`${MERGE_QUEUE_WAIT}\`. ` +
     `If \`gh pr merge\` exits non-zero, a full sha from \`gh pr view <n> ${GH_REPO} ` +
     `--json mergeCommit\` still closes the task DONE: the pull request merged and ` +
     `only the local branch deletion failed. No merge commit means the forge refused. ` +
@@ -246,13 +249,15 @@ export function pullRequestCodeSelfDirective(strategy: MergeStrategy): string {
     `Use the first list that returns one. If neither does, \`timon task block\` with ` +
     `the reason.\n\n` +
     `${waitForChecksStep()}\n\n` +
-    `${disposeHeadStep(
-      `That worktree is yours only when the head is your branch. When you pushed onto a base that already has a pull request, the head is that base, checked out in the earlier task's worktree. Do not dispose your own task id unless its branch is the head. Your cwd disappears with your worktree: capture \`<owner/name>\` first.`,
-    )}\n\n` +
     `${mergeAndShaStep(strategy)}\n\n` +
     `Close with \`timon task done <TASK_ID> --comment "..." --merged-sha <SHA of the ` +
     `pull request's merge commit>\`. The sha is REQUIRED: without it the task goes ` +
-    `back to BLOCKED (guard against never-merged branches).`
+    `back to BLOCKED (guard against never-merged branches). Close before you remove ` +
+    `any worktree. Your cwd is that worktree: removing it first makes this close ` +
+    `fail, and the task never finishes.\n\n` +
+    `${disposeHeadStep(
+      `Do this last, after \`timon task done\`. That worktree is yours only when the head is your branch. When you pushed onto a base that already has a pull request, the head is that base, checked out in the earlier task's worktree. Do not dispose your own task id unless its branch is the head.`,
+    )}`
   );
 }
 

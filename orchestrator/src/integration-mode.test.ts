@@ -125,7 +125,7 @@ test('the merge brief follows the mode and the forge strategy', async () => {
   assert.match(squash, /gh pr merge <n> --repo <owner\/name> --squash --delete-branch/);
   assert.equal(squash.split('gh pr merge <n> --repo <owner/name> --squash --delete-branch').length - 1, 1);
   assert.match(squash, /gh pr checks <n> --repo <owner\/name> --watch --fail-fast/);
-  assert.match(squash, /en file de fusion/);
+  assert.match(squash, /merge queue wait exceeded 30 minutes/);
   assert.match(squash, /mergeCommit/);
   assert.match(squash, /worktree list --porcelain/);
   assert.match(squash, /Do not block because a check is pending/);
@@ -144,7 +144,7 @@ test('the merge brief follows the mode and the forge strategy', async () => {
   const brief = worktreeDirective(task, wt(task, `timon/merge/${task.id}`, 'main'), 'feature');
   assert.match(brief, /gh pr merge <n> --repo <owner\/name> --squash --delete-branch/);
   assert.match(brief, /git -C \/repo worktree list --porcelain/);
-  assert.match(brief, /en file de fusion/);
+  assert.match(brief, /merge queue wait exceeded 30 minutes/);
   assert.match(brief, /code-group is not supported in pull-request mode/);
   assert.doesNotMatch(brief, /check is pending or failed/);
   assert.doesNotMatch(brief, /merge --ff-only/);
@@ -173,9 +173,14 @@ test('a coding brief in pull-request mode pushes and opens one pull request', ()
   assert.match(selfBrief, /the user chose the fast mode/);
   assert.match(selfBrief, /gh pr merge <n> --repo <owner\/name> --squash --delete-branch/);
   assert.match(selfBrief, /gh pr checks <n> --repo <owner\/name> --watch --fail-fast/);
-  assert.match(selfBrief, /en file de fusion/);
+  assert.match(selfBrief, /merge queue wait exceeded 30 minutes/);
   assert.match(selfBrief, /worktree list --porcelain/);
   assert.match(selfBrief, /--json mergeCommit/);
+  // The worktree is the agent's cwd. Dispose it only after the forge merge and the close.
+  const mergedAt = selfBrief.indexOf('gh pr merge <n> --repo <owner/name> --squash --delete-branch');
+  const closedAt = selfBrief.indexOf('timon task done <TASK_ID>');
+  const disposedAt = selfBrief.indexOf('worktree list --porcelain');
+  assert.ok(mergedAt >= 0 && closedAt > mergedAt && disposedAt > closedAt);
   assert.match(selfBrief, /Do not block because a check is pending/);
   assert.doesNotMatch(selfBrief, /a check is pending or failed/);
   assert.doesNotMatch(selfBrief, /git merge --no-ff/);
@@ -234,7 +239,7 @@ test('a chained fix keeps the pull-request branch as its base and does not fast-
   assert.match(text, /worktree list --porcelain/);
   assert.match(text, /gh repo view --json nameWithOwner/);
   assert.match(text, /--json mergeCommit/);
-  assert.match(text, /en file de fusion/);
+  assert.match(text, /merge queue wait exceeded 30 minutes/);
   assert.doesNotMatch(text, new RegExp(`timon worktree dispose ${root.id}`));
   assert.match(text, new RegExp(`Do not remove the worktree of code task \`${root.id}\``));
   assert.doesNotMatch(text, /merge --ff-only/);
