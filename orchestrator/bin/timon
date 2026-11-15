@@ -903,10 +903,12 @@ Projects (agent roles per project):
                                              sets the agent + model/permission for a role
   timon project create <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]
                        [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]
+                       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]
                                              registers a project; the cwd must already exist on the host
   timon project update <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]
                        [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]
-                                             edits what you pass; an empty value clears workspace, speech, icon, kind
+                       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]
+                                             edits what you pass; an empty value clears workspace, speech, icon, kind, integration, merge strategy
   timon workspace list [--json]                workspaces (poles) with their lead agent and projects
   timon project demo                           creates the demo project (a small sample repository)
 
@@ -2516,10 +2518,15 @@ async function cmdProjectWrite(verb, argv) {
     const value = takeFlag(rest, key);
     if (value !== undefined) body[key] = value;
   }
+  const integration = takeFlag(rest, 'integration');
+  if (integration !== undefined) body.integration = integration;
+  const mergeStrategy = takeFlag(rest, 'merge-strategy');
+  if (mergeStrategy !== undefined) body.merge_strategy = mergeStrategy;
   const slug = rest[0];
   if (!slug || rest.length > 1) {
     process.stderr.write(`usage: timon project ${verb} <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]\n` +
-      '       [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]\n');
+      '       [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]\n' +
+      '       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]\n');
     process.exit(64);
   }
   if (verb === 'create') {

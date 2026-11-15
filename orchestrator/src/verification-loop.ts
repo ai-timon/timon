@@ -58,6 +58,7 @@ import { warnSandboxCascadeAhead } from './sandbox-cascade.js';
 import { parseReviewVerdict } from './review-verdict.js';
 import { execFileHost } from './host/index.js';
 import { integrateMergeMessage } from './worktree.js';
+import { integrationSettings, pullRequestMergeDescription } from './integration-mode.js';
 
 const exec = execFileHost;
 const MAX_ITERATIONS = 3;
@@ -297,7 +298,16 @@ async function spawnMergeTask(review: TaskRow): Promise<void> {
   const knownBase = root.base_branch ?? review.base_branch ?? null;
   const base = knownBase ?? 'main';
   const mergeId = randomUUID();
-  const description = [
+  const integration = integrationSettings(project);
+  const description = integration.mode === 'pull-request'
+    ? pullRequestMergeDescription({
+      reviewId: review.id,
+      rootId,
+      branch,
+      base,
+      strategy: integration.strategy,
+    })
+    : [
     `Automatic merge: review [${review.id}] approved (verdict pass) the branch produced by code task [${rootId}].`,
     ``,
     `**Branch to integrate**: \`${branch}\` → \`${base}\``,

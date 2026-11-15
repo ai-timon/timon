@@ -180,10 +180,12 @@ Projects (agent roles per project):
                                              sets the agent + model/permission for a role
   timon project create <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]
                        [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]
+                       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]
                                              registers a project; the cwd must already exist on the host
   timon project update <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]
                        [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]
-                                             edits what you pass; an empty value clears workspace, speech, icon, kind
+                       [--integration local|pull-request] [--merge-strategy squash|merge|rebase]
+                                             edits what you pass; an empty value clears workspace, speech, icon, kind, integration, merge strategy
   timon workspace list [--json]                workspaces (poles) with their lead agent and projects
   timon project demo                           creates the demo project (a small sample repository)
 

@@ -25,6 +25,15 @@ import {
   refreshMergeMessage, integrateMergeMessage,
   type WorktreeInfo, type RefreshOutcome,
 } from './worktree.js';
+import {
+  codeIntegrationSection,
+  integrationSettings,
+  pullRequestCodeGroupDirective,
+  pullRequestCodeSelfDirective,
+  pullRequestMergeWorktreeSection,
+  type IntegrationMode,
+  type MergeStrategy,
+} from './integration-mode.js';
 import { agentDir } from './paths.js';
 import { notifyUser } from './notify.js';
 import { orchestratorForProject } from './main-agent.js';
@@ -303,6 +312,16 @@ function mergeLockKey(task: TaskRow): string {
 
 const lastRefresh = new Map<string, RefreshOutcome>();
 
+/** Project integration for a brief. A missing project, a missing column, or an
+ *  unreadable slug stays `local`, so a task with no project keeps today's text. */
+function taskIntegration(task: TaskRow): { mode: IntegrationMode; strategy: MergeStrategy } {
+  let slug: string | null = task.project ?? null;
+  if (!slug && task.agent_name) {
+    try { slug = taskProjectSlug(task, loadConfig(task.agent_name)); } catch { slug = null; }
+  }
+  return integrationSettings(slug);
+}
+
 /** Keeps a refresh outcome for the brief and logs it. A refusal without
  *  conflict (a hook rejecting the merge message, an unknown base) used to be a
  *  log line only: the brief now tells the agent too. */
@@ -379,7 +398,16 @@ export function worktreeDirective(
       `state._`,
     );
   }
-  if (task.type === 'merge') {
+  if (task.type === 'merge' && taskIntegration(task).mode === 'pull-request') {
+    const settings = taskIntegration(task);
+    parts.push(pullRequestMergeWorktreeSection({
+      path: wt.path,
+      branch: wt.branch,
+      base: wt.base,
+      sourceRepo: wt.sourceRepo,
+      strategy: settings.strategy,
+    }));
+  } else if (task.type === 'merge') {
     // Base ≠ active branch: the final fast-forward must not move the branch the
     // user is standing on. `activeBranch` unknown (detached HEAD, git error) is
     // treated like "same": the historical ff-only.
@@ -435,6 +463,8 @@ export function worktreeDirective(
           `Then get the FULL sha (\`git -C ${wt.sourceRepo} rev-parse HEAD\`, ` +
           `40 hex) for \`timon task done --merged-sha\`.`),
     );
+  } else if (task.type === 'code' && taskIntegration(task).mode === 'pull-request') {
+    parts.push(codeIntegrationSection(wt.branch, wt.base));
   }
   return parts.join('');
 }
@@ -868,7 +898,9 @@ export function composeTaskPrompt(
  */
 export function pipelineDirective(task: TaskRow): string {
   if (task.type !== 'code') return '';
+  const integration = taskIntegration(task);
   if (task.pipeline === 'code-self') {
+    if (integration.mode === 'pull-request') return pullRequestCodeSelfDirective(integration.strategy);
     return (
       `\n\n---\nPIPELINE: \`code-self\`. Create NO \`review\` or \`merge\` task — ` +
       `the user chose the fast mode. When your code is ready: merge your ` +
@@ -883,6 +915,7 @@ export function pipelineDirective(task: TaskRow): string {
     );
   }
   if (task.pipeline === 'code-group') {
+    if (integration.mode === 'pull-request') return pullRequestCodeGroupDirective();
     return (
       `\n\n---\nPIPELINE: \`code-group\`. Create NO \`review\` or \`merge\` task — ` +
       `the user chose the fast mode and a final \`merge\` task will consolidate the whole ` +

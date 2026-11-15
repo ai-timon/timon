@@ -42,6 +42,19 @@ timon project update acme-app --speech "Customer portal"
 
 The directory must already exist on the machine. A workspace you name must exist too; add `--create-workspace` to create it. An empty value (`--speech ""`) clears a field.
 
+## How a branch is integrated
+
+By default, a finished coding branch is merged locally into its base. To push the branch and merge it on GitHub instead:
+
+```bash
+timon project update acme-app --integration pull-request
+timon project update acme-app --integration pull-request --merge-strategy rebase
+```
+
+`--merge-strategy` accepts `squash` (the default), `merge`, or `rebase`. Any other value is refused, as is any integration value other than `local` or `pull-request`. `--integration local` restores the local merge. An empty value clears the setting back to that default.
+
+In `pull-request` mode, the mode itself authorises the push. A coding task pushes its branch and opens or updates one pull request against the base. When the base is a branch that already has an open pull request, the task pushes onto that branch and does not open a second pull request. The merge task waits until the pull request can be merged and its checks have finished green, removes the worktree that holds the branch, then runs `gh pr merge`. It does not fast-forward the base and it does not push the base. The forge command is a single line, so a later forge can replace it. GitHub, through the `gh` command, is the forge this mode ships with.
+
 The project role is the normal default for a task; task-specific overrides are useful for exceptions. A project path is not a container path unless the daemon actually executes inside that container.
 
 ## Docker containers

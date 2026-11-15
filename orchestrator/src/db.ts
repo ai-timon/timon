@@ -1647,6 +1647,11 @@ if (!projectCols.includes('score_updated_at')) db.exec(`ALTER TABLE projects ADD
 // UI would be undone by the next reconcile pass. `author` = who noted the idea (agent
 // name, or `user` from the cockpit). Earlier rows stay NULL: we cannot rewrite history,
 if (!projectCols.includes('grepai_watch')) db.exec(`ALTER TABLE projects ADD COLUMN grepai_watch TEXT`);
+// How a finished task branch is integrated. NULL or 'local' keeps the local
+// fast-forward. 'pull-request' merges through the forge. `merge_strategy` is
+// squash (the default when NULL), merge, or rebase, and is read only then.
+if (!projectCols.includes('integration')) db.exec(`ALTER TABLE projects ADD COLUMN integration TEXT`);
+if (!projectCols.includes('merge_strategy')) db.exec(`ALTER TABLE projects ADD COLUMN merge_strategy TEXT`);
 // `created_by` = `plugin:<id>` when a plugin registered the project (`ctx.projects.create`); NULL for every other project. Written by the facade only.
 if (!projectCols.includes('created_by')) db.exec(`ALTER TABLE projects ADD COLUMN created_by TEXT`);
 
@@ -3869,6 +3874,8 @@ export type ProjectRow = {
   score_rationale: string | null;
   score_updated_at: number | null;
   grepai_watch: string | null; // conversation restarts empty without saying so. ── Memory & project types (DB
+  integration: 'local' | 'pull-request' | null;
+  merge_strategy: 'squash' | 'merge' | 'rebase' | null;
   created_by: string | null; // `plugin:<id>` for a project a plugin registered
   created_at: number;
   updated_at: number;
@@ -7535,23 +7542,25 @@ export const dbApi = {
     if (cur) {
       db.prepare(
         `UPDATE projects SET name=?, color=?, icon=?, workspace=?, cwd=?, speech=?,
-           kind=?, status=?, last_activity=?, grepai_watch=?, updated_at=? WHERE slug=?`,
+           kind=?, status=?, last_activity=?, grepai_watch=?, integration=?, merge_strategy=?, updated_at=? WHERE slug=?`,
       ).run(
         pick('name', cur.name), pick('color', cur.color), pick('icon', cur.icon),
         pick('workspace', cur.workspace), pick('cwd', cur.cwd), pick('speech', cur.speech),
         pick('kind', cur.kind), pick('status', cur.status), pick('last_activity', cur.last_activity),
         pick('grepai_watch', cur.grepai_watch),
+        pick('integration', cur.integration), pick('merge_strategy', cur.merge_strategy),
         now, slug,
       );
     } else {
       db.prepare(
-        `INSERT INTO projects (slug, name, color, icon, workspace, cwd, speech, kind, status, last_activity, grepai_watch, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (slug, name, color, icon, workspace, cwd, speech, kind, status, last_activity, grepai_watch, integration, merge_strategy, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         slug, pick('name', null), pick('color', null), pick('icon', null),
         pick('workspace', null), pick('cwd', null), pick('speech', null),
         pick('kind', null), pick('status', 'active'), pick('last_activity', null),
         pick('grepai_watch', null),
+        pick('integration', null), pick('merge_strategy', null),
         now, now,
       );
     }
