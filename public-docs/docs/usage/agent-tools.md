@@ -319,6 +319,12 @@ The routines and triggers the agent offers during that conversation are made wit
 
 The CLI counterparts are `timon setup soul`, `timon setup team --coder NAME --reviewer NAME`, `timon setup finish [--no-tour]` and `timon setup avatar`. See [First run](../installation/first-run.md) for the conversation from your side.
 
+## Using the `timon` server from your own MCP client
+
+The same server can run outside Timon, for an MCP client you start yourself (a desktop assistant, an editor). Run `orchestrator/bin/timon-mcp.mjs` of your install with Node as a stdio server. Outside a mission it acts with the daemon token of this computer, so it holds every tool above with your rights, deletions and agent creation included.
+
+Set `TIMON_MCP_TOOLS` in the environment the client gives it to keep only what that client needs: tool names, or a family ending in `_*`, separated by commas, for example `kanban_list,kanban_get,project_todo_*`. Only those tools are listed, and calling another one is refused before Timon is reached. A bare `*`, an empty value or a malformed entry stops the server instead of starting it with every tool. An entry that matches no tool is reported on the server's error output.
+
 ## The `timon_ask` server: two forms
 
 Both tools open a form in the chat and **block the agent until you answer**. They are not interchangeable.
