@@ -321,9 +321,15 @@ The CLI counterparts are `timon setup soul`, `timon setup team --coder NAME --re
 
 ## Using the `timon` server from your own MCP client
 
-The same server can run outside Timon, for an MCP client you start yourself (a desktop assistant, an editor). Run `orchestrator/bin/timon-mcp.mjs` of your install with Node as a stdio server. Outside a mission it acts with the daemon token of this computer, so it holds every tool above with your rights, deletions and agent creation included.
+The same server can run outside Timon, for an MCP client you start yourself (a desktop assistant, an editor): declare `timon mcp serve` as a stdio server in that client. It runs on the runtime of your Timon install and reaches the daemon the `timon` command reaches, with the same credential (`--daemon` and `TIMON_API` apply). Outside a mission that credential is the daemon token of this computer, so the server holds every tool above with your rights, deletions and agent creation included.
 
-Set `TIMON_MCP_TOOLS` in the environment the client gives it to keep only what that client needs: tool names, or a family ending in `_*`, separated by commas, for example `kanban_list,kanban_get,project_todo_*`. Only those tools are listed, and calling another one is refused before Timon is reached. A bare `*`, an empty value or a malformed entry stops the server instead of starting it with every tool. An entry that matches no tool is reported on the server's error output.
+Keep only what that client needs with `--tools`: tool names, or a family ending in `_*`, separated by commas. For example, in a client that reads an `mcpServers` configuration:
+
+```json
+"timon": { "command": "timon", "args": ["mcp", "serve", "--tools", "kanban_list,kanban_get,project_todo_*"] }
+```
+
+Only those tools are listed, and calling another one is refused before Timon is reached. `TIMON_MCP_TOOLS` in the server's environment does the same when it is started another way. A bare `*`, an empty value or a malformed entry stops the server instead of starting it with every tool. An entry that matches no tool is reported on the server's error output.
 
 ## The `timon_ask` server: two forms
 
