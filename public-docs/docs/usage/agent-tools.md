@@ -31,7 +31,7 @@ Whatever the `timon` command does in a terminal, a tool of the same name does fo
 
 | You want the agent to… | Tools |
 | --- | --- |
-| Create, update, read or close Kanban tasks | `kanban_add`, `kanban_update`, `kanban_list`, `kanban_get`, `kanban_delete`, `kanban_mark_as_done`, `kanban_mark_as_failed` |
+| Create, update, read or close Kanban tasks (`kanban_edit_description` replaces one passage of a description, which must appear exactly once, instead of the whole text) | `kanban_add`, `kanban_update`, `kanban_edit_description`, `kanban_list`, `kanban_get`, `kanban_delete`, `kanban_mark_as_done`, `kanban_mark_as_failed` |
 | Park an idea without starting work | `project_todo_add`, `project_todo_list`, `project_todo_update`, `project_todo_promote`, `project_todo_delete` |
 | Read or attach the files of an idea | `project_todo_attachments_list`, `project_todo_attachments_add`, `project_todo_attachments_remove` |
 | Hand work to another agent (`agent_list` also returns each agent's picture as `icon_url`) | `mission_spawn`, `agent_list`, `agent_send_message`, `agent_recv_messages`, `agent_pick_message`, `agent_reply` |
@@ -318,6 +318,12 @@ Right after installation, your main agent builds itself in a conversation with y
 The routines and triggers the agent offers during that conversation are made with the usual `routine_create` and `trigger_create`, after your yes, and are saved switched off.
 
 The CLI counterparts are `timon setup soul`, `timon setup team --coder NAME --reviewer NAME`, `timon setup finish [--no-tour]` and `timon setup avatar`. See [First run](../installation/first-run.md) for the conversation from your side.
+
+## Using the `timon` server from your own MCP client
+
+The same server can run outside Timon, for an MCP client you start yourself (a desktop assistant, an editor). Run `orchestrator/bin/timon-mcp.mjs` of your install with Node as a stdio server. Outside a mission it acts with the daemon token of this computer, so it holds every tool above with your rights, deletions and agent creation included.
+
+Set `TIMON_MCP_TOOLS` in the environment the client gives it to keep only what that client needs: tool names, or a family ending in `_*`, separated by commas, for example `kanban_list,kanban_get,project_todo_*`. Only those tools are listed, and calling another one is refused before Timon is reached. A bare `*`, an empty value or a malformed entry stops the server instead of starting it with every tool. An entry that matches no tool is reported on the server's error output.
 
 ## The `timon_ask` server: two forms
 

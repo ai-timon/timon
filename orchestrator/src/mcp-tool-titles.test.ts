@@ -30,7 +30,7 @@ const TITLED = [
   'mission_permission_mode_get', 'mission_permission_mode_set', 'mission_summarize', 'mission_fork', 'mission_egress',
   'mission_reindex', 'trace_backfill',
   // mcp-tools-kanban.mjs
-  'kanban_get', 'series_fallback_clear', 'series_role_clear', 'worktree_info', 'worktree_create',
+  'kanban_get', 'kanban_edit_description', 'series_fallback_clear', 'series_role_clear', 'worktree_info', 'worktree_create',
   'worktree_dispose', 'pipeline_list', 'pipeline_get', 'pipeline_create', 'pipeline_run',
   'pipeline_run_status', 'pipeline_delete', 'routine_list', 'routine_create', 'routine_update',
   'routine_delete',
