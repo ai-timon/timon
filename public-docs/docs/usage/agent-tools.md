@@ -31,7 +31,7 @@ Whatever the `timon` command does in a terminal, a tool of the same name does fo
 
 | You want the agent to… | Tools |
 | --- | --- |
-| Create, update, read or close Kanban tasks | `kanban_add`, `kanban_update`, `kanban_list`, `kanban_get`, `kanban_delete`, `kanban_mark_as_done`, `kanban_mark_as_failed` |
+| Create, update, read or close Kanban tasks (`kanban_edit_description` replaces one passage of a description, which must appear exactly once, instead of the whole text) | `kanban_add`, `kanban_update`, `kanban_edit_description`, `kanban_list`, `kanban_get`, `kanban_delete`, `kanban_mark_as_done`, `kanban_mark_as_failed` |
 | Park an idea without starting work | `project_todo_add`, `project_todo_list`, `project_todo_update`, `project_todo_promote`, `project_todo_delete` |
 | Read or attach the files of an idea | `project_todo_attachments_list`, `project_todo_attachments_add`, `project_todo_attachments_remove` |
 | Hand work to another agent (`agent_list` also returns each agent's picture as `icon_url`) | `mission_spawn`, `agent_list`, `agent_send_message`, `agent_recv_messages`, `agent_pick_message`, `agent_reply` |

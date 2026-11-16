@@ -1,5 +1,6 @@
 /**
  * MCP tools mirroring the CLI commands around the Kanban: `task get`,
+ * a partial edit of a task description,
  * `series … clear`, `worktree`, `pipeline`, `routine`.
  */
 
@@ -15,6 +16,23 @@ export const tools = [
     title: 'Read a Kanban task',
     description: 'Reads one task with all its fields, its attached files included (id, name, size, type; CLI `timon task get`).',
     inputSchema: { type: 'object', properties: { id: id('Task') }, required: ['id'] },
+  },
+  {
+    name: 'kanban_edit_description',
+    title: 'Edit part of a task description',
+    description:
+      'Replaces one exact passage of a task\'s description, without resending the rest of it: old_text must '
+      + 'appear exactly once (add surrounding text until it does). Use it to tick a checkbox or to insert a '
+      + 'section after a known line; kanban_update replaces the whole description.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: id('Task'),
+        old_text: { type: 'string', minLength: 1, description: 'Exact text to replace; must occur once.' },
+        new_text: { type: 'string', description: 'Replacement; empty deletes old_text.' },
+      },
+      required: ['id', 'old_text', 'new_text'],
+    },
   },
   {
     name: 'series_fallback_clear',
@@ -158,6 +176,21 @@ export const tools = [
 export const handlers = {
   async kanban_get(args, { call }) {
     return (await call('GET', `/api/tasks/${enc(args.id)}`)).task;
+  },
+  async kanban_edit_description(args, { call }) {
+    if (typeof args.old_text !== 'string' || args.old_text.length === 0) throw new Error('old_text must be a non-empty string');
+    if (typeof args.new_text !== 'string') throw new Error('new_text must be a string');
+    const task = (await call('GET', `/api/tasks/${enc(args.id)}`)).task;
+    if (!task) throw new Error('task not found');
+    const description = task.description ?? '';
+    const first = description.indexOf(args.old_text);
+    if (first === -1) throw new Error('old_text was not found in the description');
+    if (description.indexOf(args.old_text, first + args.old_text.length) !== -1) {
+      throw new Error('old_text appears more than once: add surrounding text until it is unique');
+    }
+    // Sliced, not String#replace: `$&` or `$1` in new_text must stay literal.
+    const next = description.slice(0, first) + args.new_text + description.slice(first + args.old_text.length);
+    return (await call('PUT', `/api/tasks/${enc(args.id)}`, { description: next })).task;
   },
   async series_fallback_clear(args, { call }) {
     const query = args.group ? `?group=${enc(args.group)}` : '';
