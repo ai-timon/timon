@@ -16,6 +16,37 @@ export const NO_TOOLS_ARGS = Object.freeze(['--tools=', '--strict-mcp-config']);
 /** What the core reads about this provider (C1, C2); why its values are what they are: `profile.js`. */
 const CLAUDE = manifestBackend('claude');
 
+/**
+ * A chat rewind (docs/specs/rewind.md): resume the session at the last message the CLI wrote
+ * before the cut. Only `assistant` and `user` rows the CLI emitted carry the transcript's
+ * `uuid` (the `user` row Timon logs itself has none; `system` and `result` uuids are not in the
+ * transcript). That message must belong to the session the cut was spoken in: one from an
+ * older session lacks what came after it, so summary mode (a throw) is the honest answer.
+ * Nothing the CLI wrote and nothing the user wrote left: a fresh session.
+ */
+export async function claudeRewind({ sessionId, events }) {
+    for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i];
+        if (ev.type !== 'assistant' && ev.type !== 'user')
+            continue;
+        let payload;
+        try {
+            payload = JSON.parse(ev.payload);
+        }
+        catch {
+            continue;
+        }
+        if (typeof payload?.uuid !== 'string' || !payload.uuid)
+            continue;
+        if (payload.session_id !== sessionId)
+            throw new Error('the last message before the cut belongs to another session');
+        return { resume: sessionId, resumeAt: payload.uuid };
+    }
+    if (events.some((ev) => ev.type === 'user'))
+        throw new Error('no message of the CLI before the cut');
+    return { resume: null };
+}
+
 /** The persistent Claude stream-json protocol, entirely against ctx.provider. */
 export function createClaudeProvider(services, token, usage) {
  const runtime = services.runtime;
@@ -134,6 +165,9 @@ const legacy = {
         const args = await buildArgs(opts, thinking.args);
         if (opts.resumeSession)
             args.push('--resume', opts.resumeSession);
+        // Hidden flags, print mode only (verified on 2.1.323): the session up to that message, forked so the original stays whole.
+        if (opts.resumeSession && opts.resumeAt)
+            args.push('--resume-session-at', opts.resumeAt, '--fork-session');
         if (opts.memoryDir)
             args.push('--add-dir', opts.memoryDir);
         const account = services.account.of(profile);
@@ -212,7 +246,8 @@ const legacy = {
 
 
     isSessionNotFoundError(stderr) {
-        return stderr.includes('No conversation found with session ID');
+        return stderr.includes('No conversation found with session ID')
+            || stderr.includes('No message found with message.uuid of');
     },
 
     async setModel(proc, model) {
@@ -264,7 +299,7 @@ const legacy = {
   // `/compact` as a stream-json user message compacts the live session in place
   // (verified on Claude Code 2.1.310, 28/10/2026): `system/status` compacting,
   // `system/compact_boundary`, then a `result` with an empty text.
-  session: { store: 'global', resumable: true, notFound: legacy.isSessionNotFoundError, setModel: legacy.setModel, compact: { command: '/compact' } },
+  session: { store: 'global', resumable: true, notFound: legacy.isSessionNotFoundError, setModel: legacy.setModel, compact: { command: '/compact' }, rewind: claudeRewind },
   // Inside Timon's mission fence, Claude Code's own sandbox (bwrap, Seatbelt) cannot start: a
   // `sandbox.enabled` from the user's or the project's settings is overridden for a fenced launch,
   // and the fence confines the tools instead. Command-line settings rank above both.

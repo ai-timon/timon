@@ -141,7 +141,7 @@ Hover a message to show its buttons; each one says what it does when you point a
 - **Reply** answers that message.
 - **Read aloud** reads it with your system's voice.
 
-Under your own messages, **Copy** and **Reply** are there too.
+Under your own messages, **Copy** and **Reply** are there too. **Rewind to here** takes the conversation back to that message: see [Rewinding a conversation](./rewind.md).
 
 ### Replying to a message
 

@@ -15,7 +15,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, FileCode2, Reply, Square, Volume2 } from 'lucide-react';
+import { Check, Copy, FileCode2, Reply, RotateCcw, Square, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { cn } from '@/lib/utils';
@@ -52,7 +52,26 @@ export type ComposerReplyApi = {
   setReply: (reply: ComposerReply | null) => void;
 };
 
+/** What the chat lends the Rewind action (docs/specs/rewind.md). */
+export type ChatRewindApi = {
+  /** The viewer's own interactive chat: the only one a rewind is offered on. */
+  allowed: boolean;
+  /** A turn is running: rewinding waits for it. */
+  busy: boolean;
+  agentName: string;
+  /** Cuts the thread at this user message and refills the composer with it. */
+  rewind: (eventId: number) => Promise<void>;
+  /** The rewind marker that can still be taken back: the thread's last row, nothing sent since. */
+  undoableId: string | null;
+  /** Takes back the rewinds made since the last message sent. */
+  undo: () => Promise<void>;
+};
+
 const ChatMessageContext = createContext<ChatMessageView | null>(null);
+const ChatRewindContext = createContext<ChatRewindApi | null>(null);
+
+/** Mounted by the chat around the thread; without it, no Rewind button. */
+export const ChatRewindProvider = ChatRewindContext.Provider;
 const ComposerReplyContext = createContext<ComposerReplyApi | null>(null);
 
 /** The bubble an occupant of `chat.message.action` is painted under; null elsewhere. */
@@ -109,7 +128,7 @@ export function mountMessageActionSlot(): () => void {
       undo.push(declareSlot(CHAT_MESSAGE_ACTION_SLOT, 'list', 'chat-message'));
     }
     // Low orders: a plugin's button, which says nothing, lands after them.
-    for (const [order, Component] of [[10, CopyAction], [20, CopyMarkdownAction], [30, ReplyAction], [40, ReadAloudAction]] as const) {
+    for (const [order, Component] of [[10, CopyAction], [20, CopyMarkdownAction], [30, ReplyAction], [40, ReadAloudAction], [50, RewindAction]] as const) {
       undo.push(register({ slot: CHAT_MESSAGE_ACTION_SLOT, pluginId: '@timon/missions', order }, Component));
     }
   }
@@ -292,5 +311,73 @@ function ReadAloudAction() {
     >
       {speaking ? <Square className="size-3.5 fill-current" /> : <Volume2 className="size-4" />}
     </MessageActionButton>
+  );
+}
+
+/** Cuts the conversation back to this message of the user's, at once. A
+ *  disabled button would swallow the hover its tooltip needs: it stays
+ *  focusable and says why it does nothing. */
+function RewindAction() {
+  const message = useChatMessage();
+  const api = useContext(ChatRewindContext);
+  const [pending, setPending] = useState(false);
+  if (!message || message.role !== 'user' || message.eventId === null || !api?.allowed) return null;
+  const eventId = message.eventId;
+  const off = api.busy || pending;
+  const label = i18n('chatPage.rewind');
+  // No confirmation: the marker the rewind leaves offers the way back.
+  const onClick = async () => {
+    if (off) return;
+    setPending(true);
+    try { await api.rewind(eventId); } finally { setPending(false); }
+  };
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={() => void onClick()}
+          aria-label={label}
+          aria-disabled={off}
+          className={cn(ACTION_BUTTON, off && 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground/70')}
+        >
+          <RotateCcw className="size-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-64">
+        {api.busy ? i18n('chatPage.rewindBusy', { agent: api.agentName }) : (
+          <>
+            <span className="font-medium">{label}</span>
+            <span className="block opacity-80">{i18n('chatPage.rewindHint')}</span>
+          </>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Where a rewind cut the thread: "Back here", and the way back while nothing
+ *  was sent since. Any other rewind marker, further up, shows nothing. */
+export function RewindMarker({ id }: { id: string }) {
+  const api = useContext(ChatRewindContext);
+  const [pending, setPending] = useState(false);
+  if (!api || api.undoableId !== id) return null;
+  const onUndo = async () => {
+    if (pending || api.busy) return;
+    setPending(true);
+    try { await api.undo(); } finally { setPending(false); }
+  };
+  return (
+    <div className="flex items-baseline gap-2 px-1 py-2 text-sm text-muted-foreground">
+      <span>{i18n('chatPage.rewindBack')}</span>
+      <button
+        type="button"
+        onClick={() => void onUndo()}
+        disabled={pending || api.busy}
+        className="underline underline-offset-4 hover:text-foreground disabled:opacity-50"
+      >
+        {i18n('chatPage.rewindUndo')}
+      </button>
+    </div>
   );
 }

@@ -55,6 +55,7 @@ export function dialectFromDefinition(def: NativeProviderDefinition): AnyDialect
     ...(declares.capabilities ? { capabilities: declares.capabilities } : {}),
     ...(declares.localEnv ? { localEnv: declares.localEnv } : {}),
     ...(def.session.compact ? { nativeCompact: { command: def.session.compact.command } } : {}),
+    ...(def.session.rewind ? { nativeRewind: def.session.rewind } : {}),
   };
 
   if (isRemoteDefinition(def)) {

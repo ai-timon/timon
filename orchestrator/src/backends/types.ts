@@ -121,6 +121,10 @@ export type BuildSpawnOpts = {
   images?: ImageAttachment[];
   /** Provider session id to resume, or null for a fresh start. */
   resumeSession: string | null;
+  /** A rewind (`SessionStrategy.rewind`): resume `resumeSession` only up to
+   *  this provider message, into a new session that leaves the original whole.
+   *  Absent = resume all of it. */
+  resumeAt?: string;
   cfg: ProviderAgentConfig;
   missionId: string;
   /** Resolved memory directory to inject via --add-dir, or undefined if
@@ -1035,6 +1039,8 @@ export interface Dialect {
   /** Cf. `SessionStrategy.compact`: the message that makes the agent compact
    *  its own session. Absent = no native compaction. */
   readonly nativeCompact?: { readonly command: string };
+  /** Cf. `SessionStrategy.rewind`. Absent = summary mode. */
+  readonly nativeRewind?: NonNullable<import('./engine/definition.js').SessionStrategy['rewind']>;
   buildSpawn(opts: BuildSpawnOpts, profile: ProfileRuntime): Promise<SpawnResult>;
   writeUserInput(
     proc: ChildProcessWithoutNullStreams,

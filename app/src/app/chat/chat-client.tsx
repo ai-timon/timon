@@ -265,7 +265,7 @@ import {
   stripTaskIdPreamble,
 } from '@/components/chat/chat-format';
 import { ChatComposerSlot } from '@/components/chat/composer';
-import { ComposerReplyProvider, MessageActionBar, mountMessageActionSlot, type ComposerReply } from '@/components/chat/message-actions';
+import { ChatRewindProvider, ComposerReplyProvider, MessageActionBar, RewindMarker, mountMessageActionSlot, type ChatRewindApi, type ComposerReply } from '@/components/chat/message-actions';
 import { ReplyQuote } from '@/components/chat/reply-quote';
 import type { SetupAvatarRequest } from '@/components/chat/setup-avatar-card';
 import type { AgentActivity } from '@/components/mascot/agent-activity';
@@ -560,6 +560,8 @@ type Msg = {
   /** A compaction of the conversation (role === 'notice', TODO #504): its
    *  command, the CLI's rows and the daemon's outcome fold into one line. */
   compaction?: CompactionTraceView;
+  /** Where a rewind cut the thread (role === 'notice', docs/specs/rewind.md). */
+  rewindMark?: boolean;
   /** A turn of a GPT-Live voice conversation: `user` = the user's words as
    *  transcribed (role `user`), `voice` = what GPT-Live said (role `agent`).
    *  Never merged with the agent's own bubbles. */
@@ -1571,6 +1573,10 @@ export function ChatClient({
   // flight, must not wear the previous mission's owner.
   const [missionOwner, setMissionOwner] = useState<{ missionId: string; owner: MissionOwner | null } | null>(null);
   const shownOwner = missionOwner && missionOwner.missionId === currentMissionId ? missionOwner.owner : null;
+  /** The bound mission is a chat a person started (not a task, a routine or a
+   *  sub-mission): the only kind a rewind is offered on. */
+  const [interactiveMission, setInteractiveMission] = useState<string | null>(null);
+  const viewer = useMe();
   /** A POST /model is in flight: we freeze the selector to avoid stacking
    *  two contradictory requests on the same turn. */
   const [modelSwitching, setModelSwitching] = useState(false);
@@ -2822,6 +2828,10 @@ export function ChatClient({
     setMissionCwd(typeof detail.cwd_override === 'string' && detail.cwd_override ? detail.cwd_override : null);
     setMissionReasoningEffort(typeof detail.reasoning_effort === 'string' ? detail.reasoning_effort : null);
     setMissionOwner({ missionId, owner: parseMissionOwner(detail.owner) });
+    // shortcut: the daemon's list of autonomous channels is not mirrored here;
+    // a chat this misses gets a 403 toast from the route.
+    const started = (key: string) => detail[key] !== null && detail[key] !== undefined;
+    setInteractiveMission(started('task_id') || started('routine_id') || started('parent_mission_id') ? null : missionId);
     return owner;
   }
 
@@ -2877,8 +2887,11 @@ export function ChatClient({
    * different mission in the rail.
    */
   const bindMission = useCallback(
-    async (missionId: string): Promise<boolean> => {
-      cacheShownMission();
+    async (missionId: string, fresh = false): Promise<boolean> => {
+      // `fresh`: what is on screen is stale (a rewind cut it): neither cache it
+      // nor start from a cached copy, reload the thread from the daemon.
+      if (fresh) forgetChatMission(missionId);
+      else cacheShownMission();
       cacheEpoch.current = chatCacheEpoch();
       const mine = ++bindGeneration.current;
       const clearView = () => {
@@ -2927,7 +2940,7 @@ export function ChatClient({
         // false, and the turn it leads to only reaches a stream already open.
         if (detail.running || preparing) openStream(missionId);
       };
-      const cached = getCachedChatMission<ChatCacheState>(missionId);
+      const cached = fresh ? null : getCachedChatMission<ChatCacheState>(missionId);
       if (cached) {
         restoreCachedMission(cached.state);
         lastEventId.current = cached.lastEventId;
@@ -3548,6 +3561,12 @@ export function ChatClient({
           setLiveStats((s) => ({ ...s, lastContextTokens: post }));
         }
       }
+      return;
+    }
+
+    // A rewind's marker (docs/specs/rewind.md): one row where the thread was cut.
+    if (meta.type === 'rewind' || payload.type === 'rewind') {
+      setMessages((m) => [...m, { id: crypto.randomUUID(), role: 'notice', t: fmtTimeAt(meta.timestamp), content: '', rewindMark: true }]);
       return;
     }
 
@@ -5833,7 +5852,69 @@ export function ChatClient({
     [agent.name, face.look, liveBubble, faceState],
   );
 
-  const body = (<ComposerReplyProvider value={replyApi}>
+  /** Cuts the thread at a user message (docs/specs/rewind.md): the daemon hides
+   *  the rows, the view reloads without them, and the message goes back into
+   *  the composer. */
+  /** The text a rewind put back in the composer, until it is undone or sent. */
+  const rewoundText = useRef<string | null>(null);
+  const rewindTo = useCallback(async (eventId: number) => {
+    const missionId = activeMissionId.current;
+    if (!missionId) return;
+    const r = await fetch(`/api/ui/missions/${encodeURIComponent(missionId)}/rewind`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ event_id: eventId }),
+    }).catch(() => null);
+    if (!r?.ok) {
+      toast.error(r?.status === 409
+        ? i18n('chatPage.rewindBusy', { agent: agent.name })
+        : i18n('chatPage.rewindFailed'));
+      return;
+    }
+    const { restored } = await r.json() as { restored: { text: string; images: Array<{ media_type: string; data: string }> } };
+    // The cached copy still holds the rewound rows, and a delta only adds.
+    await bindMission(missionId, true);
+    setReply(null);
+    rewoundText.current = restored.text;
+    setInput(restored.text);
+    setPendingImages(restored.images.map((image) => ({
+      id: crypto.randomUUID(),
+      mediaType: image.media_type,
+      base64: image.data,
+      previewUrl: `data:${image.media_type};base64,${image.data}`,
+      size: Math.floor(image.data.length * 3 / 4),
+    })));
+  }, [agent.name, bindMission, setInput, setReply]);
+  /** Takes the rewinds back: the thread reloads whole, and the composer is
+   *  emptied if it still holds what the rewind put there, untouched. */
+  const undoRewind = useCallback(async () => {
+    const missionId = activeMissionId.current;
+    if (!missionId) return;
+    const r = await fetch(`/api/ui/missions/${encodeURIComponent(missionId)}/rewind/undo`, { method: 'POST' }).catch(() => null);
+    if (!r?.ok) {
+      toast.error(i18n('chatPage.rewindUndoFailed'));
+      return;
+    }
+    await bindMission(missionId, true);
+    if (rewoundText.current !== null && input === rewoundText.current) {
+      setInput('');
+      setPendingImages([]);
+    }
+    rewoundText.current = null;
+  }, [bindMission, input, setInput]);
+  const lastMsg = messages[messages.length - 1];
+  const undoableId = lastMsg?.role === 'notice' && lastMsg.rewindMark ? lastMsg.id : null;
+  const rewindApi = useMemo<ChatRewindApi>(() => ({
+    allowed: Boolean(currentMissionId && interactiveMission === currentMissionId
+      && shownOwner && shownOwner.id === actingUser(viewer)?.id),
+    busy: thinking,
+    agentName: agent.name,
+    rewind: rewindTo,
+    undoableId,
+    undo: undoRewind,
+  }), [currentMissionId, interactiveMission, shownOwner, viewer, thinking, agent.name, rewindTo, undoableId, undoRewind]);
+
+  const body = (<ComposerReplyProvider value={replyApi}><ChatRewindProvider value={rewindApi}>
       {/* The Working agents widget reads this chat's agent from the address
           and keeps its tab on screen. Hidden in compact mode (multichat grid
           cell), and painted by the page's chrome when there is one. */}
@@ -6831,7 +6912,7 @@ export function ChatClient({
         onClose={() => setExternalLink(null)}
         onConfirm={(path) => { setExternalLink(null); void openAgentFile(agentId, path, true); }}
       />
-  </ComposerReplyProvider>);
+  </ChatRewindProvider></ComposerReplyProvider>);
   if (chrome) return <BubbleFaceContext.Provider value={bubbleFace}><WithoutChatChrome>{body}</WithoutChatChrome></BubbleFaceContext.Provider>;
   return (
     <BubbleFaceContext.Provider value={bubbleFace}>
@@ -6955,6 +7036,7 @@ function MessageBody({
   if (msg.role === 'notice' && msg.retryLine) {
     return <ProviderRetryNotice line={msg.retryLine} onRetry={onRetryTurn} />;
   }
+  if (msg.role === 'notice' && msg.rewindMark) return <RewindMarker id={msg.id} />;
   if (msg.role === 'notice' && msg.compaction) {
     return <CompactionTrace trace={msg.compaction} agentName={agentName} time={msg.t} />;
   }

@@ -57,7 +57,7 @@ import type { FenceTarget } from './host/isolation.js';
 import { journalDirectSkillReads } from './skill-reads.js';
 import {
   getBackend, backendMetadata, assertBackendEnabled, backendForModel, catalogBackend, catalogClaimsModel, asBackendName,
-  ASSISTANT_DELTA, PROVIDER_RETRY, backendCapabilities, backendNames, canReadSkillOnDemand, defaultBackendName, implicitBackendName,
+  ASSISTANT_DELTA, PROVIDER_RETRY, backendCapabilities, backendNames, canReadSkillOnDemand, defaultBackendName, implicitBackendName, nativeRewindStrategy,
   type Backend, type BackendCapabilities, type BackendName, type BuildSpawnOpts, type ImageAttachment, type NormalizedEvent, type SpawnResult,
   type RemoteSessionHost, type RemoteSessionResume, type SessionDriver, type SessionEnd,
   type PermissionModel,
@@ -2102,6 +2102,8 @@ async function spawnTurn(args: {
   message: string;
   images?: ImageAttachment[];
   resumeSession: string | null;
+  /** A rewind's cut point in `resumeSession` (`BuildSpawnOpts.resumeAt`). */
+  resumeAt?: string;
   logUser: boolean;
   /** Persist only the new input when the actual prompt also replays history. */
   logMessage?: string;
@@ -2297,6 +2299,7 @@ async function spawnTurn(args: {
     message,
     images,
     resumeSession,
+    ...(resumeSession && args.resumeAt ? { resumeAt: args.resumeAt } : {}),
     cfg,
     missionId,
     memoryDir,
@@ -2481,6 +2484,15 @@ async function spawnTurn(args: {
     if (agent.terminationIntent) cancelTurnRetry(missionId);
     else if (turnRetryPending(missionId)) return;
     const failed = exitCode !== 0;
+    // A cut point the CLI refused without answering (an older build rejects
+    // `--resume-session-at` as an unknown option) is handled as one it cannot
+    // find: summary mode below, instead of a turn with no context at all.
+    // Only when the CLI said nothing: after any output the turn ran, and
+    // replaying it in summary mode would repeat its side effects.
+    if (failed && args.resumeAt && agent.turnActive && !agent.terminationIntent
+        && !agent.rateLimited && !agent.authFailed && agent.lastOutputAt === undefined) {
+      agent.sessionNotFound = true;
+    }
     // The turn ended without the backend ever answering, and nobody asked it to stop: the user
     // would otherwise see "thinking", then nothing (TIM-0049). Say that, and show what it wrote.
     if (agent.turnActive && !agent.interruptedBy && !agent.terminationIntent
@@ -2539,7 +2551,9 @@ async function spawnTurn(args: {
     // message was already logged on the first attempt. The new session
     // id will be persisted via the init event.
     if (failed && resumeSession && agent.sessionNotFound) {
-      console.warn(
+      // A rewind's cut point the provider cannot find: summary mode, as when its strategy throws.
+      if (args.resumeAt) console.warn(`[rewind] mission ${missionId.slice(0, 8)} on ${backend.name}: cannot resume at ${logField(args.resumeAt)} — summary mode`);
+      else console.warn(
         `[${backend.name}:${missionId.slice(0, 8)}] session ${resumeSession.slice(0, 8)} ` +
           `not found — replaying mission context on a fresh session`,
       );
@@ -2547,7 +2561,10 @@ async function spawnTurn(args: {
       // events yet, its conversation lives on the mission the session came from.
       const sourceMissionId = dbApi.getMissionBySessionId(resumeSession)?.id;
       dbApi.clearMissionSession(missionId);
-      spawnRecoveredTurn({ ...args, logUser: false }, historyEventId, sourceMissionId).catch((err) => {
+      const recovered = args.resumeAt
+        ? spawnRecoveredTurn({ ...args, resumeAt: undefined, logUser: false }, undefined, undefined, 'summary')
+        : spawnRecoveredTurn({ ...args, logUser: false }, historyEventId, sourceMissionId);
+      recovered.catch((err) => {
         process.stderr.write(
           `[${backend.name}:${missionId.slice(0, 8)}] fresh-fallback failed: ${(err as Error).message}\n`,
         );
@@ -2779,6 +2796,11 @@ export async function sendToAgent(
     presentation,
     agentCommand: turn.agentCommand,
   };
+  const rewind = dbApi.getPendingRewind(missionId);
+  if (rewind) {
+    await spawnRewoundTurn(nextTurn, rewind);
+    return 'delivered';
+  }
   const backendId = m.backend_override ?? cfg.backend ?? defaultBackendName();
   const replay = turn.replayContext && owesContextReplay(m, backendId);
   if (turn.replayContext && !replay && !m.session_id) {
@@ -2927,7 +2949,8 @@ export async function respawnWithResume(
 ): Promise<boolean> {
   if (running.get(missionId)) return false; // still alive → sendToAgent
   const m = dbApi.getMission(missionId);
-  if (!m || (!m.session_id && !turn.replayContext)) return false;
+  const rewind = m ? dbApi.getPendingRewind(missionId) : null;
+  if (!m || (!m.session_id && !turn.replayContext && !rewind)) return false;
   if (origin?.turn_retry === undefined) cancelTurnRetry(missionId);
   dbApi.reopenMission(missionId);
   const nextTurn = {
@@ -2943,7 +2966,8 @@ export async function respawnWithResume(
     agentCommand: turn.agentCommand,
   };
   try {
-    await (m.session_id ? spawnTurn(nextTurn) : spawnRecoveredTurn(nextTurn));
+    await (rewind ? spawnRewoundTurn(nextTurn, rewind)
+      : m.session_id ? spawnTurn(nextTurn) : spawnRecoveredTurn(nextTurn));
   } catch (err) {
     // Explicit cause: the exception happened AT LAUNCH (missing system
     // prompt, binary not found…). It's a crash, not a mystery — saying so
@@ -3407,7 +3431,8 @@ async function replayMissionContext(
   continuation: string | null,
   throughEventId?: number,
   sourceMissionId?: string,
-): Promise<string> {
+  choice: SwitchContextChoice = 'auto',
+): Promise<string | null> {
   const mission = dbApi.getMission(missionId);
   if (!mission) throw new Error('mission not found');
   const cfg = loadConfig(mission.agent_name);
@@ -3415,12 +3440,15 @@ async function replayMissionContext(
   const model = mission.model_override ?? cfg.model ?? null;
   const { summarizeForSwitch, buildBackendSwitchKickoff, estimateTokens } = await import('./summary.js');
   let historyId = missionId;
-  let plan = await planSwitchContext(missionId, backend, 'auto', throughEventId);
+  let plan = await planSwitchContext(missionId, backend, choice, throughEventId);
   if (plan.mode === 'none' && sourceMissionId && sourceMissionId !== missionId
       && dbApi.getMission(sourceMissionId)?.owner_user_id === mission.owner_user_id) {
     historyId = sourceMissionId;
     plan = await planSwitchContext(historyId, backend, 'auto');
   }
+  // A summary demanded of an empty thread is no context at all: the turn goes
+  // out alone, with no recovery notice announcing a loss that did not happen.
+  if (plan.mode === 'none' && choice === 'summary') return null;
   let mode: SwitchContextMode = plan.mode;
   let context = plan.mode === 'transcript' ? plan.transcript : '';
   // Even when auto always summarizes (threshold=0), a failed summarizer
@@ -3454,14 +3482,19 @@ async function spawnRecoveredTurn(
   turn: Parameters<typeof spawnTurn>[0],
   throughEventId?: number,
   sourceMissionId?: string,
+  choice: SwitchContextChoice = 'auto',
 ): Promise<void> {
   backendSwitches.add(turn.missionId);
   try {
     const kickoff = await replayMissionContext(
-      turn.missionId, turn.agentCommand ? null : turn.message, throughEventId, sourceMissionId,
+      turn.missionId, turn.agentCommand ? null : turn.message, throughEventId, sourceMissionId, choice,
     );
     // Stopped during the summary: whoever closed it already told everyone.
     if (dbApi.getMission(turn.missionId)?.status !== 'running') return;
+    if (kickoff === null) {
+      await spawnTurn({ ...turn, resumeSession: null, reattach: undefined });
+      return;
+    }
     await spawnTurn({
       ...turn, message: kickoff, resumeSession: null, agentCommand: false, reattach: undefined,
       logMessage: turn.logMessage ?? turn.message,
@@ -3469,6 +3502,84 @@ async function spawnRecoveredTurn(
   } finally {
     backendSwitches.delete(turn.missionId);
   }
+}
+
+/**
+ * Rewinds a chat to one of its user messages (docs/specs/rewind.md § 8): that
+ * message and everything after it leave the thread, and the cut waits for the
+ * next spawn. Runs no model. An idle live process is stopped, without
+ * `dispose`: a native cut may need the provider's store, and the next message
+ * must relaunch on the cut instead of talking to a process that remembers.
+ * Throws `TurnInFlightError` while a turn runs or is being prepared. Returns the
+ * id of the `rewind` event.
+ */
+export async function rewindMissionTo(missionId: string, fromEventId: number): Promise<number> {
+  const live = running.get(missionId);
+  if (live?.turnActive || turnPreparing(missionId) || turnRetryAwaited(missionId)) {
+    throw new TurnInFlightError('a turn is in progress — wait for it to finish (or stop it) before rewinding');
+  }
+  // Held like a backend switch: a message sent while the process stops waits.
+  backendSwitches.add(missionId);
+  try {
+    if (live) {
+      live.terminationIntent = 'stopped';
+      await stopProcessAndWait(live);
+    }
+    const rewindId = db.transaction(() => {
+      const sessionId = dbApi.getMission(missionId)?.session_id ?? null;
+      const id = dbApi.rewindMission(missionId, fromEventId);
+      // Nothing may resume the session that still holds the cut part.
+      dbApi.clearMissionSession(missionId);
+      dbApi.setPendingRewind(missionId, sessionId, id);
+      return id;
+    })();
+    const payload = { type: 'rewind', from_event_id: fromEventId };
+    bus.publish({ kind: 'event', missionId, type: 'rewind', timestamp: Date.now(), payload, id: rewindId });
+    return rewindId;
+  } finally {
+    backendSwitches.delete(missionId);
+  }
+}
+
+/**
+ * Takes back the rewinds made since the user last sent something
+ * (`dbApi.undoRewind`): the thread and the session come back as they were.
+ * Null when there is nothing left to take back. Throws `TurnInFlightError`
+ * while a turn runs or is being prepared.
+ */
+export function undoMissionRewind(missionId: string): number | null {
+  if (running.get(missionId)?.turnActive || turnPreparing(missionId) || turnRetryAwaited(missionId)) {
+    throw new TurnInFlightError('a turn is in progress — the rewind can no longer be undone');
+  }
+  return dbApi.undoRewind(missionId);
+}
+
+/**
+ * The first turn after a rewind ("Provider session cut"): the backend's own cut
+ * when it has one (`SessionStrategy.rewind`); otherwise, and on any failure of
+ * it, a fresh session seeded with a summary of the visible thread, or the
+ * message alone when nothing is left before the cut. The pending cut is spent
+ * once a turn answers (or a new session is recorded): a launch that throws or
+ * dies first keeps it, so the next message cuts again instead of starting with
+ * no context at all (the session was cleared).
+ */
+async function spawnRewoundTurn(
+  turn: Parameters<typeof spawnTurn>[0],
+  pending: { session_id: string | null },
+): Promise<void> {
+  const m = dbApi.getMission(turn.missionId);
+  const backend = m?.backend_override ?? loadConfig(turn.agentName).backend ?? defaultBackendName();
+  const native = pending.session_id ? nativeRewindStrategy(backend) : null;
+  let plan: { readonly resume: string | null; readonly resumeAt?: string } | null = null;
+  if (native && pending.session_id) {
+    try {
+      plan = await native({ missionId: turn.missionId, sessionId: pending.session_id, events: dbApi.listEvents(turn.missionId) });
+    } catch (err) {
+      console.warn(`[rewind] mission ${turn.missionId.slice(0, 8)} on ${backend}: ${logField((err as Error).message)} — summary mode`);
+    }
+  }
+  if (plan) await spawnTurn({ ...turn, resumeSession: plan.resume, resumeAt: plan.resumeAt });
+  else await spawnRecoveredTurn(turn, undefined, undefined, 'summary');
 }
 
 /** Kills a process and waits for its exit. SIGTERM, then SIGKILL after
@@ -6359,6 +6470,8 @@ function processEvent(agent: RunningAgent, ev: NormalizedEvent): void {
     // stop showing "thinking" until the user speaks again.
     agent.turnActive = false;
     agent.turnSince = Date.now();
+    // A turn answered: the launch that carried a pending rewind really went out.
+    dbApi.clearPendingRewind(agent.missionId);
     if (agent.turnOpenedByTimon) agent.budgetSince = agent.turnSince;
     agent.turnOpenedByTimon = false;
     agent.authFailed = false;

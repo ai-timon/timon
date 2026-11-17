@@ -108,6 +108,9 @@ export function definitionProblems(definition: unknown): string[] {
         problems.push('`session.compact` must be `{ command: string }`: the non-empty message that makes the agent compact its own session');
       }
     }
+    if (session.rewind !== undefined && !isFunction(session.rewind)) {
+      problems.push('`session.rewind` is declared but is not a function');
+    }
     if (session.maxPromptBytes !== undefined && !(Number.isInteger(session.maxPromptBytes) && (session.maxPromptBytes as number) > 0)) {
       problems.push('`session.maxPromptBytes` must be a positive whole number of bytes');
     }

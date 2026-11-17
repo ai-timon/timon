@@ -1355,6 +1355,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS mission_remote_resume (
   updated_at INTEGER NOT NULL
 )`);
 
+// A rewind waiting for the mission's next spawn (docs/specs/rewind.md § 8): the
+// provider session the cut part was spoken in, and the `rewind` event. Its own
+// table for the reason above: it never reaches an API answer.
+db.exec(`CREATE TABLE IF NOT EXISTS mission_rewind_pending (
+  mission_id TEXT PRIMARY KEY REFERENCES missions(id) ON DELETE CASCADE,
+  session_id TEXT,
+  rewind_event_id INTEGER NOT NULL,
+  series_from INTEGER
+)`);
+// The first rewind of the series an undo takes back (rewinds with nothing sent between).
+if (!(db.prepare(`PRAGMA table_info(mission_rewind_pending)`).all() as { name: string }[]).some((c) => c.name === 'series_from')) {
+  db.exec(`ALTER TABLE mission_rewind_pending ADD COLUMN series_from INTEGER`);
+}
 // The point after which an agent's earlier provider sessions may no longer be
 // carried into a new mission (memory-session-fence.ts). Written when a memory
 // rule that may have reached the agent is removed or rewritten: the rule lives
@@ -1886,6 +1899,14 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_missions_started ON missions(started_at)
 // 1M-event home, with the event loop frozen. `mission_id` makes it covering
 // for the per-agent join.
 db.exec(`CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp, mission_id)`);
+/** Id of the `rewind` event that hid this row from the thread (docs/specs/rewind.md
+ *  § 9): rows are hidden, never deleted. Added before the chat view index, whose
+ *  condition reads it. */
+function ensureRewoundByColumn(schema: 'main' | 'archive'): void {
+  const eventCols = (db.prepare(`PRAGMA ${schema}.table_info(events)`).all() as { name: string }[]).map((c) => c.name);
+  if (!eventCols.includes('rewound_by')) db.exec(`ALTER TABLE ${schema}.events ADD COLUMN rewound_by INTEGER`);
+}
+ensureRewoundByColumn('main');
 /**
  * Partial index of the chat view's rows (docs/MISSION-HISTORY-PAGES.md § 8).
  * `idx_events_mission` holds every row, and 61 % of them are per-token noise
@@ -3153,7 +3174,8 @@ const missionRunnerStmt = db.prepare(`SELECT agent_name, source_meta FROM missio
 const insertEventStmt = db.prepare(
   `INSERT INTO events (mission_id, type, timestamp, payload) VALUES (?, ?, ?, ?)`,
 );
-const listEventsStmt = db.prepare(`SELECT * FROM events WHERE mission_id = ? ORDER BY id ASC`);
+// The thread: rows a rewind hid are left out of every reader of it (docs/specs/rewind.md § 9).
+const listEventsStmt = db.prepare(`SELECT * FROM events WHERE mission_id = ? AND rewound_by IS NULL ORDER BY id ASC`);
 // The chat view of ONE mission (mission-events-view.ts): same rows minus the
 // per-token noise, filtered in SQL so it never crosses into JS.
 const listChatEventsStmt = db.prepare(
@@ -3194,11 +3216,12 @@ CREATE TABLE IF NOT EXISTS archive.events (
 );
 CREATE INDEX IF NOT EXISTS archive.idx_events_mission ON events(mission_id, id);
 `);
+  ensureRewoundByColumn('archive');
   ensureChatViewIndex('archive');
   listEventsUnionStmt = db.prepare(
-    `SELECT id, mission_id, type, timestamp, payload FROM events WHERE mission_id = ?
+    `SELECT id, mission_id, type, timestamp, payload FROM events WHERE mission_id = ? AND rewound_by IS NULL
      UNION ALL
-     SELECT id, mission_id, type, timestamp, payload FROM archive.events WHERE mission_id = ?
+     SELECT id, mission_id, type, timestamp, payload FROM archive.events WHERE mission_id = ? AND rewound_by IS NULL
      ORDER BY id ASC`,
   );
   listChatEventsUnionStmt = db.prepare(
@@ -3241,7 +3264,8 @@ const missionScanStmts = new Map<string, import('better-sqlite3').Statement>();
 export function missionScanQuery(missionId: string, scan: MissionEventScan): { sql: string; args: (string | number)[] } {
   const columns = scan.columns ?? 'id, mission_id, type, timestamp, payload';
   const archived = listEventsUnionStmt !== null;
-  const side = (table: string): string => `SELECT ${columns} FROM ${table} WHERE mission_id = ? AND (${scan.where})`;
+  // Rows a rewind hid are not part of the thread, whatever the caller scans for.
+  const side = (table: string): string => `SELECT ${columns} FROM ${table} WHERE mission_id = ? AND rewound_by IS NULL AND (${scan.where})`;
   const sql = (archived ? `${side('events')} UNION ALL ${side('archive.events')}` : side('events'))
     + ` ORDER BY id ${scan.order === 'DESC' ? 'DESC' : 'ASC'}`
     + (scan.limit === undefined ? '' : ' LIMIT ?');
@@ -3290,7 +3314,7 @@ const setSearchStateStmt = db.prepare(
    ON CONFLICT(k) DO UPDATE SET v = excluded.v`,
 );
 const eventsAfterStmt = db.prepare(
-  `SELECT id, mission_id, type, timestamp, payload FROM events WHERE id > ? ORDER BY id LIMIT ?`,
+  `SELECT id, mission_id, type, timestamp, payload FROM events WHERE id > ? AND rewound_by IS NULL ORDER BY id LIMIT ?`,
 );
 const maxEventIdStmt = db.prepare(`SELECT COALESCE(MAX(id), 0) AS id FROM events`);
 const unindexedMissionsStmt = db.prepare(
@@ -5844,6 +5868,29 @@ export const dbApi = {
       payload: json,
     };
   },
+  /**
+   * Cuts a mission's thread at `fromEventId` (docs/specs/rewind.md § 9-10): appends
+   * a `rewind` event and stamps its id on every still-visible row from
+   * `fromEventId` on, so each thread reader leaves them out. Nothing is deleted;
+   * rewinding further back stamps the earlier rewind event too. The cut rows
+   * leave `mission_search`; costs and `mission_stats` stay as they are.
+   * Returns the id of the `rewind` event.
+   */
+  rewindMission(missionId: string, fromEventId: number): number {
+    return db.transaction(() => {
+      const rewindId = dbApi.insertEvent(missionId, 'rewind', { type: 'rewind', from_event_id: fromEventId }).id;
+      for (const table of listEventsUnionStmt ? ['events', 'archive.events'] : ['events']) {
+        db.prepare(
+          `UPDATE ${table} SET rewound_by = ?
+            WHERE mission_id = ? AND id >= ? AND id < ? AND rewound_by IS NULL`,
+        ).run(rewindId, missionId, fromEventId, rewindId);
+      }
+      db.prepare(
+        `DELETE FROM mission_search WHERE mission_id = ? AND event_id >= ? AND event_id < ?`,
+      ).run(missionId, fromEventId, rewindId);
+      return rewindId;
+    })();
+  },
   listEvents(missionId: string): EventRow[] {
     if (listEventsUnionStmt) return listEventsUnionStmt.all(missionId, missionId) as EventRow[];
     return listEventsStmt.all(missionId) as EventRow[];
@@ -6213,6 +6260,65 @@ export const dbApi = {
   },
   setMissionSession(id: string, sessionId: string): void {
     updateSessionStmt.run(sessionId, id);
+    // A new session started after a rewind was built from the visible thread:
+    // the pending cut is spent, whichever path opened it (a backend switch…).
+    db.prepare(`DELETE FROM mission_rewind_pending WHERE mission_id = ?`).run(id);
+  },
+  /** Records a rewind for the next spawn; a further rewind replaces it but keeps
+   *  the session the first one cut (the one the conversation was spoken in). */
+  setPendingRewind(id: string, sessionId: string | null, rewindEventId: number): void {
+    db.prepare(
+      `INSERT INTO mission_rewind_pending (mission_id, session_id, rewind_event_id, series_from) VALUES (?, ?, ?, ?)
+       ON CONFLICT(mission_id) DO UPDATE SET rewind_event_id = excluded.rewind_event_id,
+         session_id = COALESCE(mission_rewind_pending.session_id, excluded.session_id),
+         series_from = COALESCE(mission_rewind_pending.series_from, excluded.series_from)`,
+    ).run(id, sessionId, rewindEventId, rewindEventId);
+  },
+  /**
+   * Takes back the rewinds made since the user last sent something: the rows
+   * they hid come back, their `rewind` events leave the thread, and the
+   * mission resumes the session it had before. Null when there is nothing to
+   * take back: no pending rewind, or something was written after it (a message
+   * sent, even one whose launch failed). Returns the number of rows restored.
+   */
+  undoRewind(missionId: string): number | null {
+    return db.transaction(() => {
+      const p = db.prepare(`SELECT session_id, rewind_event_id, series_from FROM mission_rewind_pending WHERE mission_id = ?`)
+        .get(missionId) as { session_id: string | null; rewind_event_id: number; series_from: number | null } | undefined;
+      if (!p) return null;
+      const from = p.series_from ?? p.rewind_event_id;
+      const tables = listEventsUnionStmt ? ['events', 'archive.events'] : ['events'];
+      for (const table of tables) {
+        if (db.prepare(`SELECT 1 FROM ${table} WHERE mission_id = ? AND id > ? AND rewound_by IS NULL LIMIT 1`)
+          .get(missionId, p.rewind_event_id)) return null;
+      }
+      const restoredRows: EventRow[] = [];
+      for (const table of tables) {
+        restoredRows.push(...db.prepare(
+          `SELECT * FROM ${table} WHERE mission_id = ? AND rewound_by >= ? AND id < ?`,
+        ).all(missionId, from, from) as EventRow[]);
+        db.prepare(`UPDATE ${table} SET rewound_by = NULL WHERE mission_id = ? AND rewound_by >= ? AND id < ?`)
+          .run(missionId, from, from);
+        // The series' own markers: hidden by themselves, so nothing reads them as a cut any more.
+        db.prepare(`UPDATE ${table} SET rewound_by = id WHERE mission_id = ? AND id >= ? AND type = 'rewind'`)
+          .run(missionId, from);
+      }
+      for (const row of restoredRows) {
+        let payload: unknown;
+        try { payload = JSON.parse(row.payload); } catch { continue; }
+        dbApi.indexMissionEvent(missionId, row.id, row.type, payload, row.timestamp);
+      }
+      if (p.session_id) dbApi.setMissionSession(missionId, p.session_id);
+      else dbApi.clearPendingRewind(missionId);
+      return restoredRows.length;
+    })();
+  },
+  getPendingRewind(id: string): { session_id: string | null; rewind_event_id: number } | null {
+    return (db.prepare(`SELECT session_id, rewind_event_id FROM mission_rewind_pending WHERE mission_id = ?`)
+      .get(id) as { session_id: string | null; rewind_event_id: number } | undefined) ?? null;
+  },
+  clearPendingRewind(id: string): void {
+    db.prepare(`DELETE FROM mission_rewind_pending WHERE mission_id = ?`).run(id);
   },
   /** Detach the mission from its provider session. Called on backend switch: the
    *  id belongs to the old CLI and means nothing to the new one — leaving it in
@@ -6546,9 +6652,16 @@ export const dbApi = {
       tools: live.tools + gone.tools, errors: live.errors + gone.errors,
     };
     const columns = opts.payload ? '*' : SPAN_SUMMARY_COLUMNS;
+    // The event that opened a rewound turn may have moved to the archive since.
+    const archivedRewound = listEventsUnionStmt
+      ? `AND NOT EXISTS (SELECT 1 FROM archive.events e WHERE e.id = trace_spans.event_id_start AND e.rewound_by IS NOT NULL)`
+      : '';
     const spans = (cachedStmt(spanPageStmts,
       `SELECT ${columns} FROM trace_spans
         WHERE trace_id = @trace AND mission_id IN (SELECT value FROM json_each(@missions))
+          -- a rewound turn leaves the listing; the aggregates keep its cost (docs/specs/rewind.md § 10)
+          AND NOT EXISTS (SELECT 1 FROM events e WHERE e.id = trace_spans.event_id_start AND e.rewound_by IS NOT NULL)
+          ${archivedRewound}
         ORDER BY started_at DESC, seq DESC, rowid DESC LIMIT @take`,
     ).all({ trace: traceId, missions, take: opts.limit }) as Array<SpanSummary | SpanRow>).reverse();
     return { spans, aggregates, pruned: gone.spans };
@@ -6661,13 +6774,13 @@ export const dbApi = {
            ) <> 'pending'
            AND EXISTS (
              SELECT 1 FROM events
-             WHERE mission_id = @mission AND type = 'result' AND id > handover.id
+             WHERE mission_id = @mission AND type = 'result' AND id > handover.id AND rewound_by IS NULL
                AND json_extract(payload, '$.subtype') = 'success'
                AND COALESCE(json_extract(payload, '$.is_error'), 0) = 0
            )
            AND NOT EXISTS (
              SELECT 1 FROM events
-             WHERE mission_id = @mission AND type = 'system' AND id > handover.id
+             WHERE mission_id = @mission AND type = 'system' AND id > handover.id AND rewound_by IS NULL
                AND json_extract(payload, '$.subtype') = 'init'
                AND COALESCE(json_extract(payload, '$.session_id'), '') <> ''
            )`,

@@ -126,7 +126,7 @@ test('archived rows go through the same filter', async () => {
     dbApi.insertEvent(cold, 'assistant', { type: 'assistant', message: { content: [] } }).id,
     dbApi.insertEvent(cold, 'tool_progress', { type: 'tool_progress' }).id,
   ];
-  db.exec(`INSERT INTO archive.events SELECT id, mission_id, type, timestamp, payload FROM events WHERE id IN (${ids[0]}, ${ids[1]})`);
+  db.exec(`INSERT INTO archive.events (id, mission_id, type, timestamp, payload) SELECT id, mission_id, type, timestamp, payload FROM events WHERE id IN (${ids[0]}, ${ids[1]})`);
   db.exec(`DELETE FROM events WHERE id IN (${ids[0]}, ${ids[1]})`);
   const { json } = await get(`/api/missions/${cold}`);
   assert.deepEqual(json.events?.map((e) => e.id), [ids[1]]);

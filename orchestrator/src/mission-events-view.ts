@@ -53,6 +53,8 @@ export const INIT_ROW_SQL = `type = 'system' AND payload LIKE ${likePrefix(INIT_
  * small ones; an `assistant` row of several hundred kilobytes is never scanned.
  */
 export const CHAT_VIEW_SQL = [
+  // A rewind hides the rows it cut (docs/specs/rewind.md § 9).
+  'rewound_by IS NULL',
   `type NOT IN (${NOISE_TYPES.map((t) => `'${t}'`).join(', ')})`,
   `NOT (type = 'system' AND (${NOISE_SYSTEM_PREFIXES.map((p) => `payload LIKE ${likePrefix(p)}`).join(' OR ')}))`,
 ].join(' AND ');
@@ -61,7 +63,8 @@ export const CHAT_VIEW_SQL = [
  * Same filter in JS, for rows already read (tests, callers holding a raw list).
  * Kept in step with {@link CHAT_VIEW_SQL} by `mission-events-view.test.ts`.
  */
-export function isChatViewRow(row: Pick<EventRow, 'type' | 'payload'>): boolean {
+export function isChatViewRow(row: Pick<EventRow, 'type' | 'payload'> & { rewound_by?: number | null }): boolean {
+  if (row.rewound_by != null) return false;
   if ((NOISE_TYPES as readonly string[]).includes(row.type)) return false;
   if (row.type === 'system' && NOISE_SYSTEM_PREFIXES.some((p) => row.payload.startsWith(p))) return false;
   return true;
