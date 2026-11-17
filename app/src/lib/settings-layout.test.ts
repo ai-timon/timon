@@ -72,12 +72,13 @@ test('Wake and Missions share one tab; the digest joins memory injection', () =>
   const execution = missions.tabs.find((t) => t.id === 'execution');
   assert.ok(execution && execution.kind === 'rows');
   assert.deepEqual(execution.keys, ['TIMON_MAX_LIVE_MISSIONS', 'TIMON_WAKE_SWEEP_MS']);
-  assert.deepEqual(tabIds(layout, 'memory'), ['obsidian', 'injection']);
+  assert.deepEqual(tabIds(layout, 'memory'), ['injection', 'obsidian']);
 });
 
-test('Memory opens on the Obsidian tab', () => {
+test('Memory opens on Injection, where its master switch is; the vault comes last', () => {
   const layout = buildSettingsLayout(input());
-  assert.equal(resolveSettingsTarget({ category: 'memory', tab: null }, layout)?.tab.id, 'obsidian');
+  assert.equal(resolveSettingsTarget({ category: 'memory', tab: null }, layout)?.tab.id, 'injection');
+  assert.equal(STATIC_TABS.memory.at(-1)?.id, 'obsidian');
 });
 
 test('every category with tabs sits in exactly one nav group', () => {
@@ -258,8 +259,8 @@ test('the GPT-Live switch lives in the Voice pane, not in a tab of its own under
 test('the instructions have a category of their own, third in the list', () => {
   const layout = buildSettingsLayout(input());
   assert.equal(layout[2]!.id, 'instructions');
-  assert.deepEqual(layout[2]!.tabs.map((t) => [t.id, t.kind]), [['preamble', 'native'], ['global', 'native']]);
-  assert.equal(resolveSettingsTarget({ category: 'instructions', tab: null }, layout)?.tab.id, 'preamble');
+  assert.deepEqual(layout[2]!.tabs.map((t) => [t.id, t.kind]), [['global', 'native'], ['preamble', 'native']]);
+  assert.equal(resolveSettingsTarget({ category: 'instructions', tab: null }, layout)?.tab.id, 'global');
   assert.equal(parseSettingsParam('instructions')?.category, 'instructions');
 });
 
