@@ -3,7 +3,7 @@ title: Settings
 sidebar_position: 8
 ---
 
-Open **Settings** from the navigation rail: it opens as a dialog over the page you are on. Close it with the **×** at the top right, with Escape, with the Back button, or by clicking the dimmed page outside it. If a field holds a value you typed and did not save, a click outside leaves the dialog open and says so; the **×** and Escape still close it and drop that value. Nine categories in the left column (Instructions, Interface, AI models, Missions, Resources, Memory, Access & network, System, Plugins) each split into tabs across the top. A plugin's settings appear in the category they concern, or under **Plugins** otherwise, and disappear while the plugin is disabled. Each registry setting shows where its effective value comes from.
+Open **Settings** from the navigation rail: it opens as a dialog over the page you are on. Close it with the **×** at the top right, with Escape, with the Back button, or by clicking the dimmed page outside it. If a field holds a value you typed and did not save, a click outside leaves the dialog open and says so; the **×** and Escape still close it and drop that value. The left column groups the categories: **Interface** first; under **Agents**, AI models, Instructions, Memory, Missions and Resources; under **This computer**, Access & network, Secrets and System; then **Plugins**. Each category splits into tabs across the top; on a phone, the column becomes a drop-down list at the top of the dialog and your account comes at the end of the page. A plugin's settings appear in the category they concern, or under **Plugins** otherwise, and disappear while the plugin is disabled. Each registry setting shows where its effective value comes from. An on/off setting is a switch. A setting whose value is not its default shows the default underneath; a value you set in Settings also gets a **Default** button that restores it. On a computer, hover over a setting's name to see its key, such as `TIMON_MAX_LIVE_MISSIONS`, the name to use in the configuration file or the environment; on any device, the search finds a setting by its key.
 
 ## Search
 
@@ -17,7 +17,7 @@ Every setting is always listed: nothing hides behind a "show advanced" button, a
 
 ## Global instructions
 
-**Settings → Instructions**, the first category, holds what you want from **every** agent: the language to answer in, your commit style, how you test. It is one Markdown file, `global-instructions.md` in the Timon folder (the table in [Where Timon keeps its files](../installation/configuration.md) gives its place on your OS).
+**Settings → Instructions** opens on this tab, **Global instructions**, and holds what you want from **every** agent: the language to answer in, your commit style, how you test. It is one Markdown file, `global-instructions.md` in the Timon folder (the table in [Where Timon keeps its files](../installation/configuration.md) gives its place on your OS).
 
 Timon sends it to every agent each time one starts, right after the Timon preamble. A change applies from the next mission, not to one already running. In an agent's **Injections** tab it appears under its own origin, marked as yours. Keep it short: it is added to every prompt.
 
@@ -33,7 +33,7 @@ Stored secrets are never displayed by default. To read one again, open it from t
 
 ## Obsidian vault
 
-**Settings → Memory** opens on the **Obsidian** tab. Type the path of your vault folder, or choose **Browse**: the desktop app on this computer opens your system's folder picker; connected to another machine, or in a plain browser, Timon lists the folders of the machine it runs on, since that is where the vault is read.
+The **Obsidian** tab is the last one of **Settings → Memory**, which opens on **Injection**. Type the path of your vault folder, or choose **Browse**: the desktop app on this computer opens your system's folder picker; connected to another machine, or in a plain browser, Timon lists the folders of the machine it runs on, since that is where the vault is read.
 
 ## Memory presets
 

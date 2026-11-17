@@ -139,7 +139,7 @@ Two settings delete old history once a day. Both are **0 by default**, which kee
 - `TIMON_EVENTS_RETENTION_DAYS`: the mission history older than this many days is deleted for good, archived history included, along with its text in the history search. A mission still running keeps its whole history. The list of missions stays.
 - `TIMON_LEARNINGS_RETENTION_DAYS`: raw memory facts older than this many days are deleted for good, from the database and from each agent's `learnings.jsonl` files. Memory rules are not affected.
 
-Set them in **Settings → System → Diagnostics**, or in `timon.config.json`:
+Set them in **Settings → System → Logs & retention**, or in `timon.config.json`:
 
 ```json
 { "settings": { "TIMON_EVENTS_RETENTION_DAYS": 365, "TIMON_LEARNINGS_RETENTION_DAYS": 180 } }
