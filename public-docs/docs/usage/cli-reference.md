@@ -125,6 +125,9 @@ MCP servers (~/.timon/mcp/<id>.json):
   timon mcp put <id> [--file PATH]        upsert; JSON from --file or stdin
                                          (shape: {name?, description?, transport})
   timon mcp rm <id>                       delete
+  timon mcp serve [--tools LIST]          run Timon's own MCP server on stdin/stdout, for an MCP
+                                         client you start yourself (a desktop assistant, an editor);
+                                         --tools: tool names or <prefix>_* families, comma-separated
 
 Tasks (Kanban backlog):
   timon task list [--status PENDING|IN_PROGRESS|DONE|BLOCKED]   (TODO = deprecated alias of PENDING)
@@ -581,10 +584,16 @@ usage: timon mcp put <id> [--file PATH]  (or pipe JSON on stdin)
 usage: timon mcp rm <id>
 ```
 
-### timon mcp list|get|put|rm …
+### timon mcp serve [--tools LIST]
 
 ```text
-usage: timon mcp <list|get|put|rm> …
+usage: timon mcp serve [--tools LIST]
+```
+
+### timon mcp list|get|put|rm|serve …
+
+```text
+usage: timon mcp <list|get|put|rm|serve> …
 ```
 
 ### timon agent create name [--prompt-file PATH] [--backend …] [--model …] …

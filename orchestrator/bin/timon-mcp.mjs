@@ -64,11 +64,27 @@
  *
  * All calls go through the orchestrator's REST endpoints on
  * TIMON_ORCH_URL (default http://localhost:3000).
+ * TIMON_MCP_TOOLS (optional): comma-separated tool names or `<prefix>_*`
+ * families; only those are listed and callable (`mcp-tool-filter.mjs`).
  * Token (4.2b): TIMON_API_TOKEN, otherwise ~/.timon/daemon-token (under TIMON_HOME),
  * the latter only when TIMON_ORCH_URL is this home's own local listener.
  */
 import readline from 'node:readline';
 import { TOOLS, runTool, stdioContext, TextResult } from './timon-mcp-catalog.mjs';
+import { parseToolFilter, toolAllowed, unmatchedScopes } from './mcp-tool-filter.mjs';
+
+let toolFilter;
+try {
+  toolFilter = parseToolFilter(process.env.TIMON_MCP_TOOLS);
+} catch (err) {
+  // A misconfigured filter must not start a server with more tools than meant.
+  process.stderr.write(`[timon-mcp] ${err.message}\n`);
+  process.exit(1);
+}
+for (const scope of unmatchedScopes(toolFilter, TOOLS.map((t) => t.name))) {
+  process.stderr.write(`[timon-mcp] TIMON_MCP_TOOLS: ${scope} matches no tool\n`);
+}
+const LISTED_TOOLS = TOOLS.filter((t) => toolAllowed(toolFilter, t.name));
 
 const rl = readline.createInterface({ input: process.stdin });
 
@@ -95,12 +111,15 @@ rl.on('line', async (line) => {
   if (msg.method === 'notifications/initialized') return;
 
   if (msg.method === 'tools/list') {
-    return send({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
+    return send({ jsonrpc: '2.0', id, result: { tools: LISTED_TOOLS } });
   }
 
   if (msg.method === 'tools/call') {
     const name = msg.params?.name;
     const args = msg.params?.arguments || {};
+    if (toolFilter !== null && (typeof name !== 'string' || !toolAllowed(toolFilter, name))) {
+      return send({ jsonrpc: '2.0', id, error: { code: -32602, message: `tool not allowed by TIMON_MCP_TOOLS: ${name}` } });
+    }
     try {
       const result = await runTool(name, args, stdioContext());
       return send({

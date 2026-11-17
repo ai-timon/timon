@@ -39,6 +39,7 @@ import { cmdDevice } from './cli-device.mjs';
 import { cmdAgentExport, cmdAgentExportSkill, cmdAgentImport } from './cli-agent-transfer.mjs';
 import { backendProfilesReport, cmdBackend, formatBackendProfiles } from './cli-backend.mjs';
 import { PROMPT_CANCELLED, readHiddenLine } from './cli-prompt.mjs';
+import { parseToolFilter } from './mcp-tool-filter.mjs';
 import { spawnSync } from 'node:child_process';
 
 // An OEM-code-page Windows console garbles UTF-8 (TIM-0114): ASCII there.
@@ -848,6 +849,9 @@ MCP servers (~/.timon/mcp/<id>.json):
   timon mcp put <id> [--file PATH]        upsert; JSON from --file or stdin
                                          (shape: {name?, description?, transport})
   timon mcp rm <id>                       delete
+  timon mcp serve [--tools LIST]          run Timon's own MCP server on stdin/stdout, for an MCP
+                                         client you start yourself (a desktop assistant, an editor);
+                                         --tools: tool names or <prefix>_* families, comma-separated
 
 Tasks (Kanban backlog):
   timon task list [--status PENDING|IN_PROGRESS|DONE|BLOCKED]   (TODO = deprecated alias of PENDING)
@@ -1413,6 +1417,38 @@ async function cmdMcpRm(argv) {
   process.stdout.write(JSON.stringify(j) + '\n');
 }
 
+/**
+ * `timon mcp serve`: the stdio MCP server agents get (`timon-mcp.mjs`), for an
+ * MCP client the user starts himself. Going through the CLI gives that client
+ * what the bare server lacks outside a mission: the package's own runtime (no
+ * Node to install, no path inside the app to write in a configuration), and
+ * the daemon this CLI resolves (`--daemon`, `TIMON_API`, the config, the
+ * packaged port) with the CLI's credential, instead of `localhost:3000`.
+ */
+async function cmdMcpServe(argv) {
+  const tools = takeFlag(argv, 'tools');
+  if (argv.length > 0) {
+    process.stderr.write('usage: timon mcp serve [--tools LIST]\n');
+    process.exit(64);
+  }
+  if (tools !== undefined) {
+    // Checked here too, so a typo answers with a usage error rather than a server that exits at once.
+    try {
+      parseToolFilter(tools);
+    } catch (e) {
+      process.stderr.write(`timon: ${e.message}\n`);
+      process.exit(64);
+    }
+    process.env.TIMON_MCP_TOOLS = tools;
+  }
+  process.env.TIMON_ORCH_URL = API;
+  // The credential the CLI resolved for this target, never one inherited for another daemon.
+  if (API_TOKEN) process.env.TIMON_API_TOKEN = API_TOKEN;
+  else delete process.env.TIMON_API_TOKEN;
+  // The server answers on stdin/stdout until the client closes them.
+  await import('./timon-mcp.mjs');
+}
+
 async function cmdMcp(argv) {
   const [sub, ...rest] = argv;
   switch (sub) {
@@ -1425,8 +1461,10 @@ async function cmdMcp(argv) {
     case 'rm':
     case 'delete':
       return cmdMcpRm(rest);
+    case 'serve':
+      return cmdMcpServe(rest);
     default:
-      process.stderr.write('usage: timon mcp <list|get|put|rm> …\n');
+      process.stderr.write('usage: timon mcp <list|get|put|rm|serve> …\n');
       process.exit(64);
   }
 }
