@@ -186,12 +186,13 @@ export function questionsFor(scope: QuestionCallerScope): ScopedQuestions {
         : card.kind === 'series_plan'
           ? { behavior: 'allow' as const, updatedInput: { plan: raw.plan, note: (raw.plan as SeriesPlanAnswer).note } }
           : { behavior: 'allow' as const, updatedInput: { answers: raw.answers, note } };
-      const ok = resolvePermission(card.id, decision, 'plugin', { kind: 'plugin', id: pluginId }, {
+      const behavior = resolvePermission(card.id, decision, 'plugin', { kind: 'plugin', id: pluginId }, {
         decidedBy: decidedByUserId ? { kind: 'user', id: decidedByUserId } : null,
         relayedVia: relayed.value,
       });
-      if (!ok) throw new PluginQuestionError('not_found', 'question not found (already answered or expired)');
-      return Object.freeze({ id: card.id, status: cancel ? 'cancelled' : 'answered' });
+      if (!behavior) throw new PluginQuestionError('not_found', 'question not found (already answered or expired)');
+      // Same word as the resolved event: an answer Timon cannot apply is a deny the agent received.
+      return Object.freeze({ id: card.id, status: behavior === 'allow' ? 'answered' as const : 'cancelled' as const });
     },
   };
 }

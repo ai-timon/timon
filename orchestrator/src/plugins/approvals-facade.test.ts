@@ -6,7 +6,7 @@
  * is a projection; `relayedVia` is journaled and never becomes the tool input.
  */
 import { createTestAccount, grantTestPermissions } from '../../tests/helpers/accounts.js';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -152,6 +152,14 @@ test('a card is a projection: bounded, redacted, filtered by tool and project', 
     file_path: `src/${secret}/note.ts`,
     password: 'hunter2',
     api_key: 'short',
+    access_key: 'AKIAIOSFODNN7EXAMPLE',
+    accessKey: 'ASIAIOSFODNN7EXAMPLE',
+    'access-key': 'aws-dash-key',
+    AWS_ACCESS_KEY_ID: 'AKIA-not-in-the-vault',
+    passphrase: 'correct horse',
+    cookie: 'sid=abc',
+    bearer: 'eyJhbGci',
+    region: 'eu-west-1',
     note: huge,
     n: Number.POSITIVE_INFINITY,
     flag: true,
@@ -174,6 +182,14 @@ test('a card is a projection: bounded, redacted, filtered by tool and project', 
     const shown = got.input as Record<string, unknown>;
     assert.equal(shown.password, '***');
     assert.equal(shown.api_key, '***');
+    assert.equal(shown.access_key, '***');
+    assert.equal(shown.accessKey, '***');
+    assert.equal(shown['access-key'], '***');
+    assert.equal(shown.AWS_ACCESS_KEY_ID, '***');
+    assert.equal(shown.passphrase, '***');
+    assert.equal(shown.cookie, '***');
+    assert.equal(shown.bearer, '***');
+    assert.equal(shown.region, 'eu-west-1');
     assert.equal(shown.note, `${'h'.repeat(400)}...`);
     assert.equal(shown.n, null);
     assert.equal(shown.flag, true);
@@ -186,6 +202,13 @@ test('a card is a projection: bounded, redacted, filtered by tool and project', 
     assert.equal(((shown.nested as { a: { b: { c: string } } }).a.b.c), '...');
     assert.equal(JSON.stringify(got).includes(secret), false);
     assert.equal(JSON.stringify(got).includes('hunter2'), false);
+    assert.equal(JSON.stringify(got).includes('AKIAIOSFODNN7EXAMPLE'), false);
+    assert.equal(JSON.stringify(got).includes('ASIAIOSFODNN7EXAMPLE'), false);
+    assert.equal(JSON.stringify(got).includes('aws-dash-key'), false);
+    assert.equal(JSON.stringify(got).includes('AKIA-not-in-the-vault'), false);
+    assert.equal(JSON.stringify(got).includes('correct horse'), false);
+    assert.equal(JSON.stringify(got).includes('sid=abc'), false);
+    assert.equal(JSON.stringify(got).includes('eyJhbGci'), false);
 
     const wide = ask('m-ada', Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`k${i}`, 'z'.repeat(400)])));
     const capped = await asAda(() => plugin.approvals.get(wide.id));
@@ -223,6 +246,36 @@ test('a decision that is not allow or deny is refused and the card keeps waiting
   }
   assert.equal(listPending('m-ada').some((p) => p.id === card.id), true);
   expirePendingForMission('m-ada');
+  await dispose();
+});
+
+test('an allow becomes a deny when the script the card showed was rewritten', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'timon-approval-script-')));
+  writeFileSync(join(dir, 'run.sh'), '#!/bin/sh\necho original\n');
+  const missionId = `m-script-${randomUUID()}`;
+  dbApi.createMission(missionId, 'timon.coder', 'work', undefined, ada.id);
+  dbApi.setMissionCwdOverride(missionId, dir);
+  const decision = requestPermission({
+    mission_id: missionId, agent: 'timon.coder', tool_name: 'Bash', input: { command: './run.sh' }, tool_use_id: randomUUID(),
+  });
+  const card = listPending(missionId).find((p) => p.tool_name === 'Bash');
+  assert.ok(card, 'the Bash card is pending');
+  assert.equal(card.script_previews?.[0]?.path, 'run.sh');
+  writeFileSync(join(dir, 'run.sh'), '#!/bin/sh\necho swapped\n');
+  const { plugin, dispose } = await pluginWith(A, ALL);
+  const events: PluginApprovalEvent[] = [];
+  plugin.events.on('approval_resolved', (ev) => { events.push(ev); });
+  assert.deepEqual(
+    await asAda(() => plugin.approvals.resolve(card.id, { behavior: 'allow' })),
+    { id: card.id, status: 'denied' },
+  );
+  const got = await decision as PermissionDecision;
+  assert.equal(got.behavior, 'deny');
+  assert.match(got.behavior === 'deny' ? got.message : '', /run\.sh/);
+  assert.equal(resolvedPayload(missionId, card.id)?.decision?.behavior, 'deny');
+  await sleep();
+  const ev = events.find((e) => e.approvalId === card.id);
+  assert.equal(ev?.kind === 'approval_resolved' && ev.status, 'denied');
   await dispose();
 });
 

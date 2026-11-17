@@ -236,9 +236,11 @@ export type {
  * `approvals:read` / `approvals:resolve`), and the approval events
  * (`approval_pending`, `approval_resolved`, host half only, with
  * `events:subscribe` + `approvals:read`). Resolving is sensitive: it allows
- * or denies the tool as if the user had clicked. `relayedVia` names the
- * channel that carried the person's decision; it is journaled and never
- * becomes the tool input.
+ * or denies the tool as if the user had clicked. The returned `status`
+ * reflects what the agent actually received: an allow can still come back
+ * `denied` when a previewed script changed. `relayedVia` names the channel
+ * that carried the person's decision; it is journaled and never becomes the
+ * tool input.
  */
 export type { PluginApprovals } from '../../../orchestrator/src/plugins/contract/facades.js';
 export type {

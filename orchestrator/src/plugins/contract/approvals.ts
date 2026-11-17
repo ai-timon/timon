@@ -31,6 +31,12 @@ export type PluginApprovalDecision = Readonly<{
   relayedVia?: string;
 }>;
 
+/**
+ * What `resolve` returns. `status` reflects what the agent actually received:
+ * `allowed` only when the tool was allowed, `denied` when the caller denied
+ * or when Timon turned the allow into a refusal (a script rewritten since the
+ * card, or a file too large to vouch for).
+ */
 export type PluginApprovalResolution = Readonly<{ id: string; status: 'allowed' | 'denied' }>;
 
 export type PluginApprovalListFilter = {

@@ -1288,6 +1288,13 @@ function withSeriesPlan(p: Omit<Pending, 'resolve'>, final: PermissionDecision):
   };
 }
 
+/**
+ * Closes the card. Returns the behaviour the agent received (`allow` or
+ * `deny`) — an allow can still become a deny when a previewed script changed
+ * or is too large to vouch for — or `false` when the card is already gone, or
+ * paste was not offered. Both behaviours are truthy, so a caller that only
+ * checks `if (!ok)` still means "the card was closed".
+ */
 export function resolvePermission(
   id: string,
   answer: PermissionAnswer,
@@ -1299,7 +1306,7 @@ export function resolvePermission(
    * and the channel label, stored next to `resolved_by`. Absent for a click.
    */
   relay: DecisionRelay = NO_RELAY,
-): boolean {
+): PermissionDecision['behavior'] | false {
   const p = PENDING.get(id);
   if (!p) return false;
   // `paste` only where the card offered it: elsewhere there is no command to paste.
@@ -1396,7 +1403,7 @@ export function resolvePermission(
       console.error(`[permissions] re-trigger ${p.mission_id.slice(0, 8)}: ${(err as Error).message}`),
     );
   }
-  return true;
+  return final.behavior;
 }
 
 /**

@@ -6,9 +6,12 @@
  * form is a question, not an approval.
  *
  * `resolve` goes through `resolvePermission`, the function a click calls, so
- * the card closes and the agent resumes the same way. The plugin cannot change
- * the input and cannot widen the allow: both stay with the card the person saw.
- * What the plugin reads is a projection, never the raw payload.
+ * the card closes and the agent resumes the same way. The status it returns is
+ * the behaviour the agent received: an allow can still come back denied when a
+ * previewed script changed, or is too large to vouch for, between the card and
+ * the decision. The plugin cannot change the input and cannot widen the allow:
+ * both stay with the card the person saw. What the plugin reads is a
+ * projection, never the raw payload.
  */
 import { getAgent } from '../agent.js';
 import { type DbViewer } from '../db.js';
@@ -56,8 +59,12 @@ const KEYS_MAX = 30;
 const ARRAY_MAX = 20;
 const JSON_MAX = 4_000;
 const MESSAGE_MAX = 500;
-/** A field whose value is a credential, whatever the tool called it. The name stays; the value does not. */
-const SECRET_KEY = /password|passwd|secret|token|api[_-]?key|authorization|credential|private[_-]?key/i;
+/**
+ * A field whose name looks like a credential (`access_key`, `accessKey`,
+ * `cookie`, `bearer`, …). The name stays; the value does not. A key heuristic
+ * only: the value is still bounded and passed through `redactDeep`.
+ */
+const SECRET_KEY = /password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|authorization|credential|private[_-]?key|cookie|bearer/i;
 
 function bound(value: unknown, depth: number): unknown {
   if (value === null) return null;
@@ -172,9 +179,9 @@ export function approvalsFor(scope: ApprovalCallerScope): ScopedApprovals {
       const answer = raw.behavior === 'allow'
         ? { behavior: 'allow' as const }
         : { behavior: 'deny' as const, message: denyMessage(raw.message) };
-      const ok = resolvePermission(card.id, answer, 'plugin', { kind: 'plugin', id: pluginId }, relayOf(relayed.value));
-      if (!ok) throw new PluginApprovalError('not_found', 'approval not found (already resolved or expired)');
-      return Object.freeze({ id: card.id, status: raw.behavior === 'allow' ? 'allowed' : 'denied' });
+      const behavior = resolvePermission(card.id, answer, 'plugin', { kind: 'plugin', id: pluginId }, relayOf(relayed.value));
+      if (!behavior) throw new PluginApprovalError('not_found', 'approval not found (already resolved or expired)');
+      return Object.freeze({ id: card.id, status: behavior === 'allow' ? 'allowed' as const : 'denied' as const });
     },
   };
 }

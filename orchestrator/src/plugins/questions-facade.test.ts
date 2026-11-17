@@ -308,7 +308,7 @@ test('a click names the account behind it in the event', async () => {
   const seen: PluginQuestionEvent[] = [];
   plugin.events.on('question_resolved', (ev) => { seen.push(ev); });
   const q = ask('m-ada', FORM);
-  assert.equal(resolvePermission(q.id, { behavior: 'allow', updatedInput: { answers: {} } }, 'ui_form_submit', { kind: 'user', id: ada.id }), true);
+  assert.equal(resolvePermission(q.id, { behavior: 'allow', updatedInput: { answers: {} } }, 'ui_form_submit', { kind: 'user', id: ada.id }), 'allow');
   await new Promise((r) => setTimeout(r, 50));
   const ev = seen.find((e) => e.questionId === q.id);
   assert.deepEqual(ev?.origin, { kind: 'user', id: ada.id });

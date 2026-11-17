@@ -56,7 +56,12 @@ export type PluginQuestions = {
 export type PluginApprovals = {
   list(filter?: PluginApprovalListFilter): Promise<PluginApproval[]>;
   get(id: string): Promise<PluginApproval | undefined>;
-  /** Allows or denies a tool-use card as a click would; throws `not_found` once it is resolved or expired. */
+  /**
+   * Allows or denies a tool-use card as a click would. `status` reflects what
+   * the agent actually received, which can be `denied` after an allow when
+   * Timon refuses that allow on its own. Throws `not_found` once the card is
+   * resolved or expired.
+   */
   resolve(id: string, decision: PluginApprovalDecision): Promise<PluginApprovalResolution>;
 };
 
