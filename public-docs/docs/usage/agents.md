@@ -40,6 +40,8 @@ Open an agent's editor by selecting its avatar or name in the chat, or from the 
 
 The header shows the avatar and the name only; select the avatar to open the **Avatar** tab. **Save** sits at the bottom right. Closing the editor with changes you have not saved, the Orchestration selection included, asks **Discard unsaved changes?**.
 
+Saving while one of the agent's missions is working does not stop it: the turn in progress, a Kanban task's included, finishes on the settings it started with, and the mission picks up the new ones at its next message, in the same conversation. `timon agent update` works the same way and says on its error output how many live missions will pick up the change later. To apply a change at once, for example to take a tool away from an agent that is misusing it, add `--restart-missions`: the agent's running missions stop, and a stopped task is retried from a fresh context.
+
 ### Change an agent's avatar
 
 Open the **Avatar** tab of the agent editor, or right-click the agent's avatar in a chat card or its node in the Agents graph and choose **Change avatar** (shown only if your account may edit agents). The head shows on the left; on the right, pick one of three heads, then set it:
