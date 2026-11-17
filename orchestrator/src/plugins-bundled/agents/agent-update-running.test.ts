@@ -223,3 +223,39 @@ test('a save through the agent editor (POST /api/agents) defers too', async () =
   await until(() => resultCount(missionId) === 1, 'the first turn to end on its own');
   assert.ok(isRunning(missionId), 'the save did not stop the process');
 });
+
+/* The CLI relays the flag and says what happens to the live missions. */
+
+const CLI = fileURLToPath(new URL('../../../bin/timon', import.meta.url));
+
+async function runCli(argv: string[]): Promise<{ code: number; out: string; err: string }> {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env, TIMON_HOME: mkdtempSync(join(tmpdir(), 'timon-agent-update-cli-')), TIMON_API: base, TIMON_API_TOKEN: TOKEN,
+  };
+  for (const key of ['TIMON_MISSION_ID', 'TIMON_TRACE_ID', 'TIMON_AGENT', 'TIMON_PROJECT']) delete env[key];
+  const child = spawn(process.execPath, [CLI, ...argv], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  let err = '';
+  child.stdout.on('data', (c: Buffer) => { out += String(c); });
+  child.stderr.on('data', (c: Buffer) => { err += String(c); });
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { child.kill(); reject(new Error('CLI timeout')); }, 15_000);
+    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('exit', (code) => { clearTimeout(timer); resolve({ code: code ?? 0, out, err }); });
+  });
+}
+
+test('CLI: agent update spares a working mission and names the flag; --restart-missions stops it', async () => {
+  const { missionId } = await busyMission();
+  const spared = await runCli(['agent', 'update', AGENT, '--permission-mode', 'acceptEdits']);
+  assert.equal(spared.code, 0, spared.err);
+  assert.equal((JSON.parse(spared.out) as { _restart_pending: number })._restart_pending, 1);
+  assert.match(spared.err, /--restart-missions/);
+  assert.ok(isRunning(missionId), 'the mission is still working');
+
+  const stopped = await runCli(['agent', 'update', AGENT, '--permission-mode', 'default', '--restart-missions']);
+  assert.equal(stopped.code, 0, stopped.err);
+  assert.equal((JSON.parse(stopped.out) as { _killed: number })._killed, 1);
+  assert.match(stopped.err, /stopped 1 running mission/);
+  await until(() => !isRunning(missionId), 'the process to stop');
+});

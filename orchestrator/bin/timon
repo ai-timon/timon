@@ -780,6 +780,9 @@ Agents & missions:
            --look '{"shape":"round","color":"#d4a373","eyes":"happy","acc":"coffee"}'
                                     (mascot look; --look null clears it)
            --avatar emoji|image|mascot   (head shown; --avatar null = picture, logo, emoji, initial)
+           --restart-missions       stop the agent's running missions now (a task is retried
+                                    from a fresh context); without it they finish their turn
+                                    and pick up the change at their next message
     (--skills is the whole checked set, stored as the agent's skill attachments:
      unlisted ones are detached; import mode / exclusion: timon skill attach)
     (deletion: the app or the agent_delete tool; the agent waits in the trash)
@@ -1551,6 +1554,8 @@ async function cmdAgentUpdate(argv) {
     process.exit(1);
   }
   const cfgPatch = takeConfigFlags(argv);
+  const restartMissions = argv.includes('--restart-missions');
+  if (restartMissions) argv.splice(argv.indexOf('--restart-missions'), 1);
   const promptFile = takeFlag(argv, 'prompt-file');
   // Read new prompt only if explicitly requested (file or stdin-with-content);
   // without --prompt-file and with a TTY stdin we leave the prompt untouched.
@@ -1581,8 +1586,10 @@ async function cmdAgentUpdate(argv) {
     const j = await http('POST', '/api/agents', {
       name, system_prompt: newPrompt,
       config: Object.keys(mergedCfg).length ? mergedCfg : undefined,
+      ...(restartMissions ? { restart_missions: true } : {}),
     });
     process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+    reportRunningMissions(name, j);
     return;
   }
 
@@ -1590,8 +1597,24 @@ async function cmdAgentUpdate(argv) {
     process.stderr.write('timon: nothing to update — pass --prompt-file/stdin or any --config flag\n');
     process.exit(64);
   }
-  const j = await http('PATCH', `/api/agents/${encodeURIComponent(name)}/config`, cfgPatch);
+  const j = await http('PATCH', `/api/agents/${encodeURIComponent(name)}/config`,
+    restartMissions ? { ...cfgPatch, restart_missions: true } : cfgPatch);
   process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+  reportRunningMissions(name, j);
+}
+
+/** What an update did to the agent's live missions, on stderr: stdout stays the JSON. */
+function reportRunningMissions(name, j) {
+  const plural = (n) => (n === 1 ? 'mission' : 'missions');
+  if (j._killed > 0) {
+    process.stderr.write(`timon: stopped ${j._killed} running ${plural(j._killed)} of "${name}"; a task is retried from a fresh context\n`);
+  }
+  if (j._restart_pending > 0) {
+    process.stderr.write(
+      `timon: ${j._restart_pending} live ${plural(j._restart_pending)} of "${name}" keep their current settings until their next message;` +
+      ' pass --restart-missions to stop them now\n',
+    );
+  }
 }
 
 async function cmdAgentSetScope(argv) {
