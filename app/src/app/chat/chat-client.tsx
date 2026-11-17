@@ -2607,7 +2607,7 @@ export function ChatClient({
         setAgent(prev);
       } else {
         const j = await r.json().catch(() => ({}));
-        if (j._killed > 0) {
+        if (j._killed > 0 || j._restart_pending > 0) {
           toast.success(i18n('chatSurface.configSavedRespawn'));
         }
       }
