@@ -1376,7 +1376,7 @@
         "updates": "Updates",
         "security": "Security",
         "backup": "Backups & trash",
-        "diagnostics": "Diagnostics",
+        "diagnostics": "Logs & retention",
         "desktop": "Desktop app",
         "privacy": "Privacy"
       },
@@ -1442,7 +1442,7 @@
         "updates": "update upgrade new version release check download installer changelog notes automatic",
         "security": "security isolation fence sandbox confinement landlock seatbelt mission unix sockets docker ssh agent exception enforce",
         "backup": "backup backups archive nightly restore keep retention days trash deleted agent recover undo purge",
-        "diagnostics": "logs debug misc infra troubleshooting",
+        "diagnostics": "diagnostics logs debug misc infra troubleshooting retention",
         "desktop": "uninstall remove delete electron app",
         "privacy": "privacy telemetry analytics usage statistics anonymous tracking opt out"
       },

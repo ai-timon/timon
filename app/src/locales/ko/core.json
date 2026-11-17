@@ -1603,7 +1603,7 @@
         "installation": "설치",
         "updates": "업데이트",
         "backup": "백업 및 휴지통",
-        "diagnostics": "진단",
+        "diagnostics": "로그 및 보존",
         "desktop": "데스크톱 앱",
         "privacy": "개인정보"
       },
@@ -1667,7 +1667,7 @@
         "installation": "버전 정보 설치 서비스 데몬 작업 launchagent systemd 경로 데이터 폴더 로그 포트 내보내기 가져오기 백업 업데이트 version service daemon export import update",
         "updates": "업데이트 새 버전 확인 다운로드 설치 프로그램 릴리스 노트 자동 update",
         "backup": "백업 아카이브 야간 복원 보관 보존 일수 휴지통 삭제된 에이전트 복구 실행 취소 영구 삭제 backup restore trash",
-        "diagnostics": "로그 디버그 기타 인프라 문제 해결 logs debug",
+        "diagnostics": "진단 로그 디버그 기타 인프라 문제 해결 logs debug",
         "desktop": "제거 삭제 electron 앱 uninstall remove",
         "privacy": "개인정보 원격 측정 분석 사용 통계 익명 추적 거부 privacy telemetry analytics"
       },

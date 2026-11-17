@@ -1603,7 +1603,7 @@
         "installation": "Installation",
         "updates": "Updates",
         "backup": "Backups & Papierkorb",
-        "diagnostics": "Diagnose",
+        "diagnostics": "Protokolle & Aufbewahrung",
         "desktop": "Desktop-App",
         "privacy": "Datenschutz"
       },
@@ -1667,7 +1667,7 @@
         "installation": "version über installation dienst daemon aufgabe launchagent systemd pfad daten ordner log port export import backup update",
         "updates": "update aktualisierung neue version prüfen herunterladen installationsprogramm versionshinweise automatisch",
         "backup": "backup sicherung archiv nachts wiederherstellen aufbewahren tage papierkorb gelöschter agent zurückholen rückgängig endgültig",
-        "diagnostics": "logs debug sonstiges infra fehlersuche",
+        "diagnostics": "Diagnose logs debug sonstiges infra fehlersuche",
         "desktop": "deinstallieren entfernen löschen electron app",
         "privacy": "datenschutz telemetrie analyse nutzung statistik anonym tracking abmelden"
       },

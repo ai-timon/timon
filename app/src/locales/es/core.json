@@ -1603,7 +1603,7 @@
         "installation": "Instalación",
         "updates": "Actualizaciones",
         "backup": "Copias y papelera",
-        "diagnostics": "Diagnóstico",
+        "diagnostics": "Registros y retención",
         "desktop": "App de escritorio",
         "privacy": "Privacidad"
       },
@@ -1667,7 +1667,7 @@
         "installation": "versión acerca de instalación servicio daemon tarea launchagent systemd ruta carpeta de datos registro puerto exportar importar copia actualización",
         "updates": "actualización actualizar nueva versión comprobar descargar instalador notas automática",
         "backup": "copia copias archivo nocturna restaurar conservar retención días papelera eliminado agente recuperar deshacer purgar",
-        "diagnostics": "registros logs depuración debug infra solución de problemas",
+        "diagnostics": "diagnóstico registros logs depuración debug infra solución de problemas",
         "desktop": "desinstalar quitar eliminar electron aplicación",
         "privacy": "privacidad telemetría analítica estadísticas de uso anónimo seguimiento rechazar"
       },

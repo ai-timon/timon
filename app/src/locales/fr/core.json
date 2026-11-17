@@ -1376,7 +1376,7 @@
         "updates": "Mises à jour",
         "security": "Sécurité",
         "backup": "Sauvegardes et corbeille",
-        "diagnostics": "Diagnostic",
+        "diagnostics": "Journaux et rétention",
         "desktop": "Application desktop",
         "privacy": "Confidentialité"
       },
@@ -1442,7 +1442,7 @@
         "updates": "mise à jour mettre à jour nouvelle version vérifier télécharger installeur notes changelog automatique",
         "security": "sécurité isolation clôture bac à sable confinement landlock seatbelt mission sockets unix docker ssh agent exception imposer",
         "backup": "sauvegarde sauvegardes archive nuit restaurer garder rétention jours corbeille agent supprimé récupérer annuler purger backup trash",
-        "diagnostics": "journaux logs débogage divers infra dépannage",
+        "diagnostics": "diagnostic journaux logs débogage divers infra dépannage",
         "desktop": "désinstaller supprimer retirer electron application",
         "privacy": "confidentialité télémétrie statistiques usage anonyme suivi désactiver"
       },

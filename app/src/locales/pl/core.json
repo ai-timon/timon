@@ -1603,7 +1603,7 @@
         "installation": "Instalacja",
         "updates": "Aktualizacje",
         "backup": "Kopie zapasowe i kosz",
-        "diagnostics": "Diagnostyka",
+        "diagnostics": "Logi i przechowywanie",
         "desktop": "Aplikacja desktopowa",
         "privacy": "Prywatność"
       },
@@ -1667,7 +1667,7 @@
         "installation": "wersja informacje instalacja usługa demon zadanie launchagent systemd ścieżka dane folder log port eksport import kopia aktualizacja",
         "updates": "aktualizacja zaktualizuj nowa wersja sprawdź pobierz instalator informacje o wydaniu automatyczne",
         "backup": "kopia zapasowa kopie archiwum nocna przywracanie przechowywanie retencja dni kosz usunięty agent odzyskaj cofnij wyczyść",
-        "diagnostics": "logi debugowanie różne infrastruktura rozwiązywanie problemów",
+        "diagnostics": "diagnostyka logi debugowanie różne infrastruktura rozwiązywanie problemów",
         "desktop": "odinstaluj usuń skasuj electron aplikacja",
         "privacy": "prywatność telemetria analityka statystyki użycia anonimowe śledzenie rezygnacja"
       },

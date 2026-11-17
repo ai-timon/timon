@@ -8,6 +8,9 @@ import {
   parseSettingsParam,
   placeSetting,
   resolveSettingsTarget,
+  SETTINGS_CATEGORY_IDS,
+  SETTINGS_NAV_GROUPS,
+  STATIC_TABS,
   type SettingsLayoutInput,
   type SettingsRowLike,
 } from './settings-layout';
@@ -75,6 +78,33 @@ test('Wake and Missions share one tab; the digest joins memory injection', () =>
 test('Memory opens on the Obsidian tab', () => {
   const layout = buildSettingsLayout(input());
   assert.equal(resolveSettingsTarget({ category: 'memory', tab: null }, layout)?.tab.id, 'obsidian');
+});
+
+test('every category with tabs sits in exactly one nav group', () => {
+  const grouped = SETTINGS_NAV_GROUPS.flatMap((group) => group.categories);
+  assert.equal(new Set(grouped).size, grouped.length);
+  assert.deepEqual(new Set(grouped), new Set(Object.keys(STATIC_TABS)));
+});
+
+test('the categories read workspace, agents, this computer, plugins', () => {
+  assert.deepEqual([...SETTINGS_CATEGORY_IDS], [
+    'interface',
+    'models', 'instructions', 'memory', 'missions', 'resources',
+    'network', 'secrets', 'system',
+    'plugins',
+  ]);
+});
+
+test('the Misc and Infra strays with a home leave Diagnostics', () => {
+  assert.deepEqual(placeSetting({ key: 'TIMON_CHROME_PATH', group: 'Misc', advanced: true }), { category: 'network', tab: 'browser' });
+  assert.deepEqual(placeSetting({ key: 'DISPATCHER_INTERVAL_MS', group: 'Infra', advanced: true }), { category: 'missions', tab: 'execution' });
+  assert.deepEqual(placeSetting({ key: 'TIMON_LOG_MAX_MB', group: 'Infra', advanced: false }), { category: 'system', tab: 'diagnostics' });
+});
+
+test('the built-in terminal switch sits in Interface › Terminal, where "terminal unavailable" points', () => {
+  const row: SettingsRowLike = { key: 'TIMON_TERMINAL_WEB_ENABLED', group: 'Terminal', advanced: false, owner: '@timon/terminal-web' };
+  assert.deepEqual(placeSetting(row), { category: 'interface', tab: 'terminal' });
+  assert.ok(!tabIds(buildSettingsLayout(input({ rows: [...ROWS, row] })), 'plugins').includes('@timon/terminal-web'));
 });
 
 test('advanced rows are always listed, except under a preset that hides the zone', () => {

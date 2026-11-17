@@ -161,6 +161,9 @@ const KEY_PLACEMENT: Readonly<Record<string, Placement>> = {
   TIMON_BRAIN_VAULT: { category: 'memory', tab: 'obsidian' },
   TIMON_VAULT_MCP_SERVER: { category: 'memory', tab: 'obsidian' },
   TIMON_PREAPPROVED_MCP_TOOLS: { category: 'missions', tab: 'permissions' },
+  // `Misc` and `Infra` strays that have a home: Diagnostics keeps logs and retention.
+  TIMON_CHROME_PATH: { category: 'network', tab: 'browser' },
+  DISPATCHER_INTERVAL_MS: { category: 'missions', tab: 'execution' },
   TIMON_RESOURCE_GUARD_ENABLED: { category: 'resources', tab: 'confinement' },
   TIMON_MISSION_MEM_MAX_GB: { category: 'resources', tab: 'confinement' },
   TIMON_RESOURCE_WATCH_MS: { category: 'resources', tab: 'confinement' },
@@ -189,6 +192,8 @@ const OWNER_PLACEMENT: Readonly<Record<string, Placement>> = {
   '@timon/browser-annotations': { category: 'network', tab: 'browser' },
   '@timon/web-push': { category: 'network', tab: 'urls' },
   '@timon/terminal-native': { category: 'interface', tab: 'terminal' },
+  // The built-in terminal's own switch: "terminal unavailable" sends people to Interface › Terminal.
+  '@timon/terminal-web': { category: 'interface', tab: 'terminal' },
   '@timon/dreams': { category: 'memory', tab: 'dreaming' },
 };
 

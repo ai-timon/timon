@@ -1603,7 +1603,7 @@
         "installation": "Installatie",
         "updates": "Updates",
         "backup": "Back-ups & prullenbak",
-        "diagnostics": "Diagnose",
+        "diagnostics": "Logs & bewaartermijn",
         "desktop": "Desktopapp",
         "privacy": "Privacy"
       },
@@ -1667,7 +1667,7 @@
         "installation": "versie over installatie dienst daemon taak launchagent systemd pad gegevens map log poort export import back-up update",
         "updates": "update bijwerken nieuwe versie controleren downloaden installatieprogramma release-opmerkingen automatisch",
         "backup": "back-up back-ups archief nachtelijk herstellen bewaren bewaartermijn dagen prullenbak verwijderde agent terughalen ongedaan definitief",
-        "diagnostics": "logs debug overig infra probleemoplossing",
+        "diagnostics": "diagnose logs debug overig infra probleemoplossing",
         "desktop": "verwijderen deïnstalleren electron app",
         "privacy": "privacy telemetrie analyse gebruik statistieken anoniem tracking afmelden"
       },

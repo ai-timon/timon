@@ -1603,7 +1603,7 @@
         "installation": "Installazione",
         "updates": "Aggiornamenti",
         "backup": "Backup e cestino",
-        "diagnostics": "Diagnostica",
+        "diagnostics": "Log e conservazione",
         "desktop": "App desktop",
         "privacy": "Privacy"
       },
@@ -1667,7 +1667,7 @@
         "installation": "versione informazioni installazione servizio daemon attività launchagent systemd percorso cartella dati log porta esporta importa backup aggiornamento version about installation service task path data folder port export import update",
         "updates": "aggiornamento aggiorna nuova versione controlla scarica programma di installazione note automatico",
         "backup": "backup archivio notturno ripristina conserva conservazione giorni cestino eliminato agente recupera annulla svuota archive nightly restore keep retention days trash deleted agent recover undo purge",
-        "diagnostics": "log debug varie infrastruttura risoluzione problemi logs misc infra troubleshooting",
+        "diagnostics": "diagnostica log debug varie infrastruttura risoluzione problemi logs misc infra troubleshooting",
         "desktop": "disinstalla rimuovi elimina electron app uninstall remove delete",
         "privacy": "privacy telemetria analisi utilizzo statistiche anonimo tracciamento disattiva telemetry analytics usage statistics anonymous tracking opt out"
       },

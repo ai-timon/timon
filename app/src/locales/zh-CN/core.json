@@ -1633,7 +1633,7 @@
         "installation": "安装",
         "updates": "更新",
         "backup": "备份与回收站",
-        "diagnostics": "诊断",
+        "diagnostics": "日志与保留",
         "desktop": "桌面应用",
         "privacy": "隐私"
       },
@@ -1697,7 +1697,7 @@
         "installation": "版本 关于 安装 服务 守护进程 任务 launchagent systemd 路径 数据 文件夹 日志 端口 导出 导入 备份 更新",
         "updates": "更新 升级 新版本 检查 下载 安装程序 发行说明 自动 update",
         "backup": "备份 归档 每晚 恢复 保留 保留期 天数 回收站 已删除 智能体 找回 撤销 彻底删除",
-        "diagnostics": "日志 调试 杂项 基础设施 故障排查",
+        "diagnostics": "诊断 日志 调试 杂项 基础设施 故障排查",
         "desktop": "卸载 移除 删除 electron 应用",
         "privacy": "隐私 遥测 分析 用量 统计 匿名 跟踪 退出"
       },

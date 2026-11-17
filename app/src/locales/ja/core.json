@@ -1603,7 +1603,7 @@
         "installation": "インストール",
         "updates": "アップデート",
         "backup": "バックアップとごみ箱",
-        "diagnostics": "診断",
+        "diagnostics": "ログと保持期間",
         "desktop": "デスクトップアプリ",
         "privacy": "プライバシー"
       },
@@ -1667,7 +1667,7 @@
         "installation": "バージョン 情報 インストール サービス デーモン タスク launchagent systemd パス データ フォルダー ログ ポート エクスポート インポート バックアップ 更新 version service daemon export import update",
         "updates": "アップデート 更新 新しいバージョン 確認 ダウンロード インストーラー リリースノート 自動 update",
         "backup": "バックアップ アーカイブ 夜間 復元 保持 期間 日数 ごみ箱 削除 エージェント 回復 元に戻す 完全削除 backup restore trash",
-        "diagnostics": "ログ デバッグ その他 インフラ トラブルシューティング logs debug",
+        "diagnostics": "診断 ログ デバッグ その他 インフラ トラブルシューティング logs debug",
         "desktop": "アンインストール 削除 electron アプリ uninstall remove",
         "privacy": "プライバシー テレメトリー 分析 使用状況 統計 匿名 トラッキング オプトアウト privacy telemetry analytics"
       },
