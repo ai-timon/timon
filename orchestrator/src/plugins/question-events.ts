@@ -57,6 +57,8 @@ export function pluginQuestionEventFromBus(ev: QuestionBusEvent): { ev: PluginQu
       kind: 'question_resolved', questionId: question.id, status: ev.status, question,
       origin: Object.freeze({ kind: ev.resolvedBy.kind, id: ev.resolvedBy.id }),
       decisionOrigin: ev.decisionOrigin,
+      decidedBy: ev.relay.decidedBy ? Object.freeze({ kind: ev.relay.decidedBy.kind, id: ev.relay.decidedBy.id }) : null,
+      relayedVia: ev.relay.relayedVia,
     }),
   };
 }

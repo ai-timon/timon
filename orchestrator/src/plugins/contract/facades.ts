@@ -10,6 +10,9 @@ import type { ScopedMessages } from './messages.js';
 import type { PluginNotification, PluginNotificationListFilter } from './notifications.js';
 import type { PluginOutboxEntry, PluginOutboxOptions, PluginOutboxTarget } from './outbox.js';
 import type {
+  PluginApproval, PluginApprovalDecision, PluginApprovalListFilter, PluginApprovalResolution,
+} from './approvals.js';
+import type {
   PluginQuestion, PluginQuestionAnswer, PluginQuestionListFilter, PluginQuestionResolution,
 } from './questions.js';
 import type { ScopedSkills } from './skills.js';
@@ -47,6 +50,14 @@ export type PluginQuestions = {
   get(id: string): Promise<PluginQuestion | undefined>;
   /** Answers (or cancels) a question as the caller; throws `not_found` once it is answered or expired. */
   resolve(id: string, answer: PluginQuestionAnswer): Promise<PluginQuestionResolution>;
+};
+
+/** `ctx.approvals` (see `PluginContext`). */
+export type PluginApprovals = {
+  list(filter?: PluginApprovalListFilter): Promise<PluginApproval[]>;
+  get(id: string): Promise<PluginApproval | undefined>;
+  /** Allows or denies a tool-use card as a click would; throws `not_found` once it is resolved or expired. */
+  resolve(id: string, decision: PluginApprovalDecision): Promise<PluginApprovalResolution>;
 };
 
 /** `ctx.ui.documents` (see `PluginContext`). */

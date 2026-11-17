@@ -88,15 +88,20 @@ export type PluginQuestionAnswerValue =
   | readonly string[]
   | Readonly<{ choice?: string; choices?: readonly string[]; text: string }>;
 
-/** What a plugin answers. `answers` is keyed by the text of each question. */
+/**
+ * What a plugin answers. `answers` is keyed by the text of each question.
+ * `relayedVia`, when set, is the short label of the channel that carried the
+ * person's decision. It is journaled next to who answered; it never reaches the agent.
+ */
 export type PluginQuestionAnswer =
   | Readonly<{
     answers: Readonly<Record<string, PluginQuestionAnswerValue>>;
     /** @deprecated The form has no global note any more: put the text in the answer of its question. Still relayed to the agent. */
     note?: string;
+    relayedVia?: string;
   }>
-  | Readonly<{ plan: SeriesPlanAnswer }>
-  | Readonly<{ cancel: true }>;
+  | Readonly<{ plan: SeriesPlanAnswer; relayedVia?: string }>
+  | Readonly<{ cancel: true; relayedVia?: string }>;
 
 export type PluginQuestionResolution = Readonly<{ id: string; status: 'answered' | 'cancelled' }>;
 
@@ -132,6 +137,10 @@ export type PluginQuestionResolvedEvent = Readonly<{
   origin: PluginQuestionActor;
   /** The action behind the decision (`ui_form_submit`, `plugin`, `auto_timeout`, `mission_end`…). */
   decisionOrigin: string;
+  /** The account of the request, when a plugin relayed a person's answer. `null` for a click, a job or an expiry. */
+  decidedBy: PluginQuestionActor | null;
+  /** The channel label the caller gave. `null` when it gave none. */
+  relayedVia: string | null;
 }>;
 
 export type PluginQuestionEvent = PluginQuestionPendingEvent | PluginQuestionResolvedEvent;

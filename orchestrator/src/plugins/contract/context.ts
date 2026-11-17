@@ -41,7 +41,7 @@ import type { PluginEventKind } from './events.js';
 import type { Router } from './http.js';
 import type { ScopedChat, ScopedLayout } from './layout.js';
 import type {
-  PluginMcpServers, PluginMessages, PluginNotifications, PluginOutbox, PluginQuestions, PluginSkills,
+  PluginApprovals, PluginMcpServers, PluginMessages, PluginNotifications, PluginOutbox, PluginQuestions, PluginSkills,
   PluginUiDocuments,
 } from './facades.js';
 import type {
@@ -66,6 +66,7 @@ import type {
   PluginProjectEventKind, PluginProjectEventMap, PluginProject, PluginProjectInput, PluginProjectPatch,
   PluginProjectRoles, PluginProjectWrite, PluginRoleInput, PluginWorkspace,
 } from './projects.js';
+import type { PluginApprovalEventKind, PluginApprovalEventMap } from './approvals.js';
 import type { PluginQuestionEventKind, PluginQuestionEventMap } from './questions.js';
 import type { PluginRealtime } from './realtime.js';
 import type { PluginSecrets } from './secrets.js';
@@ -637,11 +638,29 @@ export type PluginContext = {
    * conversation: a card outside that view answers as one that does not exist.
    * `answer` is sensitive: it unblocks the agent on the user's behalf, and
    * answering a Kanban plan has the agent apply it. Tool-use approvals are not
-   * questions and are not listed. Errors carry a `code` (`PluginQuestionErrorCode`);
+   * questions and are not listed (`ctx.approvals`). `resolve` takes an optional
+   * `relayedVia`: a short label of the channel that carried the person's
+   * decision, journaled next to who answered, with the account of the request.
+   * Errors carry a `code` (`PluginQuestionErrorCode`);
    * the events are `question_pending` / `question_resolved` (`events:subscribe`
-   * + `questions:read`).
+   * + `questions:read`). A resolved event also carries `decidedBy` and `relayedVia`.
    */
   questions: PluginQuestions;
+  /**
+   * Tool-use approvals (Allow / Deny) that wait for a person, across every
+   * project, `approvals:read` / `approvals:resolve` (API 18). Same bound as
+   * `ctx.questions`: in a request, the caller's missions; in a job, the
+   * missions owned by `plugin:<id>`. A card outside that view answers as one
+   * that does not exist. `resolve` goes through the same path as a click, so
+   * the agent resumes exactly as it would. The card is a projection (tool,
+   * a bounded and redacted view of the input, mission, agent, created and
+   * expires); the raw payload never leaves. `relayedVia` is the same optional
+   * channel label as on `ctx.questions.resolve`. Both permissions are
+   * sensitive. Errors carry a `code` (`PluginApprovalErrorCode`); the events
+   * are `approval_pending` / `approval_resolved` (`events:subscribe` +
+   * `approvals:read`).
+   */
+  approvals: PluginApprovals;
   /**
    * Read-only events, `events:subscribe`. The task kinds (`task_created`,
    * `task_updated`, `task_assigned`, `task_deleted`, `task_unblocked`) also need
@@ -666,6 +685,8 @@ export type PluginContext = {
     on<K extends PluginTodoEventKind>(kind: K, handler: (ev: PluginTodoEventMap[K]) => void | Promise<void>): () => void;
     on<K extends PluginUiDocumentEventKind>(kind: K, handler: (ev: PluginUiDocumentEventMap[K]) => void | Promise<void>): () => void;
     on<K extends PluginQuestionEventKind>(kind: K, handler: (ev: PluginQuestionEventMap[K]) => void | Promise<void>): () => void;
+    /** API 18: `approval_pending` / `approval_resolved` also need `approvals:read`. */
+    on<K extends PluginApprovalEventKind>(kind: K, handler: (ev: PluginApprovalEventMap[K]) => void | Promise<void>): () => void;
     on<K extends PluginMissionEventKind>(kind: K, handler: (ev: PluginMissionEventMap[K]) => void | Promise<void>): () => void;
     on<K extends PluginMemoryEventKind>(kind: K, handler: (ev: PluginMemoryEventMap[K]) => void | Promise<void>): () => void;
     on<K extends PluginProjectEventKind>(kind: K, handler: (ev: PluginProjectEventMap[K]) => void | Promise<void>): () => void;

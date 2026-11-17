@@ -99,8 +99,14 @@ import { reservedRouteSegment } from './reserved-routes.js';
  * `useUpdateDialog`, the update window (§116). A manifest naming one of the
  * new slots must declare 17 (`SLOT_API_VERSIONS`). No member of the host's
  * `PluginContext` changes.
+ *
+ * 18 — pending tool-use approvals: `ctx.approvals` (`list`, `get`, `resolve`)
+ * under the sensitive permissions `approvals:read` and `approvals:resolve`,
+ * and the events `approval_pending` / `approval_resolved`. `ctx.questions.resolve`
+ * and `ctx.approvals.resolve` take an optional `relayedVia`, journaled next to
+ * `resolved_by` with the account of the request. No browser member changes.
  */
-export const PLUGIN_API_VERSION = 17;
+export const PLUGIN_API_VERSION = 18;
 
 /** First contract that knows `kind: dictation` and its manifest block. */
 export const DICTATION_API_VERSION = 14;
@@ -242,6 +248,10 @@ export const PLUGIN_PERMISSIONS = [
   'ui-documents:write',
   'questions:read',
   'questions:answer',
+  // API 18 — tool-use approvals (Allow / Deny). Both sensitive: reading one
+  // shows what an agent wants to run, resolving one lets it run.
+  'approvals:read',
+  'approvals:resolve',
   'notifications:read',
   'notifications:write',
   'memory:read',
@@ -299,6 +309,8 @@ export const SENSITIVE_PLUGIN_PERMISSIONS = Object.freeze([
   'mcp-servers:write', // the tools agents load
   // What the owner trusted Timon with
   'questions:answer', // validates dangerous tool requests on the owner's behalf
+  'approvals:read', // reads pending tool-use cards, including a bounded view of what the agent wants to run
+  'approvals:resolve', // allows or denies a tool use on the owner's behalf
   'chat:media', // puts a picture or video in the owner's conversation; an https source makes the daemon fetch it
   'chat:command', // proposes a command the owner may paste into their terminal
   'agents:docs:read', // an agent's instructions

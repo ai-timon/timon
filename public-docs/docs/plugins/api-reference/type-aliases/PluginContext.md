@@ -243,6 +243,12 @@
 
 ***
 
+### approvals
+
+> **approvals**: [`PluginApprovals`](PluginApprovals.md)
+
+***
+
 ### backendAccounts
 
 > **backendAccounts**: `object`
@@ -778,6 +784,30 @@ readonly [`PluginBrowserRecordingOp`](PluginBrowserRecordingOp.md)[]
 ###### K
 
 `K` *extends* [`PluginQuestionEventKind`](PluginQuestionEventKind.md)
+
+###### Parameters
+
+###### kind
+
+`K`
+
+###### handler
+
+(`ev`) => `void` \| `Promise`\<`void`\>
+
+###### Returns
+
+() => `void`
+
+##### Call Signature
+
+> **on**\<`K`\>(`kind`, `handler`): () => `void`
+
+###### Type Parameters
+
+###### K
+
+`K` *extends* [`PluginApprovalEventKind`](PluginApprovalEventKind.md)
 
 ###### Parameters
 

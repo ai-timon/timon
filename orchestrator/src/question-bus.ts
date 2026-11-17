@@ -11,6 +11,7 @@
  * document events are translated synchronously.
  */
 import { EventEmitter } from 'node:events';
+import type { DecisionRelay } from './decision-relay.js';
 import type { DecisionOrigin } from './permissions.js';
 
 export type QuestionKind = 'question' | 'series_plan';
@@ -39,6 +40,8 @@ export type QuestionBusEvent =
     status: 'answered' | 'cancelled' | 'expired';
     decisionOrigin: DecisionOrigin;
     resolvedBy: QuestionActor;
+    /** The account a plugin relayed, and the channel label. Both null when this close was not a relay. */
+    relay: DecisionRelay;
   }>;
 
 const emitter = new EventEmitter();
