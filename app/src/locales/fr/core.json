@@ -1310,6 +1310,10 @@
   },
   "settingsDialog": {
     "backToSettings": "Retour aux réglages",
+    "navGroup": {
+      "agents": "Agents",
+      "machine": "Cet ordinateur"
+    },
     "close": "Fermer",
     "unsavedKept": "Votre dernière modification n'est pas enregistrée. Enregistrez-la, ou fermez avec × ou Échap pour l'abandonner.",
     "category": {

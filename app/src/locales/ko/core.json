@@ -1539,6 +1539,10 @@
   },
   "settingsDialog": {
     "backToSettings": "설정으로 돌아가기",
+    "navGroup": {
+      "agents": "에이전트",
+      "machine": "이 컴퓨터"
+    },
     "close": "닫기",
     "unsavedKept": "마지막 변경 사항이 아직 저장되지 않았습니다. 저장하거나 × 또는 Escape로 닫아 버리세요.",
     "category": {

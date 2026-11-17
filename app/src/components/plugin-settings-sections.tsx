@@ -57,7 +57,7 @@ function PluginSettingsForm({ pluginId }: { pluginId: string }): ReactElement {
   }, [pluginId]);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex max-w-3xl flex-col">
       {settings.map((setting) => {
         const current = drafts[setting.key] !== undefined
           ? drafts[setting.key]!

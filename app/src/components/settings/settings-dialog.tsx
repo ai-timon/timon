@@ -52,8 +52,10 @@ import {
   parseSettingsAccountView,
   parseSettingsParam,
   resolveSettingsTarget,
+  SETTINGS_NAV_GROUPS,
   type SettingsCategory,
   type SettingsCategoryId,
+  type SettingsNavGroupId,
   type SettingsTab,
   type SettingsTarget,
 } from '@/lib/settings-layout';
@@ -81,6 +83,10 @@ const CATEGORY_ICONS: Readonly<Record<SettingsCategoryId, LucideIcon>> = {
 
 function categoryLabel(id: SettingsCategoryId): string {
   return t(`settingsDialog.category.${id}`);
+}
+
+function navGroupLabel(id: SettingsNavGroupId): string {
+  return t(`settingsDialog.navGroup.${id}`);
 }
 
 /** A hidden-keyword entry of the locale files; none when the key is not there. */
@@ -224,6 +230,11 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
     providers: providerAccess(me) ?? undefined,
   }), [settings, includeAdvanced, pluginStates, catalog, sectionEntries, graftedGroups, desktop, hasSecrets, me]);
 
+  // The layout drops empty categories; a group left without any drops too.
+  const navGroups = useMemo(() => SETTINGS_NAV_GROUPS.flatMap((group) => {
+    const categories = layout.filter((category) => group.categories.includes(category.id));
+    return categories.length > 0 ? [{ id: group.id, titled: group.titled, categories }] : [];
+  }), [layout]);
   const resolved = resolveSettingsTarget(target, layout);
   const byKey = useMemo(() => new Map(settings.map((s) => [s.key, s])), [settings]);
   const inPlugins = resolved?.category.id === 'plugins';
@@ -304,16 +315,25 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
             </ul>
           </>
         ) : (
-          <ul className="mt-5 space-y-0.5">
-            {layout.map((category) => (
-              <CategoryItem
-                key={category.id}
-                category={category}
-                active={!accountView && category.id === resolved?.category.id}
-                onSelect={() => select({ category: category.id, tab: null })}
-              />
+          <div className="mt-5 space-y-4">
+            {navGroups.map((group) => (
+              <div key={group.id} role={group.titled ? 'group' : undefined} aria-label={group.titled ? navGroupLabel(group.id) : undefined}>
+                {group.titled && (
+                  <p className="mb-1 px-2.5 text-[11px] font-medium text-muted-foreground/80">{navGroupLabel(group.id)}</p>
+                )}
+                <ul className="space-y-0.5">
+                  {group.categories.map((category) => (
+                    <CategoryItem
+                      key={category.id}
+                      category={category}
+                      active={!accountView && category.id === resolved?.category.id}
+                      onSelect={() => select({ category: category.id, tab: null })}
+                    />
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
         {/* Stuck to the foot of the column, whatever the category list holds. */}
         <SettingsAccount className="mt-auto" view={accountView} onSelect={selectAccount} />
@@ -332,6 +352,9 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
             <div className="min-h-0 flex-1 overflow-hidden">
               {accountView === 'profile' ? <ProfileClient /> : <LicenseClient />}
             </div>
+            {/* On a phone the column is gone and this view has no category
+                picker: the account stays pinned, it is the way back. */}
+            <SettingsAccount className="shrink-0 px-5 pb-3 md:hidden" view={accountView} onSelect={selectAccount} />
           </>
         ) : (
           <>
@@ -343,9 +366,14 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
             onChange={(e) => select({ category: e.target.value as SettingsCategoryId, tab: null })}
             className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-muted/70 px-3 text-[13px] font-medium text-foreground outline-none ring-1 ring-border/60 focus-visible:ring-ring md:hidden"
           >
-            {layout.map((category) => (
-              <option key={category.id} value={category.id}>{categoryLabel(category.id)}</option>
-            ))}
+            {navGroups.map((group) => {
+              const options = group.categories.map((category) => (
+                <option key={category.id} value={category.id}>{categoryLabel(category.id)}</option>
+              ));
+              return group.titled
+                ? <optgroup key={group.id} label={navGroupLabel(group.id)}>{options}</optgroup>
+                : options;
+            })}
           </select>
           {inPlugins && resolved && (
             <select
@@ -370,7 +398,7 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
         </header>
 
         {!searching && resolved && !inPlugins && resolved.category.tabs.length > 1 && (
-          <div className="px-5 py-2.5 md:px-8">
+          <div className="px-5 pb-1 pt-2.5 md:px-8">
             <div
               role="tablist"
               aria-label={categoryLabel(resolved.category.id)}
@@ -405,53 +433,57 @@ function SettingsPanel({ onClose, unsavedRef }: { onClose: () => void; unsavedRe
         {/* The body fades out at the dialog's foot, like the Kanban columns,
             instead of slicing a thumbnail or a card through the middle; the
             deeper bottom padding lets the last section scroll clear of it. */}
-        <div
-          id="settings-tabpanel"
-          role={searching ? undefined : 'tabpanel'}
-          aria-labelledby={!searching && resolved && !inPlugins && resolved.category.tabs.length > 1 ? `settings-tab-${resolved.tab.id}` : undefined}
-          className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-5 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)] md:px-8 md:pb-9 md:pt-6"
-        >
-          {loading || !resolved ? (
-            <RowsSkeleton />
-          ) : results ? (
-            <SettingsSearchResultsView
-              query={query}
-              results={results}
-              categoryLabel={categoryLabel}
-              tabLabel={tabLabel}
-              onOpen={select}
-              renderRow={(key) => {
-                const setting = byKey.get(key);
-                return setting ? (
-                  <SettingsRow
-                    setting={setting}
-                    draft={drafts[key]}
-                    saving={saving === key}
-                    onDraft={onDraft}
-                    onSave={save}
-                  />
-                ) : null;
-              }}
-            />
-          ) : (
-            <NativeSettingsContext.Provider value={{ resourceMemory, refresh: load, includeAdvanced }}>
-              <TabContent
-                tab={resolved.tab}
-                rows={resolved.tab.kind === 'rows'
-                  ? resolved.tab.keys.flatMap((key) => byKey.get(key) ?? [])
-                  : []}
-                drafts={drafts}
-                saving={saving}
-                onDraft={onDraft}
-                onSave={save}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-4 [mask-image:linear-gradient(to_bottom,#000_calc(100%-28px),transparent)] md:px-8 md:pb-9 md:pt-5">
+          <div
+            id="settings-tabpanel"
+            role={searching ? undefined : 'tabpanel'}
+            aria-labelledby={!searching && resolved && !inPlugins && resolved.category.tabs.length > 1 ? `settings-tab-${resolved.tab.id}` : undefined}
+          >
+            {loading || !resolved ? (
+              <RowsSkeleton />
+            ) : results ? (
+              <SettingsSearchResultsView
+                query={query}
+                results={results}
+                categoryLabel={categoryLabel}
+                tabLabel={tabLabel}
+                onOpen={select}
+                renderRow={(key) => {
+                  const setting = byKey.get(key);
+                  return setting ? (
+                    <SettingsRow
+                      setting={setting}
+                      draft={drafts[key]}
+                      saving={saving === key}
+                      onDraft={onDraft}
+                      onSave={save}
+                    />
+                  ) : null;
+                }}
               />
-            </NativeSettingsContext.Provider>
-          )}
+            ) : (
+              <NativeSettingsContext.Provider value={{ resourceMemory, refresh: load, includeAdvanced }}>
+                <TabContent
+                  tab={resolved.tab}
+                  rows={resolved.tab.kind === 'rows'
+                    ? resolved.tab.keys.flatMap((key) => byKey.get(key) ?? [])
+                    : []}
+                  drafts={drafts}
+                  saving={saving}
+                  onDraft={onDraft}
+                  onSave={save}
+                />
+              </NativeSettingsContext.Provider>
+            )}
+          </div>
+          {/* The column is desktop-only: on a phone the account closes the
+              page and scrolls with it, rather than holding a fifth of the
+              screen under every tab. Outside the tabpanel: it is not the
+              tab's content. */}
+          {!searching && <SettingsAccount className="mt-10 md:hidden" view={accountView} onSelect={selectAccount} />}
         </div>
           </>
         )}
-        {/* The column is desktop-only: on a phone the account sits under the pane. */}
-        <SettingsAccount className="shrink-0 px-5 pb-3 md:hidden" view={accountView} onSelect={selectAccount} />
       </div>
     </div>
   );
@@ -559,7 +591,9 @@ function TabContent({
     }
   }
   return (
-    <div className="flex flex-col">
+    // The same measure as the panes beside it (Installation, Web interface):
+    // on a wide dialog a control no longer sits a screen away from its label.
+    <div className="flex max-w-3xl flex-col">
       {rows.map((s) => (
         <SettingsRow
           key={s.key}

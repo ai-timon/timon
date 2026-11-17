@@ -1539,6 +1539,10 @@
   },
   "settingsDialog": {
     "backToSettings": "Volver a la configuración",
+    "navGroup": {
+      "agents": "Agentes",
+      "machine": "Este equipo"
+    },
     "close": "Cerrar",
     "unsavedKept": "Tu último cambio aún no está guardado. Guárdalo o ciérralo con × o Esc para descartarlo.",
     "category": {

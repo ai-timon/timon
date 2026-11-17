@@ -29,9 +29,23 @@ export type SettingsCategoryId =
   | 'secrets'
   | 'plugins';
 
-export const SETTINGS_CATEGORY_IDS: readonly SettingsCategoryId[] = [
-  'interface', 'models', 'instructions', 'missions', 'resources', 'memory', 'network', 'system', 'secrets', 'plugins',
+export type SettingsNavGroupId = 'workspace' | 'agents' | 'machine' | 'extensions';
+
+/**
+ * The nav, in reading order: the person's own workspace, what shapes the
+ * agents, what runs the machine, then plugins. Only the two middle groups are
+ * named; the first and the last are one category each and the spacing around
+ * them says enough. Grouping is display only: a URL names the category,
+ * never its group.
+ */
+export const SETTINGS_NAV_GROUPS: readonly { id: SettingsNavGroupId; titled: boolean; categories: readonly SettingsCategoryId[] }[] = [
+  { id: 'workspace', titled: false, categories: ['interface'] },
+  { id: 'agents', titled: true, categories: ['models', 'instructions', 'memory', 'missions', 'resources'] },
+  { id: 'machine', titled: true, categories: ['network', 'secrets', 'system'] },
+  { id: 'extensions', titled: false, categories: ['plugins'] },
 ];
+
+export const SETTINGS_CATEGORY_IDS: readonly SettingsCategoryId[] = SETTINGS_NAV_GROUPS.flatMap((group) => group.categories);
 
 /** Device-local panes: no row in the settings table. */
 export type NativePaneId = 'language' | 'push' | 'voice' | 'webui' | 'desktop' | 'installation' | 'instructions' | 'preamble' | 'fallback' | 'secrets' | 'connections' | 'devices' | 'developer' | 'isolation';

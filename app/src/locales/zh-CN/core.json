@@ -1569,6 +1569,10 @@
   },
   "settingsDialog": {
     "backToSettings": "返回设置",
+    "navGroup": {
+      "agents": "智能体",
+      "machine": "这台电脑"
+    },
     "close": "关闭",
     "unsavedKept": "上次更改尚未保存。请保存，或点击 × 或按 Esc 关闭并放弃更改。",
     "category": {

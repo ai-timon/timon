@@ -1539,6 +1539,10 @@
   },
   "settingsDialog": {
     "backToSettings": "Voltar às configurações",
+    "navGroup": {
+      "agents": "Agentes",
+      "machine": "Este computador"
+    },
     "close": "Fechar",
     "unsavedKept": "Sua última alteração ainda não foi salva. Salve-a ou feche com × ou Escape para descartá-la.",
     "category": {
