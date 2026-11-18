@@ -496,9 +496,12 @@ export function hostFenceStatus(fence: HostFence | undefined): FenceStatus {
   if (fenceBrokenAtLaunch) return { state: 'unsupported', reason: fenceBrokenAtLaunch, abi: 0 };
   const probe = fence.probe();
   const abi = probe.abi ?? 0;
-  if (probe.available) return { state: 'ready', binary: fence.mechanism, abi, seccomp: true };
+  if (probe.available) {
+    return { state: 'ready', binary: fence.mechanism, abi, seccomp: true, ...(probe.fallback ? { fallback: probe.fallback } : {}) };
+  }
   const reason = probe.reason ?? `the ${fence.mechanism} fence is unavailable`;
-  return probe.tampered ? { state: 'tampered', reason, abi } : { state: 'unsupported', reason, abi };
+  if (probe.tampered) return { state: 'tampered', reason, abi };
+  return { state: 'unsupported', reason, abi, ...(probe.noMechanism ? { noMechanism: true } : {}) };
 }
 
 /** Where the launcher reads the policy: under `run/`, which no mission ever reaches (`MISSION_TIMON_ZONES.refused`). */
@@ -539,11 +542,13 @@ const warnedUnfenced = new Set<string>();
 /** Agents already named in the log as running in the whole `workspace` folder: once per agent. */
 const notedSharedWorkspace = new Set<string>();
 
-function reportFenceReady(mechanism: FenceMechanism, abi: number): void {
-  const key = `${mechanism}:${abi}`;
+function reportFenceReady(mechanism: FenceMechanism, abi: number, fallback: 'namespaces' | undefined): void {
+  const key = `${mechanism}:${abi}:${fallback ?? ''}`;
   if (reportedFence === key) return;
   reportedFence = key;
-  console.log(`[resources] missions run inside the ${mechanism} fence${abi ? ` (ABI ${abi})` : ''}`);
+  console.log(fallback
+    ? '[resources] missions run inside the namespace fence (no Landlock on this kernel)'
+    : `[resources] missions run inside the ${mechanism} fence${abi ? ` (ABI ${abi})` : ''}`);
 }
 
 /**
@@ -667,7 +672,7 @@ export function fenceMissionCommand(
   const policyFile = fencePolicyFile(target.timonHome, unit);
   try {
     const wrapped = fence.wrap(policy, cmd, nested.args, policyFile);
-    reportFenceReady(fence.mechanism, status.abi);
+    reportFenceReady(fence.mechanism, status.abi, status.state === 'ready' ? status.fallback : undefined);
     return { ...wrapped, fence: { state: 'fenced', mechanism: fence.mechanism, policyFile, tmpDir, workspace, packageCacheDir } };
   } catch (err) {
     return unfenced({ state: 'unsupported', reason: `the fence policy cannot be applied (${(err as Error).message})`, abi: status.abi });

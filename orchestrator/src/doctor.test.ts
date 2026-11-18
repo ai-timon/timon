@@ -131,6 +131,24 @@ test('the diagnostic says whether missions are fenced, and why not', async () =>
   assert.match(off.report.message, /^NOT enforced — turned off/);
 });
 
+test('a kernel without Landlock reads as a namespace fence, and a kernel with no mechanism as a refusal', async () => {
+  const { missionIsolationReport } = await import('./doctor.js');
+  const fallback = missionIsolationReport(isoInput({
+    status: { state: 'ready', binary: 'landlock', abi: 0, seccomp: true, fallback: 'namespaces' },
+  })).report;
+  assert.deepEqual({ mechanism: fallback.mechanism, enforced: fallback.enforced, launch: fallback.launch, gaps: fallback.gaps },
+    { mechanism: 'namespaces', enforced: true, launch: 'fenced', gaps: [] });
+  assert.equal(fallback.message, "enforced (user, mount and pid namespaces + unix-socket filter; no Landlock on this kernel): missions cannot read Timon's private files.");
+
+  const none = missionIsolationReport(isoInput({
+    status: { state: 'unsupported', reason: 'kernel without Landlock, and without unprivileged user namespaces', abi: 0, noMechanism: true },
+  }));
+  assert.equal(none.report.launch, 'refused');
+  assert.match(none.blocker ?? '', /^Mission refused: it cannot be kept away from Timon's private files/);
+  assert.match(none.report.message, /^NOT enforced — kernel without Landlock, and without unprivileged user namespaces\. Every mission is refused until this is fixed\./);
+  assert.match(none.report.message, /set host\.isolation\.filesystem to "off"/);
+});
+
 test('the diagnostic names what the fence leaves open: unix sockets, writable paths, exceptions', async () => {
   const { missionIsolationReport } = await import('./doctor.js');
   const ready = { state: 'ready', binary: '/x/timon-fence', abi: 6, seccomp: true } as const;

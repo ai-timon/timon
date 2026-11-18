@@ -61,11 +61,28 @@ test('the probe tells a missing Landlock from a missing seccomp', () => {
   assert.equal(parseFenceProbe('', null).available, false);
 });
 
+test('without Landlock, the probe says whether the namespace fence can stand in, or that nothing can', () => {
+  // Landlock present: the namespace check is not even run.
+  assert.deepEqual(parseFenceProbe('landlock-abi=6 seccomp=yes userns=unchecked\n', 0), { available: true, answered: true, abi: 6, seccomp: true });
+  assert.deepEqual(parseFenceProbe('landlock-abi=0 seccomp=yes userns=yes\n', 0),
+    { available: true, answered: true, abi: 0, seccomp: true, namespaces: true });
+  assert.equal(parseFenceProbe('landlock-abi=1 seccomp=yes userns=yes\n', 0).namespaces, true, 'ABI 1 is no Landlock for the fence');
+  const none = parseFenceProbe('landlock-abi=0 seccomp=yes userns=no\n', 69);
+  assert.equal(none.available, false);
+  assert.equal(none.noMechanism, true);
+  assert.equal(none.reason, 'kernel without Landlock, and without unprivileged user namespaces');
+  assert.equal(parseFenceProbe('landlock-abi=0 seccomp=no userns=yes\n', 69).reason, 'kernel without seccomp filters');
+  // A launcher from before the namespace mode cannot fall back: not a kernel verdict.
+  assert.equal(parseFenceProbe('landlock-abi=0 seccomp=yes\n', 69).noMechanism, undefined);
+});
+
 // ---------------------------------------------------------------------------
 // The status of the fence, and what a launch does with it.
 
 const READY: FenceProbe = { available: true, answered: true, abi: 6, seccomp: true };
 const NO_LANDLOCK: FenceProbe = { available: false, answered: true, abi: 0, seccomp: true, reason: 'kernel without Landlock' };
+const NAMESPACES: FenceProbe = parseFenceProbe('landlock-abi=0 seccomp=yes userns=yes\n', 0);
+const NO_MECHANISM: FenceProbe = parseFenceProbe('landlock-abi=0 seccomp=yes userns=no\n', 69);
 const SILENT: FenceProbe = { available: false, answered: false, abi: 0, seccomp: false, reason: 'the fence launcher did not answer its probe' };
 
 /** An orchestrator folder whose release ships (or not) a launcher. */
@@ -125,6 +142,26 @@ test('a declared, intact launcher on a kernel without Landlock is the machine, n
   const ready = fenceStatus({ ...LINUX, orchestratorRoot: root, release: signed(digest), probe: () => READY });
   assert.equal(ready.state, 'ready');
   assert.deepEqual(fenceLaunchDecision('enforce', ready), { action: 'fence', binary: join(root, 'native', 'timon-fence') });
+});
+
+test('a kernel without Landlock fences with namespaces when it can, and refuses the mission when nothing can', () => {
+  const { root, digest } = shippedRoot('launcher');
+  const fallback = fenceStatus({ ...LINUX, orchestratorRoot: root, release: signed(digest), probe: () => NAMESPACES });
+  assert.deepEqual(fallback, { state: 'ready', binary: join(root, 'native', 'timon-fence'), abi: 0, seccomp: true, fallback: 'namespaces' });
+  assert.equal(fenceLaunchDecision('auto', fallback).action, 'fence');
+
+  const none = fenceStatus({ ...LINUX, orchestratorRoot: root, release: signed(digest), probe: () => NO_MECHANISM });
+  assert.ok(none.state === 'unsupported' && none.noMechanism === true);
+  // Fail closed: `auto` refuses, and the error names the one setting that accepts it.
+  const auto = fenceLaunchDecision('auto', none);
+  assert.ok(auto.action === 'refuse' && !auto.tampered);
+  assert.match(auto.error, /^Mission refused: it cannot be kept away from Timon's private files: kernel without Landlock, and without unprivileged user namespaces\./);
+  assert.match(auto.error, /set host\.isolation\.filesystem to "off"/);
+  assert.equal(fenceLaunchDecision('enforce', none).action, 'refuse');
+  assert.deepEqual(fenceLaunchDecision('off', none), { action: 'unfenced', warning: null, tampered: false });
+  // A source checkout without a launcher is not a kernel verdict: unchanged.
+  const loose = fenceStatus({ ...LINUX, orchestratorRoot: mkdtempSync(join(tmpdir(), 'fence-loose-')), release: null, probe: () => NO_MECHANISM });
+  assert.equal(fenceLaunchDecision('auto', loose).action, 'unfenced');
 });
 
 test('the release manifest file declares the launcher even when no verified inventory was handed over', () => {
