@@ -9,7 +9,7 @@ import express from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { createRole, deleteRole, isSafeRoleIconSvg, listRoles, getRole, resetRoleDirectives, updateRole } from '../../agent-roles.js';
-import { canonicalAgentName, createEphemeralAgent, deleteAgent, getAgent, restoreAgent, setAgentOrchestrates, teamVisibleAgents, clientTurnState, getTurnState, isAutonomousMission, killRunningForAgent, listAgents, loadConfig, patchAgentConfig, renamedTriggerReason, spawnAgent, upsertAgent } from '../../agent.js';
+import { canonicalAgentName, createEphemeralAgent, deleteAgent, getAgent, restoreAgent, setAgentOrchestrates, teamVisibleAgents, clientTurnState, getTurnState, isAutonomousMission, deferRestartForAgent, killRunningForAgent, listAgents, loadConfig, patchAgentConfig, renamedTriggerReason, spawnAgent, upsertAgent } from '../../agent.js';
 import { config } from '../../config/load.js';
 import { dropTrashedAgentBrowserProfiles, resolveBrowserProfile } from '../../browser-profiles.js';
 import { resolveBrowserProject } from '../../browser-project.js';
@@ -323,6 +323,19 @@ function addedAgentSkills(name: string, skills: unknown): unknown {
   if (!Array.isArray(skills)) return skills;
   const held = new Set(listSkillAttachments({ scope: 'agent', target: name }).map((a) => a.skill));
   return skills.filter((id) => typeof id !== 'string' || !held.has(id.trim()));
+}
+
+/**
+ * A saved configuration reaches the agent's live processes. By default they
+ * pick it up at their next message: killing them cut a task's turn in the
+ * middle and sent it back to the queue with a fresh context (#78).
+ * `restart` keeps the old behaviour, an immediate stop, for a change that must
+ * not wait for the turn to end (a tool taken away from a misbehaving agent).
+ */
+function applyToRunning(name: string, restart: boolean): { killed: number; pending: number } {
+  return restart
+    ? { killed: killRunningForAgent(name), pending: 0 }
+    : { killed: 0, pending: deferRestartForAgent(name) };
 }
 
 /**
@@ -898,6 +911,8 @@ export function registerRoutes(app: express.IRouter): void {
       name?: string;
       system_prompt?: string;
       config?: import('../../agent.js').AgentConfig;
+      /** Stop the agent's live processes now instead of at their next message (#78). */
+      restart_missions?: boolean;
     };
     if (!body.name || typeof body.name !== 'string' || typeof body.system_prompt !== 'string') {
       res.status(400).json(apiError('agent_fields_required', 'name and system_prompt required'));
@@ -991,16 +1006,12 @@ export function registerRoutes(app: express.IRouter): void {
         system_prompt: body.system_prompt,
         config: cfg,
       });
-      // After an explicit Save through the agent editor, kill any
-      // currently-running process for that agent so the next user turn
-      // re-spawns with the updated args (model, permission_mode, skills,
-      // MCP set, …). The session_id is preserved on the mission row, so
-      // --resume restores the conversation context against the new
-      // command line. PATCH /api/agents/:name/config already does this
-      // for partial updates; the POST path used to skip it which is why
-      // changing the model mid-chat didn't take effect.
-      const killed = killRunningForAgent(body.name);
-      res.json({ ...agent, _killed: killed });
+      // After an explicit Save through the agent editor, the agent's live
+      // processes respawn with the updated args (model, permission_mode,
+      // skills, MCP set, …) on their own session, so the conversation carries
+      // on. PATCH /api/agents/:name/config does the same for partial updates.
+      const { killed, pending } = applyToRunning(body.name, body.restart_missions === true);
+      res.json({ ...agent, _killed: killed, _restart_pending: pending });
     } catch (err) {
       res.status(400).json(apiError('agent_save_refused', (err as Error).message, { detail: (err as Error).message }));
     }
@@ -1244,18 +1255,22 @@ export function registerRoutes(app: express.IRouter): void {
       const next = patchAgentConfig(req.params.name, patch);
       // Skills, MCP servers and allowed_tools all affect how claude is spawned
       // (--append-system-prompt content, --mcp-config, --allowedTools). The
-      // running process was started with the old values, so kill it to force
-      // a respawn with the updated config on the next user turn. The claude
-      // session_id survives in the DB, so --resume preserves history.
+      // running process was started with the old values, so it respawns with
+      // the updated config before its next message; the claude session_id
+      // survives in the DB, so --resume preserves history.
       const respawnTriggers = [
         'skills', 'mcp_servers', 'excluded_mcp_servers',
         'allowed_tools', 'disallowed_tools', 'model', 'permission_mode',
         'role', 'directives', 'browser_profile_id', 'memory_scope', 'reasoningEffort',
       ] as const;
-      const needsRespawn = respawnTriggers.some((k) => k in patch);
-      let killed = 0;
-      if (needsRespawn) killed = killRunningForAgent(req.params.name);
-      res.json({ ...next, _killed: killed });
+      // An explicit `restart_missions` is honoured whatever field changed
+      // (backend, cwd…): the operator asked for the stop, not the trigger list.
+      const restart = body.restart_missions === true;
+      const needsRespawn = restart || respawnTriggers.some((k) => k in patch);
+      const { killed, pending } = needsRespawn
+        ? applyToRunning(req.params.name, restart)
+        : { killed: 0, pending: 0 };
+      res.json({ ...next, _killed: killed, _restart_pending: pending });
     } catch (err) {
       const msg = (err as Error).message;
       if (msg.startsWith('agent not found')) {

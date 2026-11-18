@@ -57,6 +57,9 @@ Agents & missions:
            --look '{"shape":"round","color":"#d4a373","eyes":"happy","acc":"coffee"}'
                                     (mascot look; --look null clears it)
            --avatar emoji|image|mascot   (head shown; --avatar null = picture, logo, emoji, initial)
+           --restart-missions       stop the agent's running missions now (a task is retried
+                                    from a fresh context); without it they finish their turn
+                                    and pick up the change at their next message
     (--skills is the whole checked set, stored as the agent's skill attachments:
      unlisted ones are detached; import mode / exclusion: timon skill attach)
     (deletion: the app or the agent_delete tool; the agent waits in the trash)

@@ -397,6 +397,13 @@ export type RunningAgent = {
    *  then (`missions.permission_mode_override`) needs a relaunch on the same
    *  session before the next message (`sendToAgent`). */
   permissionMode?: string;
+  /** The agent's configuration changed after this process was launched
+   *  (`deferRestartForAgent`). Killing it then would cut a turn in flight and
+   *  send a task back to the queue with a fresh context (#78), so the process
+   *  keeps the settings it started with and is relaunched on its own session
+   *  before the next message (`sendToAgent`), the way a changed permission
+   *  level is. */
+  configStale?: boolean;
   /** The process is killed to make room for ANOTHER backend on the same
    *  mission (`switchMissionBackend`). Its exit must neither finish the mission
    *  nor publish `mission_complete`: the thread continues on another CLI. */
@@ -2723,7 +2730,7 @@ export async function sendToAgent(
       // The re-test may have awaited a usage probe: the process can have
       // exited meanwhile, and a message written to a dead session is lost.
       if (running.get(missionId) !== live) return 'no_live_process';
-      if (!live.turnActive && permissionModeStale(live)) {
+      if (!live.turnActive && relaunchDue(live)) {
         return await relaunchWithPermissionMode(live, cleaned, images, origin, presentation, logMessage);
       }
       logUserInput(live, logMessage ?? cleaned, images, origin, presentation);
@@ -2828,9 +2835,18 @@ function permissionModeStale(live: RunningAgent): boolean {
   return wanted !== null && wanted !== (live.permissionMode ?? null) && !!m?.session_id;
 }
 
+/** The live CLI runs on settings that changed since its launch: its permission
+ *  level, or its agent's configuration (`configStale`). Same exception as the
+ *  level: without a session to resume, the message goes to the live CLI. */
+function relaunchDue(live: RunningAgent): boolean {
+  if (permissionModeStale(live)) return true;
+  return live.configStale === true && !!dbApi.getMission(live.missionId)?.session_id;
+}
+
 /**
  * Relaunches an idle persistent CLI on its own session so that the message it
- * is about to receive runs in the mission's new permission mode.
+ * is about to receive runs in the mission's new permission mode, and on its
+ * agent's current configuration.
  *
  * Same deliberate death as a backend switch (`switching`): the exit neither
  * finishes the mission nor publishes `mission_complete`, and the provider
@@ -4237,6 +4253,23 @@ export function killRunningForAgent(agentName: string): number {
       // and clean up + emit mission_complete on the bus.
       void missionId;
     }
+  }
+  return n;
+}
+
+/**
+ * The agent's configuration changed: every live process of the agent picks it
+ * up at its next message instead of being killed now (#78). A turn in flight,
+ * a task's included, finishes on the settings it started with; a one-shot CLI
+ * reads the new ones at its next launch anyway. Returns how many processes
+ * will relaunch.
+ */
+export function deferRestartForAgent(agentName: string): number {
+  let n = 0;
+  for (const ra of running.values()) {
+    if (ra.agentName !== agentName || ra.terminationIntent) continue;
+    ra.configStale = true;
+    n++;
   }
   return n;
 }
