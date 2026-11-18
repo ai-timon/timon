@@ -493,8 +493,12 @@ export function resetFenceLaunchFailureForTest(): void {
 /** The host's fence as the launch decision reads it (`host/fence.ts`). */
 export function hostFenceStatus(fence: HostFence | undefined): FenceStatus {
   if (!fence) return { state: 'unsupported', reason: 'no mission fence on this OS', abi: 0 };
-  if (fenceBrokenAtLaunch) return { state: 'unsupported', reason: fenceBrokenAtLaunch, abi: 0 };
   const probe = fence.probe();
+  if (fenceBrokenAtLaunch) {
+    // The namespace fence was this kernel's last mechanism: without Landlock,
+    // a launcher that cannot apply it leaves nothing to fall back on.
+    return { state: 'unsupported', reason: fenceBrokenAtLaunch, abi: 0, ...(probe.fallback === 'namespaces' ? { noMechanism: true } : {}) };
+  }
   const abi = probe.abi ?? 0;
   if (probe.available) {
     return { state: 'ready', binary: fence.mechanism, abi, seccomp: true, ...(probe.fallback ? { fallback: probe.fallback } : {}) };

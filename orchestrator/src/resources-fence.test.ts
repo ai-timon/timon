@@ -242,6 +242,18 @@ test('a launcher that failed at launch is not trusted again until the daemon res
   assert.equal(hostFenceStatus(fakeFence({ available: true, abi: 6 })).state, 'ready');
 });
 
+test('a namespace fence that failed at launch refuses the next missions: there is no other mechanism', () => {
+  try {
+    noteFenceLaunchFailure('timon-fence: cannot make /srv read-only: Operation not permitted');
+    const fence = fakeFence({ available: true, abi: 0, fallback: 'namespaces' });
+    assert.deepEqual(hostFenceStatus(fence),
+      { state: 'unsupported', reason: 'timon-fence: cannot make /srv read-only: Operation not permitted', abi: 0, noMechanism: true });
+    assert.throws(() => fenceMissionCommand('/usr/bin/claude', [], 'u-broken', TARGET, { mode: 'auto', fence, warn: () => {} }), MissionFenceRefusedError);
+  } finally {
+    resetFenceLaunchFailureForTest();
+  }
+});
+
 test('a grant the policy dropped is reported, never silently lost', () => {
   writeFileSync(join(TH, 'daemon-token'), 'FAKE');
   const warnings: string[] = [];
