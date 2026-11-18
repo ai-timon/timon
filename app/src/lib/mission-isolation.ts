@@ -20,7 +20,7 @@ export type FenceExceptions = { agents: Record<string, FenceException>; projects
 
 export type MissionIsolationStatus = {
   configured: IsolationMode;
-  mechanism: 'landlock' | 'seatbelt' | 'none';
+  mechanism: 'landlock' | 'seatbelt' | 'namespaces' | 'none';
   abi: number;
   enforced: boolean;
   state: 'ready' | 'unsupported' | 'tampered' | 'off';
@@ -91,6 +91,7 @@ export function isolationTone(status: MissionIsolationStatus): IsolationTone {
 export function isolationSummary(status: MissionIsolationStatus): string {
   if (status.enforced) {
     if (status.mechanism === 'seatbelt') return t('missionIsolation.summary.seatbelt');
+    if (status.mechanism === 'namespaces') return t('missionIsolation.summary.namespaces');
     return t('missionIsolation.summary.landlock', { abi: status.abi });
   }
   if (status.state === 'off') return t('missionIsolation.summary.off');

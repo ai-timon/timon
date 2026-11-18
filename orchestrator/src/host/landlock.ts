@@ -43,6 +43,7 @@ import type { FencePolicy as IsolationFencePolicy } from './isolation.js';
 import {
   encodeFencePolicy, fenceStatus, runFenceWitness, WITNESS_PAYLOAD, type FencePolicy as LauncherPolicy, type FenceStatus,
 } from './fence.js';
+import { encodeNamespacePolicy, renderNamespacePolicy } from './namespace-fence.js';
 import { canonicalPaths } from './seatbelt.js';
 import type { HostFence, HostFenceProbe, HostFenceWitness } from './types.js';
 
@@ -182,15 +183,20 @@ export type LandlockFenceDeps = {
 
 /** A launcher status as the host contract reports it. */
 export function landlockProbe(status: FenceStatus): HostFenceProbe {
-  if (status.state === 'ready') return { available: true, abi: status.abi };
-  return { available: false, reason: status.reason, abi: status.abi, ...(status.state === 'tampered' ? { tampered: true } : {}) };
+  if (status.state === 'ready') return { available: true, abi: status.abi, ...(status.fallback ? { fallback: status.fallback } : {}) };
+  return {
+    available: false, reason: status.reason, abi: status.abi,
+    ...(status.state === 'tampered' ? { tampered: true } : {}),
+    ...(status.state === 'unsupported' && status.noMechanism ? { noMechanism: true } : {}),
+  };
 }
 
 /**
  * The Linux fence. Not cached: a launcher altered or removed after boot must
  * show at the next launch (`fenceStatus`), and its probe is one short exec.
  * `wrap` uses the launcher the last probe found, so a launch never runs a
- * binary that was not checked.
+ * binary that was not checked, and the mechanism that probe chose: Landlock,
+ * or namespaces on a kernel without it (`host/namespace-fence.ts`).
  */
 export function createLandlockFence(deps: LandlockFenceDeps = {}): HostFence {
   const status = deps.status ?? (() => fenceStatus());
@@ -198,17 +204,21 @@ export function createLandlockFence(deps: LandlockFenceDeps = {}): HostFence {
   const writePolicy = deps.writePolicy ?? writePolicyFile;
   const runWitness = deps.runWitness ?? ((file: string, args: readonly string[]) => runFenceWitness(file, args));
   let launcher: string | null = null;
+  let namespaces = false;
   return {
     mechanism: 'landlock',
     probe() {
       const current = status();
       launcher = current.state === 'ready' ? current.binary : null;
+      namespaces = current.state === 'ready' && current.fallback === 'namespaces';
       return landlockProbe(current);
     },
     wrap(policy, cmd, args, policyFile) {
       if (!launcher) throw new LandlockRenderError('no checked fence launcher: probe the fence before wrapping a launch');
       if (!posix.isAbsolute(policyFile)) throw new LandlockRenderError(`the policy file must be an absolute path: ${policyFile}`);
-      writePolicy(policyFile, encodeFencePolicy(renderLandlockPolicy(policy, fs)));
+      writePolicy(policyFile, namespaces
+        ? encodeNamespacePolicy(renderNamespacePolicy(policy, fs.realpath))
+        : encodeFencePolicy(renderLandlockPolicy(policy, fs)));
       return { cmd: launcher, args: ['--policy', policyFile, '--', cmd, ...args] };
     },
     witness(policyFile) {

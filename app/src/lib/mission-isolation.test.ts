@@ -36,6 +36,7 @@ test('the summary names the mechanism, or the reason there is none', () => {
   try {
     assert.equal(isolationSummary(status({ enforced: true, mechanism: 'landlock', abi: 6 })), 'Missions run in a Landlock fence (kernel ABI 6).');
     assert.equal(isolationSummary(status({ enforced: true, mechanism: 'seatbelt' })), 'Missions run in a Seatbelt fence.');
+    assert.equal(isolationSummary(status({ enforced: true, mechanism: 'namespaces' })), 'Missions run in a namespace fence (no Landlock on this kernel).');
     assert.equal(isolationSummary(status({})), 'No fence on this machine: kernel without Landlock.');
     assert.equal(isolationSummary(status({ state: 'off' })), 'Turned off.');
     setLocale('fr');

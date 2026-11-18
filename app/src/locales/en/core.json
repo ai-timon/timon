@@ -4295,6 +4295,7 @@
     },
     "summary": {
       "landlock": "Missions run in a Landlock fence (kernel ABI {abi}).",
+      "namespaces": "Missions run in a namespace fence (no Landlock on this kernel).",
       "seatbelt": "Missions run in a Seatbelt fence.",
       "off": "Turned off.",
       "unfenced": "No fence on this machine: {reason}."

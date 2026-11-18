@@ -119,8 +119,11 @@ export type DoctorReport = {
   missionIsolation: {
     /** `host.isolation.filesystem`, verbatim. */
     configured: 'auto' | 'enforce' | 'off';
-    /** The mechanism that fences a mission launched now; `none` when missions run unfenced. */
-    mechanism: 'landlock' | 'seatbelt' | 'none';
+    /**
+     * The mechanism that fences a mission launched now; `none` when missions
+     * run unfenced. `namespaces` is the Linux launcher on a kernel without Landlock.
+     */
+    mechanism: 'landlock' | 'seatbelt' | 'namespaces' | 'none';
     /** Landlock ABI of the kernel, 0 when unknown, absent or not Landlock. */
     abi: number;
     /** `true` only when a mission launched now runs inside the fence. */

@@ -31,7 +31,7 @@ import { getHost } from './host/index.js';
 import { hasSystemd } from './host/systemd.js';
 import { windowsServiceFiles } from './host/service-install.js';
 import { resolveIsolation } from './host/isolation.js';
-import { fenceLaunchDecision, type FenceStatus } from './host/fence.js';
+import { fenceLaunchDecision, NO_MECHANISM_REMEDY, type FenceStatus } from './host/fence.js';
 import type { FenceMechanism } from './host/types.js';
 import { hostFenceStatus } from './resources.js';
 import type { TimonConfig } from './config/schema.js';
@@ -311,7 +311,7 @@ function noFenceReason(platform: NodeJS.Platform, status: FenceStatus): string {
  * What the fence leaves open, one line each. Only meaningful while missions
  * are fenced: an unfenced mission reaches everything and the warning says so.
  */
-function fenceGaps(input: MissionIsolationInput, mechanism: 'landlock' | 'seatbelt', abi: number): string[] {
+function fenceGaps(input: MissionIsolationInput, mechanism: 'landlock' | 'seatbelt' | 'namespaces', abi: number): string[] {
   const gaps: string[] = [];
   if (mechanism === 'landlock' && abi === 2) gaps.push('partial: kernel ABI 2 — a mission can truncate files it cannot read.');
   if (mechanism === 'landlock' && abi < LANDLOCK_SIGNAL_SCOPE_ABI) {
@@ -369,10 +369,13 @@ export function missionIsolationReport(input: MissionIsolationInput): {
     };
   }
   if (status.state === 'ready' && input.mechanism) {
-    const mechanism = input.mechanism;
+    // Without Landlock the Linux launcher fences with namespaces: said as such,
+    // never as a Landlock fence of ABI 0.
+    const mechanism = input.mechanism === 'landlock' && status.fallback === 'namespaces' ? 'namespaces' : input.mechanism;
+    const sockets = input.isolation.unixSockets === 'deny' ? ' + unix-socket filter' : '';
     const how = mechanism === 'landlock'
-      ? `landlock ABI ${status.abi}${input.isolation.unixSockets === 'deny' ? ' + unix-socket filter' : ''}`
-      : 'seatbelt';
+      ? `landlock ABI ${status.abi}${sockets}`
+      : mechanism === 'namespaces' ? `user, mount and pid namespaces${sockets}; no Landlock on this kernel` : 'seatbelt';
     return {
       report: {
         ...base, mechanism, abi: mechanism === 'landlock' ? status.abi : 0, enforced: true, state: 'ready', launch: 'fenced',
@@ -393,7 +396,9 @@ export function missionIsolationReport(input: MissionIsolationInput): {
   const cause = tampered ? `ALTERED: ${reason}. The Timon package may have been altered: reinstall it.` : `${reason}.`;
   const refused = decision.action === 'refuse';
   const message = refused
-    ? `NOT enforced — ${cause} host.isolation.filesystem is "enforce": every mission is refused until this is fixed.`
+    ? configured === 'enforce'
+      ? `NOT enforced — ${cause} host.isolation.filesystem is "enforce": every mission is refused until this is fixed.`
+      : `NOT enforced — ${cause} Every mission is refused until this is fixed. ${NO_MECHANISM_REMEDY}`
     : `NOT enforced — ${cause} ${UNFENCED_CONSEQUENCE} Set host.isolation.filesystem to "enforce" to refuse launching unconfined missions.`;
   return {
     report: {

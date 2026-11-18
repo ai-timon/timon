@@ -3,7 +3,11 @@
  * daemon finds it, how it hands it a policy, and what its exit codes mean.
  *
  * The launcher applies Landlock, no_new_privs and a seccomp filter, then
- * exec()s the mission CLI. Which paths a mission may reach is decided by the
+ * exec()s the mission CLI. On a kernel without Landlock it builds the same
+ * view with user, mount and pid namespaces instead (`host/namespace-fence.ts`),
+ * when the kernel lets an unprivileged process create them: the CLI then runs
+ * two processes below the one the daemon spawned, which forward signals and
+ * its exit status. Which paths a mission may reach is decided by the
  * isolation policy; this module only speaks the launcher's wire format, so
  * that the C reader and the TypeScript writer change together.
  */
@@ -91,6 +95,13 @@ export interface FenceProbe {
   /** True when a mission can be fenced on this kernel. */
   readonly available: boolean;
   /**
+   * True when the launcher builds the fence from namespaces: no Landlock
+   * (ABI 2 or later) on this kernel, unprivileged user namespaces allowed.
+   */
+  readonly namespaces?: boolean;
+  /** True when the kernel offers neither Landlock nor unprivileged user namespaces. */
+  readonly noMechanism?: boolean;
+  /**
    * True when the launcher ran and described the kernel. False when it could
    * not run or said nothing a launcher would: then the launcher, not the
    * kernel, is at fault.
@@ -103,17 +114,28 @@ export interface FenceProbe {
   readonly reason?: string;
 }
 
-/** Parses `timon-fence --probe`: `landlock-abi=N seccomp=yes|no`. */
+/**
+ * Parses `timon-fence --probe`: `landlock-abi=N seccomp=yes|no`, then
+ * `userns=yes|no|unchecked` from launchers that know the namespace mode (it
+ * is only checked when Landlock is missing). A launcher without the field
+ * has no namespace mode.
+ */
 export function parseFenceProbe(stdout: string, status: number | null): FenceProbe {
-  const match = /landlock-abi=(\d+) seccomp=(yes|no)/.exec(stdout);
+  const match = /landlock-abi=(\d+) seccomp=(yes|no)(?: userns=(yes|no|unchecked))?/.exec(stdout);
   if (!match) return { available: false, answered: false, abi: 0, seccomp: false, reason: 'the fence launcher did not answer its probe' };
   const abi = Number(match[1]);
   const seccomp = match[2] === 'yes';
-  if (status === 0) return { available: true, answered: true, abi, seccomp };
-  const reason = abi < 2
-    ? (abi === 0 ? 'kernel without Landlock' : `kernel with Landlock ABI ${abi}, 2 or later is required`)
-    : 'kernel without seccomp filters';
-  return { available: false, answered: true, abi, seccomp, reason };
+  const userns = match[3] === 'yes';
+  if (status === 0) {
+    return abi >= 2 ? { available: true, answered: true, abi, seccomp } : { available: true, answered: true, abi, seccomp, namespaces: true };
+  }
+  if (abi >= 2 || (userns && !seccomp)) return { available: false, answered: true, abi, seccomp, reason: 'kernel without seccomp filters' };
+  const landlock = abi === 0 ? 'kernel without Landlock' : `kernel with Landlock ABI ${abi}, 2 or later is required`;
+  // Said only by a launcher that checked: an older one cannot fall back at all.
+  if (match[3] === 'no') {
+    return { available: false, answered: true, abi, seccomp, noMechanism: true, reason: `${landlock}, and without unprivileged user namespaces` };
+  }
+  return { available: false, answered: true, abi, seccomp, reason: landlock };
 }
 
 /** Asks the launcher what this kernel supports. */
@@ -192,9 +214,18 @@ export function runFenceWitness(file: string, args: readonly string[], timeoutMs
 export const FENCE_RELEASE_FILE = 'native/timon-fence';
 
 export type FenceStatus =
-  | { readonly state: 'ready'; readonly binary: string; readonly abi: number; readonly seccomp: boolean }
-  /** This OS, this kernel or this checkout cannot fence: nothing was altered. */
-  | { readonly state: 'unsupported'; readonly reason: string; readonly abi: number }
+  | {
+    readonly state: 'ready'; readonly binary: string; readonly abi: number; readonly seccomp: boolean;
+    /** Set when the fence is built from namespaces: the kernel has no Landlock. */
+    readonly fallback?: 'namespaces';
+  }
+  /**
+   * This OS, this kernel or this checkout cannot fence: nothing was altered.
+   * `noMechanism` says the launcher ran and the kernel offers neither
+   * Landlock nor unprivileged user namespaces: a launch is refused even in
+   * `auto` (`fenceLaunchDecision`).
+   */
+  | { readonly state: 'unsupported'; readonly reason: string; readonly abi: number; readonly noMechanism?: boolean }
   /** The release ships a launcher that is no longer usable: a sign of alteration. */
   | { readonly state: 'tampered'; readonly reason: string; readonly abi: number };
 
@@ -274,16 +305,24 @@ export function fenceStatus(options: FenceStatusOptions = {}): FenceStatus {
     const problem = shippedLauncherProblem(binary, shipped.digest);
     if (problem) return { state: 'tampered', reason: `the fence launcher this release ships (${binary}) is ${problem}`, abi: 0 };
     const result = probe(binary);
-    if (result.available) return { state: 'ready', binary, abi: result.abi, seccomp: result.seccomp };
-    if (!result.answered) return { state: 'tampered', reason: `the fence launcher this release ships (${binary}) does not run: ${result.reason ?? 'no answer'}`, abi: 0 };
-    return { state: 'unsupported', reason: result.reason ?? 'no fence on this kernel', abi: result.abi };
+    if (!result.available && !result.answered) {
+      return { state: 'tampered', reason: `the fence launcher this release ships (${binary}) does not run: ${result.reason ?? 'no answer'}`, abi: 0 };
+    }
+    return statusOfProbe(binary, result);
   }
 
   const binary = findFenceBinary({ platform, orchestratorRoot: root, ...(options.arch ? { arch: options.arch } : {}) });
   if (!binary) return { state: 'unsupported', reason: 'no fence launcher built for this machine', abi: 0 };
-  const result = probe(binary);
-  if (result.available) return { state: 'ready', binary, abi: result.abi, seccomp: result.seccomp };
-  return { state: 'unsupported', reason: result.reason ?? 'no fence on this kernel', abi: result.abi };
+  return statusOfProbe(binary, probe(binary));
+}
+
+function statusOfProbe(binary: string, result: FenceProbe): FenceStatus {
+  if (result.available) {
+    return { state: 'ready', binary, abi: result.abi, seccomp: result.seccomp, ...(result.namespaces ? { fallback: 'namespaces' as const } : {}) };
+  }
+  return {
+    state: 'unsupported', reason: result.reason ?? 'no fence on this kernel', abi: result.abi, ...(result.noMechanism ? { noMechanism: true } : {}),
+  };
 }
 
 export type FenceLaunch =
@@ -294,11 +333,17 @@ export type FenceLaunch =
 
 const ALTERED = 'The Timon package may have been altered: reinstall it.';
 
+/** How to accept unconfined missions on a kernel that offers no mechanism: the one setting that does it. */
+export const NO_MECHANISM_REMEDY = 'Run a kernel with Landlock (5.19 or later) or allow unprivileged user namespaces, '
+  + 'or set host.isolation.filesystem to "off" to accept missions that can read Timon\'s private files.';
+
 /**
  * What a mission launch does under `host.isolation.filesystem`. Never a silent
  * fallback: `auto` launches unfenced with a warning naming the cause, and the
  * cause of an altered release is worded apart from a machine that lacks the
- * mechanism.
+ * mechanism. A Linux kernel the launcher found without Landlock AND without
+ * unprivileged user namespaces is refused in `auto` too: there the launcher
+ * ran and no fence can hold, and only `off`, written on purpose, accepts it.
  */
 export function fenceLaunchDecision(mode: 'auto' | 'enforce' | 'off', status: FenceStatus): FenceLaunch {
   if (mode === 'off') return { action: 'unfenced', warning: null, tampered: false };
@@ -307,6 +352,9 @@ export function fenceLaunchDecision(mode: 'auto' | 'enforce' | 'off', status: Fe
   const cause = tampered ? `${status.reason}. ${ALTERED}` : `${status.reason}.`;
   if (mode === 'enforce') {
     return { action: 'refuse', tampered, error: `Mission refused: host.isolation.filesystem is "enforce" and it cannot be fenced: ${cause}` };
+  }
+  if (status.state === 'unsupported' && status.noMechanism) {
+    return { action: 'refuse', tampered: false, error: `Mission refused: it cannot be kept away from Timon's private files: ${cause} ${NO_MECHANISM_REMEDY}` };
   }
   return {
     action: 'unfenced',

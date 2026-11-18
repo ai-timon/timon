@@ -174,6 +174,25 @@ test('auto launches an unfenceable mission unfenced, and says why', () => {
   assert.match(warnings[0] ?? '', /mission cccccccc: Mission launched unfenced: kernel without Landlock\./);
 });
 
+test('auto refuses a mission on a kernel that offers no fence at all, and the host says so', () => {
+  const none = fakeFence({ available: false, reason: 'kernel without Landlock, and without unprivileged user namespaces', abi: 0, noMechanism: true });
+  assert.deepEqual(hostFenceStatus(none), { state: 'unsupported', reason: 'kernel without Landlock, and without unprivileged user namespaces', abi: 0, noMechanism: true });
+  assert.throws(
+    () => fenceMissionCommand('/usr/bin/claude', [], 'u-none', TARGET, { mode: 'auto', fence: none, warn: () => {} }),
+    (err: unknown) => err instanceof MissionFenceRefusedError && /cannot be kept away from Timon's private files/.test(err.message),
+  );
+  const off = fenceMissionCommand('/usr/bin/claude', [], 'u-none', TARGET, { mode: 'off', fence: none, warn: () => {} });
+  assert.equal(off.fence?.state, 'unfenced');
+});
+
+test('a namespace fence is a ready fence: the launch goes through the launcher', () => {
+  const fence = fakeFence({ available: true, abi: 0, fallback: 'namespaces' });
+  assert.deepEqual(hostFenceStatus(fence), { state: 'ready', binary: 'landlock', abi: 0, seccomp: true, fallback: 'namespaces' });
+  const launch = fenceMissionCommand('/usr/bin/claude', [], 'u-ns', TARGET, { mode: 'enforce', fence, warn: () => {} });
+  assert.equal(launch.fence?.state, 'fenced');
+  assert.equal(launch.cmd, '/opt/timon/timon-fence');
+});
+
 test('an altered launcher has its own words, in auto as in enforce', () => {
   const altered = fakeFence({ available: false, reason: 'the fence launcher this release ships (/x) is missing', abi: 0, tampered: true });
   const warnings: string[] = [];
@@ -221,6 +240,18 @@ test('a launcher that failed at launch is not trusted again until the daemon res
     resetFenceLaunchFailureForTest();
   }
   assert.equal(hostFenceStatus(fakeFence({ available: true, abi: 6 })).state, 'ready');
+});
+
+test('a namespace fence that failed at launch refuses the next missions: there is no other mechanism', () => {
+  try {
+    noteFenceLaunchFailure('timon-fence: cannot make /srv read-only: Operation not permitted');
+    const fence = fakeFence({ available: true, abi: 0, fallback: 'namespaces' });
+    assert.deepEqual(hostFenceStatus(fence),
+      { state: 'unsupported', reason: 'timon-fence: cannot make /srv read-only: Operation not permitted', abi: 0, noMechanism: true });
+    assert.throws(() => fenceMissionCommand('/usr/bin/claude', [], 'u-broken', TARGET, { mode: 'auto', fence, warn: () => {} }), MissionFenceRefusedError);
+  } finally {
+    resetFenceLaunchFailureForTest();
+  }
 });
 
 test('a grant the policy dropped is reported, never silently lost', () => {

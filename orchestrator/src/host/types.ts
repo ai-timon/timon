@@ -53,6 +53,16 @@ export type HostFenceProbe = {
    * from a machine that lacks the mechanism (`host/fence.ts`).
    */
   tampered?: boolean;
+  /**
+   * The fence is built from user, mount and pid namespaces: the kernel has no
+   * Landlock (`host/namespace-fence.ts`). Linux only.
+   */
+  fallback?: 'namespaces';
+  /**
+   * The kernel offers no mechanism at all (Linux without Landlock nor
+   * unprivileged user namespaces): a launch is refused even in `auto`.
+   */
+  noMechanism?: boolean;
 };
 
 /**
