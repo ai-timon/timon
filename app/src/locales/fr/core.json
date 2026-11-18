@@ -4295,6 +4295,7 @@
     },
     "summary": {
       "landlock": "Les missions tournent dans une clôture Landlock (ABI noyau {abi}).",
+      "namespaces": "Les missions tournent dans une clôture par namespaces (pas de Landlock sur ce noyau).",
       "seatbelt": "Les missions tournent dans une clôture Seatbelt.",
       "off": "Désactivée.",
       "unfenced": "Aucune clôture sur cette machine : {reason}."
