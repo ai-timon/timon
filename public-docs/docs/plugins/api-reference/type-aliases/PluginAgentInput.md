@@ -67,6 +67,12 @@
 
 ***
 
+### reportsTo?
+
+> `optional` **reportsTo?**: `string` \| `null`
+
+***
+
 ### role
 
 > **role**: `string`
