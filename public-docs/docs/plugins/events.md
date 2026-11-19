@@ -31,6 +31,7 @@ Every kind needs `events:subscribe`. Most also need the read permission of what 
 | `todo_done`, `todo_resolved`, `todo_deleted` | `todos:read` | the idea, `origin` | no | [Permissions](permissions.md#keeping-a-to-do-idea-and-a-ticket-in-step) |
 | `ui_document_created`, `ui_document_resolved` | `ui-documents:read` | the document, its creator or the answer | no | [Documents in the conversation](ui-documents.md) |
 | `question_pending`, `question_resolved` | `questions:read` | the question, `origin` | no | [Questions and notifications](questions-notifications.md#events) |
+| `approval_pending`, `approval_resolved` | `approvals:read` | the approval, `origin` | no | [Questions and notifications](questions-notifications.md#approval-events) |
 | `memory_rule_added`, `memory_rule_removed` | `memory:read` | a rule your plugin wrote, `origin` | no | [Memory](memory.md) |
 | `project_created`, `project_updated` | `projects:read` (or `projects:manage`) | the project, `changed`, `origin` | no | [Projects, series and worktrees](projects-series-worktrees.md) |
 | `agent_created`, `agent_updated`, `agent_deleted` | `agents:read` | an agent your plugin created, `origin` | no | [Agents](agents.md) |

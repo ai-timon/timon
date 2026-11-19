@@ -1,5 +1,5 @@
 {
-  "apiVersion": 17,
+  "apiVersion": 18,
   "members": {
     "accountProvider": {
       "type": "object",
@@ -136,6 +136,25 @@
       "type": "function",
       "arity": 2,
       "since": 7
+    },
+    "approvals": {
+      "type": "object",
+      "since": 18
+    },
+    "approvals.get": {
+      "type": "function",
+      "arity": 1,
+      "since": 18
+    },
+    "approvals.list": {
+      "type": "function",
+      "arity": 1,
+      "since": 18
+    },
+    "approvals.resolve": {
+      "type": "function",
+      "arity": 2,
+      "since": 18
     },
     "assert": {
       "type": "function",

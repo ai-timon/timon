@@ -89,6 +89,8 @@ export type PluginPermission =
   | 'ui-documents:write'
   | 'questions:read'
   | 'questions:answer'
+  | 'approvals:read'
+  | 'approvals:resolve'
   | 'notifications:read'
   | 'notifications:write'
   | 'memory:read'

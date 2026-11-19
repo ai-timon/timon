@@ -379,7 +379,7 @@ test('every plugin permission is classified sensitive or ordinary, once', () => 
 
 test('the permissions that act on other people\'s work or validate an action are sensitive', () => {
   for (const permission of [
-    'questions:answer', 'missions:control', 'missions:transcript', 'kanban:delete', 'kanban:read:project', 'triggers:write', 'triggers:execute',
+    'questions:answer', 'approvals:read', 'approvals:resolve', 'missions:control', 'missions:transcript', 'kanban:delete', 'kanban:read:project', 'triggers:write', 'triggers:execute',
     'routines:write', 'pipelines:write', 'pipelines:run', 'workflows:run', 'memory:write', 'chat:command', 'agents:manage', 'messages:send', 'host:exec',
     'projects:manage', 'memory:read', 'chat:media', 'secrets:read', 'mcp:issue', 'connections:users:read', 'accounts:manage', 'plugins:manage',
     'browser:control', 'browser:annotations:read', 'browser:annotations:write', 'dictation:engine',
@@ -750,7 +750,8 @@ test('a slot opened by API 17 needs a manifest that declares it', () => {
     const res = readManifest(pkg({ apiVersion: 17, client: { slots: [slot] } }));
     assert.ok(res.ok, res.ok ? '' : res.message);
   }
-  assert.equal(SLOT_API_VERSIONS['updates.dialog'], PLUGIN_API_VERSION);
+  // API 18 adds host members only. The slot stays on the contract that opened it.
+  assert.equal(SLOT_API_VERSIONS['updates.dialog'], 17);
 });
 
 test('`root` outside a layout is refused, whatever the other kind', () => {

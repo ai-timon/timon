@@ -3,4 +3,4 @@
 
 # Type Alias: PluginQuestionAnswer
 
-> **PluginQuestionAnswer** = `Readonly`\<\{ `answers`: `Readonly`\<`Record`\<`string`, [`PluginQuestionAnswerValue`](PluginQuestionAnswerValue.md)\>\>; `note?`: `string`; \}\> \| `Readonly`\<\{ `plan`: `SeriesPlanAnswer`; \}\> \| `Readonly`\<\{ `cancel`: `true`; \}\>
+> **PluginQuestionAnswer** = `Readonly`\<\{ `answers`: `Readonly`\<`Record`\<`string`, [`PluginQuestionAnswerValue`](PluginQuestionAnswerValue.md)\>\>; `note?`: `string`; `relayedVia?`: `string`; \}\> \| `Readonly`\<\{ `plan`: `SeriesPlanAnswer`; `relayedVia?`: `string`; \}\> \| `Readonly`\<\{ `cancel`: `true`; `relayedVia?`: `string`; \}\>

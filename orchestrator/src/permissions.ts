@@ -53,6 +53,8 @@ import {
 } from './script-preview.js';
 import type { PushFanoutResult } from './notifications.js';
 import { ownerCanPaste, pasteReply, shellCommandOf } from './plugins-bundled/terminal-web/command-requests.js';
+import { emitApprovalEvent, type ApprovalSnapshot } from './approval-bus.js';
+import { NO_RELAY, type DecisionRelay } from './decision-relay.js';
 import { emitQuestionEvent, type QuestionActor, type QuestionSnapshot } from './question-bus.js';
 import { formMessageOf, postAgentMessage, withoutFormMessage } from './chat-post.js';
 
@@ -261,20 +263,55 @@ export function questionSnapshot(p: Omit<Pending, 'resolve' | 'onPaste'>): Quest
   });
 }
 
+/**
+ * A tool-use card (Allow / Deny) as an approval-event or plugin reader sees it,
+ * or `null` for an `ask_user` form. The input here is still the agent's: the
+ * plugin facade projects it before it leaves.
+ */
+export function approvalSnapshot(p: Omit<Pending, 'resolve' | 'onPaste'>): ApprovalSnapshot | null {
+  if (p.tool_name === 'ask_user') return null;
+  return Object.freeze({
+    id: p.id, missionId: p.mission_id, agent: p.agent, tool: p.tool_name, input: p.input,
+    createdAt: p.created_at, expiresAt: p.timeout_ms > 0 ? p.created_at + p.timeout_ms : null,
+  });
+}
+
 const SYSTEM_ORIGINS: readonly DecisionOrigin[] = ['auto_timeout', 'mission_end', 'client_disconnected', 'payload_invalid'];
+
+function actorOf(decisionOrigin: DecisionOrigin, resolvedBy?: QuestionActor): QuestionActor {
+  return resolvedBy
+    ?? (SYSTEM_ORIGINS.includes(decisionOrigin) ? { kind: 'system', id: null }
+      : decisionOrigin === 'unknown' ? { kind: 'unknown', id: null } : { kind: 'user', id: null });
+}
 
 function emitQuestionResolved(
   p: Omit<Pending, 'resolve' | 'onPaste'>,
   status: 'answered' | 'cancelled' | 'expired',
   decisionOrigin: DecisionOrigin,
   resolvedBy?: QuestionActor,
+  relay: DecisionRelay = NO_RELAY,
 ): void {
   const question = questionSnapshot(p);
   if (!question) return;
-  const actor: QuestionActor = resolvedBy
-    ?? (SYSTEM_ORIGINS.includes(decisionOrigin) ? { kind: 'system', id: null }
-      : decisionOrigin === 'unknown' ? { kind: 'unknown', id: null } : { kind: 'user', id: null });
-  emitQuestionEvent({ type: 'resolved', question, status, decisionOrigin, resolvedBy: Object.freeze(actor) });
+  emitQuestionEvent({
+    type: 'resolved', question, status, decisionOrigin, relay,
+    resolvedBy: Object.freeze(actorOf(decisionOrigin, resolvedBy)),
+  });
+}
+
+function emitApprovalResolved(
+  p: Omit<Pending, 'resolve' | 'onPaste'>,
+  status: 'allowed' | 'denied' | 'expired',
+  decisionOrigin: DecisionOrigin,
+  resolvedBy?: QuestionActor,
+  relay: DecisionRelay = NO_RELAY,
+): void {
+  const approval = approvalSnapshot(p);
+  if (!approval) return;
+  emitApprovalEvent({
+    type: 'resolved', approval, status, decisionOrigin, relay,
+    resolvedBy: Object.freeze(actorOf(decisionOrigin, resolvedBy)),
+  });
 }
 
 /**
@@ -971,9 +1008,13 @@ export function requestPermission(input: RequestInput): Promise<PermissionDecisi
       payload,
     });
 
-    // The question inbox of a plugin hears of the card here, once its deadline is known.
+    // Question and approval inboxes hear of the card here, once its deadline is known.
     const snapshot = questionSnapshot(pending);
     if (snapshot) emitQuestionEvent({ type: 'pending', question: snapshot });
+    else {
+      const approval = approvalSnapshot(pending);
+      if (approval) emitApprovalEvent({ type: 'pending', approval });
+    }
 
     // "action_required" notification for ALL missions, autonomous ones
     // included. Historically autonomous missions were excluded "because they
@@ -1123,6 +1164,7 @@ function autoTimeoutPending(id: string): void {
   recordPermissionSpan(p.mission_id, row.id, row.timestamp, payload, 'timeout');
   bus.publish({ kind: 'event', missionId: p.mission_id, type: 'permission_expired', timestamp: row.timestamp, payload });
   emitQuestionResolved(p, 'expired', 'auto_timeout');
+  emitApprovalResolved(p, 'expired', 'auto_timeout');
   console.log(`[permissions] auto-timeout ${id.slice(0, 8)} (autonomous mission ${p.mission_id.slice(0, 8)}, ${p.tool_name}) → instructive deny`);
 }
 
@@ -1168,6 +1210,7 @@ function detachPending(id: string, waiter: (d: PermissionDecision) => void): voi
   recordPermissionSpan(p.mission_id, row.id, row.timestamp, payload, 'timeout');
   bus.publish({ kind: 'event', missionId: p.mission_id, type: 'permission_expired', timestamp: row.timestamp, payload });
   emitQuestionResolved(p, 'expired', 'client_disconnected');
+  emitApprovalResolved(p, 'expired', 'client_disconnected');
   console.log(`[permissions] retired ${id.slice(0, 8)} (mission ${p.mission_id.slice(0, 8)}, ${p.tool_name}): nobody waits for it any more`);
 }
 
@@ -1198,6 +1241,7 @@ export function expirePendingForMission(missionId: string): void {
     recordPermissionSpan(missionId, row.id, row.timestamp, payload, 'timeout');
     bus.publish({ kind: 'event', missionId, type: 'permission_expired', timestamp: row.timestamp, payload });
     emitQuestionResolved(p, 'expired', 'mission_end');
+    emitApprovalResolved(p, 'expired', 'mission_end');
     console.log(`[permissions] expired pending ${id.slice(0, 8)} (mission ${missionId.slice(0, 8)} ended)`);
   }
 }
@@ -1254,13 +1298,25 @@ function withSeriesPlan(p: Omit<Pending, 'resolve'>, final: PermissionDecision):
   };
 }
 
+/**
+ * Closes the card. Returns the behaviour the agent received (`allow` or
+ * `deny`) — an allow can still become a deny when a previewed script changed
+ * or is too large to vouch for — or `false` when the card is already gone, or
+ * paste was not offered. Both behaviours are truthy, so a caller that only
+ * checks `if (!ok)` still means "the card was closed".
+ */
 export function resolvePermission(
   id: string,
   answer: PermissionAnswer,
   origin: DecisionOrigin = 'unknown',
-  /** Who answered, when the caller knows: the account behind a click, the plugin behind `ctx.questions.resolve`. */
+  /** Who answered, when the caller knows: the account behind a click, the plugin behind a facade. */
   resolvedBy?: QuestionActor,
-): boolean {
+  /**
+   * Set when a plugin relays a person's decision: the account of the request
+   * and the channel label, stored next to `resolved_by`. Absent for a click.
+   */
+  relay: DecisionRelay = NO_RELAY,
+): PermissionDecision['behavior'] | false {
   const p = PENDING.get(id);
   if (!p) return false;
   // `paste` only where the card offered it: elsewhere there is no command to paste.
@@ -1328,6 +1384,8 @@ export function resolvePermission(
     ...(scriptChanged ? { script_changed: scriptChanged } : {}),
     ...(remembered ? { remembered } : {}),
     ...(resolvedBy ? { resolved_by: resolvedBy } : {}),
+    ...(relay.decidedBy ? { decided_by: relay.decidedBy } : {}),
+    ...(relay.relayedVia ? { relayed_via: relay.relayedVia } : {}),
   };
   const row = dbApi.insertEvent(p.mission_id, 'permission_resolved', payload);
   recordPermissionSpan(p.mission_id, row.id, row.timestamp, { id, tool_name: p.tool_name }, final.behavior === 'allow' ? 'ok' : 'denied');
@@ -1338,7 +1396,8 @@ export function resolvePermission(
     timestamp: row.timestamp,
     payload,
   });
-  emitQuestionResolved(p, final.behavior === 'allow' ? 'answered' : 'cancelled', origin, resolvedBy);
+  emitQuestionResolved(p, final.behavior === 'allow' ? 'answered' : 'cancelled', origin, resolvedBy, relay);
+  emitApprovalResolved(p, final.behavior === 'allow' ? 'allowed' : 'denied', origin, resolvedBy, relay);
 
   // Re-trigger on late authorization: if the agent has already closed its
   // turn (turnActive=false) by the time the user clicks Allow, the long-poll
@@ -1354,7 +1413,7 @@ export function resolvePermission(
       console.error(`[permissions] re-trigger ${p.mission_id.slice(0, 8)}: ${(err as Error).message}`),
     );
   }
-  return true;
+  return final.behavior;
 }
 
 /**

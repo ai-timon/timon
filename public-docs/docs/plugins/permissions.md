@@ -51,6 +51,7 @@ Declare permissions in `timon.permissions`. Request only the capabilities your e
 | `realtime:publish` | Signal your browser half that data changed, to its owner account only ([Live updates](realtime.md)) |
 | `ui-documents:write`, `ui-documents:read` | Show HTML documents in a mission's conversation and take back your own (`ctx.ui.documents`); read the documents you can see, the answers to your own, and their events ([HTML documents in a conversation](ui-documents.md)). Requires `apiVersion: 9` |
 | `questions:read`, `questions:answer` | List the questions agents are waiting on and hear them open and close; answer one on the user's behalf (`questions:answer` is sensitive: it unblocks the agent) ([Questions and notifications](questions-notifications.md)). Requires `apiVersion: 10` |
+| `approvals:read`, `approvals:resolve` | List the tool-use approvals (Allow / Deny) an agent is waiting on and hear them open and close; allow or deny one on the user's behalf (both are sensitive: reading shows what the agent wants to run, resolving lets it run or stops it) ([Questions and notifications](questions-notifications.md#approvals)). Requires `apiVersion: 18` |
 | `notifications:read`, `notifications:write` | List the notification centre and dismiss a notification (`ctx.notifications`; raising one stays `notify`) ([Questions and notifications](questions-notifications.md)). Requires `apiVersion: 10` |
 | `memory:read`, `memory:write` | Read and search Timon's memory and write memory rules (`ctx.memory`, [Memory](memory.md)). **Sensitive:** `memory:write` changes what agents do, `memory:read` exposes agent memory. In a request the caller's account needs `agents:read` / `agents:manage` to read and `agents:manage` to write; a job sees only the rules and agents your plugin created. Requires `apiVersion: 10` |
 | `projects:read`, `projects:manage` | List projects, poles and role pins; register and edit the projects your plugin registered, pin a role (`ctx.projects`), and hear `project_created` / `project_updated` with the writer's `origin`. `projects:manage` is sensitive ([Projects, series and worktrees](projects-series-worktrees.md)). Requires `apiVersion: 10` |
@@ -100,6 +101,8 @@ Some permissions act on other people's work, validate an action, hand out a secr
 | `skills:write` | What agents load. |
 | `mcp-servers:write` | The tools agents load. |
 | `questions:answer` | Validates dangerous tool requests on the owner's behalf. |
+| `approvals:read` | Reads pending tool-use cards, including a bounded view of what the agent wants to run. |
+| `approvals:resolve` | Allows or denies a tool use on the owner's behalf. |
 | `chat:media` | Puts a picture or video in the owner's conversation; an https source makes the daemon fetch it. |
 | `chat:command` | Proposes a command the owner may paste into their terminal. |
 | `agents:docs:read` | An agent's instructions. |

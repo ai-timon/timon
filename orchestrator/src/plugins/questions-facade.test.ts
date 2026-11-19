@@ -24,6 +24,7 @@ const { PluginQuestionError } = await import('./questions-facade.js');
 const { runPluginRequest } = await import('./als.js');
 const { dbApi } = await import('../db.js');
 const { requestPermission, resolvePermission, listPending, expirePendingForMission, DENY_REASONS } = await import('../permissions.js');
+const { setRedactionSource } = await import('../secrets/redact.js');
 import type { PermissionDecision } from '../permissions.js';
 import type { PluginQuestionEvent } from './question-events.js';
 
@@ -229,10 +230,13 @@ test('the answer reaches the agent as a click would, once, with the plugin as or
   assert.deepEqual(decision.behavior === 'allow' && decision.updatedInput, { answers: answer.answers, note: 'ship it' });
   assert.equal(await codeOf(() => asAda(() => plugin.questions.resolve(q.id, answer))), 'not_found', 'a second answer finds nothing');
   assert.equal(await asAda(() => plugin.questions.get(q.id)), undefined);
-  const persisted = dbApi.listEvents('m-ada').filter((e) => e.type === 'permission_resolved').map((e) => JSON.parse(e.payload) as { id: string; origin: string; resolved_by?: unknown })
-    .find((p) => p.id === q.id);
+  const persisted = dbApi.listEvents('m-ada').filter((e) => e.type === 'permission_resolved').map((e) => JSON.parse(e.payload) as {
+    id: string; origin: string; resolved_by?: unknown; decided_by?: unknown; relayed_via?: unknown;
+  }).find((p) => p.id === q.id);
   assert.equal(persisted?.origin, 'plugin');
   assert.deepEqual(persisted?.resolved_by, { kind: 'plugin', id: A });
+  assert.deepEqual(persisted?.decided_by, { kind: 'user', id: ada.id }, 'the account of the request is recorded even without a channel');
+  assert.equal(persisted?.relayed_via, undefined);
 
   const cancelled = ask('m-ada', FORM);
   assert.deepEqual(await asAda(() => plugin.questions.resolve(cancelled.id, { cancel: true })), { id: cancelled.id, status: 'cancelled' });
@@ -284,12 +288,16 @@ test('the events go to the owner\'s plugins, with the origin of the write', asyn
   assert.equal(resolved.kind === 'question_resolved' && resolved.status, 'cancelled');
   assert.deepEqual(resolved.origin, { kind: 'plugin', id: A });
   assert.equal(resolved.kind === 'question_resolved' && resolved.decisionOrigin, 'plugin');
+  assert.deepEqual(resolved.kind === 'question_resolved' && resolved.decidedBy, { kind: 'user', id: ada.id });
+  assert.equal(resolved.kind === 'question_resolved' && resolved.relayedVia, null);
   assert.equal(resolved.question.questions.length, 3, 'the resolved event still carries the question');
 
   const expired = seenA.find((e) => e.questionId === expiring.id && e.kind === 'question_resolved');
   assert.equal(expired?.kind === 'question_resolved' && expired.status, 'expired');
   assert.deepEqual(expired?.origin, { kind: 'system', id: null });
   assert.equal(expired?.kind === 'question_resolved' && expired.decisionOrigin, 'mission_end');
+  assert.equal(expired?.kind === 'question_resolved' && expired.decidedBy, null);
+  assert.equal(expired?.kind === 'question_resolved' && expired.relayedVia, null);
   assert.ok(seenA.some((e) => e.questionId === other.id), 'Bob\'s plugin instance gets Bob\'s events in Bob\'s identity');
   assert.equal(seenJob.some((e) => e.questionId === q.id), true, 'the same plugin of another id hears a user who may use it');
   await a.dispose(); await jobPlugin.dispose();
@@ -300,11 +308,19 @@ test('a click names the account behind it in the event', async () => {
   const seen: PluginQuestionEvent[] = [];
   plugin.events.on('question_resolved', (ev) => { seen.push(ev); });
   const q = ask('m-ada', FORM);
-  assert.equal(resolvePermission(q.id, { behavior: 'allow', updatedInput: { answers: {} } }, 'ui_form_submit', { kind: 'user', id: ada.id }), true);
+  assert.equal(resolvePermission(q.id, { behavior: 'allow', updatedInput: { answers: {} } }, 'ui_form_submit', { kind: 'user', id: ada.id }), 'allow');
   await new Promise((r) => setTimeout(r, 50));
   const ev = seen.find((e) => e.questionId === q.id);
   assert.deepEqual(ev?.origin, { kind: 'user', id: ada.id });
   assert.equal(ev?.kind === 'question_resolved' && ev.status, 'answered');
+  assert.equal(ev?.kind === 'question_resolved' && ev.decidedBy, null, 'a click is the user, not a relay');
+  assert.equal(ev?.kind === 'question_resolved' && ev.relayedVia, null);
+  const click = dbApi.listEvents('m-ada').filter((e) => e.type === 'permission_resolved')
+    .map((e) => JSON.parse(e.payload) as { id: string; decided_by?: unknown; relayed_via?: unknown; resolved_by?: unknown })
+    .find((p) => p.id === q.id);
+  assert.deepEqual(click?.resolved_by, { kind: 'user', id: ada.id });
+  assert.equal(click?.decided_by, undefined);
+  assert.equal(click?.relayed_via, undefined);
   await dispose();
 });
 
@@ -321,5 +337,49 @@ test('a plugin no account may use hears no question', async () => {
   assert.deepEqual(seen, []);
   void evesQuestion; void adas;
   expirePendingForMission('m-eve'); expirePendingForMission('m-ada');
+  await dispose();
+});
+
+test('relayedVia is journaled beside the account and never reaches the agent', async () => {
+  const answers = { 'Which database?': 'Postgres', 'Which checks?': ['lint'], 'Anything else?': 'no' };
+  const q = ask('m-ada', FORM);
+  const { plugin, dispose } = await pluginWith(A, ALL);
+  const seen: PluginQuestionEvent[] = [];
+  plugin.events.on('question_resolved', (ev) => { seen.push(ev); });
+  const secret = 'sk-live-secret-value';
+  const previous = setRedactionSource(() => [secret]);
+  try {
+    for (const label of ['x'.repeat(81), 'line\nbreak', secret, 12]) {
+      assert.equal(await codeOf(() => asAda(() => plugin.questions.resolve(q.id, { answers, relayedVia: label as never }))), 'invalid', String(label));
+    }
+  } finally {
+    setRedactionSource(previous);
+  }
+  assert.equal(listPending('m-ada').some((p) => p.id === q.id), true, 'a refused label leaves the card waiting');
+  assert.equal(dbApi.listEvents('m-ada').some((e) => e.type === 'permission_resolved' && e.payload.includes(secret)), false);
+
+  await asAda(() => plugin.questions.resolve(q.id, { answers, relayedVia: '  telegram  ' }));
+  const decision = await q.decision as PermissionDecision;
+  assert.deepEqual(decision.behavior === 'allow' && decision.updatedInput, { answers, note: undefined });
+  const persisted = dbApi.listEvents('m-ada').filter((e) => e.type === 'permission_resolved')
+    .map((e) => JSON.parse(e.payload) as { id: string; resolved_by?: unknown; decided_by?: unknown; relayed_via?: unknown; decision?: { updatedInput?: unknown } })
+    .find((p) => p.id === q.id);
+  assert.deepEqual(persisted?.resolved_by, { kind: 'plugin', id: A });
+  assert.deepEqual(persisted?.decided_by, { kind: 'user', id: ada.id });
+  assert.equal(persisted?.relayed_via, 'telegram');
+  assert.equal(JSON.stringify(persisted?.decision?.updatedInput).includes('telegram'), false);
+  await new Promise((r) => setTimeout(r, 50));
+  const ev = seen.find((e) => e.questionId === q.id && e.kind === 'question_resolved');
+  assert.deepEqual(ev?.kind === 'question_resolved' && ev.decidedBy, { kind: 'user', id: ada.id });
+  assert.equal(ev?.kind === 'question_resolved' && ev.relayedVia, 'telegram');
+
+  const job = ask('m-job-a', FORM);
+  await plugin.questions.resolve(job.id, { answers, relayedVia: 'hermes' });
+  const jobRow = dbApi.listEvents('m-job-a').filter((e) => e.type === 'permission_resolved')
+    .map((e) => JSON.parse(e.payload) as { id: string; resolved_by?: unknown; decided_by?: unknown; relayed_via?: unknown })
+    .find((p) => p.id === job.id);
+  assert.deepEqual(jobRow?.resolved_by, { kind: 'plugin', id: A });
+  assert.equal(jobRow?.decided_by, undefined, 'a job has no account in front of it');
+  assert.equal(jobRow?.relayed_via, 'hermes');
   await dispose();
 });

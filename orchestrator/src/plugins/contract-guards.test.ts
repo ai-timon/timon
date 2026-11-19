@@ -47,6 +47,7 @@ const DERIVED_TWINS: Record<string, string> = {
   PluginMemoryEventKind: 'memory-rule-events.ts',
   PluginMissionEventKind: 'plugins/mission-events.ts',
   PluginProjectEventKind: 'plugins/project-events.ts',
+  PluginApprovalEventKind: 'plugins/approval-events.ts',
   PluginQuestionEventKind: 'plugins/question-events.ts',
   PluginTaskEventKind: 'plugins/task-events.ts',
   PluginTodoEventKind: 'plugins/todo-events.ts',

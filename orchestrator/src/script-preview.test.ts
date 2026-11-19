@@ -308,7 +308,7 @@ function mission(cwd: string, withOwner = true): string {
 }
 
 async function allowed(pendingId: string, decision: Promise<unknown>, scope?: 'session' | 'always') {
-  assert.equal(resolvePermission(pendingId, { behavior: 'allow', ...(scope ? { scope } : {}) }, 'ui_card_allow'), true);
+  assert.ok(resolvePermission(pendingId, { behavior: 'allow', ...(scope ? { scope } : {}) }, 'ui_card_allow'));
   return decision as Promise<{ behavior: string; message?: string }>;
 }
 

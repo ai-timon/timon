@@ -115,6 +115,14 @@ import {
   type QuestionCallerScope, type ScopedQuestions,
 } from './questions-facade.js';
 import {
+  isPluginApprovalEventKind, PLUGIN_APPROVAL_EVENT_KINDS, subscribePluginApprovalEvent,
+  type PluginApprovalEventHandler, type PluginApprovalEventKind,
+} from './approval-events.js';
+import {
+  approvalsFor, type ApprovalCallerScope, type PluginApproval, type PluginApprovalDecision,
+  type PluginApprovalListFilter, type ScopedApprovals,
+} from './approvals-facade.js';
+import {
   notificationsFor, type NotificationCallerScope, type PluginNotificationListFilter, type ScopedNotifications,
 } from './notifications-facade.js';
 import {
@@ -263,6 +271,15 @@ export type {
   PluginQuestionOption, PluginQuestionOptionActor, PluginQuestionPlan, PluginQuestionResolution,
 } from './questions-facade.js';
 export { PluginQuestionError } from './questions-facade.js';
+export type {
+  PluginApprovalActor, PluginApprovalEvent, PluginApprovalEventKind, PluginApprovalEventMap,
+  PluginApprovalPendingEvent, PluginApprovalResolvedEvent,
+} from './approval-events.js';
+export { PLUGIN_APPROVAL_EVENT_KINDS } from './approval-events.js';
+export type {
+  PluginApproval, PluginApprovalDecision, PluginApprovalErrorCode, PluginApprovalListFilter, PluginApprovalResolution,
+} from './approvals-facade.js';
+export { PluginApprovalError } from './approvals-facade.js';
 export type {
   PluginNotification, PluginNotificationErrorCode, PluginNotificationListFilter,
 } from './notifications-facade.js';
@@ -570,6 +587,12 @@ export type PluginHost = {
   questionEvents?: {
     subscribe(pluginId: string, kind: PluginQuestionEventKind, handler: PluginQuestionEventHandler): () => void;
   };
+  /** Tool-use approvals waiting on a person, bounded by a caller (`approvals-facade.ts`). Optional on test hosts. */
+  approvals?: { open(scope: ApprovalCallerScope): ScopedApprovals };
+  /** Approval events filtered and projected for a plugin (`approval-events.ts`). Optional on test hosts. */
+  approvalEvents?: {
+    subscribe(pluginId: string, kind: PluginApprovalEventKind, handler: PluginApprovalEventHandler): () => void;
+  };
   /** The notification centre, bounded by a caller (`notifications-facade.ts`). Optional on test hosts. */
   notifications?: { open(scope: NotificationCallerScope): ScopedNotifications };
   /** Memory rules and files bounded by a caller (`memory-facade.ts`). Optional on test hosts. */
@@ -756,10 +779,16 @@ export function createPluginContext(
     return host.uiDocuments.open({ pluginId: id, viewer: currentPluginViewer(id) });
   };
 
+  const callerAccount = (): string | null => currentPluginUser()?.id ?? null;
   const questions = (permission: PluginPermission): ScopedQuestions => {
     assert(permission);
     if (!host.questions) throw new Error('Questions host unavailable');
-    return host.questions.open({ pluginId: id, viewer: currentPluginViewer(id) });
+    return host.questions.open({ pluginId: id, viewer: currentPluginViewer(id), decidedByUserId: callerAccount() });
+  };
+  const approvals = (permission: PluginPermission): ScopedApprovals => {
+    assert(permission);
+    if (!host.approvals) throw new Error('Approvals host unavailable');
+    return host.approvals.open({ pluginId: id, viewer: currentPluginViewer(id), decidedByUserId: callerAccount() });
   };
 
   const notifications = (permission: PluginPermission): ScopedNotifications => {
@@ -1639,6 +1668,17 @@ export function createPluginContext(
         return questions('questions:answer').resolve(questionId, answer);
       },
     },
+    approvals: {
+      async list(filter?: PluginApprovalListFilter) {
+        return approvals('approvals:read').list(filter);
+      },
+      async get(approvalId: string) {
+        return approvals('approvals:read').get(approvalId);
+      },
+      async resolve(approvalId: string, decision: PluginApprovalDecision) {
+        return approvals('approvals:resolve').resolve(approvalId, decision);
+      },
+    },
     realtime: {
       publish(topic, payload, options) {
         assert('realtime:publish');
@@ -1647,7 +1687,7 @@ export function createPluginContext(
       },
     },
     events: {
-      on(kind: PluginEventKind | PluginTaskEventKind | PluginTodoEventKind | PluginUiDocumentEventKind | PluginQuestionEventKind | PluginMissionEventKind | PluginMemoryEventKind | PluginProjectEventKind | PluginAgentEventKind | PluginAutomationEventKind | PluginBrowserRecordingEventKind | PluginBrowserAnnotationEventKind, handler: (ev: never) => void | Promise<void>): () => void {
+      on(kind: PluginEventKind | PluginTaskEventKind | PluginTodoEventKind | PluginUiDocumentEventKind | PluginQuestionEventKind | PluginApprovalEventKind | PluginMissionEventKind | PluginMemoryEventKind | PluginProjectEventKind | PluginAgentEventKind | PluginAutomationEventKind | PluginBrowserRecordingEventKind | PluginBrowserAnnotationEventKind, handler: (ev: never) => void | Promise<void>): () => void {
         assert('events:subscribe');
         if (isPluginBrowserAnnotationEventKind(kind)) {
           // The event carries the annotation's metadata: receiving it is reading annotations.
@@ -1669,6 +1709,13 @@ export function createPluginContext(
           const questionEvents = host.questionEvents;
           if (!questionEvents) throw new Error('Question events host unavailable');
           return ctx.effect(() => questionEvents.subscribe(id, kind, handler as PluginQuestionEventHandler));
+        }
+        if (isPluginApprovalEventKind(kind)) {
+          // The event carries the approval: receiving it is reading approvals.
+          assert('approvals:read');
+          const approvalEvents = host.approvalEvents;
+          if (!approvalEvents) throw new Error('Approval events host unavailable');
+          return ctx.effect(() => approvalEvents.subscribe(id, kind, handler as PluginApprovalEventHandler));
         }
         if (isPluginMissionEventKind(kind)) {
           // The event names a mission: receiving it is reading missions; the
@@ -1732,7 +1779,7 @@ export function createPluginContext(
         if (!(PLUGIN_EVENT_KINDS as readonly string[]).includes(kind)) {
           throw new Error(
             `plugin \`${id}\`: event \`${kind}\` is not exposed to plugins `
-            + `(allowed: ${[...PLUGIN_EVENT_KINDS, ...PLUGIN_TASK_EVENT_KINDS, ...PLUGIN_TODO_EVENT_KINDS, ...PLUGIN_UI_DOCUMENT_EVENT_KINDS, ...PLUGIN_QUESTION_EVENT_KINDS, ...PLUGIN_MISSION_EVENT_KINDS, ...PLUGIN_MEMORY_EVENT_KINDS, ...PLUGIN_PROJECT_EVENT_KINDS, ...PLUGIN_AGENT_EVENT_KINDS, ...PLUGIN_AUTOMATION_EVENT_KINDS, ...PLUGIN_BROWSER_RECORDING_EVENT_KINDS, ...PLUGIN_BROWSER_ANNOTATION_EVENT_KINDS].join(', ')})`,
+            + `(allowed: ${[...PLUGIN_EVENT_KINDS, ...PLUGIN_TASK_EVENT_KINDS, ...PLUGIN_TODO_EVENT_KINDS, ...PLUGIN_UI_DOCUMENT_EVENT_KINDS, ...PLUGIN_QUESTION_EVENT_KINDS, ...PLUGIN_APPROVAL_EVENT_KINDS, ...PLUGIN_MISSION_EVENT_KINDS, ...PLUGIN_MEMORY_EVENT_KINDS, ...PLUGIN_PROJECT_EVENT_KINDS, ...PLUGIN_AGENT_EVENT_KINDS, ...PLUGIN_AUTOMATION_EVENT_KINDS, ...PLUGIN_BROWSER_RECORDING_EVENT_KINDS, ...PLUGIN_BROWSER_ANNOTATION_EVENT_KINDS].join(', ')})`,
           );
         }
         // Use `effect` rather than returning a bare `off`: a plugin that forgets
@@ -2116,6 +2163,8 @@ export function daemonHost(ctx: Context): PluginHost {
     uiDocumentEvents: { subscribe: subscribePluginUiDocumentEvent },
     questions: { open: questionsFor },
     questionEvents: { subscribe: subscribePluginQuestionEvent },
+    approvals: { open: approvalsFor },
+    approvalEvents: { subscribe: subscribePluginApprovalEvent },
     notifications: { open: notificationsFor },
     outbox: daemonOutbox(),
     webhooks: { register: registerPluginWebhook, asOwner: runAsPluginWebhookOwner },
@@ -2205,6 +2254,8 @@ type _UiDocumentCreateIsOwn = Assert<ReturnType<ScopedUiDocuments['create']> ext
 type _UiDocumentHasNoReply = Assert<'reply' extends keyof PluginUiDocument ? false : true>;
 /** A question reaches a plugin as a projection, never the agent's raw payload. */
 type _QuestionIsPublic = Assert<ReturnType<ScopedQuestions['get']> extends PluginQuestion | undefined ? true : false>;
+/** An approval reaches a plugin as a projection, never the raw tool payload. */
+type _ApprovalIsPublic = Assert<ReturnType<ScopedApprovals['get']> extends PluginApproval | undefined ? true : false>;
 type _AssertPermissionIsFn = Assert<PluginContext['assertPermission'] extends (p: string) => void ? true : false>;
 /** The structural slice the provider kit publishes (`@timon-ai/sdk/provider`) cannot drift from the real context. */
 type _ProviderContextIsASlice = Assert<PluginContext extends ProviderPluginContext ? true : false>;

@@ -7,7 +7,9 @@
  * (SECU-USERS U-1): in a request, that account's missions; in a job, the
  * missions owned by `plugin:<id>`. A card on a mission outside that view
  * answers as one that does not exist. Only `ask_user` forms are questions; a
- * tool-use approval (Allow / Deny) is not listed and cannot be resolved here.
+ * tool-use approval (Allow / Deny) is not listed and cannot be resolved here
+ * (`ctx.approvals`). `resolve` accepts an optional `relayedVia`, journaled
+ * next to the plugin with the account of the request.
  *
  * `resolve` goes through `resolvePermission`, the function the route calls, so
  * the card closes, the agent resumes and the events fire exactly as for a click.
@@ -23,6 +25,7 @@ import {
 import type { QuestionSnapshot } from '../question-bus.js';
 import { planGroupNames, validateSeriesPlanAnswer, type SeriesPlanAnswer } from '../series-plan.js';
 import { scopedDb } from '../users/scoped-db.js';
+import { parseRelayedVia } from './relayed-via.js';
 
 import type {
   PluginQuestionOptionActor, PluginQuestion, PluginQuestionAnswer, PluginQuestionResolution,
@@ -47,7 +50,12 @@ export type ScopedQuestions = {
   resolve(id: string, answer: PluginQuestionAnswer): PluginQuestionResolution;
 };
 
-export type QuestionCallerScope = { pluginId: string; viewer: DbViewer | null };
+export type QuestionCallerScope = {
+  pluginId: string;
+  viewer: DbViewer | null;
+  /** Account of the request, when this call relays a person's answer. */
+  decidedByUserId: string | null;
+};
 
 const MAX_ANSWER_CHARS = 8_000;
 const asString = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v : null);
@@ -129,7 +137,7 @@ function answerDefect(card: PluginQuestion, answer: Record<string, unknown>): st
 }
 
 export function questionsFor(scope: QuestionCallerScope): ScopedQuestions {
-  const { pluginId, viewer } = scope;
+  const { pluginId, viewer, decidedByUserId } = scope;
   const visible = (card: QuestionSnapshot): boolean => !!scopedDb(viewer).getMission(card.missionId);
   const open = (id: unknown): QuestionSnapshot | undefined => {
     if (typeof id !== 'string') return undefined;
@@ -165,6 +173,8 @@ export function questionsFor(scope: QuestionCallerScope): ScopedQuestions {
       if (!card) throw new PluginQuestionError('not_found', 'question not found (already answered or expired)');
       const raw: unknown = answer;
       if (!isRecord(raw)) throw new PluginQuestionError('invalid', 'the answer must be an object');
+      const relayed = parseRelayedVia(raw.relayedVia);
+      if (!relayed.ok) throw new PluginQuestionError('invalid', relayed.message);
       const cancel = raw.cancel === true;
       if (!cancel) {
         const defect = answerDefect(projectQuestion(card), raw);
@@ -176,9 +186,13 @@ export function questionsFor(scope: QuestionCallerScope): ScopedQuestions {
         : card.kind === 'series_plan'
           ? { behavior: 'allow' as const, updatedInput: { plan: raw.plan, note: (raw.plan as SeriesPlanAnswer).note } }
           : { behavior: 'allow' as const, updatedInput: { answers: raw.answers, note } };
-      const ok = resolvePermission(card.id, decision, 'plugin', { kind: 'plugin', id: pluginId });
-      if (!ok) throw new PluginQuestionError('not_found', 'question not found (already answered or expired)');
-      return Object.freeze({ id: card.id, status: cancel ? 'cancelled' : 'answered' });
+      const behavior = resolvePermission(card.id, decision, 'plugin', { kind: 'plugin', id: pluginId }, {
+        decidedBy: decidedByUserId ? { kind: 'user', id: decidedByUserId } : null,
+        relayedVia: relayed.value,
+      });
+      if (!behavior) throw new PluginQuestionError('not_found', 'question not found (already answered or expired)');
+      // Same word as the resolved event: an answer Timon cannot apply is a deny the agent received.
+      return Object.freeze({ id: card.id, status: behavior === 'allow' ? 'answered' as const : 'cancelled' as const });
     },
   };
 }

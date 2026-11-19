@@ -232,6 +232,24 @@ export type {
 } from '../../../orchestrator/src/plugins/contract/questions.js';
 
 /**
+ * Tool-use approvals an agent waits on, API 18 (`ctx.approvals`, permissions
+ * `approvals:read` / `approvals:resolve`), and the approval events
+ * (`approval_pending`, `approval_resolved`, host half only, with
+ * `events:subscribe` + `approvals:read`). Resolving is sensitive: it allows
+ * or denies the tool as if the user had clicked. The returned `status`
+ * reflects what the agent actually received: an allow can still come back
+ * `denied` when a previewed script changed. `relayedVia` names the channel
+ * that carried the person's decision; it is journaled and never becomes the
+ * tool input.
+ */
+export type { PluginApprovals } from '../../../orchestrator/src/plugins/contract/facades.js';
+export type {
+  PluginApproval, PluginApprovalActor, PluginApprovalDecision, PluginApprovalErrorCode,
+  PluginApprovalEvent, PluginApprovalEventKind, PluginApprovalEventMap, PluginApprovalListFilter,
+  PluginApprovalPendingEvent, PluginApprovalResolution, PluginApprovalResolvedEvent,
+} from '../../../orchestrator/src/plugins/contract/approvals.js';
+
+/**
  * Mission control and traces, API 10. `ctx.missions` gains `send`, `kill`,
  * `fork`, `stopScope` (permission `missions:control`) and `search`, `summarize`
  * (`missions:transcript`); `spawn` takes `model`, `backend`, `extraSkills`,

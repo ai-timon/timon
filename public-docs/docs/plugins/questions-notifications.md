@@ -17,6 +17,8 @@ An inbox plugin needs two things the conversation does not give it: every questi
 | --- | --- |
 | `questions:read` | `ctx.questions.list`, `get`; with `events:subscribe`, `question_pending` and `question_resolved` |
 | `questions:answer` | `ctx.questions.resolve` |
+| `approvals:read` | `ctx.approvals.list`, `get`; with `events:subscribe`, `approval_pending` and `approval_resolved`. Requires `apiVersion: 18` |
+| `approvals:resolve` | `ctx.approvals.resolve`. Requires `apiVersion: 18` |
 | `notifications:read` | `ctx.notifications.list` |
 | `notifications:write` | `ctx.notifications.dismiss` |
 
@@ -26,7 +28,7 @@ Answering unblocks the agent as if the user had clicked, and answering a Kanban 
 
 ## Questions
 
-A question is a form an agent opened with its `question` or `kanban_plan` tool and that waits for a person. A tool-use approval (Allow / Deny) is **not** a question: it is neither listed nor resolvable here.
+A question is a form an agent opened with its `question` or `kanban_plan` tool and that waits for a person. A tool-use approval (Allow / Deny) is **not** a question: it is neither listed nor resolvable here. Those cards are [approvals](#approvals).
 
 ```js
 const waiting = await ctx.questions.list({ kinds: ['question'], project: 'acme' });
@@ -47,6 +49,7 @@ await ctx.questions.resolve(plan.id, { plan: { mode: 'kanban-full', roles: {} } 
 - **Which questions.** In a request, those of the calling account's missions; in a job, those of the missions your plugin owns. A question outside that view answers `undefined` (or `not_found` for `resolve`) — Timon does not confirm it exists.
 - **The answer.** Keyed by the text of each question, like the chat form: every question needs a non-empty answer, a list only on a multi-select question, and a free-text answer is accepted on any question. To add a remark to a pick, as the free-text field of the chat form does, answer that question with an object: `{ choice, text }`, `{ choices, text }` on a multi-select, or `{ text }` alone. The former top-level `note` is deprecated: it still reaches the agent, but put the text in the answer of its question. A Kanban plan is checked as the chat checks it. A wrong answer throws `invalid` and the card keeps waiting.
 - **Once.** The first answer wins; a second one, or one after the card expired, throws `not_found`.
+- **Who decided.** `relayedVia` is an optional short label of the channel that carried the person's answer (`telegram`, `hermes`: at most 80 characters, no line break, no secret). Timon journals it next to the plugin that answered and the account of the request. The agent never reads it. Omit it and the account is still recorded when the call runs inside a request. A click records neither.
 - **Errors** throw `PluginQuestionError` with a `code`: `invalid`, `not_found`.
 
 ### Events
@@ -57,10 +60,49 @@ ctx.events.on('question_resolved', (ev) => {
   // ev.status: 'answered' | 'cancelled' | 'expired'
   // ev.origin: { kind: 'user' | 'plugin' | 'system', id } — who closed it
   // ev.decisionOrigin: 'ui_form_submit', 'plugin', 'auto_timeout', 'mission_end'…
+  // ev.decidedBy: the account of the request when a plugin relayed the answer, or null
+  // ev.relayedVia: the channel label, or null
 });
 ```
 
-Both need `events:subscribe` and `questions:read`. They reach your plugin for the missions you can read, in the identity of the account that owns them, one at a time and in order. The event of your own answer comes back to you with `origin: { kind: 'plugin', id }`, so you can ignore your own echo.
+Both need `events:subscribe` and `questions:read`. They reach your plugin for the missions you can read, in the identity of the account that owns them, one at a time and in order. The event of your own answer comes back to you with `origin: { kind: 'plugin', id }`, so you can ignore your own echo. `decidedBy` is that account; a click, a job with nobody in front of it, and an expiry leave it null.
+
+## Approvals
+
+An approval is an Allow / Deny card an agent opened for a tool (`Bash`, an MCP tool, anything that is not `ask_user`). Requires `apiVersion: 18`. A question is not an approval: it is neither listed nor resolvable here.
+
+```js
+const waiting = await ctx.approvals.list({ tool: 'Bash', project: 'acme' });
+const one = await ctx.approvals.get(waiting[0].id);
+
+await ctx.approvals.resolve(one.id, { behavior: 'allow', relayedVia: 'telegram' });
+await ctx.approvals.resolve(other.id, { behavior: 'deny', message: 'Run the tests first.' });
+```
+
+:::warning `approvals:read` and `approvals:resolve` are sensitive permissions
+Reading a card shows a view of what the agent wants to run. Resolving one allows or denies that tool as if the user had clicked, and the agent resumes. Declare them only when your plugin really decides on the user's behalf, and show the user the card you are closing.
+:::
+
+- **What you read.** `PluginApproval`: `id`, `missionId`, `agent`, `tool`, `input`, `createdAt`, `expiresAt`. `input` is a bounded, redacted view of the tool's arguments (long strings cut, credential fields replaced, vault values masked). It is never the raw payload, and it is never what the agent receives if you allow: the agent gets the input it asked with.
+- **Which cards.** In a request, those of the calling account's missions; in a job, those of the missions your plugin owns. A card outside that view answers `undefined` (or `not_found` for `resolve`).
+- **The decision.** `behavior` is `allow` or `deny`. A deny may carry `message` (the reason the agent reads; absent or blank, the same text as the Deny button). You cannot rewrite the input, paste a command, or widen the allow. An unknown field throws `invalid` and the card keeps waiting. `resolve` returns `{ id, status }`. `status` is `allowed` or `denied` and reflects what the agent actually received: an allow you send can still come back `denied` when a script the card showed was rewritten after the card opened, or is too large to vouch for. The `approval_resolved` event carries that same status. Tell the person the status, not only the behaviour you sent.
+- **Who decided.** `relayedVia` is the same optional channel label as on a question. It is journaled next to the plugin and the account of the request, and a resolved event carries both `decidedBy` and `relayedVia`.
+- **Once.** The first decision wins; a second one, or one after the card expired, throws `not_found`.
+- **Errors** throw `PluginApprovalError` with a `code`: `invalid`, `not_found`.
+
+### Approval events
+
+```js
+ctx.events.on('approval_pending', (ev) => { /* ev.approval, ev.origin = the agent */ });
+ctx.events.on('approval_resolved', (ev) => {
+  // ev.status: 'allowed' | 'denied' | 'expired'
+  // ev.origin: { kind: 'user' | 'plugin' | 'system', id }
+  // ev.decisionOrigin: 'ui_card_allow', 'plugin', 'auto_timeout', 'mission_end'…
+  // ev.decidedBy, ev.relayedVia — the account and the channel, or null
+});
+```
+
+Both need `events:subscribe` and `approvals:read`. They reach your plugin for the missions you can read, in the identity of the account that owns them, one at a time and in order. The event of your own decision comes back with `origin: { kind: 'plugin', id }`. A paste the user makes in the interface reaches the agent as a deny, and the status is `denied`.
 
 ## Notifications
 
