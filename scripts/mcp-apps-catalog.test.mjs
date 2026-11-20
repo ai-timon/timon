@@ -67,6 +67,7 @@ test('drift: a server gone, an endpoint removed, a proof that no longer holds', 
   assert.match(driftOf(moved, record(['https://acme.vercel.app/mcp'])).join(), /not hosted on the namespace domain/);
   const documented = { ...entry, registry: { name: 'io.github.acme/mcp', proof: 'documented', evidence: 'https://acme.com/docs/mcp' } };
   assert.deepEqual(driftOf(documented, record(['https://mcp.acme.com/mcp'])), []);
+  assert.deepEqual(driftOf(documented, record(['https://legacy.acme.com/mcp'])), [], 'the evidence, not a stale registry remote, pins a documented endpoint');
 });
 
 test('the registry is read to the end of its cursor', async () => {
