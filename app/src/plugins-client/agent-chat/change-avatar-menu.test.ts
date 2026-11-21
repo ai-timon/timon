@@ -79,7 +79,7 @@ for (const [allowed, shown] of [[true, true], [false, false]] as const) {
         agents: [{ name: 'alice', project: null }],
         poles: [],
         hierarchy: HIERARCHY,
-        onClose: noop, onReportsTo: noop, onMovePole: noop, onEditPole: noop, onDuplicate: noop,
+        onClose: noop, onReportsTo: noop, onMovePole: noop, onEditPole: noop, onDeletePole: noop, onDuplicate: noop,
       }));
       assert.equal(env.entry() !== null, shown);
     } finally {

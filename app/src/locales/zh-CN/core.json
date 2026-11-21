@@ -1891,6 +1891,7 @@
     "menuChangeAvatar": "更换头像",
     "menuDuplicate": "复制智能体…",
     "menuReportsTo": "更改直属上级…",
+    "menuDeletePole": "删除项目组…",
     "menuMovePole": "将项目移至项目组…",
     "menuDefault": "默认（项目负责人或主智能体）",
     "menuNoPole": "无项目组",

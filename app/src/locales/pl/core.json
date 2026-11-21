@@ -1861,6 +1861,7 @@
     "menuDuplicate": "Duplikuj agenta…",
     "menuReportsTo": "Podlega…",
     "menuDelete": "Usuń agenta…",
+    "menuDeletePole": "Usuń biegun…",
     "menuMovePole": "Przenieś projekt do bieguna…",
     "menuDefault": "Domyślnie (lider projektu lub główny agent)",
     "menuNoPole": "Bez bieguna",

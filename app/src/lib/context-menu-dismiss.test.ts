@@ -53,7 +53,7 @@ test('NodeMenu closes on a mousedown whose propagation is stopped outside it', a
       workspaceOfProject: new Map(), leadOfProject: new Map(),
     },
     onClose: () => { closed += 1; },
-    onReportsTo: noop, onMovePole: noop, onEditPole: noop, onDuplicate: noop,
+    onReportsTo: noop, onMovePole: noop, onEditPole: noop, onDeletePole: noop, onDuplicate: noop,
   }));
   const menu = env.menu();
   assert.ok(menu, 'the menu is rendered');

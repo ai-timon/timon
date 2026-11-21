@@ -1861,6 +1861,7 @@
     "menuDuplicate": "Duplica l’agente…",
     "menuReportsTo": "Riporta a…",
     "menuDelete": "Elimina l’agente…",
+    "menuDeletePole": "Elimina il polo…",
     "menuMovePole": "Sposta il progetto nel polo…",
     "menuDefault": "Predefinito (responsabile del progetto o agente principale)",
     "menuNoPole": "Nessun polo",

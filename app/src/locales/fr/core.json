@@ -1649,6 +1649,7 @@
     "menuDuplicate": "Dupliquer l'agent…",
     "menuReportsTo": "Rattacher à…",
     "menuDelete": "Supprimer l'agent…",
+    "menuDeletePole": "Supprimer le pôle…",
     "menuMovePole": "Déplacer le projet vers un pôle…",
     "menuDefault": "Par défaut (lead du projet ou agent principal)",
     "menuNoPole": "Aucun pôle",

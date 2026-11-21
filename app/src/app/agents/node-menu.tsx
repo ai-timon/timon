@@ -18,7 +18,7 @@ export type MenuTarget = { id: string; x: number; y: number };
 type Agent = { name: string; project?: string | null };
 
 /** Right-click menu of a graph node (or of a row of the Organization tree). */
-export function NodeMenu({ target, agents, poles, hierarchy, mainAgent, fold, pinned, onClose, onReportsTo, onMovePole, onEditPole, onDuplicate, onToggleFold, onResetPosition }: {
+export function NodeMenu({ target, agents, poles, hierarchy, mainAgent, fold, pinned, onClose, onReportsTo, onMovePole, onEditPole, onDeletePole, onDuplicate, onToggleFold, onResetPosition }: {
   target: MenuTarget;
   agents: readonly Agent[];
   poles: readonly PoleRecord[];
@@ -33,6 +33,7 @@ export function NodeMenu({ target, agents, poles, hierarchy, mainAgent, fold, pi
   onReportsTo: (agent: string, manager: string | null) => void;
   onMovePole: (agent: string, project: string, pole: PoleRecord | null) => void;
   onEditPole: (pole: PoleRecord) => void;
+  onDeletePole: (pole: PoleRecord) => void;
   onDuplicate: (agent: string) => void;
   onToggleFold?: () => void;
   onResetPosition?: () => void;
@@ -52,6 +53,11 @@ export function NodeMenu({ target, agents, poles, hierarchy, mainAgent, fold, pi
   // Offered only where the daemon would accept it: deleting takes
   // agents:manage, and the main orchestrator's seat must be handed over first.
   const canDelete = !!agent && canEditAgents && agent.name.toLowerCase() !== mainAgent?.toLowerCase();
+  // A pole is the daemon's workspace, guarded by projects:manage. Offered on the
+  // pole itself only: a lead's menu already ends with deleting the agent, and
+  // two destructive entries side by side invite the wrong click.
+  const canManagePoles = useCan('projects:manage') === true;
+  const canDeletePole = !!pole && !agent && canManagePoles;
 
   // Keep the menu inside the window, whichever corner was clicked.
   useLayoutEffect(() => {
@@ -159,7 +165,7 @@ export function NodeMenu({ target, agents, poles, hierarchy, mainAgent, fold, pi
               <Shapes className="size-3.5" />{t('agentsPage.editPoleNamed', { name: pole.name })}
             </button>
           )}
-          {/* Last, set apart by a gap: the one entry that removes something. */}
+          {/* Last, set apart by a gap: the entries that remove something. */}
           {canDelete && agent && (
             <button
               type="button"
@@ -168,6 +174,16 @@ export function NodeMenu({ target, agents, poles, hierarchy, mainAgent, fold, pi
               onClick={() => { onClose(); void deleteAgentAfterConfirm(agent.name); }}
             >
               <Trash2 className="size-3.5" />{t('agentsPage.menuDelete')}
+            </button>
+          )}
+          {canDeletePole && pole && (
+            <button
+              type="button"
+              className={`${item} mt-1 text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10`}
+              data-menu-delete-pole
+              onClick={() => { onClose(); onDeletePole(pole); }}
+            >
+              <Trash2 className="size-3.5" />{t('agentsPage.menuDeletePole')}
             </button>
           )}
         </>

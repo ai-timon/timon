@@ -136,7 +136,7 @@ Imported agents are named `timon.<name>`, or `import.<name>` when agents that th
 
 **Agents** shows your organisation as a graph: poles (workspaces) group projects, each project's orchestrator sits at the top of its agents, and every link is a reporting line. The Company chart shows the same lines.
 
-- **Poles.** Choose **+ New pole** to create one (name, colour, optional lead agent). A pole can exist before any project joins it.
+- **Poles.** Choose **+ New pole** to create one (name, colour, optional lead agent). A pole can exist before any project joins it. To delete one, right-click it in the **Workspace** bar (or right-click a pole without a lead agent on the graph) and choose **Delete pole**, or use **Delete pole** in its dialog; its projects and agents stay, outside any pole. Deleting takes an account that may manage projects.
 - **Unfold and fold.** At first only the orchestrators show. Select the **+N** badge on an agent to show its sub-agents, and select it again to fold them. A folded agent lights up while one of the agents it hides is working. The graph remembers your choice.
 - **Reorganise.** Drop an agent onto another to make it report to it, or drop a project's lead onto a pole to move the whole project. Every move can be undone from its confirmation. The **Organization** panel lists the same hierarchy as a tree you can reorganise by drag and drop.
 - **Arrange.** Dragging an agent carries its sub-agents with it. A group you drag by its top agent stays where you drop it, even after a reload; right-click it and choose **Reset position** to put it back.

@@ -1861,6 +1861,7 @@
     "menuDuplicate": "Agent dupliceren…",
     "menuReportsTo": "Rapporteert aan…",
     "menuDelete": "Agent verwijderen…",
+    "menuDeletePole": "Pool verwijderen…",
     "menuMovePole": "Project naar pool verplaatsen…",
     "menuDefault": "Standaard (projectleider of hoofdagent)",
     "menuNoPole": "Geen pool",

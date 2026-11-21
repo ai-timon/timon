@@ -32,6 +32,7 @@ import { DuplicateAgentDialog } from '@/components/duplicate-agent-dialog';
 import { NodeMenu, type MenuTarget } from './node-menu';
 import { ORG_ROOT, OrgTree } from './org-tree';
 import { PoleDialog } from './pole-dialog';
+import { deletePoleAfterConfirm } from './delete-pole';
 import { FAN_CLAIM, framesOf, layoutForest, type Frame } from '@/lib/graph-layout';
 import {
   descendantsOf,
@@ -1671,6 +1672,22 @@ export function AgentsClient() {
   }, []);
 
   const poleChips = [{ slug: 'all', label: 'all' }, ...poles.map((p) => ({ slug: p.slug, label: p.name }))];
+  // A chip opens the menu of its pole, the one a lead-less pole's node opens:
+  // "all" is not a pole and keeps the browser's own menu.
+  const openPoleMenu = (e: React.MouseEvent, slug: string) => {
+    if (slug === 'all') return;
+    e.preventDefault();
+    setMenu({ id: workspaceNodeId(slug), x: e.clientX, y: e.clientY });
+  };
+  const onDeletePole = (pole: PoleRecord) => {
+    void deletePoleAfterConfirm(pole).then((deleted) => {
+      if (!deleted) return;
+      // A selection left on a pole that no longer exists dims the whole graph
+      // and highlights no chip.
+      if (workspace === pole.slug) setWorkspace('all');
+      reload();
+    });
+  };
 
   return (
     // `h-full`: the route's height, the viewport's alone, an island's in the workspace (§1).
@@ -1739,6 +1756,7 @@ export function AgentsClient() {
                 key={w.slug}
                 type="button"
                 onClick={() => setWorkspace(w.slug)}
+                onContextMenu={(e) => openPoleMenu(e, w.slug)}
                 className={cn(
                   'rounded-md px-2 py-0.5 text-[10.5px] transition-colors',
                   workspace === w.slug
@@ -1769,6 +1787,7 @@ export function AgentsClient() {
               key={w.slug}
               type="button"
               onClick={() => setWorkspace(w.slug)}
+              onContextMenu={(e) => openPoleMenu(e, w.slug)}
               className={cn(
                 'rounded-md border px-2 py-0.5 text-[11px] transition-colors',
                 workspace === w.slug
@@ -1922,6 +1941,7 @@ export function AgentsClient() {
           onReportsTo={onReportsTo}
           onMovePole={onMovePole}
           onEditPole={(pole) => setPoleDialog({ pole })}
+          onDeletePole={onDeletePole}
           onDuplicate={setDuplicateOf}
         />
       )}

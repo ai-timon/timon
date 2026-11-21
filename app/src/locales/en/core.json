@@ -1649,6 +1649,7 @@
     "menuDuplicate": "Duplicate agent…",
     "menuReportsTo": "Reports to…",
     "menuDelete": "Delete agent…",
+    "menuDeletePole": "Delete pole…",
     "menuMovePole": "Move project to pole…",
     "menuDefault": "Default (project lead or main agent)",
     "menuNoPole": "No pole",
