@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { t } from '@/lib/i18n';
-import { createPole, deletePole, updatePole } from './hierarchy-actions';
+import { createPole, updatePole } from './hierarchy-actions';
+import { deletePoleAfterConfirm } from './delete-pole';
 import type { PoleRecord } from './agents-client';
-import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
 
 /** Offered when the user ticks a colour on; a pole starts without one and
  *  then follows the theme's accent. */
@@ -46,15 +46,10 @@ export function PoleDialog({ pole, agents, onClose, onSaved }: {
 
   async function remove() {
     if (!pole || busy) return;
-    if (!(await confirmAction({ title: t('agentsPage.poleDeleteConfirm', { name: pole.name }), confirmLabel: t('confirmDialog.delete'), destructive: true }))) return;
     setBusy(true);
-    const error = await deletePole(pole.slug);
+    const deleted = await deletePoleAfterConfirm(pole);
     setBusy(false);
-    if (error) {
-      toast.error(t('agentsPage.actionFailed', { error }));
-      return;
-    }
-    toast.success(t('agentsPage.poleDeleted', { name: pole.name }));
+    if (!deleted) return;
     onSaved();
     onClose();
   }
