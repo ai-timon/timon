@@ -18,6 +18,8 @@ dist/
 
 # Heavy 3D exports (assets, not code)
 *.glb
+# ...except the office model a plugin ships and serves
+!plugins/citadel/assets/office.glb
 
 # SQLite databases: the real one lives in ~/.timon/, but a launch from the
 # repository root creates one here. It holds missions and events, so every
