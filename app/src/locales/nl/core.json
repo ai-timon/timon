@@ -1067,6 +1067,13 @@
     "mascotsStyle2dHint": "De platte tekening, lichter voor oudere computers.",
     "mascotsStyleNoWebgl": "Deze browser kan niet in 3D tekenen (WebGL2 staat uit of ontbreekt): mascottes worden in 2D getekend.",
     "mascotsStyleShared": "Geldt voor elke mascotte. Je kunt het later wijzigen in {settingsPath}.",
+    "dockIconTitle": "Dock-pictogram",
+    "dockIconHint": "Het pictogram dat macOS voor Timon in het Dock toont terwijl de app draait. De Finder en het Dock vóór het starten houden het klassieke.",
+    "dockIconClassic": "Klassiek",
+    "dockIconClassicHint": "De kleuren van Timon.",
+    "dockIconDark": "Donker",
+    "dockIconDarkHint": "Zwart-wit.",
+    "dockIconError": "Het Dock-pictogram kon niet worden gewijzigd.",
     "variants": {
       "coral": {
         "name": "Koraal",

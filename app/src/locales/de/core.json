@@ -1067,6 +1067,13 @@
     "mascotsStyle2dHint": "Die flache Zeichnung, leichter für ältere Computer.",
     "mascotsStyleNoWebgl": "Dieser Browser kann nicht in 3D zeichnen (WebGL2 ist deaktiviert oder fehlt): Maskottchen werden in 2D gezeichnet.",
     "mascotsStyleShared": "Gilt für alle Maskottchen. Du kannst es später unter {settingsPath} ändern.",
+    "dockIconTitle": "Dock-Symbol",
+    "dockIconHint": "Das Symbol, das macOS für Timon im Dock zeigt, solange die App läuft. Der Finder und das Dock vor dem Start behalten das klassische.",
+    "dockIconClassic": "Klassisch",
+    "dockIconClassicHint": "Die Farben von Timon.",
+    "dockIconDark": "Dunkel",
+    "dockIconDarkHint": "Schwarz-weiß.",
+    "dockIconError": "Das Dock-Symbol konnte nicht geändert werden.",
     "variants": {
       "coral": {
         "name": "Koralle",

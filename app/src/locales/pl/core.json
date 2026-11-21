@@ -1067,6 +1067,13 @@
     "mascotsStyle2dHint": "Płaski rysunek, lżejszy dla starszych komputerów.",
     "mascotsStyleNoWebgl": "Ta przeglądarka nie potrafi rysować w 3D (WebGL2 jest wyłączony lub niedostępny): maskotki są rysowane w 2D.",
     "mascotsStyleShared": "Dotyczy wszystkich maskotek. Możesz to później zmienić w {settingsPath}.",
+    "dockIconTitle": "Ikona w Docku",
+    "dockIconHint": "Ikona, którą macOS pokazuje dla Timona w Docku, gdy aplikacja działa. Finder i Dock przed uruchomieniem zachowują klasyczną.",
+    "dockIconClassic": "Klasyczna",
+    "dockIconClassicHint": "Kolory Timona.",
+    "dockIconDark": "Ciemna",
+    "dockIconDarkHint": "Czarno-biała.",
+    "dockIconError": "Nie udało się zmienić ikony w Docku.",
     "variants": {
       "coral": {
         "name": "Koral",

@@ -25,6 +25,7 @@ import { useColorScheme } from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
 import { GLASS_SCOPES, GLASS_TUNING_ENABLED } from '@/lib/glass-scope';
 import { GlassTuningSettings } from './ui-theme-glass-tuning';
+import { DockIconSetting } from './ui-theme-dock-icon';
 import { GlassProfilesSection } from '@/components/glass-profiles';
 import { mascotAnimationPref, useMascotAnimation } from '@/components/mascot/mascot-animation-pref';
 import { MASCOT_STYLES, mascotStylePref, useMascotStyle, useWebGL2, type MascotStyle } from '@/components/mascot/mascot-style-pref';
@@ -471,6 +472,7 @@ export function AppearanceSettings(): ReactElement {
       </fieldset>
       </div>
       <MascotAnimationSetting />
+      <DockIconSetting />
       <BackgroundSettings />
       <RadioList
         name="appearance-theme"

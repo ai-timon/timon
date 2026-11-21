@@ -119,6 +119,7 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
     windowMachine: { set: (...args: unknown[]) => Promise<unknown> };
     openWindow: (...args: unknown[]) => Promise<unknown>;
     windowScheme: (...args: unknown[]) => Promise<unknown>;
+    dockIcon: { get: (...args: unknown[]) => Promise<unknown>; set: (...args: unknown[]) => Promise<unknown> };
     tailscale: { openInstaller: (...args: unknown[]) => Promise<unknown>; openApp: (...args: unknown[]) => Promise<unknown> };
     updates: {
       state: (...args: unknown[]) => Promise<unknown>;
@@ -160,7 +161,7 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
       };
     },
   });
-  assert.deepEqual(Object.keys(bridge), ['selectDirectory', 'selectPluginSource', 'selectExecutable', 'revealPath', 'setupRestartPending', 'restartAfterSetup', 'handOverToService', 'appInfo', 'openLogsFolder', 'openAbout', 'uninstall', 'speech', 'windowMachine', 'windowScheme', 'openWindow', 'browser', 'updates', 'tailscale']);
+  assert.deepEqual(Object.keys(bridge), ['selectDirectory', 'selectPluginSource', 'selectExecutable', 'revealPath', 'setupRestartPending', 'restartAfterSetup', 'handOverToService', 'appInfo', 'openLogsFolder', 'openAbout', 'uninstall', 'speech', 'windowMachine', 'windowScheme', 'dockIcon', 'openWindow', 'browser', 'updates', 'tailscale']);
   assert.deepEqual(Object.keys(bridge.browser), ['attach', 'detach']);
   // Multi-window V3: an id crosses, nothing else; the main process checks it is one.
   assert.deepEqual(Object.keys(bridge.windowMachine), ['set']);
@@ -174,6 +175,12 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
   // Multi-window V5: one object crosses, as given; the main process checks it is { route, machineId? }.
   await bridge.openWindow({ route: '/kanban', machineId: 'vps' }, 'https://evil.example');
   assert.deepEqual(calls.pop(), ['timon:open-window', { route: '/kanban', machineId: 'vps' }]);
+  // The Dock icon: a name crosses, never a path; the main process checks it is one it knows.
+  assert.deepEqual(Object.keys(bridge.dockIcon), ['get', 'set']);
+  await bridge.dockIcon.get('untrusted extra option');
+  assert.deepEqual(calls.pop(), ['timon:dock-icon-get']);
+  await bridge.dockIcon.set('dark', '/Users/example/evil.png');
+  assert.equal(JSON.stringify(calls.pop()), '["timon:dock-icon-set",{"icon":"dark"}]');
   assert.deepEqual(Object.keys(bridge.tailscale), ['openInstaller', 'openApp']);
   await bridge.restartAfterSetup('untrusted executable', 'another home');
   await bridge.selectDirectory('/Users/example/My Project', 'untrusted extra option');

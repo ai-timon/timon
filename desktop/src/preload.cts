@@ -60,6 +60,11 @@ contextBridge.exposeInMainWorld('timonDesktop', {
   // paints the next window or page of that machine with it before it loads.
   windowScheme: (request: { scheme: 'light' | 'dark'; machineId?: string }): Promise<{ recorded: boolean }> =>
     ipcRenderer.invoke('timon:window-scheme', request),
+  // The Dock icon (macOS): `get` resolves to null where there is no Dock; a page of another machine is refused.
+  dockIcon: {
+    get: (): Promise<{ icon: string } | null> => ipcRenderer.invoke('timon:dock-icon-get'),
+    set: (icon: string): Promise<{ icon: string }> => ipcRenderer.invoke('timon:dock-icon-set', { icon }),
+  },
   // One more window on this window's machine, at a route of this interface (V5): a path, never a URL.
   openWindow: (request: { route: string; machineId?: string }): Promise<{ opened: boolean }> => ipcRenderer.invoke('timon:open-window', request),
   browser: {

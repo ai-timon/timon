@@ -66,6 +66,15 @@ declare global {
        * Absent from an older desktop.
        */
       openWindow?: (request: { route: string; machineId?: string }) => Promise<unknown>;
+      /**
+       * The icon macOS shows in the Dock while Timon runs. `get` resolves to
+       * null where there is no Dock; a page of another machine is refused.
+       * Read through `lib/dock-icon`. Absent from an older desktop.
+       */
+      dockIcon?: {
+        get: () => Promise<{ icon: string } | null>;
+        set: (icon: string) => Promise<{ icon: string }>;
+      };
       browser?: {
         /** `conversation`, `locale` and `scheme` tell the desktop's annotation bubble where to send and how to look (TODO #481); an older desktop ignores them. */
         attach: (input: { profileId: string; viewToken: string; bounds: { x: number; y: number; width: number; height: number };

@@ -1097,6 +1097,13 @@
     "mascotsStyle2dHint": "平面绘制，对较旧的电脑更轻量。",
     "mascotsStyleNoWebgl": "此浏览器无法进行 3D 绘制（WebGL2 已关闭或不可用）：吉祥物将以 2D 显示。",
     "mascotsStyleShared": "适用于所有吉祥物。之后可以在“{settingsPath}”中更改。",
+    "dockIconTitle": "程序坞图标",
+    "dockIconHint": "Timon 运行时 macOS 在程序坞中显示的图标。访达和启动前的程序坞仍显示经典图标。",
+    "dockIconClassic": "经典",
+    "dockIconClassicHint": "Timon 的配色。",
+    "dockIconDark": "深色",
+    "dockIconDarkHint": "黑白。",
+    "dockIconError": "无法更改程序坞图标。",
     "variants": {
       "coral": {
         "name": "珊瑚色",

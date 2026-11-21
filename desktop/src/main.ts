@@ -25,6 +25,7 @@ import {
 } from './service.js';
 import { app, BrowserWindow, Menu, Tray, WebContentsView, clipboard, dialog, shell, nativeImage, ipcMain, screen, session, systemPreferences, webContents } from 'electron';
 import { parseWindowSchemeReport, recordMachineScheme, WINDOW_BACKGROUND, WINDOW_SCHEME_CHANNEL, windowScheme, type Scheme } from './appearance.js';
+import { DOCK_ICON_CHANNELS, dockIconPath, parseDockIconRequest, readDockIcon, writeDockIcon, type DockIcon } from './dock-icon.js';
 import {
   cascadeFrom, placeSavedWindows, readWindowLayout, routeOfUrl, WindowLayoutKeeper, writeWindowLayout, type DisplayArea, type SavedWindow, type WindowOpening,
 } from './window-layout.js';
@@ -1492,6 +1493,23 @@ async function returnToPreviousAppImage(offer: UpdateOffer): Promise<void> {
   app.quit();
 }
 
+/**
+ * Shows `choice` in the Dock (macOS). A damaged picture must not abort
+ * startup before the tray fallback can report it, nor fail a choice made in
+ * Settings: the Dock then keeps what it shows. `true` when it changed.
+ */
+function applyDockIcon(choice: DockIcon): boolean {
+  try {
+    const icon = nativeImage.createFromPath(dockIconPath(APP_ICON_PATH, choice));
+    if (icon.isEmpty()) return false;
+    app.dock?.setIcon(icon);
+    return true;
+  } catch (error) {
+    console.warn('[desktop] Could not load the dock icon.', error);
+    return false;
+  }
+}
+
 async function main(): Promise<void> {
   // Also here: whether `session-created` reports the default session is not documented.
   keepDictionariesLocal(session.defaultSession, process.platform);
@@ -1513,15 +1531,7 @@ async function main(): Promise<void> {
   // Known before the release check: its window, the first one shown, already takes the onboarding's look.
   firstRun = packagedFirstRun(desktopHome, app.isPackaged);
   if (app.isPackaged) await verifyInstalledRelease();
-  if (process.platform === 'darwin') {
-    // A damaged app icon must not abort startup before the tray fallback can report it.
-    try {
-      const icon = nativeImage.createFromPath(APP_ICON_PATH);
-      if (!icon.isEmpty()) app.dock?.setIcon(icon);
-    } catch (error) {
-      console.warn('[desktop] Could not load the dock icon.', error);
-    }
-  }
+  if (process.platform === 'darwin') applyDockIcon(readDockIcon(desktopHome));
   const cfg = loadDesktopConfig(desktopHome, { packaged: app.isPackaged });
   firstRun = cfg.packagedDefaults;
   let offer = app.isPackaged ? updateOffer(cfg.home, app.getVersion()) : null;
@@ -2240,6 +2250,24 @@ if (!app.requestSingleInstanceLock({ build: ownBuild } satisfies LaunchData)) {
     if (!report) throw new Error('A mode is light or dark.');
     paintPageScheme(caller, report.scheme);
     return { recorded: recordMachineScheme(desktopHome, caller.page.machineId ?? report.machineId, report.scheme) };
+  });
+
+  // The Dock icon (macOS): a preference of this computer's shell, so a page
+  // of another machine neither reads nor changes it. `null`: no Dock here.
+  ipcMain.handle(DOCK_ICON_CHANNELS.get, (event) => {
+    const caller = senderPage(event);
+    if (!caller || !localPage(caller) || !canReadAppInfo(senderOf(event), caller.record.origin)) throw new Error('Only a Timon window of this computer reads its Dock icon.');
+    return process.platform === 'darwin' ? { icon: readDockIcon(desktopHome) } : null;
+  });
+  ipcMain.handle(DOCK_ICON_CHANNELS.set, (event, input: unknown) => {
+    const caller = senderPage(event);
+    if (!caller || !localPage(caller) || !canReadAppInfo(senderOf(event), caller.record.origin)) throw new Error('Only a Timon window of this computer chooses its Dock icon.');
+    if (process.platform !== 'darwin') throw new Error('The Dock icon is a macOS setting.');
+    const icon = parseDockIconRequest(input);
+    if (!icon) throw new Error('Unknown Dock icon.');
+    if (!applyDockIcon(icon)) throw new Error('The Dock icon could not be loaded.');
+    if (!writeDockIcon(desktopHome, icon)) throw new Error('The Dock icon choice could not be saved.');
+    return { icon };
   });
 
   // A page opens one of its routes in a new window (V5): a route and the

@@ -1067,6 +1067,13 @@
     "mascotsStyle2dHint": "平面のイラスト。古いパソコンでも軽く動きます。",
     "mascotsStyleNoWebgl": "このブラウザーは 3D で描画できません（WebGL2 がオフか未対応）。マスコットは 2D で表示されます。",
     "mascotsStyleShared": "すべてのマスコットに適用されます。あとから「{settingsPath}」で変更できます。",
+    "dockIconTitle": "Dock のアイコン",
+    "dockIconHint": "アプリの実行中に macOS が Dock に表示する Timon のアイコンです。Finder と起動前の Dock ではクラシックのままです。",
+    "dockIconClassic": "クラシック",
+    "dockIconClassicHint": "Timon のカラー。",
+    "dockIconDark": "ダーク",
+    "dockIconDarkHint": "白黒。",
+    "dockIconError": "Dock のアイコンを変更できませんでした。",
     "variants": {
       "coral": {
         "name": "コーラル",

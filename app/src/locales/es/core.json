@@ -1067,6 +1067,13 @@
     "mascotsStyle2dHint": "El dibujo plano, más ligero para ordenadores antiguos.",
     "mascotsStyleNoWebgl": "Este navegador no puede dibujar en 3D (WebGL2 está desactivado o no existe): las mascotas se dibujan en 2D.",
     "mascotsStyleShared": "Se aplica a todas las mascotas. Puedes cambiarlo más tarde en {settingsPath}.",
+    "dockIconTitle": "Icono del Dock",
+    "dockIconHint": "El icono que macOS muestra para Timon en el Dock mientras la app está abierta. El Finder y el Dock antes del inicio conservan el clásico.",
+    "dockIconClassic": "Clásico",
+    "dockIconClassicHint": "Los colores de Timon.",
+    "dockIconDark": "Oscuro",
+    "dockIconDarkHint": "En blanco y negro.",
+    "dockIconError": "No se pudo cambiar el icono del Dock.",
     "variants": {
       "coral": {
         "name": "Coral",
