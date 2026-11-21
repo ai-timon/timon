@@ -131,6 +131,7 @@ Not to be confused with `ctx.mcp`, which hands an agent on another machine Timon
 - You change or remove only the servers you declared. Servers Timon injects, connectors discovered by the harness and servers added by a person stay out of reach.
 - Secrets are always read back masked (`***`), a superadmin's request included. Writing the masked value back keeps the stored secret as long as the server still points at the same place; if its URL changed, the write is refused.
 - OAuth sign-in is a step with the user in the browser: it is never written through this API.
+- You can write a `get` result back after changing a field. `put` ignores what the host stamps or observes (`id`, `mine`, `createdBy`, `source`, `last_status`, `last_seen_at`, `tools_cache`, `tools_cached_at`, `public_only`, `app_slug`). Any other unknown key is still `invalid`, so a misspelt field is not swallowed. Forged OAuth state in a transport is still refused. A server of another kind (an `external` transport) cannot be written.
 
 ## Backends
 

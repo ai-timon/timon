@@ -440,6 +440,9 @@ test('a plugin Kanban applies the same guards as POST /api/tasks', async () => {
   assert.ok(created.id);
   const listed = await plugin.kanban.list({ status: 'PENDING' }) as { id: string }[];
   assert.ok(listed.some((t) => t.id === created.id));
+  const several = await plugin.kanban.list({ status: ['BLOCKED', 'PENDING'] }) as { id: string }[];
+  assert.ok(several.some((t) => t.id === created.id), 'a list of statuses reaches the facade');
+  await assert.rejects(() => plugin.kanban.list({ status: [] }), /at least one/);
   await root.fiber.dispose();
 });
 

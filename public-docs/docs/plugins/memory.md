@@ -33,6 +33,8 @@ await ctx.memory.show('agent', 'support.bot')              // the memory files
 await ctx.memory.show('agent', 'support.bot', 'notes.md')  // { name, content }
 ```
 
+`show` is read-only, and there is no call that writes an agent's memory files back. What reaches an agent as live memory is a rule, so to restore what an export carried (for instance an agent's learnings), write each fact as a rule with `rules.add` on that agent's scope.
+
 ## Who acts
 
 - **In a request** (a route, a webhook or a callback of a user): the account needs `agents:read` or `agents:manage` to read and `agents:manage` to write — the same floor as agent memory in the app — in addition to your manifest permission. Otherwise the call fails with `PluginCallerError`. An anonymous request is refused.

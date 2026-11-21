@@ -35,7 +35,7 @@ A task without `mirror` is an ordinary task: it is handed to its agent as soon a
 | Call | What it does |
 | --- | --- |
 | `ctx.kanban.get(id)` | One task with its `links`; `undefined` when unknown or not yours to see |
-| `ctx.kanban.list({ status, project, mirror, limit })` | Tasks you may see |
+| `ctx.kanban.list({ status, project, mirror, limit })` | Tasks you may see. `status` is one value or a list (`['PENDING', 'BLOCKED']`): a task matching any is returned once, and an empty list is `invalid` |
 | `ctx.kanban.add(task)` | Create. Accepts the options of the `kanban_add` tool: `model`, `backend`, `permissionMode`, `fallbackBackend`, `fallbackModel`, `base`, `pipeline`, `extraSkills`, `extraMcp`, `extraAllowedTools` |
 | `ctx.kanban.ensure(task, links)` | Create the task unless one of `links` already points at a task you see; returns `{ task, created }` |
 | `ctx.kanban.update(id, patch)` | Title, description, priority, dependencies, date, `status`, `agent`, `type` |
@@ -51,6 +51,14 @@ Overrides are checked against the agent the task is assigned to: your plugin can
 Failures throw a `PluginTaskError` whose `code` is `invalid`, `not_found`, `conflict` or `forbidden`; a `conflict` may carry a `reason` (`task_state`, `task_dependents`, `crash_loop`…).
 
 A task that runs starts a mission. When your plugin creates one (`add`, `ensure`, `todos.promote`) or puts one back in the queue from a background job, a webhook handler or an event handler (`ctx.events.on`), it needs the operator's approval and counts against the same quota as `ctx.missions.spawn` (`pluginPolicy.spawn`, see [Permissions](permissions.md)). Until then the call throws a `forbidden` error (`PluginTaskError`, or the TO DO error for `todos.promote`) with `reason: 'spawn_policy'` and the operator sees a card asking for the approval. Tell your user the task is waiting rather than retrying in a loop. A mirror task, and a task created in a request by a signed-in user, are not concerned.
+
+## The shape of a task
+
+A task you read (`get`, `list`, and the task of a `task_updated` event) uses `snake_case` field names: `agent_name`, `created_at`, `updated_at`, `blocked_reason`, `done_comment`, `owner_user_id`. Write calls (`add`, `ensure`, `update`) take `camelCase` options (`scheduledAt`, `groupId`). The two are not the same object, so do not forward a read task to a write call.
+
+Dependencies differ in the same way. On a task you read, `deps` is a **string**: a JSON array of task ids, as the board stores it (`'["a1","b2"]'`, `'[]'` for none). Parse it with `JSON.parse`. On a write, `deps` is a plain `string[]`. Read one name for the field, `deps`; there is no `dependencies` or `dependsOn`.
+
+The casing is part of the current contract and does not vary between SDK versions. Agents, teams and memory rules, by contrast, use `camelCase` on read. A future version may align the two; that would be announced as a change of the contract version.
 
 ## What you see and what you may write
 

@@ -356,16 +356,25 @@ export function tasksFor(scope: TaskCallerScope): ScopedTasks {
     },
 
     list(filter = {}) {
-      if (filter.status !== undefined && !(ALL_STATUSES as readonly string[]).includes(normalizeTaskStatusInput(filter.status))) {
-        throw new PluginTaskError('invalid', `invalid status \`${String(filter.status)}\``);
-      }
-      const status = filter.status === undefined ? undefined : normalizeTaskStatusInput(filter.status) as TaskRow['status'];
+      // One status or several: a task matching any of them comes back once. An
+      // empty list is refused rather than read as "no filter", which would
+      // answer the whole board.
+      const wanted = filter.status === undefined ? [undefined] : (Array.isArray(filter.status) ? filter.status : [filter.status]);
+      if (wanted.length === 0) throw new PluginTaskError('invalid', 'status needs at least one value');
+      const statuses = wanted.map((raw) => {
+        if (raw === undefined) return undefined;
+        const status = normalizeTaskStatusInput(raw);
+        if (!(ALL_STATUSES as readonly string[]).includes(status)) throw new PluginTaskError('invalid', `invalid status \`${String(raw)}\``);
+        return status as TaskRow['status'];
+      });
       const seen = new Map<string, TaskRow>();
-      for (const t of scoped.listTasks(status)) seen.set(t.id, t);
-      if (granted.size > 0) {
-        for (const t of dbApi.listTasks(status)) {
-          const project = projectOf(t);
-          if (project !== null && granted.has(project)) seen.set(t.id, t);
+      for (const status of statuses) {
+        for (const t of scoped.listTasks(status)) seen.set(t.id, t);
+        if (granted.size > 0) {
+          for (const t of dbApi.listTasks(status)) {
+            const project = projectOf(t);
+            if (project !== null && granted.has(project)) seen.set(t.id, t);
+          }
         }
       }
       let rows = [...seen.values()];

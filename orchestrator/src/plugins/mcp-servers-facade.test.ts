@@ -104,6 +104,18 @@ test('writing back a masked secret keeps the stored one, and is refused if the s
   await dispose();
 });
 
+test('a server read with get is written back as is; a real unknown key still fails', async () => {
+  const { plugin, dispose } = await pluginWith(BOTH);
+  await as(manager, () => plugin.mcpServers.put('echoed', http('https://mcp.acme.test/sse', { Authorization: 'Bearer real' })));
+  const read = (await as(manager, () => plugin.mcpServers.get('echoed')))!;
+  assert.ok('mine' in read && 'createdBy' in read, 'the read shape carries host fields');
+  await as(manager, () => plugin.mcpServers.put('echoed', { ...read, description: 'edited' } as never));
+  assert.equal(getMcp('echoed')!.description, 'edited');
+  assert.deepEqual(await sentHeaders('echoed'), { Authorization: 'Bearer real' }, 'the masked header kept the stored secret');
+  await assert.rejects(as(manager, () => plugin.mcpServers.put('echoed', { ...http('https://mcp.acme.test/sse'), nmae: 'typo' } as never)), code('invalid'));
+  await dispose();
+});
+
 test('a stdio server is a superadmin\'s request, never a job or an ordinary manager, and its binary obeys host:exec', async () => {
   const { plugin, dispose } = await pluginWith(BOTH);
   const stdio = (command: string) => ({ transport: { type: 'stdio' as const, command, args: ['x.js'] } });
@@ -197,11 +209,11 @@ test('a job lists and reads only what it declared; a request sees what the page 
   await dispose();
 });
 
-test('the input is strict: no oauth, no unknown field, a valid id', async () => {
+test('the input is strict: no oauth, no unknown field (a read-only one is ignored, not refused), a valid id', async () => {
   const { plugin, dispose } = await pluginWith(BOTH);
   const withOauth = { transport: { type: 'http', url: 'https://mcp.acme.test/sse', oauth: { tokens: { access_token: 'forged' } } } };
   await assert.rejects(as(manager, () => plugin.mcpServers.put('strict-a', withOauth as never)), code('invalid'));
-  await assert.rejects(as(manager, () => plugin.mcpServers.put('strict-a', { ...http(), createdBy: 'x' } as never)), code('invalid'));
+  await assert.rejects(as(manager, () => plugin.mcpServers.put('strict-a', { ...http(), owner: 'x' } as never)), code('invalid'));
   await assert.rejects(as(manager, () => plugin.mcpServers.put('strict-a', { transport: { type: 'external', claude_key: 'x' } } as never)), code('invalid'));
   for (const id of ['', 'UPPER', 'a/b', '../x', 'x'.repeat(101)]) {
     await assert.rejects(as(manager, () => plugin.mcpServers.put(id, http())), code('invalid'), id);

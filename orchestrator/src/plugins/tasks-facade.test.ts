@@ -100,6 +100,21 @@ test('an authorised caller creates, reads, edits and lists its task', async () =
   await dispose();
 });
 
+test('list takes one status or several: a task comes back once, an empty or unknown list is invalid', async () => {
+  const { plugin, dispose } = await pluginWith(['kanban:read', 'kanban:write']);
+  const pending = await asAda(() => plugin.kanban.add({ title: 'multi-a', agent: 'worker' }));
+  const blocked = await asAda(() => plugin.kanban.add({ title: 'multi-b', agent: 'worker', mirror: true } as never));
+  await asAda(() => plugin.kanban.block(blocked.id, 'waiting'));
+  const ids = (await asAda(() => plugin.kanban.list({ status: ['PENDING', 'BLOCKED', 'PENDING'] }))).map((t) => t.id);
+  assert.ok(ids.includes(pending.id) && ids.includes(blocked.id));
+  assert.equal(new Set(ids).size, ids.length, 'no task twice');
+  const only = (await asAda(() => plugin.kanban.list({ status: ['BLOCKED'] }))).map((t) => t.id);
+  assert.ok(only.includes(blocked.id) && !only.includes(pending.id));
+  await assert.rejects(asAda(() => plugin.kanban.list({ status: [] })), { code: 'invalid' });
+  await assert.rejects(asAda(() => plugin.kanban.list({ status: ['PENDING', 'NOPE'] })), { code: 'invalid' });
+  await dispose();
+});
+
 test('a missing permission is refused before anything is read or written', async () => {
   const reader = await pluginWith(['kanban:read']);
   const before = taskCount();

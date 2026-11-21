@@ -1383,10 +1383,10 @@ export function createPluginContext(
       },
       async list(filter: PluginTaskFilter = {}): Promise<PluginTask[]> {
         assert('kanban:read');
-        if (filter.project !== undefined || filter.mirror !== undefined || filter.limit !== undefined) {
+        if (filter.project !== undefined || filter.mirror !== undefined || filter.limit !== undefined || Array.isArray(filter.status)) {
           return tasks('kanban:read').list(filter);
         }
-        return host.kanban.list(filter.status, taskScope()) as PluginTask[];
+        return host.kanban.list(filter.status as string | undefined, taskScope()) as PluginTask[];
       },
       async get(taskId: string): Promise<PluginTask | undefined> { return tasks('kanban:read').get(taskId); },
       async ensure(task: PluginTaskInput, links: readonly PluginTaskLinkInput[]) {

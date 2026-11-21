@@ -73,6 +73,23 @@ What each one means:
 
 Handle them as invalidations: reload what you show, and expect several in a burst.
 
+### Why signals are bare
+
+Both limits are deliberate, not gaps to work around:
+
+- **Only identifiers.** A signal is delivered outside any request, so no account stands behind it. Reading the object back would show it to a plugin that has no right to see it, so the read answers as a background job: only what your plugin owns. To label a finished mission or a blocked task with its agent and title, listen to `task_updated` (with `kanban:read`), which carries the task, and keep a small `missionId` to agent map.
+- **Every account.** A host-half signal does not know which account it belongs to, so it reaches the plugin for all of them. Treat it as "something changed", never as "something changed for this person". If your plugin drives something shared, such as a device on a desk, decide on your side whose activity it may show.
+
+If either limit blocks your plugin, describe the use case in a feature request; it needs a decision on privacy, not just an option.
+
+## Order
+
+- **Inside one family**, handlers run one at a time per plugin, in the order the events happened. A handler that awaits finishes before the next event of that family starts. The families are the mission, task, question, TO DO, agent, project, memory, automation, UI document and browser events, each with its own queue.
+- **Between families, nothing is guaranteed.** `task_blocked` and `task_updated` (or a signal and a detail event) can reach you in either order, and an event of one family can overtake a slower handler of another. There is no sequence number.
+- **Between a signal and a detail event** the order is not guaranteed either, even though the two come from the same change.
+
+So do not build a state machine that depends on one event arriving before another. Treat each event as "this object changed", then read the current state (`ctx.kanban.get`, `ctx.missions.get`) or keep the newest value by its own timestamp, such as `updated_at` on a task. A state rebuilt from the latest read cannot go stale when two events swap places.
+
 ## Handlers that fail
 
 A handler that throws or rejects is your plugin's own failure: the daemon logs it under your plugin's id, the other listeners of the event still run, and the write that caused the event is not affected ([Manifest](manifest.md)). Catch what you can recover from.
