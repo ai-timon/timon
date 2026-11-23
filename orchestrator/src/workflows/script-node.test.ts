@@ -9,7 +9,7 @@ import '../../tests/helpers/paid-license.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +19,7 @@ import type { RequestAuth } from '../users/identity.js';
 
 const { dbApi } = await import('../db.js');
 const { agentDir } = await import('../paths.js');
-const { createRun } = await import('./engine.js');
+const { createRun, reconcile } = await import('./engine.js');
 const { describeWorkflowError } = await import('./schema.js');
 const { proposeWorkflow } = await import('./proposals.js');
 const { assertScriptNodesAllowed, changedScriptNodes, pinWorkflowScripts, scriptNodeDenied } = await import('./nodes/script.js');
@@ -219,4 +219,39 @@ test('an agent may propose a script node; only a person accepts it', async () =>
   const byPerson = await call('POST', `/api/workflows/${workflow}/proposals/${proposal.id}/accept`, 'admin');
   assert.equal(byPerson.status, 200, byPerson.body.error);
   assert.match(dbApi.getWorkflow(workflow)!.draft, /"script"/);
+});
+
+test('reconciliation waits for a running script and records its result once', async () => {
+  const dir = mkdtempSync(join(markers, 'running-'));
+  const ready = join(dir, 'starts');
+  const release = join(dir, 'release');
+  const job = scriptNode('job', ready);
+  const program = [
+    "const fs = require('node:fs');",
+    "fs.appendFileSync(process.argv[1], 'started\\n');",
+    "const timer = setInterval(() => {",
+    "  if (fs.existsSync(process.argv[2])) { clearInterval(timer); console.log(JSON.stringify({ ok: true })); }",
+    "}, 20);",
+  ].join('\n');
+  job.config.args = ['-e', program, ready, release];
+  const def = definition([job]);
+  const id = createRun(seed(scripter.id, def, def), { trigger: { kind: 'manual' } }).id;
+  try {
+    const deadline = performance.now() + 8_000;
+    while (!existsSync(ready)) {
+      assert.ok(performance.now() < deadline, 'script did not start');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await reconcile();
+    await reconcile();
+    const rows = dbApi.listWorkflowRunNodes(id).filter((row) => row.node_id === 'job');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.status, 'running');
+  } finally {
+    writeFileSync(release, 'done');
+  }
+  const { run, node } = await settle(id);
+  assert.equal(run.status, 'completed');
+  assert.deepEqual(JSON.parse(node.output!), { ok: true });
+  assert.equal(readFileSync(ready, 'utf8'), 'started\n');
 });
