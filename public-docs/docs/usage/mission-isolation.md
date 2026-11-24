@@ -11,7 +11,8 @@ A mission is a coding CLI that Timon starts on your computer, under your own ope
 | Linux, kernel 6.12 or later, with Landlock | Yes | Full fence. |
 | Linux, kernel 5.19 to 6.11, with Landlock | Yes, partly | Full fence, except that a mission can send signals to your other programs (stop them, for example). From 5.19 to 6.1, it can also empty a file it cannot read: it cannot read the content, but it can destroy it. |
 | macOS | Yes | Full fence, except the system services listed below. |
-| Linux without Landlock (kernel older than 5.19, or Landlock turned off in the kernel) | No | A mission can read Timon's private files. |
+| Linux without Landlock (kernel older than 5.19, or Landlock turned off in the kernel), with unprivileged user namespaces | Yes | The fence is built with Linux namespaces instead: Timon's private files are hidden and your home folder is read-only. |
+| Linux with neither Landlock nor unprivileged user namespaces | No | Timon refuses missions, even in Automatic mode (see below). |
 | Windows | No | A mission can read Timon's private files. |
 
 Most current Linux distributions ship a kernel with Landlock turned on. `timon doctor` and **Settings › System › Security** say which case applies to your computer, and why when missions are not fenced.
@@ -44,7 +45,7 @@ The fence protects Timon and your computer from a mission. It does not make what
 
 **Settings › System › Security** (superadmin only) shows whether the protection is active, and sets the **Mode**:
 
-- **Automatic**, the default: missions are fenced where this computer can do it. Elsewhere they start anyway, and the tab and `timon doctor` warn that they are not fenced.
+- **Automatic**, the default: missions are fenced where this computer can do it. Elsewhere they start anyway, and the tab and `timon doctor` warn that they are not fenced. One exception: a Linux kernel with neither Landlock nor unprivileged user namespaces offers no fence at all, and Timon refuses missions there until the kernel allows one of them, or until you choose **Off**.
 - **Required**: Timon refuses to start a mission it cannot fence. The chat says why, and a Kanban task is blocked with the same reason.
 - **Off**: missions are never fenced. Timon asks you to confirm.
 
@@ -81,6 +82,6 @@ Inside the fence your home folder is read-only, including the caches of npm and 
 
 Covered: `npx`, `pnpm dlx` and `uvx`. Not covered: `yarn dlx`, `bunx`, Deno's `npm:` packages, and the Python versions uv would have to download. They can fail inside the fence; adding their cache folder as writable for that agent is the way around it.
 
-## Windows, and Linux without Landlock
+## Windows
 
 There, missions run with your full account, as before: a mission can read Timon's private files, including the operator token and the vault key. On a computer only you use, that matches what a CLI started in your own terminal can do. On an installation with several accounts, it means anyone who may start missions can reach more than their permissions allow: set the mode to **Required**, so that such a computer refuses missions, or give the **Spawn missions** permission only to people you would trust with the whole installation. Separating people for real then takes separate operating-system accounts, or separate computers.

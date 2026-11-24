@@ -16,8 +16,8 @@ The address of an account invited or created from the Team page is not confirmed
 
 Every mission runs under the same operating-system account as Timon itself, whoever started it. Permissions decide what a person may do through Timon's screens, commands and tools; against the files of the machine, what protects Timon is the [mission isolation](mission-isolation.md), and it depends on the system:
 
-- **Linux with Landlock (kernel 5.19 or later) and macOS**: each mission runs inside a fence the operating system enforces. It cannot read Timon's private files, such as the operator's credentials or the key of the secrets vault, nor the folders of other agents and missions.
-- **Windows, and Linux without Landlock**: there is no fence. A mission an account starts can read Timon's data folder, including the operator's credentials and the key of the secrets vault, so anyone who may start missions can reach more than their own permissions allow.
+- **Linux with Landlock (kernel 5.19 or later) or with unprivileged user namespaces, and macOS**: each mission runs inside a fence the operating system enforces. It cannot read Timon's private files, such as the operator's credentials or the key of the secrets vault, nor the folders of other agents and missions.
+- **Windows**: there is no fence. A mission an account starts can read Timon's data folder, including the operator's credentials and the key of the secrets vault, so anyone who may start missions can reach more than their own permissions allow. A Linux kernel that offers neither Landlock nor unprivileged user namespaces refuses missions.
 
 On an installation with several accounts, set the isolation mode to **Required** (**Settings › System › Security**, or `host.isolation.filesystem` set to `enforce`): a computer that cannot fence a mission then refuses to start it, instead of starting it unfenced. Where missions cannot be fenced, give the **Spawn missions** permission (`missions:spawn`) only to people you would trust with the whole installation.
 
