@@ -37,15 +37,36 @@ export function ensureSpawnHelperExecutable(moduleDir: string, platform: NodeJS.
   }
 }
 
+/**
+ * Why node-pty's own build did not load, when it exists. node-pty tries
+ * `build/Release` first, then its prebuilds, and reports only the last
+ * failure: on Linux, where the build is the artefact, the message then names
+ * a missing prebuild while the real cause (a glibc too old for the binary,
+ * an ABI mismatch) stays hidden.
+ */
+export function builtArtefactFailure(moduleDir: string, load: (file: string) => unknown): string | null {
+  const built = join(moduleDir, 'build', 'Release', 'pty.node');
+  if (!existsSync(built)) return null;
+  try {
+    load(built);
+    return null;
+  } catch (err) {
+    return `${built}: ${(err as Error).message}`;
+  }
+}
+
 /** node-pty, or null when its native binary does not load on this host. */
 export function loadNodePty(): NodePty | null {
   if (nodePty !== undefined) return nodePty;
+  const req = createRequire(import.meta.url);
+  let moduleDir: string | null = null;
   try {
-    const req = createRequire(import.meta.url);
-    ensureSpawnHelperExecutable(dirname(req.resolve('node-pty/package.json')));
+    moduleDir = dirname(req.resolve('node-pty/package.json'));
+    ensureSpawnHelperExecutable(moduleDir);
     nodePty = req('node-pty') as NodePty;
   } catch (err) {
-    console.warn('[terminal-web] node-pty unavailable:', (err as Error).message);
+    const built = moduleDir ? builtArtefactFailure(moduleDir, (file) => req(file)) : null;
+    console.warn('[terminal-web] node-pty unavailable:', built ?? (err as Error).message);
     nodePty = null;
   }
   return nodePty;

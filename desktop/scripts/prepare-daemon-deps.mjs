@@ -33,6 +33,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertEntriesResolve } from './entry-resolve.mjs';
+import { assertGlibcFloor } from './glibc-floor.mjs';
 import { bundledNodeExecutable, fetchNode, nodeRuntimeSpec } from './fetch-node.mjs';
 import { SHELL_LOCALES_BUILD, copyShellLocales } from './shell-locales.mjs';
 
@@ -152,6 +153,9 @@ function copyFilter(src) {
 /** Loads an artefact exactly as the packaged runtime will. Exit code 0 from
  *  the rebuild is not proof; only the shipped Node can tell the ABI. */
 function loadUnderRuntime(artefact) {
+  // Loading proves the ABI, on this machine's glibc only: the versions the
+  // artefact recorded say whether the systems the package promises can load it.
+  if (process.platform === 'linux') assertGlibcFloor(artefact);
   const node = bundledNodeExecutable();
   execFileSync(node, ['-e', `require(${JSON.stringify(artefact)})`], { stdio: 'inherit', env: runtimeEnv(node) });
 }

@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 const { TerminalSessions } = await import('../../terminal-host/sessions.js');
-const { ensureSpawnHelperExecutable, loadNodePty, nodePtySpawner, ptySpawnOptions } = await import('../../terminal-host/pty.js');
+const { builtArtefactFailure, ensureSpawnHelperExecutable, loadNodePty, nodePtySpawner, ptySpawnOptions } = await import('../../terminal-host/pty.js');
 const { defaultCwd, resolveShell, shellEnv } = await import('./shell.js');
 const { chmodSync, mkdirSync, mkdtempSync, statSync, writeFileSync } = await import('node:fs');
 const { join } = await import('node:path');
@@ -74,4 +74,15 @@ test('TODO #440: Windows terminals use the ConPTY node-pty ships, other platform
   for (const platform of ['linux', 'darwin'] as const) {
     assert.equal('useConptyDll' in ptySpawnOptions(opts, platform), false, platform);
   }
+});
+
+test('the failure of node-pty\'s own build is reported, not the prebuild tried after it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pty-built-'));
+  assert.equal(builtArtefactFailure(dir, () => { throw new Error('never called'); }), null, 'no build: nothing to report');
+  mkdirSync(join(dir, 'build', 'Release'), { recursive: true });
+  writeFileSync(join(dir, 'build', 'Release', 'pty.node'), '');
+  const glibc = "/lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.42' not found";
+  const reason = builtArtefactFailure(dir, () => { throw new Error(glibc); });
+  assert.equal(reason, `${join(dir, 'build', 'Release', 'pty.node')}: ${glibc}`);
+  assert.equal(builtArtefactFailure(dir, () => ({})), null, 'a build that loads: the cause is elsewhere');
 });
