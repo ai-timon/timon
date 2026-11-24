@@ -14,6 +14,9 @@ export type ScopedMcpServers = {
 export type OAuthClient = {
   client_id: string;
   client_secret?: string;
+  /** The scope the client was registered with (`McpHttpConfig.oauth_scope`), so
+   *  a later change of that setting registers a new client. */
+  scope?: string;
 };
 
 export type OAuthMetadata = {
@@ -96,6 +99,12 @@ export type McpHttpConfig = {
   type: 'http';
   url: string;
   headers?: Record<string, string>;
+  /**
+   * Scopes to request, space separated, for a provider that refuses the full
+   * `scopes_supported` list. Used both when registering the client and in the
+   * authorization URL. Absent: every advertised scope. Empty string: none.
+   */
+  oauth_scope?: string;
   /**
    * OAuth state for this server. Populated by the /api/mcp/:id/oauth/* routes.
    * When present, a launch hands the CLI the daemon's relay instead of the

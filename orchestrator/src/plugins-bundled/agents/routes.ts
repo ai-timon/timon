@@ -27,7 +27,7 @@ import { browseAgentFiles, deleteAgentPath, mkdirAgentPath, moveAgentPath, openA
 import { sendMedia } from '../../media-send.js';
 import { handleSpawn } from '../../http-helpers.js';
 import { defaultExcludedMcpIds, deleteMcp, getMcp, listMcp, missionTransport, presentMcpServer, redactMcpServer, setMcpOAuth, type McpHttpConfig, type McpStdioConfig, upsertMcp } from '../../mcp.js';
-import { buildAuthorizeUrl, discoverOAuth, dynamicRegister, exchangeCode, OAUTH_CALLBACK_PATH, oauthRedirectUri, oauthReturnPath, pkcePair, putPending, randomState, takePending } from '../../oauth.js';
+import { buildAuthorizeUrl, discoverOAuth, dynamicRegister, exchangeCode, OAUTH_CALLBACK_PATH, oauthRedirectUri, oauthReturnPath, pkcePair, planOAuthClient, putPending, randomState, takePending } from '../../oauth.js';
 import { apiPort } from '../../api-url.js';
 import { agentDir, skillFile } from '../../paths.js';
 import { findAgentFolder, isValidAgentName } from '../../agent-config.js';
@@ -1902,8 +1902,11 @@ export function registerRoutes(app: express.IRouter): void {
       const metadata = s.transport.oauth?.metadata ?? await discoverOAuth(s.transport.url);
       // A client registered under another redirect URI (the old default, a
       // changed port or public URL) would be refused at the publisher: register again.
-      const saved = s.transport.oauth?.redirect_uri === redirectUri ? s.transport.oauth?.client : undefined;
-      const client = saved ?? await dynamicRegister(metadata, redirectUri);
+      // The same goes for a client registered with another explicit scope.
+      const stored = s.transport.oauth?.redirect_uri === redirectUri ? s.transport.oauth?.client : undefined;
+      const plan = planOAuthClient(s.transport.oauth_scope, metadata, stored);
+      const scope = plan.scope;
+      const client = plan.reuse ?? await dynamicRegister(metadata, redirectUri, undefined, plan.registerScope);
       const { verifier, challenge } = pkcePair();
       const state = randomState();
       // Capture where the user came from so the post-callback bounce lands on
@@ -1923,7 +1926,6 @@ export function registerRoutes(app: express.IRouter): void {
       // wipe them and so subsequent retries skip discovery/registration.
       setMcpOAuth(id, { metadata, client, redirect_uri: redirectUri,
         tokens: s.transport.oauth?.tokens });
-      const scope = (metadata.scopes_supported || []).join(' ') || undefined;
       const authorize_url = buildAuthorizeUrl(metadata, client, redirectUri, state, challenge, scope);
       res.json({ authorize_url });
     } catch (err) {

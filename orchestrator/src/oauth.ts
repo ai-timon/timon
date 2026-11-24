@@ -211,6 +211,7 @@ export async function dynamicRegister(
   metadata: OAuthMetadata,
   redirectUri: string,
   clientName = 'TIMON',
+  scope?: string,
 ): Promise<OAuthClient> {
   if (!metadata.registration_endpoint) {
     throw new Error('authorization server does not support dynamic client registration');
@@ -224,6 +225,8 @@ export async function dynamicRegister(
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none', // public client + PKCE
+      // RFC 7591 §2: some providers only grant, at authorization, the scopes the client registered.
+      ...(scope ? { scope } : {}),
     }),
   });
   if (!r.ok) {
@@ -233,7 +236,29 @@ export async function dynamicRegister(
   const j = (await r.json()) as Record<string, unknown>;
   const client_id = j.client_id;
   if (typeof client_id !== 'string') throw new Error('registration response missing client_id');
-  return { client_id, client_secret: typeof j.client_secret === 'string' ? j.client_secret : undefined };
+  return {
+    client_id,
+    client_secret: typeof j.client_secret === 'string' ? j.client_secret : undefined,
+    ...(scope ? { scope } : {}),
+  };
+}
+
+/**
+ * The scope to request and the client to reuse. An explicit `oauth_scope`
+ * ('' = none) wins over the advertised list, and a client registered with
+ * another scope is not reused: the publisher would refuse the new one.
+ */
+export function planOAuthClient(
+  explicitScope: string | undefined,
+  metadata: OAuthMetadata,
+  stored: OAuthClient | undefined,
+): { scope: string | undefined; reuse: OAuthClient | undefined; registerScope: string | undefined } {
+  const explicit = explicitScope?.trim();
+  if (explicit === undefined) {
+    return { scope: (metadata.scopes_supported || []).join(' ') || undefined, reuse: stored, registerScope: undefined };
+  }
+  const scope = explicit || undefined;
+  return { scope, reuse: stored && (stored.scope ?? '') === explicit ? stored : undefined, registerScope: scope };
 }
 
 export function buildAuthorizeUrl(
