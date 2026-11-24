@@ -18,6 +18,8 @@ The board uses four statuses:
 
 A task stored with any other status (left by an older version, for example `CANCELLED`) is listed in the **Done** column; the stored value is not changed.
 
+Moving a task to **Done** or **Blocked** updates its card immediately. The assigned agent can finish its current response. To interrupt that response immediately, use **Stop** in the mission.
+
 `PENDING` used to be called `TODO`. The old name is still accepted on input
 (API, CLI, MCP) as a **deprecated** alias, and is never returned in a response.
 Update your scripts: the board's idea column is named "TO DO", and only the

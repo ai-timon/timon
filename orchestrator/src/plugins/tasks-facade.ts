@@ -488,7 +488,7 @@ export function tasksFor(scope: TaskCallerScope): ScopedTasks {
       return asPlugin(() => {
         if (status && status !== task.status) {
           if (status === 'DONE' || status === 'BLOCKED') {
-            closeTask(task.id, task, status, status === 'DONE'
+            closeTask(scoped.getTask, task.id, task, status, status === 'DONE'
               ? { doneComment: task.done_comment ?? 'closed from an external system' }
               : { blockedReason: task.blocked_reason ?? 'blocked from an external system' });
           } else {
@@ -537,7 +537,7 @@ export function tasksFor(scope: TaskCallerScope): ScopedTasks {
           dbApi.setTaskMergedSha(task.id, input.mergedSha);
           task.merged_commit_sha = input.mergedSha;
         }
-        closeTask(task.id, task, 'DONE', { doneComment: input.comment.trim(), summary: input.summary?.trim() || undefined });
+        closeTask(scoped.getTask, task.id, task, 'DONE', { doneComment: input.comment.trim(), summary: input.summary?.trim() || undefined });
         return view(scoped.getTask(task.id)!);
       });
     },
@@ -547,7 +547,7 @@ export function tasksFor(scope: TaskCallerScope): ScopedTasks {
       const task = writable(id);
       if (!nonBlank(reason)) throw new PluginTaskError('invalid', 'a reason is required to mark a task as blocked');
       return asPlugin(() => {
-        closeTask(task.id, task, 'BLOCKED', { blockedReason: reason.trim() });
+        closeTask(scoped.getTask, task.id, task, 'BLOCKED', { blockedReason: reason.trim() });
         return view(scoped.getTask(task.id)!);
       });
     },

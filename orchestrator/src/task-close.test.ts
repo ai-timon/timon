@@ -20,16 +20,17 @@ import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
-import { getHost } from './host/index.js';
 
 // french-ok-file: French sample comments and reasons the test feeds in
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-task-close-test-'));
 
 const { dbApi } = await import('./db.js');
+const { getHost } = await import('./host/index.js');
 const { parseReviewVerdict } = await import('./review-verdict.js');
 const { registerRoutes, CLOSED_TASK_STOP_DELAY_MS } = await import('./plugins-bundled/kanban/routes.js');
 const { bus } = await import('./bus.js');
+const graceElapsed = () => new Promise((resolve) => setTimeout(resolve, CLOSED_TASK_STOP_DELAY_MS + 100));
 
 /** A dispatched task: a running mission, the task attached to it. */
 function dispatched(type: 'code' | 'review' | 'merge' | 'chore' = 'chore') {
@@ -272,13 +273,15 @@ async function until(check: () => boolean, label: string, ms = CLOSED_TASK_STOP_
 }
 
 for (const method of ['POST', 'PUT'] as const) {
-  test(`${method}: the answer goes out before the agent's process is stopped, and it is stopped once`, async () => {
+  test(`${method}: closure waits for the final result and completes the mission once`, async () => {
     // The agent closes through a stdio MCP server, child of its own process:
     // stopped in the same tick, it never relayed the answer ("Connection closed").
     const { missionId, taskId } = dispatched();
-    let completions = 0;
+    const completions: boolean[] = [];
     const onEvent = (ev: { kind: string; missionId?: string }) => {
-      if (ev.kind === 'mission_complete' && ev.missionId === missionId) completions += 1;
+      if (ev.kind === 'mission_complete' && ev.missionId === missionId) {
+        completions.push(dbApi.missionTurnEnded(missionId));
+      }
     };
     bus.on('event', onEvent);
     try {
@@ -297,13 +300,35 @@ for (const method of ['POST', 'PUT'] as const) {
         // A retried close (the very symptom) must not schedule a second stop.
         if (method === 'POST') assert.equal((await closeOnce()).status, 200);
         else await close(base, { outcome: 'done', id: taskId, comment: 'livré' });
-        await until(() => dbApi.getMission(missionId)?.status !== 'running', 'the mission is stopped');
+        await graceElapsed();
+        assert.equal(dbApi.getMission(missionId)?.status, 'running', 'the turn outlives the MCP response grace period');
+        dbApi.insertEvent(missionId, 'result', { type: 'result', subtype: 'success' });
+        bus.publish({ kind: 'turn_complete', missionId });
+        await until(() => dbApi.getMission(missionId)?.status !== 'running', 'the mission is stopped after the result');
         assert.equal(dbApi.getMission(missionId)?.status, 'terminated');
-        await new Promise((r) => setTimeout(r, CLOSED_TASK_STOP_DELAY_MS + 100));
-        assert.equal(completions, 1, 'mission_complete still starts the pipeline, once');
+        await graceElapsed();
+        assert.deepEqual(completions, [true], 'the persisted result precedes the single pipeline signal');
       });
     } finally {
       bus.off('event', onEvent);
     }
   });
 }
+
+test('a blocked task waits through a provisional result, and a reopen cancels the stop', async () => {
+  const { missionId, taskId } = dispatched();
+  await withApi(async (base) => {
+    const r = await close(base, { outcome: 'failed', reason: 'Missing input' }, missionId);
+    assert.equal(r.status, 200);
+    assert.equal(dbApi.getTask(taskId)?.status, 'BLOCKED');
+    dbApi.insertEvent(missionId, 'result', { type: 'result', subtype: 'error', timon_retry: { attempt: 1 } });
+    await graceElapsed();
+    assert.equal(dbApi.getMission(missionId)?.status, 'running');
+    dbApi.updateTaskStatus(taskId, 'IN_PROGRESS');
+    dbApi.updateTaskStatus(taskId, 'BLOCKED', { blockedReason: 'New attempt' });
+    dbApi.insertEvent(missionId, 'result', { type: 'result', subtype: 'success' });
+    bus.publish({ kind: 'turn_complete', missionId });
+    await graceElapsed();
+    assert.equal(dbApi.getMission(missionId)?.status, 'running', 'the old closure cannot stop a later attempt');
+  });
+});

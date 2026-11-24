@@ -118,9 +118,29 @@ test('closing a task names the task in the stop of its mission', async () => {
     body: JSON.stringify({ outcome: 'done', comment: 'livré' }), // french-ok: a free-text comment
   });
   assert.equal(res.status, 200);
+  dbApi.insertEvent(missionId, 'result', { type: 'result', subtype: 'success' });
   const deadline = Date.now() + CLOSED_TASK_STOP_DELAY_MS * 4;
   while (linesFor(missionId).length === 0 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25));
   assert.match(linesFor(missionId)[0] ?? '', new RegExp(`by kanban: task closed \\(task ${taskId} DONE\\)`));
+});
+
+test('DELETE still stops a mission immediately while its task closure awaits a result', async () => {
+  const missionId = mission('p.coder', alice.id);
+  const taskId = randomUUID();
+  dbApi.createTask(taskId, 'task', 'p.coder', { type: 'chore' });
+  dbApi.assignTaskMission(taskId, missionId);
+  const res = await fetch(`${base}/api/tasks/close`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${DAEMON_TOKEN}`, 'content-type': 'application/json', 'X-TIMON-Mission': missionId },
+    body: JSON.stringify({ outcome: 'done', comment: 'Report submitted' }),
+  });
+  assert.equal(res.status, 200);
+  assert.equal(dbApi.missionTurnEnded(missionId), false);
+  assert.equal((await kill(missionId, { authorization: `Bearer ${DAEMON_TOKEN}` })).status, 200);
+  assert.equal(dbApi.getMission(missionId)?.status, 'terminated');
+  await new Promise((resolve) => setTimeout(resolve, CLOSED_TASK_STOP_DELAY_MS + 100));
+  assert.equal(linesFor(missionId).length, 1);
+  assert.match(linesFor(missionId)[0]!, /by DELETE/);
 });
 
 test('a caller-chosen field cannot forge a second log line', () => {
