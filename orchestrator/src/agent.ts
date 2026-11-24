@@ -3904,11 +3904,21 @@ export function killAgent(missionId: string, origin: KillOrigin): 'killed' | 'cl
   agent.handle.kill('SIGTERM');
   // The backend lets go of what it holds in memory for this process. The
   // per-mission folder stays: it holds codex's rollout, and the mission can
-  // still be written to — closing a task kills its mission one second later
+  // still be written to — closing a task stops its mission after the turn
   // (`stopClosedTaskMission`), and the next message to it resumed a thread
   // whose rollout had just been deleted ("no rollout found", TIM-0111).
   agent.backend.dispose?.(missionId);
   return 'killed';
+}
+
+/** Retire a closed task's process only after its current turn has settled. */
+export function stopSettledTaskMission(missionId: string, origin: KillOrigin): boolean {
+  const live = running.get(missionId);
+  if (live?.terminationIntent || dbApi.getMission(missionId)?.status !== 'running') return true;
+  if (live?.turnActive || turnPreparing(missionId) || turnRetryAwaited(missionId)
+      || !dbApi.missionTurnEnded(missionId) || dbApi.lastTurnAwaitsReplay(missionId)) return false;
+  killAgent(missionId, origin);
+  return true;
 }
 
 /**

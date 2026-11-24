@@ -7,7 +7,8 @@
  */
 import express, { type Router } from 'express';
 import { z } from 'zod';
-import { AgentConfig, killAgent, listAgents } from '../../agent.js';
+import { AgentConfig, listAgents, stopSettledTaskMission } from '../../agent.js';
+import { bus, type BusEvent } from '../../bus.js';
 import { backendIdForModel, catalogClaimsModel } from '../../backends/catalog.js';
 import { asBackendName } from '../../backends/index.js';
 import { codeCloseRefusal, effectiveMergeSha, evaluateCodeDone, inspectGitBranch, mergeCloseRefusal, pullRequestCloseRefusal, shaInBase, taskRepo } from '../../code-gate.js';
@@ -15,7 +16,7 @@ export { codeCloseRefusal, effectiveMergeSha, mergeCloseRefusal, pullRequestClos
 import { config } from '../../config/load.js';
 import { FALLBACK_SCOPES, TASK_TYPES, db, dbApi, isCodeOnlyPipeline, isFallbackScope, isTaskType, normalizeTaskStatusInput, rowVisible, type TaskDeleteOutcome, type TaskDeleteResult, type TaskRow, type TaskType } from '../../db.js';
 import { forbidden, forbiddenBody, isPersonAuth, rejectIfDenied, requireAuth, viewerFromRequest } from '../../users/identity.js';
-import { scopedDb } from '../../users/scoped-db.js';
+import { scopedDb, type ScopedDb } from '../../users/scoped-db.js';
 import { resolveTaskLlm, type SeriesLlmChoice } from '../../dispatcher.js';
 import {
   clearSeriesFallbackRule, clearSeriesRoleChoice, listSeriesFallbackRules, listSeriesRoleChoices, parsePlanGroup, resolveSeriesId,
@@ -394,6 +395,7 @@ function rejectUnprovenClose(res: express.Response, task: TaskRow, sha: string |
 }
 
 export function closeTask(
+  readTask: ScopedDb['getTask'],
   taskId: string,
   task: TaskRow,
   status: 'DONE' | 'BLOCKED',
@@ -418,14 +420,17 @@ export function closeTask(
   // A dispatched task runs in a `persistentProcess` mission: after its
   // `result` the process keeps stdin open and stays idle indefinitely →
   // `proc.on('exit')` never fires → `mission_complete` never published → the
-  // pipeline does not start. So its process is terminated cleanly. killAgent
-  // is idempotent (no-op if already dead). ONLY the missions of a dispatched task
-  // are touched — never the interactive chat missions, persistent by design.
-  if (task.mission_id) stopClosedTaskMission(task.mission_id, `task ${taskId} ${status}`);
+  // pipeline does not start. Retire only the dispatched task's settled process.
+  const missionId = task.mission_id;
+  if (!missionId) return;
+  const closed = readTask(taskId);
+  if (closed?.mission_id === missionId && (closed.status === 'DONE' || closed.status === 'BLOCKED')) {
+    stopClosedTaskMission(readTask, taskId, missionId, closed.status);
+  }
 }
 
 /**
- * Grace period before a closed task's process is stopped. The agent closes its
+ * Minimum grace period before a closed task's process is stopped. The agent closes its
  * task through its own stdio MCP server (`kanban_mark_as_done`), a child of the
  * very process being killed: killed in the same tick, that server died before
  * the HTTP answer reached it, the agent read "Connection closed", took the
@@ -435,16 +440,42 @@ export const CLOSED_TASK_STOP_DELAY_MS = 1_000;
 const pendingStops = new Set<string>();
 
 /** Non-blocking and idempotent: one stop per mission however many closes race. */
-function stopClosedTaskMission(missionId: string, detail: string): void {
+function stopClosedTaskMission(
+  readTask: ScopedDb['getTask'], taskId: string, missionId: string, status: 'DONE' | 'BLOCKED',
+): void {
   if (pendingStops.has(missionId)) return;
   pendingStops.add(missionId);
-  const timer = setTimeout(() => {
+  let elapsed = false;
+  let cancelled = false;
+  const cancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    clearTimeout(timer);
+    bus.off('event', onEvent);
     pendingStops.delete(missionId);
-    killAgent(missionId, { source: 'kanban: task closed', detail });
+  };
+  const check = () => {
+    if (!elapsed || cancelled) return;
+    const task = readTask(taskId);
+    if (task?.status !== status || task.mission_id !== missionId
+        || stopSettledTaskMission(missionId, { source: 'kanban: task closed', detail: `task ${taskId} ${status}` })) cancel();
+  };
+  const onEvent = (ev: BusEvent) => {
+    if ('taskId' in ev && ev.taskId === taskId
+        && (ev.kind === 'task_deleted' || (ev.kind === 'task_updated' && ev.changed.includes('status')))) cancel();
+    if (!('missionId' in ev) || ev.missionId !== missionId) return;
+    if (ev.kind === 'mission_complete' || (ev.kind === 'event' && ev.type === 'turn_interrupted')) cancel();
+    // Let the agent finish publishing the committed result before retiring it.
+    if (ev.kind === 'turn_complete' && ev.outcome !== 'cancelled' && elapsed) {
+      queueMicrotask(check);
+    }
+  };
+  const timer = setTimeout(() => {
+    elapsed = true;
+    check();
   }, CLOSED_TASK_STOP_DELAY_MS);
-  // A pending stop must not hold a shutting-down daemon open: its exit stops
-  // the process anyway.
   timer.unref();
+  bus.on('event', onEvent);
 }
 
 export type { TaskCreateBody } from './task-create-body.js';
@@ -887,7 +918,7 @@ async function markIntegrationMerged(
   if (task.status === 'BLOCKED') {
     dbApi.setTaskMergedSha(task.id, sha);
     task.merged_commit_sha = sha;
-    closeTask(task.id, task, 'DONE', { doneComment: report });
+    closeTask(scope.getTask, task.id, task, 'DONE', { doneComment: report });
   } else {
     // A DONE task keeps the sha of its merge into the integration branch;
     // one without any gets the target's, as in a local chain.
@@ -1259,7 +1290,7 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
         res.status(400).json(apiError('task_reason_required', 'reason is required to mark a task as failed'));
         return;
       }
-      closeTask(taskId, task, 'BLOCKED', { blockedReason: reason, byPerson: isPersonAuth(req.auth) });
+      closeTask(scope.getTask, taskId, task, 'BLOCKED', { blockedReason: reason, byPerson: isPersonAuth(req.auth) });
       res.json({ task: scope.getTask(taskId) });
       return;
     }
@@ -1300,7 +1331,7 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
     const doneComment = verdict && !/^verdict\s*[:=]/i.test(comment)
       ? `verdict: ${verdict}\n\n${comment}`
       : comment;
-    closeTask(taskId, task, 'DONE', { doneComment, summary: parseSummary(body.summary) });
+    closeTask(scope.getTask, taskId, task, 'DONE', { doneComment, summary: parseSummary(body.summary) });
     res.json({ task: scope.getTask(taskId) });
   });
 
@@ -1379,7 +1410,7 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
         console.error(`[kanban] TO DO closure failed for ${task.id}: ${(err as Error).message}`);
       }
     } else {
-      closeTask(task.id, task, 'DONE', { doneComment: report });
+      closeTask(scope.getTask, task.id, task, 'DONE', { doneComment: report });
     }
     auditRequest(req, 'task.mark_merged', `${task.id} ${sha}`);
     res.json({ task: scope.getTask(task.id), verified: found === 'contained' });
@@ -1551,7 +1582,7 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
       // (code gate, transition, process stop). The non-terminal statuses
       // have neither a gate nor a process to stop.
       if (nextStatus === 'DONE' || nextStatus === 'BLOCKED') {
-        closeTask(req.params.id, task, nextStatus, {
+        closeTask(scope.getTask, req.params.id, task, nextStatus, {
           doneComment: body.done_comment ?? undefined,
           blockedReason: body.blocked_reason ?? undefined,
           summary: parseSummary(body.done_summary),
