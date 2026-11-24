@@ -687,14 +687,15 @@ test('a mission whose launcher is the superadmin declares an http server, and it
   assert.doesNotMatch(logged!, /real-token|k=v/, 'no secret, no query string in the audit line');
 });
 
-test('a mission token reads a server masked, mcp:manage held or not; a human holder reads it clear', async () => {
+test('a mission token reads a server masked, mcp:manage held or not; a human holder too, for its headers', async () => {
   for (const token of [adminToken, daveToken]) {
     const got = await call('GET', '/api/mcp/admin-http', { bearer: token });
     assert.equal(got.status, 200);
     assert.deepEqual((got.json as { transport: { headers: unknown } }).transport.headers, { authorization: '***' });
   }
+  // The vault holds the value: nothing reads it back, the editor included.
   const human = await call('GET', '/api/mcp/admin-http', { cookie: adminCookie });
-  assert.deepEqual((human.json as { transport: { headers: unknown } }).transport.headers, { authorization: 'Bearer real-token' });
+  assert.deepEqual((human.json as { transport: { headers: unknown } }).transport.headers, { authorization: '***' });
 });
 
 test('a masked round trip keeps the stored secret while the server points at the same place', async () => {
@@ -709,9 +710,10 @@ test('a masked round trip keeps the stored secret while the server points at the
   assert.equal(same.status, 200, JSON.stringify(same.json));
   // The response of the write is masked too: the restored secret is not read back from it.
   assert.deepEqual((same.json as { transport: { headers: unknown } }).transport.headers, { authorization: '***' });
-  const stored = storedMcp('admin-http') as { description: string; transport: { headers: Record<string, string>; oauth?: unknown } };
+  const stored = storedMcp('admin-http') as { description: string; transport: { headers?: Record<string, string>; oauth?: unknown } };
   assert.equal(stored.description, 'edited');
-  assert.deepEqual(stored.transport.headers, { authorization: 'Bearer real-token' });
+  assert.equal(stored.transport.headers, undefined, 'the vault holds the header, not the file');
+  assert.deepEqual((await mcpRelayUpstream('admin-http'))?.headers, { authorization: 'Bearer real-token' });
   assert.equal(stored.transport.oauth, undefined, 'a mission never writes oauth state');
 
   // Same mask, another destination: the credential must not follow it.

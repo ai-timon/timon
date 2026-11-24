@@ -35,6 +35,7 @@ declare module '@deepseek-ai/cordis' {
     'timon/turn_started'(ev: Extract<BusEvent, { kind: 'turn_started' }>): void;
     'timon/onboarding_step'(ev: Extract<BusEvent, { kind: 'onboarding_step' }>): void;
     'timon/usage_kind_set'(ev: Extract<BusEvent, { kind: 'usage_kind_set' }>): void;
+    'timon/account_limit_reached'(ev: Extract<BusEvent, { kind: 'account_limit_reached' }>): void;
     'timon/compact_progress'(ev: Extract<BusEvent, { kind: 'compact_progress' }>): void;
     'timon/mission_started'(ev: Extract<BusEvent, { kind: 'mission_started' }>): void;
     'timon/mission_child_started'(ev: Extract<BusEvent, { kind: 'mission_child_started' }>): void;
@@ -43,6 +44,7 @@ declare module '@deepseek-ai/cordis' {
     'timon/task_done'(ev: Extract<BusEvent, { kind: 'task_done' }>): void;
     'timon/task_started'(ev: Extract<BusEvent, { kind: 'task_started' }>): void;
     'timon/task_unblocked'(ev: Extract<BusEvent, { kind: 'task_unblocked' }>): void;
+    'timon/integration_changed'(ev: Extract<BusEvent, { kind: 'integration_changed' }>): void;
     'timon/task_created'(ev: Extract<BusEvent, { kind: 'task_created' }>): void;
     'timon/task_updated'(ev: Extract<BusEvent, { kind: 'task_updated' }>): void;
     'timon/task_assigned'(ev: Extract<BusEvent, { kind: 'task_assigned' }>): void;

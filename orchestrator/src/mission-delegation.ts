@@ -19,6 +19,7 @@ import { idempotencyKey, idempotentMission, rememberIdempotentMission } from './
 import { loadConfig } from './agent-config.js';
 import { agentCommunicationAllowed, isDeveloperAccount } from './users/agent-permissions.js';
 import { overrideAuthority, rejectOverride, spawnOverrideRefusal, spawnWideningDenied } from './users/privileged-overrides.js';
+import { apiError } from './api-error.js';
 
 const Ids = z.array(z.string().min(1).max(200)).max(50);
 const Body = z.object({
@@ -44,15 +45,16 @@ export function createDelegationHandler(launch: typeof spawnAgent = spawnAgent) 
     if (!parent || !owner || owner.status !== 'active' || parent.owner_user_id !== owner.id
         || parent.status !== 'running'
         || !agentCommunicationAllowed(owner, dbApi.listPermissionsForUser(owner.id), 'missions:spawn')) {
-      res.status(403).json({ error: 'delegation requires a running owned mission and no explicit communication or spawn denial' });
+      res.status(403).json(apiError('delegation_not_allowed', 'delegation requires a running owned mission and no explicit communication or spawn denial'));
       return;
     }
     const parsed = Body.safeParse(req.body);
     if (!parsed.success) {
+      const reason = parsed.error.issues.map((i) => i.path.join('.') || i.message).join(', ');
       res.status(400).json({
-        error: 'invalid delegation body: expected agent_name, mission and optionally model, backend, '
-          + 'extra_skills, extra_mcp_servers, extra_allowed_tools, idempotency_key, title',
-        reason: parsed.error.issues.map((i) => i.path.join('.') || i.message).join(', '),
+        ...apiError('delegation_body_invalid', 'invalid delegation body: expected agent_name, mission and optionally model, backend, '
+          + 'extra_skills, extra_mcp_servers, extra_allowed_tools, idempotency_key, title', { detail: reason }),
+        reason,
       });
       return;
     }
@@ -64,12 +66,12 @@ export function createDelegationHandler(launch: typeof spawnAgent = spawnAgent) 
     const agents = listAgents();
     const target = agents.find((a) => a.name === parsed.data.agent_name);
     if (!target) {
-      res.status(404).json({ error: 'unknown agent; call agent_list and use the exact name' });
+      res.status(404).json(apiError('unknown_agent', 'unknown agent; call agent_list and use the exact name', { agent: parsed.data.agent_name }));
       return;
     }
     const refusal = delegationRefusal(req, target.name);
     if (refusal) {
-      res.status(403).json({ error: `delegation refused: ${refusal}`, code: 'orchestration_denied' });
+      res.status(403).json(apiError('orchestration_denied', `delegation refused: ${refusal}`, { detail: refusal }));
       return;
     }
     const data = parsed.data;
@@ -91,7 +93,7 @@ export function createDelegationHandler(launch: typeof spawnAgent = spawnAgent) 
     const seen = new Set<string>();
     while (ancestor) {
       if (seen.has(ancestor.id) || (!isDeveloperAccount(owner) && ancestor.agent_name === target.name)) {
-        res.status(403).json({ error: 'delegation cycle refused' });
+        res.status(403).json(apiError('delegation_cycle', 'delegation cycle refused'));
         return;
       }
       seen.add(ancestor.id);
@@ -120,7 +122,7 @@ export function createDelegationHandler(launch: typeof spawnAgent = spawnAgent) 
       dbApi.setMissionLineage(missionId, { parentMissionId: parent.id, parentAgent: parent.agent_name });
       res.status(201).json({ mission_id: missionId });
     } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json(apiError('delegation_failed', (err as Error).message, { detail: (err as Error).message }));
     }
   };
 }

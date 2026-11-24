@@ -43,8 +43,10 @@ import { existsSync } from 'node:fs';
 import { z } from 'zod';
 import { canonicalAgentName } from './agent-config.js';
 import { killAgent, listAgents } from './agent.js';
+import { daemonMessage, encodeDaemonMessage } from './daemon-message.js';
 import { db, dbApi, type TaskStatus } from './db.js';
 import { agentDir } from './paths.js';
+import { redactText } from './secrets/redact.js';
 import { disableTriggerRow, listTriggerRows, parseTrigger } from './triggers/store.js';
 import { cancelRun } from './workflows/engine.js';
 import { disarmWorkflowTriggers } from './workflows/triggers.js';
@@ -169,6 +171,10 @@ export function stopScope(scope: StopScope, opts: { owner: string | undefined; b
   const inAgents = (column: string) => `${column} IN (SELECT value FROM json_each(?))`;
   const now = Date.now();
   const reason = `Stopped by ${opts.by} (timon stop ${resolved.kind} ${resolved.name})`;
+  const reasonCode = encodeDaemonMessage(
+    daemonMessage('task_stopped_by_scope', { by: opts.by, kind: resolved.kind, name: resolved.name }),
+    redactText,
+  );
 
   const agentSet = new Set(resolved.agents);
   const plan = db.transaction(() => {
@@ -195,12 +201,12 @@ export function stopScope(scope: StopScope, opts: { owner: string | undefined; b
     ).all(...own.params, agentsJson, resolved.project, resolved.project) as
       { id: string; title: string; agent_name: string; status: TaskStatus; scheduled_at: number | null }[];
     const blockTask = db.prepare(
-      `UPDATE tasks SET status = 'BLOCKED', blocked_reason = ?, return_notified = 1, updated_at = ?
+      `UPDATE tasks SET status = 'BLOCKED', blocked_reason = ?, blocked_reason_code = ?, return_notified = 1, updated_at = ?
         WHERE id = ? AND mirror = 0 AND status IN ('PENDING', 'IN_PROGRESS')`,
     );
     for (const task of tasks) {
       const prev = dbApi.getTask(task.id);
-      blockTask.run(reason, now, task.id);
+      blockTask.run(reason, reasonCode, now, task.id);
       dbApi.publishTaskChange(prev);
     }
 

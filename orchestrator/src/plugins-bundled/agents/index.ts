@@ -8,7 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import type { ModuleManifest } from '../../kernel/registry.js';
 import { registerRoutes } from './routes.js';
-import { holdLegacyMissionServersToPublic, migrateMcpOAuthTokensToVault, refreshToolsCacheFromInit, relabelLocalClaudeStubs } from '../../mcp.js';
+import { holdLegacyMissionServersToPublic, migrateMcpHeadersToVault, migrateMcpOAuthTokensToVault, refreshToolsCacheFromInit, relabelLocalClaudeStubs } from '../../mcp.js';
 import { whenProvidersLoaded } from '../../backends/registry.js';
 import { seedDefaultAgent } from '../../agent.js';
 import { backfillAgentRoles } from '../../agent-role-backfill.js';
@@ -73,6 +73,14 @@ export function apply(ctx: Context): void {
         if (tokens.dropped.length) console.warn(`[timon] mcp: OAuth tokens of ${tokens.dropped.join(', ')} removed from their file, the secrets vault could not take them; connect these servers again`);
       } catch (err) {
         console.warn(`[timon] mcp: OAuth token migration failed: ${(err as Error).message}`);
+      }
+      // Same for the headers of a remote server, with no loss: what the vault
+      // cannot take stays in the file, and the server out of the launches.
+      try {
+        const headers = migrateMcpHeadersToVault();
+        if (headers.moved.length) console.log(`[timon] mcp: headers of ${headers.moved.join(', ')} moved into the secrets vault`);
+      } catch (err) {
+        console.warn(`[timon] mcp: header migration failed (${(err as Error).name})`);
       }
       seedBundledSkills();
       // After the seed, so a bundled skill named by an agent is not reported

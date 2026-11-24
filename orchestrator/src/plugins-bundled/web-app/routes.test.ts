@@ -82,7 +82,7 @@ test('no supervisor: 409 with the reason', async () => {
   assert.equal(res.status, 409);
   const body = (await res.json()) as { ok: boolean; message: string };
   assert.equal(body.ok, false);
-  assert.match(body.message, /not built|app non buildée|restart the Timon service/);
+  assert.match(body.message, /not built|app non buildée|restart the Timon service/); // french-ok: an older French message the route may still return
 });
 
 test('a disabled app says so rather than blaming the daemon', () => {

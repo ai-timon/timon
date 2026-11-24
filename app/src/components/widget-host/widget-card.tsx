@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { GripHorizontal, GripVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ import { useWidgetHost } from './widget-host';
 import { insertionSide, type WidgetLayout } from './widget-layout';
 import { CONTROL, WidgetContextMenu, WidgetGear, wantsNativeMenu } from './widget-menu';
 import { effectiveWidgetStyle, useWidgetStyleDefaults } from './use-widget-style';
+import { WidgetSelfProvider, type WidgetMenuItem } from './widget-self';
 import type { WidgetOrientation } from './widget-dnd';
 
 /** Side where the insertion cursor is drawn on `targetId`. A widget coming
@@ -23,8 +24,11 @@ function cursorSide(members: WidgetLayout[], dragging: string | null, targetId: 
 
 /** A tab is a drag source AND a drop target, at any time: a stack is reordered
  *  between its tabs, not in the card's body, which belongs to docking. */
-function WidgetTab({ entry, selected, onSelect, panelId, side }: { entry: WidgetLayout; selected: boolean; onSelect: () => void; panelId: string; side: 'avant' | 'apres' | null }) {
+function WidgetTab({ entry, selected, onSelect, panelId, side, count, attention }: { entry: WidgetLayout; selected: boolean; onSelect: () => void; panelId: string; side: 'avant' | 'apres' | null; count: number | null; attention: string | null }) {
   const host = useWidgetHost();
+  const widget = host.widget(entry.id);
+  // A short name on the tab, the full one in the tooltip and for a screen reader.
+  const short = widget?.tabTitle && widget.tabTitle !== widget.title ? widget.tabTitle : null;
   const { listeners, setNodeRef, isDragging } = useDraggable({ id: entry.id });
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `tab:${entry.id}`, disabled: !host.editing || host.dragging === entry.id });
   const cursor = isOver && side !== null && host.dragging !== entry.id ? side : null;
@@ -35,13 +39,22 @@ function WidgetTab({ entry, selected, onSelect, panelId, side }: { entry: Widget
     onPointerDown={listeners?.onPointerDown as React.PointerEventHandler<HTMLButtonElement> | undefined}
     role="tab" id={`tab-${entry.id}`} aria-controls={panelId} aria-selected={selected}
     tabIndex={selected ? 0 : -1} onClick={onSelect}
-    className={cn('widget-tab relative flex h-7 min-w-0 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring', selected ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground', isDragging && 'opacity-40')}>
+    // The full name and what waits in it, for the tooltip and a screen reader;
+    // a plain tab keeps its own text as its name.
+    title={short || attention ? [short ? widget?.title : null, attention].filter(Boolean).join(' · ') : undefined}
+    aria-label={(short || attention) && widget ? [[widget.title, count || null].filter(Boolean).join(' '), attention].filter(Boolean).join(' · ') : undefined}
+    // Five French tabs fit a 300 px rail. Past that (a count of two digits, a
+    // wider system font), the strip goes tight (`fitTabs`), then the tabs
+    // shrink and truncate their title, keeping the count, before it scrolls.
+    className={cn('widget-tab relative flex h-7 min-w-10 shrink items-center justify-center gap-1 rounded-md px-[5px] text-[11.5px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring', selected ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground', isDragging && 'opacity-40')}>
     {/* A line BETWEEN two tabs, not a highlighted tab: highlighting the
         target shows what is hovered, which still leaves you guessing on which
         side the tab will fall. The side is the one `insertionSide` will decide
         on drop; same function, so the line cannot lie. */}
     {cursor && <span aria-hidden data-cursor={cursor} className={cn('pointer-events-none absolute inset-y-0.5 z-10 w-[3px] rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.7)]', cursor === 'avant' ? '-left-[2px]' : '-right-[2px]')} />}
-    <span className="max-w-40 truncate">{host.widget(entry.id)?.title}</span>
+    <span data-tab-title="" className="min-w-0 max-w-40 truncate">{short ?? widget?.title}</span>
+    {!!count && <span data-tab-count="" className="shrink-0 tabular-nums text-muted-foreground">{count}</span>}
+    {attention && <span aria-hidden data-tab-attention="" className="size-1.5 shrink-0 rounded-full bg-amber-500" />}
   </button>;
 }
 
@@ -55,9 +68,21 @@ function WidgetTabEnd({ entry, members }: { entry: WidgetLayout; members: Widget
   const { setNodeRef, isOver } = useDroppable({ id: `tab-end:${entry.id}`, disabled: !host.editing });
   // Already last: the drop changes nothing, the line must promise nothing.
   const cursor = isOver && !!host.dragging && members[members.length - 1]?.id !== host.dragging;
-  return <div ref={setNodeRef} aria-hidden className="relative h-8 min-w-2 flex-1 self-center">
+  return <div ref={setNodeRef} aria-hidden className="relative h-8 min-w-1 flex-1 self-center">
     {cursor && <span className="pointer-events-none absolute inset-y-0.5 left-0 z-10 w-[3px] rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.7)]" />}
   </div>;
+}
+
+/**
+ * Tightens a stack's tab strip (`data-tight`, smaller padding and type) only
+ * when a title would otherwise be cut: measured, since what fits depends on
+ * the language, the counts and the system's font. Reset first so a strip that
+ * grew wider goes back to its roomy form.
+ */
+export function fitTabs(list: HTMLElement): void {
+  delete list.dataset.tight;
+  const cut = Array.from(list.querySelectorAll<HTMLElement>('[data-tab-title]')).some((title) => title.scrollWidth > title.clientWidth);
+  if (cut) list.dataset.tight = '';
 }
 
 /** What a press may never lift the card from: the controls inside the title
@@ -144,6 +169,21 @@ export function WidgetCard({ entry, members = [entry], part, orientation = 'vert
   const tablist = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement | null>(null);
   const memberKey = members.map((m) => m.id).join('|');
+  // Counts published by the stack's widgets (`useWidgetCount`), shown on their tabs.
+  const [counts, setCounts] = useState<Record<string, number | null>>({});
+  const publishCount = useCallback((id: string, count: number | null) => {
+    setCounts((current) => (current[id] ?? null) === count ? current : { ...current, [id]: count });
+  }, []);
+  // What waits for the person in a stacked widget (`useWidgetAttention`): a dot on its tab.
+  const [attentions, setAttentions] = useState<Record<string, string | null>>({});
+  const publishAttention = useCallback((id: string, label: string | null) => {
+    setAttentions((current) => (current[id] ?? null) === label ? current : { ...current, [id]: label });
+  }, []);
+  // Header actions a stacked widget hands to its menu (`useWidgetMenu`).
+  const [menus, setMenus] = useState<Record<string, readonly WidgetMenuItem[] | null>>({});
+  const publishMenu = useCallback((id: string, items: readonly WidgetMenuItem[] | null) => {
+    setMenus((current) => (current[id] ?? null) === items ? current : { ...current, [id]: items });
+  }, []);
   // The drag hint: armed while the pointer rests on the title, shown after
   // the delay, kept until the pointer leaves the card — the pill it shows
   // sits below the title, and must stay while the pointer goes to it.
@@ -172,6 +212,19 @@ export function WidgetCard({ entry, members = [entry], part, orientation = 'vert
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => { el.removeEventListener('wheel', onWheel); };
   }, [tabbed, memberKey]);
+  // The strip's width follows the card's, not its own content: observing the
+  // tab bar cannot loop on the change `fitTabs` makes.
+  const badgesKey = members.map(({ id }) => `${counts[id] ?? ''}:${attentions[id] ? 'dot' : ''}`).join('|');
+  useLayoutEffect(() => {
+    const el = tablist.current;
+    const bar = el?.parentElement;
+    if (!tabbed || !el || !bar) return;
+    fitTabs(el);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => fitTabs(el));
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [tabbed, memberKey, badgesKey]);
   // Brings the selected tab back into view, keyboard included. Done by hand on
   // the strip: `scrollIntoView` would also scroll the page to a card below the
   // fold when it mounts.
@@ -188,13 +241,13 @@ export function WidgetCard({ entry, members = [entry], part, orientation = 'vert
   }, [entry.id, memberKey]);
   if (!widget) return null;
   const minimum = Math.max(...members.map((member) => host.widget(member.id)?.minHeight ?? 0)) + (tabbed ? 46 : 0);
-  const panelId = `panel-${entry.id}`;
   const shape = { bare, tabbed };
   const onTitle = (e: { target: EventTarget | null; clientY: number }, includeTabs = false) =>
     !!frame.current && e.target instanceof Element && isOnTitleHandle(frame.current, e.target, e.clientY, shape, includeTabs);
   // Keyboard drag goes through the grip (a real button), shown in the pill.
   const grip = <button type="button" ref={setActivatorNodeRef} aria-label={t('cockpit.board.move', { title: widget.title })} className={cn(CONTROL, 'cursor-grab touch-none active:cursor-grabbing')} {...attributes} {...listeners}>{bare ? <GripVertical className="size-3.5" /> : <GripHorizontal className="size-3.5" />}</button>;
-  const gear = <WidgetGear entry={entry} grouped={grouped} bare={bare} />;
+  const extra = menus[entry.id] ?? undefined;
+  const gear = <WidgetGear entry={entry} grouped={grouped} bare={bare} extra={extra} />;
   // A bare form has no title bar to float a pill over: the grip leads, the
   // gear follows it, in a box as tall as the line — once hinted.
   const showTools = hintShown || host.paletteOpen;
@@ -239,7 +292,7 @@ export function WidgetCard({ entry, members = [entry], part, orientation = 'vert
     className={cn('widget-frame group/widget relative flex shrink-0', horizontal ? 'h-full items-center' : 'min-w-0 flex-col', tabbed && 'widget-stack overflow-hidden rounded-xl border border-border bg-card', isDragging && 'opacity-40')}>
     {/* Stack: the whole card carries the frame, and the tab group lives
         INSIDE it, at the top, with no line separating it from the content. */}
-    {tabbed && <div className="widget-tabbar relative z-[1] mb-1.5 flex h-10 shrink-0 items-center px-1.5 pt-1.5"><div ref={tablist} role="tablist" aria-label={t('widgets.tabs')} className="widget-tablist flex min-w-0 items-center gap-0.5 overflow-x-auto rounded-lg bg-muted p-[3px]"
+    {tabbed && <div className="widget-tabbar relative z-[1] mb-1.5 flex h-10 shrink-0 items-center px-1 pt-1.5"><div ref={tablist} role="tablist" aria-label={t('widgets.tabs')} className="widget-tablist flex min-w-0 items-center overflow-x-auto rounded-lg bg-muted p-[3px]"
       onKeyDown={(e) => {
         if (host.dragging) return;
         if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
@@ -249,7 +302,7 @@ export function WidgetCard({ entry, members = [entry], part, orientation = 'vert
         host.onSelectTab(members[next]!.id);
         document.getElementById(`tab-${members[next]!.id}`)?.focus();
       }}>
-      {members.map((member) => <WidgetTab key={member.id} entry={member} selected={member.id === entry.id} onSelect={() => host.onSelectTab(member.id)} panelId={`panel-${member.id}`} side={cursorSide(members, host.dragging, member.id)} />)}
+      {members.map((member) => <WidgetTab key={member.id} entry={member} selected={member.id === entry.id} onSelect={() => host.onSelectTab(member.id)} panelId={`panel-${member.id}`} side={cursorSide(members, host.dragging, member.id)} count={counts[member.id] ?? null} attention={attentions[member.id] ?? null} />)}
     </div><WidgetTabEnd entry={entry} members={members} /></div>}
     {/* The hint: a pill at the top of the card, over the middle of its title
         bar, with the grip (the keyboard's way to move it) and the gear. It
@@ -257,12 +310,22 @@ export function WidgetCard({ entry, members = [entry], part, orientation = 'vert
     {!bare && <div data-widget-hint className={cn('widget-chrome absolute left-1/2 top-1.5 z-30 flex -translate-x-1/2 items-center gap-0.5 rounded-lg bg-popover/95 p-0.5 shadow-elev-2 ring-1 ring-border transition-opacity duration-150',
       showTools ? 'opacity-100' : 'pointer-events-none opacity-0 focus-within:pointer-events-auto focus-within:opacity-100')}>{grip}{gear}</div>}
     {leadingGrip}
-    <div id={panelId} role={tabbed ? 'tabpanel' : undefined} aria-labelledby={tabbed ? `tab-${entry.id}` : undefined} className={cn('widget-content flex', horizontal ? 'h-full items-center gap-0.5' : bare ? 'min-w-0 flex-col items-start' : 'min-h-0 min-w-0 flex-1 flex-col', tabbed && 'overflow-hidden', host.dragging && !bare && '[&_*]:!pointer-events-none pointer-events-none')}>
-      {widget.render({ editing: host.editing || hintShown, className: mobile || bare ? undefined : 'h-full', poignee: inline ?? undefined, onReplace: (id) => host.onReplace(entry.id, id), orientation, compact: bare })}
-    </div>
-    {grouped && members.filter((member) => member.id !== entry.id).map((member) => (
-      <div key={member.id} id={`panel-${member.id}`} role="tabpanel" aria-labelledby={`tab-${member.id}`} hidden />
-    ))}
+    {/* One panel per member, keyed, so a widget that publishes a count
+        (`liveCount`) stays mounted behind the front tab and keeps it true;
+        any other member is painted only in front. */}
+    {(grouped ? members : [entry]).map((member) => {
+      const front = member.id === entry.id;
+      const painted = front ? widget : member.id !== entry.id && host.widget(member.id)?.liveCount ? host.widget(member.id) : undefined;
+      const self = { id: member.id, tabbed, selected: front, publishCount, publishMenu, publishAttention };
+      return <div key={member.id} id={`panel-${member.id}`} role={tabbed ? 'tabpanel' : undefined} aria-labelledby={tabbed ? `tab-${member.id}` : undefined}
+        // `hidden` the class, not only the attribute: the attribute loses to `flex`.
+        hidden={!front || undefined}
+        className={front ? cn('widget-content flex', horizontal ? 'h-full items-center gap-0.5' : bare ? 'min-w-0 flex-col items-start' : 'min-h-0 min-w-0 flex-1 flex-col', tabbed && 'overflow-hidden', host.dragging && !bare && '[&_*]:!pointer-events-none pointer-events-none') : 'hidden'}>
+        {painted && <WidgetSelfProvider value={self}>
+          {painted.render({ editing: front && (host.editing || hintShown), className: mobile || bare ? undefined : 'h-full', handle: front ? inline ?? undefined : undefined, onReplace: (id) => host.onReplace(member.id, id), orientation, compact: bare })}
+        </WidgetSelfProvider>}
+      </div>;
+    })}
     {/* The docking target covers the whole card (the surface the hand
         aims at), but the veil is drawn on the TAB BAR, at the top: that is
         where the dropped widget will appear. */}
@@ -273,6 +336,6 @@ export function WidgetCard({ entry, members = [entry], part, orientation = 'vert
         </div>
       )}
     </div>}
-    <WidgetContextMenu entry={entry} grouped={grouped} bare={bare} at={menuAt} onClose={() => setMenuAt(null)} />
+    <WidgetContextMenu entry={entry} grouped={grouped} bare={bare} extra={extra} at={menuAt} onClose={() => setMenuAt(null)} />
   </div>;
 }

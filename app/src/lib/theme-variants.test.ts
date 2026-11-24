@@ -117,7 +117,7 @@ test('while glass tuning is hidden, a stored tuning is kept but not painted', { 
   assert.equal(effectiveGlass(row).glassFloor, 0);
 });
 test('workspace scopes isolate owner/view/project and fit daemon grammar', async () => {
-  const values = await Promise.all([workspaceScope('a', '/chat', 'alpha'), workspaceScope('b', '/chat', 'alpha'), workspaceScope('a', '/', 'alpha'), workspaceScope('a', '/chat', 'beta'), workspaceScope('a', '/chat', null), workspaceScope('a', '/chat', 'é'.repeat(400))]);
+  const values = await Promise.all([workspaceScope('a', '/chat', 'alpha'), workspaceScope('b', '/chat', 'alpha'), workspaceScope('a', '/', 'alpha'), workspaceScope('a', '/chat', 'beta'), workspaceScope('a', '/chat', null), workspaceScope('a', '/chat', 'é'.repeat(400))]); // french-ok: a non-ASCII scope name, the length cap under test
   assert.equal(new Set(values).size, values.length);
   assert.equal(values[0], await workspaceScope('a', '/chat', 'alpha'));
   for (const value of values) assert.match(`${value}.widgets`, /^[a-z0-9][a-z0-9._-]{0,63}$/);

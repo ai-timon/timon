@@ -36,7 +36,7 @@ test('opens on the value\'s provider, else the favourites, else the first provid
   assert.deepEqual(initialView(CATALOG, { backend: 'codex', model: 'gpt-5.5' }, []), { kind: 'provider', backend: 'codex' });
   assert.deepEqual(initialView(CATALOG, null, [{ backend: 'claude', model: 'opus' }]), { kind: 'favorites' });
   assert.deepEqual(initialView(CATALOG, null, []), { kind: 'provider', backend: 'claude' });
-  // A favourite whose account is gone does not count as « there are favourites ».
+  // A favourite whose account is gone does not count as "there are favourites".
   assert.deepEqual(initialView(CATALOG, null, [{ backend: 'claude@old', model: 'opus' }]), { kind: 'provider', backend: 'claude' });
 });
 

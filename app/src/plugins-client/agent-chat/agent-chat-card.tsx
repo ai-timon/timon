@@ -104,7 +104,7 @@ export function AgentChatCard({
   instance,
   onSave,
   onDelete,
-  poignee,
+  handle,
   editing = false,
   className,
 }: WidgetProps & {
@@ -145,7 +145,7 @@ export function AgentChatCard({
       // menu; new conversation and voice live in the composer.
       className={cn(className)}
       bodyClassName="p-0"
-      actions={editing ? poignee : undefined}
+      actions={editing ? handle : undefined}
     >
       <div className="flex min-h-0 flex-1 flex-col">
         {/* The one picture of the card: one avatar per agent, the current

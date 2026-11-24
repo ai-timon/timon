@@ -1,5 +1,5 @@
 /**
- * What thirty live mascots cost (docs/AGENT-MASCOT.md, « Coût »): the shared
+ * What thirty live mascots cost (docs/AGENT-MASCOT.md, "Coût"): the shared french-ok: the heading of a French internal doc
  * frame of the motion engine, driven for ten seconds of 60 Hz frames, with
  * every DOM write counted. The write count is the bound that holds on any
  * machine; the JavaScript time per frame is printed as a diagnostic (jsdom is

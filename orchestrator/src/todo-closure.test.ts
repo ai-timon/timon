@@ -13,6 +13,8 @@ import { handleTaskDone } from './wake.js';
 import { presentInboxDigest } from './wake-digest.js';
 import { mainAgentNameOrSeed } from './main-agent.js';
 
+// french-ok-file: the French portability line agents write, which the closure reads
+
 const SHA = 'a'.repeat(40);
 
 function idea(): number {

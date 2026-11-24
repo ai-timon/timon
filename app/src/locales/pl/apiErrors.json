@@ -60,6 +60,20 @@
     "invalid_event_id": "Identyfikator wiadomości jest nieprawidłowy.",
     "message_not_found": "W tej rozmowie nie ma wiadomości o tym identyfikatorze.",
     "steer_unsupported": "Tego agenta nie można teraz przekierować: zakolejkuj wiadomość.",
-    "no_turn_to_steer": "Żadna tura nie trwa: wyślij zwykłą wiadomość."
+    "no_turn_to_steer": "Żadna tura nie trwa: wyślij zwykłą wiadomość.",
+    "setup_main_agent_unavailable": "W tej instalacji nie znaleziono głównego agenta. Kontynuuj — możesz utworzyć go później.",
+    "setup_main_agent_invalid_name": "Ta nazwa nie zawiera liter ani cyfr, których Timon może użyć. Spróbuj innej.",
+    "setup_main_agent_name_taken": "Agent o tej nazwie już istnieje. Wybierz inną.",
+    "setup_workspace_unavailable": "Folder roboczy jest niedostępny. Sprawdź jego lokalizację i uprawnienia dostępu, a potem spróbuj ponownie.",
+    "setup_main_agent_rename_failed": "Nie udało się zmienić nazwy agenta. Spróbuj ponownie za chwilę.",
+    "setup_main_agent_invalid_avatar": "To zdjęcie nie zostało zapisane przez Timon. Prześlij je ponownie.",
+    "setup_main_agent_failed": "Nie udało się zapisać agenta. Spróbuj ponownie.",
+    "setup_invalid_identity": "Sprawdź nazwę i spróbuj ponownie.",
+    "setup_team_backend_unavailable": "Brak dostępnego narzędzia agenta. Zainstaluj lub połącz jedno i spróbuj ponownie albo zacznij od zera.",
+    "setup_team_agent_conflict": "Agent startowy został zmieniony po rozpoczęciu tworzenia. Twoje zmiany zostały zachowane; rozwiąż konflikt przed ponowną próbą.",
+    "setup_team_unavailable": "Konfiguracja zespołu nie jest dostępna w tej instalacji.",
+    "setup_team_preset_locked": "Tworzenie zespołu już się rozpoczęło. Wznów wybrany zespół.",
+    "setup_team_instance_not_empty": "Timon ma już twoich agentów lub twoją pracę. Wybierz Zacznij od zera, aby zostawić wszystko bez zmian i dokończyć konfigurację.",
+    "setup_team_failed": "Nie udało się w pełni utworzyć zespołu. Spróbuj ponownie, aby kontynuować od miejsca przerwania."
   }
 }

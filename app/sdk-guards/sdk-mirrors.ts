@@ -76,6 +76,7 @@ type _DictationEngine = Assert<Equals<Dictation.DictationEngine, Sdk.DictationEn
 type _MascotPartLabel = Assert<Equals<Mascot.MascotPartLabel, Sdk.MascotPartLabel>>;
 type _MascotPoint = Assert<Equals<Mascot.MascotPoint, Sdk.MascotPoint>>;
 type _MascotPart = Assert<Equals<Mascot.MascotPart, Sdk.MascotPart>>;
+type _MascotHeadComponent = Assert<Equals<Mascot.MascotHeadComponent, Sdk.MascotHeadComponent>>;
 
 // Events and quotas a browser half reads (`event-kinds.ts`, `usage-types.ts`).
 type _PluginEventKind = Assert<Equals<PluginEventKind, Sdk.PluginEventKind>>;

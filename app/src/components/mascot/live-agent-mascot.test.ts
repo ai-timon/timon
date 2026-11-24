@@ -1,8 +1,8 @@
 /**
  * Where a mascot is mounted outside the chat it shows what its agent does
- * (docs/AGENT-MASCOT.md, « États vivants hors du chat »), soberly: one source
+ * (docs/AGENT-MASCOT.md, "États vivants hors du chat"), soberly: one source french-ok: the heading of a French internal doc
  * for every avatar, `live={false}` for the bare look, the eyes alone under
- * reduced motion or with « Animate mascots » off, no motion off screen nor
+ * reduced motion or with "Animate mascots" off, no motion off screen nor
  * while the agent sleeps.
  */
 import assert from 'node:assert/strict';
@@ -148,7 +148,7 @@ test('reduced motion: the state shows by the eyes alone', async () => {
   }
 });
 
-test('« Animate mascots » off keeps the state still; the switch stores the choice', async () => {
+test('"Animate mascots" off keeps the state still; the switch stores the choice', async () => {
   const env = await setup({ rows: [row('nova', 'thinking')] });
   try {
     const { MascotAnimationSetting } = await import('@/plugins-client/ui-theme-appearance');

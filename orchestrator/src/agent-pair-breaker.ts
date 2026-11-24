@@ -30,6 +30,7 @@
 import { dbApi } from './db.js';
 import { messageOrigin } from './message-origin.js';
 import { notifyUser } from './notify.js';
+import { daemonMessage } from './daemon-message.js';
 import { settingNum } from './settings.js';
 
 const PAIR_MAX_MESSAGES = (): number => settingNum('TIMON_WAKE_PAIR_MAX_MESSAGES');
@@ -108,7 +109,12 @@ export function admitAgentMessage(msg: PairMessage, now: number = Date.now()): P
       `redelivered. Ceiling: TIMON_WAKE_PAIR_MAX_MESSAGES (${max}),`,
       `window: TIMON_WAKE_PAIR_WINDOW_MS.`,
     ].join('\n'),
-    { fromMission: msg.from_mission ?? null },
+    {
+      fromMission: msg.from_mission ?? null,
+      message: daemonMessage('agent_pair_loop_stopped', {
+        a, b, count: st.sentAt.length, minutes: Math.round(windowMs / 60_000), max,
+      }),
+    },
   );
   return 'held';
 }

@@ -17,6 +17,6 @@ test('an explicit scheme is left for the host to judge', () => {
 });
 
 test('free text becomes a search', () => {
-  assert.equal(addressBarTarget('météo paris'), 'https://www.google.com/search?q=m%C3%A9t%C3%A9o%20paris');
+  assert.equal(addressBarTarget('météo paris'), 'https://www.google.com/search?q=m%C3%A9t%C3%A9o%20paris'); // french-ok: an accented search, the encoding under test
   assert.equal(addressBarTarget('timon'), 'https://www.google.com/search?q=timon');
 });

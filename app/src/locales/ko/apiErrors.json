@@ -60,6 +60,20 @@
     "invalid_event_id": "메시지 ID가 올바르지 않습니다.",
     "message_not_found": "이 대화에 해당 ID의 메시지가 없습니다.",
     "steer_unsupported": "지금은 이 에이전트의 방향을 바꿀 수 없습니다. 대신 메시지를 대기열에 넣으세요.",
-    "no_turn_to_steer": "실행 중인 턴이 없습니다. 일반 메시지를 보내세요."
+    "no_turn_to_steer": "실행 중인 턴이 없습니다. 일반 메시지를 보내세요.",
+    "setup_main_agent_unavailable": "이 설치에서 메인 에이전트를 찾을 수 없습니다. 계속하세요 — 나중에 만들 수 있습니다.",
+    "setup_main_agent_invalid_name": "이 이름에는 Timon이 쓸 수 있는 문자나 숫자가 없습니다. 다른 이름을 사용해 보세요.",
+    "setup_main_agent_name_taken": "이 이름의 에이전트가 이미 있습니다. 다른 이름을 선택하세요.",
+    "setup_workspace_unavailable": "작업 폴더를 사용할 수 없습니다. 위치와 접근 권한을 확인한 뒤 다시 시도하세요.",
+    "setup_main_agent_rename_failed": "에이전트 이름을 바꿀 수 없습니다. 잠시 후 다시 시도하세요.",
+    "setup_main_agent_invalid_avatar": "이 사진은 Timon이 저장한 것이 아닙니다. 다시 업로드하세요.",
+    "setup_main_agent_failed": "에이전트를 저장할 수 없습니다. 다시 시도하세요.",
+    "setup_invalid_identity": "이름을 확인한 뒤 다시 시도하세요.",
+    "setup_team_backend_unavailable": "사용할 수 있는 에이전트 도구가 없습니다. 하나를 설치하거나 연결한 뒤 다시 시도하거나, 처음부터 시작하세요.",
+    "setup_team_agent_conflict": "생성이 시작된 뒤 기본 제공 에이전트가 변경되었습니다. 변경 사항은 유지되었습니다. 다시 시도하기 전에 충돌을 해결하세요.",
+    "setup_team_unavailable": "이 설치에서는 팀 설정을 사용할 수 없습니다.",
+    "setup_team_preset_locked": "팀 만들기가 이미 시작되었습니다. 선택한 팀을 이어서 진행하세요.",
+    "setup_team_instance_not_empty": "Timon에 이미 내 에이전트나 작업이 있습니다. 모든 것을 그대로 두고 설정을 마치려면 처음부터 시작을 선택하세요.",
+    "setup_team_failed": "팀을 완전히 만들지 못했습니다. 다시 시도하면 멈춘 곳에서 이어 갑니다."
   }
 }

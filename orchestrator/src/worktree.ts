@@ -19,10 +19,10 @@
  *      the worktree dir is unmounted. The DB events and the sha remain the audit.
  */
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { TIMON_HOME } from './paths.js';
 import { execFileHost, linkDirectory } from './host/index.js';
-import { purgeShell } from './worktree-shell.js';
+import { purgeShell, unlinkWorktreeLinks } from './worktree-shell.js';
 
 const exec = execFileHost;
 
@@ -96,12 +96,46 @@ export function parseWorktreeLinks(text: string): string[] {
   return [...new Set(paths)];
 }
 
+function isInside(root: string, path: string): boolean {
+  const inside = relative(root, realpathSync(path));
+  return !(isAbsolute(inside) || inside === '..' || inside.startsWith(`..${sep}`));
+}
+
+/**
+ * Creates the missing parent folders of a declared link (`.claude` for
+ * `.claude/skills`: an untracked folder is absent from a fresh worktree), but
+ * only inside the worktree and only when git ignores them, since a `git add -A`
+ * would otherwise commit the link. Returns false when it refuses.
+ */
+async function createIgnoredParents(worktreePath: string, root: string, rel: string): Promise<boolean> {
+  const parts = dirname(rel).split(sep);
+  let depth = parts.length;
+  while (depth > 0 && !existsSync(join(worktreePath, ...parts.slice(0, depth)))) depth -= 1;
+  // The nearest existing ancestor may be a link: what gets created must stay in this worktree.
+  if (!isInside(root, join(worktreePath, ...parts.slice(0, depth)))) {
+    console.warn(`[worktree] ${rel} not linked: its parent folder resolves outside the worktree`);
+    return false;
+  }
+  // Git never looks inside an ignored folder, so checking the topmost missing one covers its
+  // descendants; the trailing slash makes git match it as the folder it will be.
+  const topmost = `${parts.slice(0, depth + 1).join('/')}/`;
+  try {
+    await exec('git', ['-C', worktreePath, 'check-ignore', '-q', '--', topmost], { timeout: 10_000 });
+  } catch {
+    console.warn(`[worktree] ${rel} not linked: its parent folder ${topmost} is missing from the worktree and git does not ignore it`);
+    return false;
+  }
+  mkdirSync(join(worktreePath, dirname(rel)), { recursive: true });
+  return true;
+}
+
 /**
  * Links the folders a repository declares in `.worktreelinks` (an ignored
- * notes repository, local fixtures…) from the main clone into a task worktree,
- * under the same guards as the dependencies: the folder exists in the main
- * clone, git ignores it, the worktree has nothing at that path yet, and the
- * link stays inside the worktree. Removing the worktree unlinks it without
+ * notes repository, the project's agent skills…) from the main clone into a
+ * task worktree, under the same guards as the dependencies: the folder exists
+ * in the main clone, git ignores it, the worktree has nothing at that path
+ * yet, and the link stays inside the worktree. Missing parent folders are
+ * created when git ignores them. Removing the worktree unlinks it without
  * touching the folder it points to.
  */
 async function linkDeclaredFolders(repoCwd: string, worktreePath: string, root: string): Promise<void> {
@@ -113,9 +147,8 @@ async function linkDeclaredFolders(repoCwd: string, worktreePath: string, root: 
     try {
       if (!existsSync(source) || !statSync(source).isDirectory()) continue;
       const parent = dirname(destination);
-      if (!existsSync(parent)) continue;
-      const inside = relative(root, realpathSync(parent));
-      if (isAbsolute(inside) || inside === '..' || inside.startsWith(`..${sep}`)) continue;
+      if (!existsSync(parent) && !(await createIgnoredParents(worktreePath, root, rel))) continue;
+      if (!isInside(root, parent)) continue;
       if (lstatSync(destination, { throwIfNoEntry: false })) continue;
       try {
         // Checked as git will see the link: a file. A directory-only rule (`/docs/`) does not
@@ -154,8 +187,8 @@ export async function currentBranch(cwd: string): Promise<string | null> {
   }
 }
 
-/** Does the branch exist in this repo? */
-async function branchExists(cwd: string, branch: string): Promise<boolean> {
+/** Does the ref (a branch, or any revision) resolve in this repo? */
+export async function branchExists(cwd: string, branch: string): Promise<boolean> {
   try {
     await exec('git', ['-C', cwd, 'rev-parse', '--verify', branch], { timeout: 5000 });
     return true;
@@ -334,15 +367,54 @@ async function abortPendingMerge(worktreePath: string): Promise<void> {
   }
 }
 
+/** Absolute paths of the symbolic links git tracks in a worktree; empty when git cannot say. */
+async function trackedLinks(worktreePath: string): Promise<Set<string>> {
+  try {
+    const { stdout } = await exec('git', ['-C', worktreePath, 'ls-files', '-s', '-z'], { timeout: 30_000, maxBuffer: 64 * 1024 * 1024 });
+    const links = new Set<string>();
+    for (const record of stdout.split('\0')) {
+      const tab = record.indexOf('\t');
+      if (tab > 0 && record.startsWith('120000 ')) links.add(join(resolve(worktreePath), ...record.slice(tab + 1).split('/')));
+    }
+    return links;
+  } catch {
+    // Unknown: every link goes, which at worst makes a removal without --force refuse.
+    return new Set();
+  }
+}
+
+/**
+ * Removes the links a worktree shares with the main clone before git deletes
+ * the folder: on Windows they are junctions, which the deletion has traversed,
+ * emptying the main clone's `node_modules`. Throws when one stays, so the
+ * folder is never deleted with it. A worktree kept after all (git refuses a
+ * dirty one) gets its links back from the dispatcher, which re-links on reuse.
+ */
+async function unlinkBeforeRemoval(worktreePath: string): Promise<void> {
+  if (!existsSync(worktreePath)) return;
+  unlinkWorktreeLinks(worktreePath, await trackedLinks(worktreePath));
+}
+
 /**
  * Removes a task's worktree folder and KEEPS its branch: its commits stay, and
  * the next dispatch reattaches to it (`createWorktree`). Run from the worktree
  * itself, so it needs neither the agent's cwd nor the source repo (TIM-0113: a
  * task moved to an agent without a folder). No `--force`: git refuses a
  * worktree with uncommitted changes, which is work this gesture must not lose.
+ *
+ * The removal itself runs from the repository's common dir, never from inside
+ * the folder: Windows locks a process's current directory, and a git that
+ * stands in the folder it deletes fails with "Permission denied".
  */
 export async function releaseWorktreeFolder(path: string): Promise<void> {
-  await exec('git', ['-C', path, 'worktree', 'remove', path], { timeout: 15_000 });
+  const r = await exec(
+    'git',
+    ['-C', path, 'rev-parse', '--path-format=absolute', '--git-common-dir'],
+    { timeout: 10_000 },
+  );
+  const commonDir = r.stdout.trim();
+  await unlinkBeforeRemoval(path);
+  await exec('git', ['-C', commonDir || path, 'worktree', 'remove', path], { timeout: 15_000 });
   purgeShell(WORKTREES_ROOT, path, 0, Date.now());
 }
 
@@ -353,20 +425,25 @@ export async function releaseWorktreeFolder(path: string): Promise<void> {
  * Codex rollouts — that is on purpose.
  *
  * `force = true` ignores the `worktree remove` errors (case of a dirty
- * or already partly deleted worktree).
+ * or already partly deleted worktree), never a shared link that could not be
+ * removed first: that one throws, and the folder and the branch both stay.
  */
 export async function disposeWorktree(
   info: WorktreeInfo,
   force = false,
 ): Promise<void> {
-  // Worktree remove
+  await unlinkBeforeRemoval(info.path);
   try {
     const args = ['-C', info.sourceRepo, 'worktree', 'remove'];
     if (force) args.push('--force');
     args.push(info.path);
     await exec('git', args, { timeout: 15_000 });
   } catch (err) {
-    if (!force) throw err;
+    if (!force) {
+      // Git refused (uncommitted work): the worktree stays, and may still be in use, so it gets its links back.
+      await prepareWorktreeDependencies(info.sourceRepo, info.path);
+      throw err;
+    }
   }
   // Branch -D (forced, it was already merged if we get here).
   try {

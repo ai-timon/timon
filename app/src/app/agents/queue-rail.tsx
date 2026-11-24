@@ -45,7 +45,7 @@ function firstLine(s: string | undefined | null, max = 64): string {
   return meaningful.length > max ? meaningful.slice(0, max - 1) + '…' : meaningful;
 }
 
-export function QueueRail({ poignee, className }: WidgetProps) {
+export function QueueRail({ handle, className }: WidgetProps) {
   const [running, setRunning] = useState<Mission[]>([]);
   const [queued, setQueued] = useState<Task[]>([]);
   const [agentProjects, setAgentProjects] = useState<ReadonlyMap<string, string | null>>(new Map());
@@ -95,7 +95,7 @@ export function QueueRail({ poignee, className }: WidgetProps) {
         const mj = (await mr.json()) as { missions: Mission[] };
         const tj = (await tr.json()) as { tasks: Task[] };
         if (cancelled) return;
-        // Exclude internal wake-loop missions ("Tu as N notifications…") —
+        // Exclude internal wake-loop missions ("You have N message(s) waiting…") —
         // system plumbing, not user-facing work.
         setRunning(
           (mj.missions ?? [])
@@ -155,7 +155,7 @@ export function QueueRail({ poignee, className }: WidgetProps) {
   // nothing left to do, and the layout no longer jumps when the last task
   // moves to DONE.
   return (
-    <Tile title={t('agentsLayout.tasks')} subtitle={runningShown.length + queuedClean.length || undefined} actions={poignee} className={className} bodyClassName="p-3">
+    <Tile title={t('agentsLayout.tasks')} subtitle={runningShown.length + queuedClean.length || undefined} actions={handle} className={className} bodyClassName="p-3">
       <div className="flex flex-col gap-3 overflow-y-auto pr-1 scrollbar-none flex-1 pointer-events-auto">
       {picker}
       {runningShown.length > 0 && (

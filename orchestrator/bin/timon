@@ -780,6 +780,8 @@ Agents & missions:
            --look '{"shape":"round","color":"#d4a373","eyes":"happy","acc":"coffee"}'
                                     (mascot look; --look null clears it)
            --avatar emoji|image|mascot   (head shown; --avatar null = picture, logo, emoji, initial)
+    (--allowed-tools Bash pre-allows every shell command, Bash(git:*) only those starting
+     with git; in auto mode the claude CLI ignores Bash and Bash(*): use acceptEdits)
     (--skills is the whole checked set, stored as the agent's skill attachments:
      unlisted ones are detached; import mode / exclusion: timon skill attach)
     (deletion: the app or the agent_delete tool; the agent waits in the trash)
@@ -857,7 +859,7 @@ Tasks (Kanban backlog):
   timon task list [--status PENDING|IN_PROGRESS|DONE|BLOCKED]   (TODO = deprecated alias of PENDING)
   timon task get <id>
   timon task create --title TEXT --agent NAME [--type code|review|merge|research|doc|chore] [--project SLUG] [--description D] [--priority 1-5]
-                   [--base BRANCH] [--todo TODO_ID] [--plan-group NAME]
+                   [--base BRANCH] [--todo TODO_ID] [--plan-group NAME] [--landing pr|local]
                    [--model SLUG] [--permission-mode default|acceptEdits|bypassPermissions]
                    [--fallback-backend NAME|none] [--fallback-model SLUG]
                    [--deps id1,id2] [--scheduled ISO8601]
@@ -902,11 +904,32 @@ Worktrees (git isolation per code task):
   timon worktree create <task-id> [--base B]   force-create (dispatcher does it automatically for type=code)
   timon worktree dispose <task-id> [--force]   unmounts worktree + local branch (post-merge)
 
+Pull requests (projects whose jobs land through one, see set-integration):
+  timon pr open <task-id|series-id> --title TEXT [--body TEXT | --body-file PATH]
+                                             checks the job's integration branch (account, remote URL,
+                                             identity, messages, ignored files, public tree), pushes it
+                                             without force and opens its pull request; sec/ is refused
+  timon pr branch <branch> [--series ID]       sequential job: cuts its integration branch from the remote's
+                                             target and gives the pilot a worktree on it (default: THIS
+                                             mission's series)
+  timon pr land <job-id|series-id> [--title TEXT] [--body TEXT | --body-file PATH]
+                                             lands a job kept on its branch: merged into the local target
+                                             (fast-forward or merge commit, refused on a conflict or a dirty
+                                             checkout of the target), or its pull request opened (title needed)
+
 Projects (agent roles per project):
   timon project list                           lists configured projects
   timon project roles <slug>                   shows the role→agent mapping
   timon project set-role <slug> <role> <agent> [--model SLUG] [--permission-mode MODE]
                                              sets the agent + model/permission for a role
+  timon project get-integration <slug> [--check]
+                                             how the project's Kanban jobs land (local merge or pull request);
+                                             --check asks gh which account the configured folder signs in as
+  timon project set-integration <slug> [--mode local|pr] [--remote NAME] [--target BRANCH] [--forge github]
+                       [--account LOGIN] [--gh-config-dir ABSOLUTE_PATH] [--branch-prefix PREFIX/]
+                       [--remote-url PUSH_URL] | --reset
+                                             changes what you pass (needs projects:manage); an empty
+                                             --account, --gh-config-dir or --remote-url clears it
   timon project create <slug> [--name TEXT] [--cwd PATH] [--workspace NAME] [--create-workspace]
                        [--color #RRGGBB] [--icon TEXT] [--speech TEXT] [--kind TEXT] [--status TEXT]
                                              registers a project; the cwd must already exist on the host
@@ -919,6 +942,7 @@ Projects (agent roles per project):
 Routines (cron → creates a Kanban task on each due tick):
   timon routine list
   timon routine create --name TEXT --agent NAME --cron EXPR --prompt TEXT [--type ...] [--project SLUG]
+                       [--extra-mcp m1,m2] [--extra-skills s1,s2] [--allow t1,t2]   copied onto every task it opens
   timon routine update <id> [--cron ...] [--enabled true|false] ...
   timon routine delete <id>
 
@@ -997,6 +1021,10 @@ plugin's, from its page in the app):
   timon setup-token                          one-time token the first-run form asks for on an exposed install
   timon user list                            accounts (json)
   timon user reset-password <email-or-id>    temporary password, printed once
+  timon user create-admin [--email ADDRESS] [--name NAME] [--password-stdin]
+                                             the first account, without the emailed code (offline
+                                             machine); the password is typed hidden or piped, never
+                                             an argument; the email is kept unconfirmed
 
 Paired devices (another Timon that drives this machine — a headless server has no screen to click):
   timon device pair [--user EMAIL-OR-ID] [--json]
@@ -1534,6 +1562,14 @@ async function cmdAgentCreate(argv) {
     config: Object.keys(config).length ? config : undefined,
   });
   process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+  printAgentWarnings(j);
+}
+
+/** The daemon saved the agent but flags a setting that will not do what it says
+ *  (a shell pre-allow its mode drops): on stderr, so a script reading the JSON
+ *  still gets it whole. */
+function printAgentWarnings(j) {
+  for (const w of Array.isArray(j?.warnings) ? j.warnings : []) process.stderr.write(`timon: warning: ${w}\n`);
 }
 
 async function cmdAgentUpdate(argv) {
@@ -1583,6 +1619,7 @@ async function cmdAgentUpdate(argv) {
       config: Object.keys(mergedCfg).length ? mergedCfg : undefined,
     });
     process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+    printAgentWarnings(j);
     return;
   }
 
@@ -1592,6 +1629,7 @@ async function cmdAgentUpdate(argv) {
   }
   const j = await http('PATCH', `/api/agents/${encodeURIComponent(name)}/config`, cfgPatch);
   process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+  printAgentWarnings(j);
 }
 
 async function cmdAgentSetScope(argv) {
@@ -2036,11 +2074,16 @@ async function cmdTaskCreate(argv) {
   const base = takeFlag(argv, 'base');
   // TO DO idea this task implements: it closes itself once the chain lands.
   const todo = takeFlag(argv, 'todo');
+  // --landing pr: the final merge task of a job that lands through a pull
+  // request; it opens the pull request instead of merging into the branch.
+  // --landing local: the final merge task of a job on a branch of its own in a
+  // project that merges locally; it merges that branch into the target.
+  const landing = takeFlag(argv, 'landing');
 
   if (!title || !agent) {
     process.stderr.write('usage: timon task create --title TEXT --agent NAME [--description D] [--priority 1-5]\n' +
       '       [--type code|review|merge|research|doc|chore] [--project SLUG] [--base BRANCH]\n' +
-      '       [--pipeline full|code-self|code-group] [--group-id ID] [--plan-group NAME] [--todo ID]\n' +
+      '       [--pipeline full|code-self|code-group] [--group-id ID] [--plan-group NAME] [--todo ID] [--landing pr|local]\n' +
       '       [--backend NAME] [--model SLUG] [--permission-mode default|acceptEdits|bypassPermissions]\n' +
       '       [--fallback-backend NAME|none] [--fallback-model SLUG]\n' +
       '       [--deps id1,id2] [--scheduled ISO] [--extra-skills s1,s2] [--extra-mcp m1,m2]\n' +
@@ -2050,6 +2093,10 @@ async function cmdTaskCreate(argv) {
   await assertBackend('task create', backend);
   if (pipeline && !['full', 'code-self', 'code-group'].includes(pipeline)) {
     process.stderr.write(`timon task create: --pipeline must be 'full', 'code-self' or 'code-group' (got: ${pipeline})\n`);
+    process.exit(64);
+  }
+  if (landing && landing !== 'pr' && landing !== 'local') {
+    process.stderr.write(`timon task create: --landing must be 'pr' or 'local' (got: ${landing})\n`);
     process.exit(64);
   }
   if (todo !== undefined && todo !== null && !/^[1-9]\d*$/.test(todo)) {
@@ -2079,6 +2126,7 @@ async function cmdTaskCreate(argv) {
     project: project || undefined,
     base: base || undefined,
     todo_id: todo ? Number(todo) : undefined,
+    landing: landing || undefined,
     trace_id: process.env.TIMON_TRACE_ID || undefined,
   };
 
@@ -2522,6 +2570,88 @@ async function cmdWorktree(argv) {
   }
 }
 
+/* ─── pull requests (a job landing through one) ─── */
+const PR_OPEN_USAGE =
+  'usage: timon pr open <task-id|series-id> --title TEXT [--body TEXT | --body-file PATH]\n';
+
+async function cmdPrOpen(argv) {
+  const title = takeFlag(argv, 'title');
+  let body = takeFlag(argv, 'body');
+  const bodyFile = takeFlag(argv, 'body-file');
+  const id = argv[0];
+  if (!id || argv.length > 1 || !title || (body !== undefined && bodyFile !== undefined)) {
+    process.stderr.write(PR_OPEN_USAGE);
+    process.exit(64);
+  }
+  if (bodyFile !== undefined) body = fs.readFileSync(bodyFile, 'utf8');
+  const payload = { title, body: body ?? '' };
+  // The id names a task of the job or its series: the task route says when
+  // no task has it, and only then is the series asked.
+  const taskPath = `/api/tasks/${encodeURIComponent(id)}/pull-request`;
+  const asTask = await httpRaw('POST', taskPath, payload);
+  let j = asTask.body;
+  if (asTask.status === 404 && asTask.body?.code === 'pr_target_not_found') {
+    j = await http('POST', `/api/series/${encodeURIComponent(id)}/pull-request`, payload);
+  } else if (!asTask.ok) {
+    // Shown like `http` does, without sending the request again: a second
+    // call would run every check, and possibly the push, a second time.
+    const text = typeof asTask.body === 'string' ? asTask.body : JSON.stringify(asTask.body);
+    process.stderr.write(`timon POST ${taskPath} → ${asTask.status}\n`);
+    const line = refusalText(text);
+    if (line !== text) process.stderr.write(`${line}\n`);
+    process.stderr.write(`${text}\n`);
+    process.exit(2);
+  }
+  process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+}
+
+const PR_LAND_USAGE =
+  'usage: timon pr land <job-id|series-id> [--title TEXT] [--body TEXT | --body-file PATH]\n';
+
+/** Lands a job kept on its branch: merged locally, or its pull request opened. */
+async function cmdPrLand(argv) {
+  const title = takeFlag(argv, 'title');
+  let body = takeFlag(argv, 'body');
+  const bodyFile = takeFlag(argv, 'body-file');
+  const id = argv[0];
+  if (!id || argv.length > 1 || (body !== undefined && bodyFile !== undefined)) {
+    process.stderr.write(PR_LAND_USAGE);
+    process.exit(64);
+  }
+  if (bodyFile !== undefined) body = fs.readFileSync(bodyFile, 'utf8');
+  const payload = {};
+  if (title !== undefined) payload.title = title;
+  if (body !== undefined) payload.body = body;
+  const j = await http('POST', `/api/kanban/landings/${encodeURIComponent(id)}/land`, payload);
+  process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+}
+
+/** The integration branch of a sequential job, and the pilot's worktree on it. */
+async function cmdPrBranch(argv) {
+  const series = takeFlag(argv, 'series');
+  const branch = argv[0];
+  if (!branch || argv.length > 1) {
+    process.stderr.write('usage: timon pr branch <branch> [--series ID]\n');
+    process.exit(64);
+  }
+  const j = await http('POST', `/api/series/${encodeURIComponent(series || 'current')}/integration-branch`, { branch });
+  process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+}
+
+async function cmdPr(argv) {
+  const [sub, ...rest] = argv;
+  switch (sub) {
+    case 'open': return cmdPrOpen(rest);
+    case 'branch': return cmdPrBranch(rest);
+    case 'land': return cmdPrLand(rest);
+    default:
+      process.stderr.write('usage: timon pr open <task-id|series-id> --title TEXT [--body TEXT | --body-file PATH]\n');
+      process.stderr.write('usage: timon pr land <job-id|series-id> [--title TEXT] [--body TEXT | --body-file PATH]\n');
+      process.stderr.write('usage: timon pr branch <branch> [--series ID]\n');
+      process.exit(64);
+  }
+}
+
 /* ─── projects (agent roles per project) ─── */
 async function cmdProjectList() {
   const j = await http('GET', '/api/projects');
@@ -2556,6 +2686,53 @@ async function cmdProjectSetRole(argv) {
   if (permission) body.permission_mode = permission;
   const j = await http('PATCH', `/api/projects/${encodeURIComponent(slug)}/roles/${encodeURIComponent(role)}`, body);
   process.stdout.write(JSON.stringify(j.roles, null, 2) + '\n');
+}
+
+/** Flag → field of `PUT /api/projects/:slug/integration`. An empty value
+ *  clears the two fields that may be null. */
+const INTEGRATION_FLAGS = [
+  ['mode', 'mode'], ['remote', 'remote'], ['target', 'target'], ['forge', 'forge'],
+  ['account', 'account'], ['gh-config-dir', 'gh_config_dir'], ['branch-prefix', 'branch_prefix'],
+  ['remote-url', 'remote_url'],
+];
+const INTEGRATION_NULLABLE = new Set(['account', 'gh_config_dir', 'remote_url']);
+const INTEGRATION_USAGE =
+  'usage: timon project set-integration <slug> [--mode local|pr] [--remote NAME] [--target BRANCH]\n' +
+  '       [--forge github] [--account LOGIN] [--gh-config-dir ABSOLUTE_PATH] [--branch-prefix PREFIX/]\n' +
+  '       [--remote-url PUSH_URL]\n' +
+  '       timon project set-integration <slug> --reset   (back to the local merge)\n';
+
+async function cmdProjectGetIntegration(argv) {
+  const check = argv.includes('--check');
+  const rest = argv.filter((a) => a !== '--check');
+  const slug = rest[0];
+  if (!slug || rest.length > 1) {
+    process.stderr.write('usage: timon project get-integration <slug> [--check]\n');
+    process.exit(64);
+  }
+  const path = `/api/projects/${encodeURIComponent(slug)}/integration`;
+  const j = await http('GET', path);
+  const out = check ? { ...j, check: await http('POST', `${path}/check`, {}) } : j;
+  process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+}
+
+async function cmdProjectSetIntegration(argv) {
+  const reset = argv.includes('--reset');
+  const rest = argv.filter((a) => a !== '--reset');
+  const body = {};
+  for (const [flag, field] of INTEGRATION_FLAGS) {
+    const value = takeFlag(rest, flag);
+    if (value === undefined) continue;
+    body[field] = value === '' && INTEGRATION_NULLABLE.has(field) ? null : value;
+  }
+  const slug = rest[0];
+  if (!slug || rest.length > 1 || (reset ? Object.keys(body).length > 0 : Object.keys(body).length === 0)) {
+    process.stderr.write(INTEGRATION_USAGE);
+    process.exit(64);
+  }
+  const path = `/api/projects/${encodeURIComponent(slug)}/integration`;
+  const j = reset ? await http('DELETE', path) : await http('PUT', path, body);
+  process.stdout.write(JSON.stringify(j, null, 2) + '\n');
 }
 
 const PROJECT_META_FLAGS = ['name', 'cwd', 'workspace', 'color', 'icon', 'speech', 'kind', 'status'];
@@ -2606,6 +2783,8 @@ async function cmdProject(argv) {
     case 'list':      return cmdProjectList();
     case 'roles':     return cmdProjectRoles(rest);
     case 'set-role':  return cmdProjectSetRole(rest);
+    case 'get-integration': return cmdProjectGetIntegration(rest);
+    case 'set-integration': return cmdProjectSetIntegration(rest);
     case 'create':
     case 'update':    return cmdProjectWrite(sub, rest);
     case 'demo': {
@@ -2614,7 +2793,7 @@ async function cmdProject(argv) {
       return;
     }
     default:
-      process.stderr.write('usage: timon project <list|roles|set-role|create|update|demo> …\n');
+      process.stderr.write('usage: timon project <list|roles|set-role|get-integration|set-integration|create|update|demo> …\n');
       process.exit(64);
   }
 }
@@ -2787,6 +2966,19 @@ async function cmdPipeline(argv) {
 }
 
 /* ─── routines ─── */
+/**
+ * `--extra-mcp`, `--extra-skills` and `--allow` of a routine: copied onto every
+ * task it opens. An empty value (`--extra-mcp ''`) clears the list on update.
+ */
+function routineExtras(argv) {
+  const extras = {};
+  for (const [flag, key] of [['extra-mcp', 'extra_mcp_servers'], ['extra-skills', 'extra_skills'], ['allow', 'extra_allowed_tools']]) {
+    const raw = takeFlag(argv, flag);
+    if (raw !== undefined) extras[key] = raw.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  return extras;
+}
+
 async function cmdRoutineList() {
   const j = await http('GET', '/api/routines');
   process.stdout.write(JSON.stringify(j.routines, null, 2) + '\n');
@@ -2800,10 +2992,12 @@ async function cmdRoutineCreate(argv) {
   const taskType = takeFlag(argv, 'type');
   const project = takeFlag(argv, 'project');
   const enabledFlag = takeFlag(argv, 'enabled');
+  const extras = routineExtras(argv);
   if (!name || !agent || !cron || !prompt) {
     process.stderr.write(
       'usage: timon routine create --name TEXT --agent NAME --cron EXPR --prompt TEXT\n' +
-      '       [--type code|review|merge|research|doc|chore] [--project SLUG] [--enabled true|false]\n',
+      '       [--type code|review|merge|research|doc|chore] [--project SLUG] [--enabled true|false]\n' +
+      '       [--extra-mcp m1,m2] [--extra-skills s1,s2] [--allow t1,t2]\n',
     );
     process.exit(64);
   }
@@ -2812,6 +3006,7 @@ async function cmdRoutineCreate(argv) {
     task_type: taskType || undefined,
     project: project || undefined,
     enabled: enabledFlag === undefined ? true : enabledFlag !== 'false',
+    ...extras,
   };
   const j = await http('POST', '/api/routines', body);
   process.stdout.write(JSON.stringify(j.routine, null, 2) + '\n');
@@ -2837,6 +3032,7 @@ async function cmdRoutineUpdate(argv) {
   if (taskType) fields.task_type = taskType;
   if (project !== undefined) fields.project = project || null;
   if (enabledFlag !== undefined) fields.enabled = enabledFlag !== 'false';
+  Object.assign(fields, routineExtras(argv));
   const j = await http('PUT', `/api/routines/${id}`, fields);
   process.stdout.write(JSON.stringify(j.routine, null, 2) + '\n');
   if (j.needs_activation) process.stdout.write(`\n${j.message}\n`);
@@ -4245,7 +4441,11 @@ async function cmdService(argv) {
       break;
     }
     case 'stop': {
-      res = mod.stopService(opts);
+      // Windows has no stop signal to send: the daemon is asked first, then
+      // the stop's kills end what did not leave (host/cooperative-stop).
+      const { cooperativeStopOf, withCooperativeStop } = await loadDist('host/cooperative-stop');
+      const { daemonOrigin } = await loadDist('host/diagnostic-report');
+      res = await withCooperativeStop(opts, mod.stopService, cooperativeStopOf(daemonOrigin(cfg), opts.timonHome));
       if (res.ok && !dryRun) {
         const { endMissionsOfStoppedDaemon } = await loadDist('host/mission-processes');
         const ended = await endMissionsOfStoppedDaemon(opts.timonHome, host);
@@ -4979,6 +5179,96 @@ async function cmdUserResetPassword(argv) {
   );
 }
 
+/**
+ * `timon user create-admin` — the first account, made on this machine without
+ * the mailed code: the way in when the machine is offline or the mail relay
+ * does not answer. Daemon token only (`POST /api/users/first-admin`). The
+ * password is typed hidden or piped with --password-stdin, never an argument,
+ * which would stay in the shell history and be readable by any process. The
+ * address stays unconfirmed until its owner confirms it from a signed-in session.
+ */
+async function cmdUserCreateAdmin(argv) {
+  const usage = 'usage: timon user create-admin [--email ADDRESS] [--name NAME] [--password-stdin]\n';
+  if (argv.some((a) => a === '--password' || a.startsWith('--password='))) {
+    process.stderr.write('timon user create-admin: the password is never an argument; type it at the prompt or pipe it with --password-stdin.\n');
+    process.exit(64);
+  }
+  const email0 = takeFlag(argv, 'email');
+  const name0 = takeFlag(argv, 'name');
+  const passwordStdin = argv.includes('--password-stdin');
+  const unknown = argv.filter((a) => a !== '--password-stdin');
+  if (unknown.length) { process.stderr.write(`timon user create-admin: unknown argument ${unknown[0]}\n${usage}`); process.exit(64); }
+  const interactive = Boolean(process.stdin.isTTY) && !passwordStdin;
+  if (!interactive && !passwordStdin) {
+    process.stderr.write(`timon user create-admin: no terminal to type the password in. Pipe it with --password-stdin and give --email.\n${usage}`);
+    process.exit(64);
+  }
+
+  let me;
+  try {
+    me = await httpRaw('GET', '/api/auth/me', undefined, 5000);
+  } catch {
+    const local = isLocalDaemonUrl(timonHome(), API, { packaged: packagedCli() });
+    process.stderr.write(unreachableLines({ api: API, local, serviceInstalled: local && serviceInstalledMarker() }).join('\n') + '\n');
+    process.exit(1);
+  }
+  if (me.ok && me.body?.needsSetup === false) {
+    process.stderr.write('timon user create-admin: this Timon already has an account. Recover it with: timon user reset-password <email>\n');
+    process.exit(1);
+  }
+
+  let email = (email0 ?? '').trim().toLowerCase();
+  let name = (name0 ?? '').trim();
+  let password = '';
+  if (passwordStdin) {
+    if (!email) { process.stderr.write(`timon user create-admin: --password-stdin needs --email\n${usage}`); process.exit(64); }
+    password = (await readAllStdin()).replace(/\r?\n$/, '');
+  } else {
+    if (!name0) name = await askLine('First name (Enter to skip): ');
+    while (!EMAIL_SHAPE.test(email)) {
+      if (email) process.stderr.write('  That is not an email address.\n');
+      email = (await askLine('Email: ')).toLowerCase();
+    }
+    for (let attempt = 0; attempt < 3 && !password; attempt++) {
+      let first;
+      let again;
+      try {
+        first = await readHiddenLine(`Password (at least ${MIN_PASSWORD} characters): `);
+        if (first.length < MIN_PASSWORD) { process.stderr.write(`  At least ${MIN_PASSWORD} characters.\n`); continue; }
+        again = await readHiddenLine('Password again: ');
+      } catch (err) {
+        if (err?.code === PROMPT_CANCELLED) { process.stderr.write('Nothing was created.\n'); process.exit(130); }
+        throw err;
+      }
+      if (again !== first) { process.stderr.write('  The two passwords differ.\n'); continue; }
+      password = first;
+    }
+    if (!password) { process.stderr.write('timon user create-admin: no password set; nothing was created.\n'); process.exit(1); }
+  }
+  if (!EMAIL_SHAPE.test(email)) { process.stderr.write('timon user create-admin: that is not an email address.\n'); process.exit(64); }
+  if (password.length < MIN_PASSWORD) { process.stderr.write(`timon user create-admin: the password needs at least ${MIN_PASSWORD} characters.\n`); process.exit(64); }
+  if (!name) name = email.split('@')[0];
+
+  const r = await httpRaw('POST', '/api/users/first-admin', { email, name, password }, 30_000);
+  if (r.status !== 201) {
+    const error = typeof r.body?.code === 'string' ? r.body.code : r.body?.error;
+    const why = {
+      already_set_up: 'this Timon already has an account. Recover it with: timon user reset-password <email>',
+      build_expired: 'this build has expired: install the current version of Timon first.',
+      setup_in_progress: 'another account creation is running; try again in a moment.',
+      license_required: 'this build needs a licence key with the first account: run timon init.',
+      unauthorized: "it needs Timon's daemon token: run it on the machine where Timon is installed, as the account that owns its data.",
+      not_found: "it needs Timon's daemon token: run it on the machine where Timon is installed, as the account that owns its data.",
+    }[error] ?? (typeof error === 'string' ? error : `the daemon answered ${r.status}.`);
+    process.stderr.write(`timon user create-admin: the account was not created: ${why}\n`);
+    process.exit(1);
+  }
+  process.stdout.write(`Account created for ${email}. Sign in to Timon with it.\n`);
+  if (r.body?.emailUnverified === true) {
+    process.stdout.write('The email address is not confirmed yet, so a forgotten password cannot be reset by email; timon user reset-password still works.\n');
+  }
+}
+
 /* ─── subscription accounts (TODO #330) ─── */
 
 async function findBackendAccount(spec) {
@@ -5061,8 +5351,10 @@ async function cmdUser(argv) {
       return cmdUserList();
     case 'reset-password':
       return cmdUserResetPassword(rest);
+    case 'create-admin':
+      return cmdUserCreateAdmin(rest);
     default:
-      process.stderr.write('usage: timon user list|reset-password …\n');
+      process.stderr.write('usage: timon user list|reset-password|create-admin …\n');
       process.exit(64);
   }
 }
@@ -5616,6 +5908,9 @@ async function main() {
         break;
       case 'worktree':
         await cmdWorktree(rest);
+        break;
+      case 'pr':
+        await cmdPr(rest);
         break;
       case 'project':
         await cmdProject(rest);

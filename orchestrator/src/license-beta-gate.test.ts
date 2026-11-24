@@ -13,9 +13,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import test from 'node:test';
+import { removeHomeOnExit } from '../tests/helpers/test-home.js';
 import express from 'express';
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-beta-gate-'));
+// Removed at exit, once the database is closed: Windows will not delete an open timon.db.
+removeHomeOnExit(process.env.TIMON_HOME);
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 const { overrideBuildInfo } = await import('./build-info.js');
 const { unlicensed } = await import('./license/license.js');
@@ -67,7 +70,7 @@ updateRoutes(app, { status: () => checker.status(), check: () => checker.check()
 const server = app.listen(0, '127.0.0.1');
 await once(server, 'listening');
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-test.after(() => { server.close(); overrideSetupPolicyForTests(undefined); overrideBuildInfo(undefined); rmSync(process.env.TIMON_HOME!, { recursive: true, force: true }); });
+test.after(() => { server.close(); overrideSetupPolicyForTests(undefined); overrideBuildInfo(undefined); });
 
 type Who = 'anonymous' | 'daemon-token' | 'session';
 let sessionCookie = '';

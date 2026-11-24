@@ -17,7 +17,7 @@ test('device names, alternate streams, forbidden characters and trailing dots ar
 });
 
 test('ordinary names, and names that only resemble a device, pass', () => {
-  for (const name of ['package.json', 'console.js', 'auxiliary', 'com10', 'lpt', 'nul-check.md', '.hidden', 'a b', 'é.txt']) {
+  for (const name of ['package.json', 'console.js', 'auxiliary', 'com10', 'lpt', 'nul-check.md', '.hidden', 'a b', 'é.txt']) { // french-ok: an accented file name
     assert.equal(windowsSegmentProblem(name), null, name);
   }
 });

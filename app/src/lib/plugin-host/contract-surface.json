@@ -1,5 +1,5 @@
 {
-  "apiVersion": 17,
+  "apiVersion": 19,
   "clientContext": {
     "api": {
       "type": "function",
@@ -679,6 +679,46 @@
       "useUpdateDialog": {
         "type": "export",
         "since": 17
+      },
+      "useJobDialog": {
+        "type": "export",
+        "since": 19
+      },
+      "usePublishDialog": {
+        "type": "export",
+        "since": 19
+      },
+      "useGitStackProject": {
+        "type": "export",
+        "since": 19
+      },
+      "GitStackProjectPicker": {
+        "type": "export",
+        "since": 19
+      },
+      "useTodoOpener": {
+        "type": "export",
+        "since": 19
+      },
+      "useProjectSettings": {
+        "type": "export",
+        "since": 19
+      },
+      "useWidgetCount": {
+        "type": "export",
+        "since": 19
+      },
+      "useWidgetAttention": {
+        "type": "export",
+        "since": 19
+      },
+      "useWidgetMenu": {
+        "type": "export",
+        "since": 19
+      },
+      "useWidgetInFront": {
+        "type": "export",
+        "since": 19
       }
     },
     "api.js": {

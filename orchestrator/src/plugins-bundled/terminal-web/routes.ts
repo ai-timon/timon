@@ -24,7 +24,7 @@ import { readMeta } from '../../projects.js';
 import { isKnownCwd } from '../../terminal.js';
 import { auditRequest } from '../../users/audit-actor.js';
 import { trackDeviceConnection } from '../../users/device-connections.js';
-import { decideAccess, denialStatus, isSameOriginUpgrade } from './access.js';
+import { decideAccess, denialBody, denialStatus, isSameOriginUpgrade } from './access.js';
 import type { RequestAuth } from '../../users/identity.js';
 import type { UpgradeRoute } from '../../kernel/http-service.js';
 import { TerminalLimitError, type ServerMessage } from '../../terminal-host/sessions.js';
@@ -83,13 +83,13 @@ export function registerRoutes(app: Router, sessions: SessionStore): void {
       res.json({ enabled: true, persistence, sessions: await sessions.list(access.user.id) });
     } catch (err) {
       console.warn('[terminal-web] status failed:', (err as Error).message);
-      res.status(500).json({ error: 'terminal status unavailable' });
+      res.status(500).json(apiError('terminal_status_failed', 'terminal status unavailable'));
     }
   });
 
   app.post('/api/terminal/web/sessions', async (req, res) => {
     const access = decideAccess(req.auth);
-    if ('denied' in access) { res.status(denialStatus(access.denied)).json({ error: access.denied }); return; }
+    if ('denied' in access) { res.status(denialStatus(access.denied)).json(denialBody(access.denied)); return; }
     const parsed = CreateBody.safeParse(req.body ?? {});
     if (!parsed.success) { res.status(400).json(apiError('invalid_request', 'invalid body')); return; }
     const requested = parsed.data.cwd?.trim();
@@ -112,15 +112,16 @@ export function registerRoutes(app: Router, sessions: SessionStore): void {
       auditRequest(req, 'terminal.open', session.id);
       res.status(201).json({ session });
     } catch (err) {
-      if (err instanceof TerminalLimitError) { res.status(429).json({ error: err.message }); return; }
+      if (err instanceof TerminalLimitError) { res.status(429).json(apiError('terminal_limit', err.message, { detail: err.message })); return; }
       const message = (err as Error).message;
-      res.status(message === 'pty_unavailable' ? 501 : 500).json({ error: message === 'pty_unavailable' ? message : 'could not start the shell' });
+      if (message === 'pty_unavailable') res.status(501).json(apiError('pty_unavailable', message));
+      else res.status(500).json(apiError('terminal_start_failed', 'could not start the shell'));
     }
   });
 
   app.delete('/api/terminal/web/sessions/:id', async (req: Request<{ id: string }>, res) => {
     const access = decideAccess(req.auth);
-    if ('denied' in access) { res.status(denialStatus(access.denied)).json({ error: access.denied }); return; }
+    if ('denied' in access) { res.status(denialStatus(access.denied)).json(denialBody(access.denied)); return; }
     if (!(await sessions.kill(access.user.id, req.params.id))) { res.status(404).json(apiError('not_found', 'not found')); return; }
     auditRequest(req, 'terminal.close', req.params.id);
     res.json({ ok: true });

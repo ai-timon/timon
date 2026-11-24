@@ -45,6 +45,7 @@
       "confirm": "Confirmez le mot de passe",
       "mismatch": "Les deux mots de passe ne correspondent pas.",
       "tooShort": "Au moins {min} caractères.",
+      "offlineCommand": "Pas de connexion ? Créez le compte depuis un terminal de cet ordinateur :",
       "create": "Créer mon compte",
       "privacy": "Votre compte et votre mot de passe restent sur cet ordinateur. Votre adresse e-mail et ses codes passent par notre serveur, qui vous les envoie. Des statistiques d'usage anonymes sont partagées par défaut ; vous pouvez les désactiver dans les Réglages."
     },
@@ -71,7 +72,10 @@
       },
       "legal": "En continuant, vous acceptez les {terms} et prenez connaissance de la {privacy}.",
       "terms": "Conditions d’utilisation",
-      "privacy": "Politique de confidentialité"
+      "privacy": "Politique de confidentialité",
+      "telemetry": "Timon envoie des statistiques d’usage anonymes. {turnOff}",
+      "telemetryTurnOff": "Les désactiver",
+      "telemetryOff": "Statistiques d’usage désactivées. Réactivez-les dans {settingsPath}."
     },
     "profile": {
       "title": "Qu’est-ce qui vous amène ?",

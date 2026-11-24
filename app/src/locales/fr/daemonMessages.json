@@ -14,6 +14,10 @@
     "merge_held_no_verdict": "Merge retenu : la review {reviewId} est DONE mais son done_comment ne porte AUCUN verdict exploitable (attendu : une première ligne `verdict: pass` ou `verdict: changes_requested`). Sans verdict explicite, pas de merge. Faites clôturer de nouveau la review avec un verdict, ou débloquez la task à la main après avoir lu le diff.",
     "repair_wait_stalled": "La review {reviewId} du code {codeId} a demandé des changements, en attente de l’itération de réparation — aucune itération n’est apparue en {waited} min (limite {limit} min). La boucle de vérification n’en a pas créé (plafond d’itérations atteint, racine de la chaîne disparue, ou événement perdu). Créez l’itération de réparation à la main, ou relancez la review, puis débloquez cette task.",
     "git_missing_for_task": "git introuvable sur cette machine : les tasks code, review et merge d’un projet git ont besoin de git. Installez git, puis redémarrez Timon.",
+    "integration_branch_unset": "Le mode d’intégration « {mode} » demande une branche d’intégration et la référence distante d’où la tirer (base « {branch} », référence distante « {baseRef} »). La task n’a pas été lancée : renseignez les deux sur la task, puis relancez-la.",
+    "integration_branch_unavailable": "La branche d’intégration {branch} est indisponible : {detail}. La task n’a pas été lancée, et la branche n’est jamais tirée de la base locale à la place de {baseRef}. Corrigez le remote ou le nom de la branche, puis relancez la task.",
+    "task_base_missing": "La base {base} n’existe pas dans le dépôt. La task n’a pas été lancée : une task {type} ne démarre jamais sans sa base. Créez la branche ou changez la base de la task, puis relancez-la.",
+    "task_worktree_unavailable": "Aucun worktree pour cette task {type} ({cause}). Elle n’a pas été lancée : dans le dossier de l’agent, elle écrirait dans le checkout que partagent tous les agents. Corrigez la cause, puis relancez la task.",
     "review_verdict_unusable": {
       "title": "Review sans verdict exploitable : {title}",
       "body": "La review {taskId} s’est clôturée sans verdict JSON lisible : la chaîne code→review→merge ne peut pas continuer.\n\nLe relecteur a écrit : {excerpt, select, none {(vide)} other {{excerpt}}}\n\nRelancez la review ou tranchez à la main (merge / nouvelle itération de code)."
@@ -53,6 +57,282 @@
     "blocking_loop_detected": {
       "title": "Boucle de blocage détectée, intervention nécessaire : {title}",
       "body": "La task {taskId} (groupe {group, select, none {aucun} other {{group}}}) a été bloquée {wakes} fois de suite. La boucle de réveil a cessé de réveiller l’orchestrateur pour casser la boucle. Raison du dernier blocage : {reason, select, none {(non précisée)} other {{reason}}}.\n\nDébloquez-la à la main après examen (Kanban → task {taskId})."
+    },
+    "task_stopped_by_scope": "Arrêtée par {by} (timon stop {kind} {name})",
+    "task_blocked": {
+      "title": "{title, select, none {Task bloquée ({taskId})} other {Task bloquée : {title}}}"
+    },
+    "resource_memory_max": {
+      "title": "Plafond mémoire atteint ({label})",
+      "body": "Le cgroup {unit} a touché MemoryMax ({max}) {times, plural, one {# fois} other {# fois}}. Aucun processus tué par l’OOM pour l’instant, mais il ne reste aucune marge."
+    },
+    "resource_memory_high": {
+      "title": "Pression mémoire ({label})",
+      "body": "Le cgroup {unit} a dépassé MemoryHigh ({high}) — utilisation {usage}. Le noyau freine et récupère de la mémoire ; rien n’est tué, mais la charge est anormale."
+    },
+    "resource_oom_killed": {
+      "title": "OOM : {count, plural, one {# processus tué} other {# processus tués}} dans {label}",
+      "body": "Le noyau a tué {count, plural, one {# processus} other {# processus}} du cgroup {unit} (mémoire {usage} / max {max}). Une task a pu échouer sans message lisible — consultez `journalctl -k -g \"Out of memory\"`."
+    },
+    "resource_mission_killed": {
+      "title": "OOM : mission {mission} — processus tué",
+      "body": "[Garde des ressources de Timon] {cmd, select, none {{pid, select, none {Un de vos processus} other {Votre processus pid {pid}}}} other {Votre processus `{cmd}`{pid, select, none {} other { (pid {pid})}}}} a été tué par le noyau : il utilisait {ceiling, select, none {trop de mémoire} other {plus de {ceiling} de mémoire}}, {whose, select, slice {le plafond partagé par toutes les missions en cours} other {le plafond de cette mission}}.{rss, select, none {} other { Il occupait {rss} quand il a été tué.}} Relancer la même commande la fera tuer de la même façon. Trouvez d’abord la cause — une boucle infinie, une fuite, un jeu de données sans limite — et lancez une cible plus étroite (`npm test -- <file>`) une fois corrigée."
+    },
+    "resource_pressure_high": {
+      "title": "Forte pression mémoire (missions)",
+      "body": "Les missions passent {pressure} % de leur temps bloquées à attendre de la mémoire (utilisation {usage} / max {max}). Au-delà de {limit} pendant 20 s, systemd-oomd tuera une mission."
+    },
+    "merge_repair_by_hand": {
+      "title": "Merge à réparer à la main : {title}",
+      "body": "La task `{taskId}` a effacé {count, plural, one {# fichier} other {# fichiers}} qu’elle n’aurait pas dû toucher, et {max} tentatives de réparation automatique n’y ont rien changé. Elle reste DONE — le contrôle n’y touche plus, pour ne pas empiler les demi-réparations.\n\nMerge concerné : `{sha}`\nFichiers : {files}{more, plural, =0 {} other {\n… et # de plus}}"
+    },
+    "chain_abandoned": {
+      "title": "Chaîne abandonnée : {title}",
+      "body": "La chaîne de suite de la task {taskId} ({type}, « {title} ») a échoué {attempts} fois d’affilée : sa review, son merge et sa doc n’ont pas été créés et ne le seront plus automatiquement.\n\nUn échec qui se répète aussi souvent est structurel (worktree nettoyé, rôle de projet introuvable, erreur dans une étape de la chaîne) — les journaux `[task-chain]` de cette task en donnent la cause.\n\nPour rejouer : relancer la task remet le compteur à zéro."
+    },
+    "sandbox_cascade_ahead": {
+      "title": "Une task {type} tournera sur `{target}`, dont le bac à sable vient d’échouer : {title}",
+      "body": "Échec du bac à sable sur `{target}` alors que le code de cette chaîne a tourné sur `{coder}`. La review et le merge ne suivent pas le coder : ils restent sur `{target}` et bloqueront de la même façon. Déplacez-les aussi :\n  timon series role set --scope review --backend {coder} --series {series}\n  timon series role set --scope merge --backend {coder} --series {series}\npuis remettez en file la task bloquée.\n(Bloquée sur son bac à sable dans cette série : task {evidenceId} — {evidenceTitle}.)"
+    },
+    "ask_user_form_looping": {
+      "title": "Formulaire d’agent en boucle : {agent}",
+      "body": "{attempts} formulaires invalides d’affilée sur la mission {mission} — dernier défaut : {defect}. Aucune carte n’a pu être créée, vous n’avez donc rien vu passer. Le canal des formulaires est fermé pour cette mission : l’agent a pour consigne de décider seul en énonçant son hypothèse, ou de clore par `timon task block`. La décision qu’il voulait vous soumettre reste en suspens."
+    },
+    "late_answer_not_replayed": {
+      "title": "Réponse tardive impossible à rejouer : {tool}",
+      "body": "Vous avez répondu à `{tool}` pour la mission {mission}, mais elle n’a pas pu être relancée (processus mort, aucune session reprenable). {taskId, select, none {Relancez la mission si l’action est toujours nécessaire.} other {Task associée : {taskId} ({taskTitle}). Relancez-la si besoin.}}"
+    },
+    "agent_pair_loop_stopped": {
+      "title": "Boucle d’agents arrêtée : {a} ↔ {b}",
+      "body": "`{a}` et `{b}` ont échangé {count} messages en {minutes} min sans intervention humaine. Leurs messages sont désormais retenus dans la boîte de réception (statut « held ») et aucun des deux ne réveille plus l’autre.\n\nÉcrivez à l’un des deux dans le chat pour les relancer. Les messages retenus ne sont pas redistribués. Plafond : TIMON_WAKE_PAIR_MAX_MESSAGES ({max}), fenêtre : TIMON_WAKE_PAIR_WINDOW_MS."
+    },
+    "memory_proposals_to_review": {
+      "title": "Mémoire {slug} : {count, plural, one {# fait récurrent} other {# faits récurrents}} à examiner",
+      "body": "Ces faits reviennent au moins {threshold} fois et sont proposés à la promotion (proposals.md du projet `{slug}`). Approuvez-les en les copiant dans le fichier conservé suggéré, depuis l’interface ou l’API de mémoire du projet.\n\n{top}"
+    },
+    "deploy_rebuild_failed": {
+      "title": "Échec de la reconstruction automatique : {service}",
+      "body": "La reconstruction Docker du service `{service}` après le merge {sha} (« {title} ») a échoué.\n\n{output}\n\nReconstruction manuelle : `docker compose up -d --build {service}` (dans {dir})."
+    },
+    "deploy_rebuilt": {
+      "title": "Déploiement automatique : `{service}` reconstruit ✅",
+      "body": "Le merge {sha} (« {title} ») a modifié `{service}/` → conteneur reconstruit et redémarré automatiquement. Le changement est en ligne."
+    },
+    "orchestrator_restart_required": {
+      "title": "Redémarrage de l’orchestrateur nécessaire",
+      "body": "Le merge {sha} (« {title} ») a modifié `{dirs}/` — non déployé tant que l’orchestrateur n’a pas redémarré.\n\nQuand vous le pouvez (cela arrête les missions en cours) :\n{commands}"
+    },
+    "shell_preallow_inert": {
+      "title": "Pré-autorisation du shell ignorée en mode auto : {agent}",
+      "body": "{agent} pré-autorise {rules} mais tourne en mode auto : le CLI claude y ignore une règle qui autorise toutes les commandes shell, et une commande que son classifieur ne sait pas juger attend une approbation (une mission autonome est refusée au bout du délai). Pour garder la règle, passez l'agent en acceptEdits, et son rôle de projet aussi s'il fixe un mode ; ou pré-autorisez des motifs plus étroits comme Bash(git:*).\n\nLe mode auto vient de {source, select, mission {sa task ou son rôle de projet} other {sa propre configuration}}."
+    },
+    "shell_preallow_rerouted": {
+      "title": "Pré-autorisation du shell non utilisée : {named}",
+      "body": "La task {task} nomme {named}, qui pré-autorise {rules}, mais elle tourne sur {routed}, qui ne l'a pas ({why}). Ses commandes shell passent par le classifieur, et une commande qu'il ne sait pas juger attend une approbation. Donnez à {routed} les mêmes outils autorisés, ou laissez la task tourner sur {named}."
+    },
+    "backend_no_credit": {
+      "title": "Backend {backend} : plus de crédit",
+      "body": "`{backend}` répond par une erreur de paiement (HTTP 402 / solde épuisé) : le compte n’a plus de crédit.\n\nContrairement à une limite d’usage, **cela ne se rouvre pas tout seul** — il faut recharger le compte.\n\n- Backend écarté jusqu’au {until, date, medium} {until, time, short} (ou jusqu’à ce qu’un tour y réussisse de nouveau).\n- Les missions et les tasks qui en dépendent basculent sur leur plan de repli."
+    },
+    "series_fallback_applied": {
+      "title": "{outcome, select, rule {Règle de repli appliquée — série déplacée (portée {scope})} switched {Quota épuisé — série basculée sur son plan de repli} stuck {Quota épuisé — tasks basculées, orchestrateur NON déplacé} other {Quota épuisé — tasks basculées sur leur plan de repli}}",
+      "body": "Série `{series}` ({tasks, plural, one {# task} other {# tasks}}) — {pilot, select, failed {ses tasks redémarrent} stuck {ses tasks redémarrent} other {elle redémarre}} sur des backends de secours.\n\n- Orchestrateur : {pilot, select, none {aucun identifié} repointed {repointé vers `{backend}` (mission arrêtée — pas relancée ici)} swapped {permuté vers `{backend}` sans changer d’id (contexte conservé)} failed {NON déplacé — la bascule a échoué ({failure}) ; il reste arrêté} stuck {NON déplacé — aucun repli utilisable ; il reste arrêté jusqu’au retour de son backend ou à la pose d’un repli} other {inchangé (son backend n’est pas celui à court de quota)}}\n- Tasks repointées par type : {moved, select, none {aucune} other {{moved}}}\n- Tasks remises en file (bloquées par le backend, pas par le travail) : {requeued}{trigger, select, none {} other {\n- Déclencheur : {trigger}}}"
+    },
+    "plugin_pattern_ignored": {
+      "title": "Plugin `{pluginId}` : son {place, select, ready {motif de démarrage du serveur} other {motif de secret de webhook}} pour `{name}` est ignoré",
+      "body": "{failure, select, timeout {Il a dépassé {timeoutMs} ms et a été arrêté.} other {Ce n’est pas une expression régulière valide.}} {place, select, ready {Le serveur est rendu sans attendre sa ligne de démarrage.} other {Les secrets collés sont acceptés sans ce contrôle de format.}} Le contrôle reste coupé jusqu’au redémarrage du daemon ; demandez à l’auteur du plugin un motif plus simple."
+    },
+    "integration_gave_up": {
+      "title": "Une intégration de messagerie a cessé de réessayer un message",
+      "body": "Un message de la connexion {transport} n’a pas pu être traité. Rejouez-le depuis {settingsPath}."
+    },
+    "plugin_spawn_requested": {
+      "title": "Le plugin `{pluginId}` veut lancer des missions",
+      "body": "Il a appelé `{via}`, qui consomme les abonnements IA de cette machine. {unsigned, select, yes {Il n’est pas signé, il n’est donc pas approuvé automatiquement. } other {}}Ajoutez `{pluginId}` à `pluginPolicy.spawn.approved` dans timon.config.json pour l’autoriser."
+    },
+    "plugin_spawn_quota": {
+      "title": "Le plugin `{pluginId}` a atteint son quota de lancements",
+      "body": "{count} missions en {minutes} min{extra, plural, =0 {} other {, et `{via}` en a demandé # de plus}}. Relevez `pluginPolicy.spawn.max` si c’est attendu."
+    },
+    "plugin_package_takeover": {
+      "title": "Le plugin `{id}` vient désormais d’un autre paquet",
+      "body": "`{pkg}` a remplacé `{previous}` sous cet id, et personne ne lui a accordé ce que détenait le paquet précédent. {changes}. Ne les accordez de nouveau que si vous faites confiance à ce paquet."
+    },
+    "backend_launch_unauthorized": {
+      "title": "Le backend `{backend}` n’a pas été lancé : son programme attend votre autorisation",
+      "body": "{reason} Ouvrez cette carte pour examiner le programme sur la page du fournisseur ({settingsPath}) et autorisez-le de nouveau si c’est bien celui que vous attendez."
+    },
+    "plugin_secret_global_lost": {
+      "title": "Le plugin `{pluginId}` ne lit plus le secret `{name}`",
+      "body": "`{name}` est partagé avec tous les agents (`global`), ce qui n’atteint plus les plugins. Si vous confiez ce secret à ce plugin, accordez-le par son nom : ouvrez cette carte (page Secrets, Accorder) ou lancez `timon secret grant {name} --scope {scope}`."
+    },
+    "backend_key_shared": {
+      "title": "La clé du backend `{backend}` est encore partagée hors de lui",
+      "body": "`{name}` a été créée pour le backend `{backend}` et elle est maintenant accordée à {scopes} : elle entre encore dans ces missions, quel que soit le backend sur lequel elles tournent. Pour la garder à ce seul backend, pour les mêmes missions : `timon secret grant {name} --scope backend:{backend}`. Pour continuer à la partager telle quelle, changez sa note dans la page Secrets : elle est alors à vous, et n’est plus supprimée avec le backend."
+    },
+    "plugin_failed": {
+      "title": "Échec du plugin {id}"
+    },
+    "plugin_async_failure": {
+      "title": "Plugin {pluginId} : une opération asynchrone a échoué",
+      "body": "Timon a continué de tourner. Le plugin a laissé une erreur non gérée ; le journal du daemon en donne le détail. Mettez à jour ou désactivez le plugin si cela se répète."
+    },
+    "triggers_check_after_rename": {
+      "title": "{count, plural, one {Vérifiez un déclencheur} other {Vérifiez # déclencheurs}} : l’agent {oldName} s’appelle désormais {newName}",
+      "body": "Le filtre de ces déclencheurs d’événement reconnaît le nom de l’agent par motif ou par sous-chaîne, et ne le lit plus de la même façon. Ils n’ont pas été modifiés : examinez-les un par un sur la page Déclencheurs.\n{list}"
+    },
+    "main_seat_empty": {
+      "title": "Aucun orchestrateur principal",
+      "body": "Aucun agent n’occupe le siège d’orchestrateur principal : les récapitulatifs et les notifications n’ont pas de destinataire. {candidates, select, none {Aucun orchestrateur sans projet n’existe. Créez-en un dans **Agents** : s’il est le seul, il prend le siège de lui-même.} other {Orchestrateurs éligibles : {candidates}. Dans **Agents**, ouvrez celui à qui vous parlez et choisissez **Définir comme orchestrateur principal**, ou lancez `timon agent set-main <name>`.}}"
+    },
+    "trigger_script_not_run": {
+      "title": "Script non exécuté : {name}",
+      "body": "{error}"
+    },
+    "trigger_schedule_failed": {
+      "title": "Échec du déclencheur programmé : {name}",
+      "body": "{error}"
+    },
+    "trigger_script_failed": {
+      "title": "Échec du script : {name}",
+      "body": "{error}{output, select, none {} other {\n\n{output}}}"
+    },
+    "trigger_switched_off": {
+      "title": "Déclencheur désactivé : {name}",
+      "body": "Son script a échoué {times} fois d’affilée. Corrigez-le, puis réactivez le déclencheur."
+    },
+    "agent_triggers_switched_off": {
+      "title": "{count, plural, one {Le déclencheur d’un agent a été désactivé} other {# déclencheurs d’agents ont été désactivés}}",
+      "body": "Un agent les a créés et personne ne les avait activés. Un déclencheur créé par un agent vous attend désormais : examinez-les un par un sur la page Déclencheurs et réactivez ceux que vous voulez garder.\n{list}"
+    },
+    "backup_disk_full": {
+      "title": "Sauvegarde nocturne sautée : disque presque plein",
+      "body": "{error}. Libérez de la place sur ce disque ; les anciennes sauvegardes peuvent être supprimées du dossier des sauvegardes."
+    },
+    "backup_failed_nights": {
+      "title": "La sauvegarde nocturne a échoué {nights} nuits d’affilée",
+      "body": "Dernière erreur : {error}. Aucune nouvelle sauvegarde n’a été écrite depuis le premier de ces échecs."
+    },
+    "license_build_expired": {
+      "title": "Cette version bêta de Timon a expiré",
+      "body": "Installez la version bêta actuelle pour continuer à travailler. Vos données sont conservées."
+    },
+    "license_not_renewed": {
+      "title": "Licence non renouvelée",
+      "body": "Timon n’a pas pu renouveler sa licence ({cause}) ; les modules que couvre votre licence restent coupés jusqu’à ce qu’elle passe. Il réessaie toutes les {minutes} min."
+    },
+    "license_off": {
+      "title": "La licence n’est plus valide",
+      "body": "{detail}. Cette bêta n’a pas d’offre Free : Timon est verrouillé jusqu’à l’activation d’une licence valide ; toutes les données sont conservées."
+    },
+    "license_change_refused": {
+      "title": "Changement de licence refusé",
+      "body": "{error}"
+    },
+    "dreams_to_review": {
+      "title": "Rêverie : {total, plural, one {# piste} other {# pistes}} à examiner",
+      "body": "{improve, plural, one {# amélioration} other {# améliorations}} + {opportunity, plural, one {# opportunité} other {# opportunités}}. À approuver, rejeter ou reporter."
+    },
+    "workflow_script_not_run": {
+      "title": "Script non exécuté : {name}"
+    },
+    "permission_required": {
+      "title": "Permission requise : `{tool}`",
+      "body": "L’agent {agent} demande l’autorisation d’utiliser `{tool}`.{minutes, plural, =0 {} other { Mission autonome : sans réponse sous # min, refus automatique.}}"
+    },
+    "device_paired": {
+      "title": "Nouvel appareil connecté",
+      "body": "« {name} » a été appairé à votre compte. Si ce n’était pas vous, révoquez-le dans {settingsPath}."
+    },
+    "accounts_suspended": {
+      "title": "{count, plural, one {# compte est suspendu} other {# comptes sont suspendus}}",
+      "body": "Les comptes au-delà du premier superadmin demandent une licence pro et le plugin Multi-utilisateur. Leurs données sont conservées, et ils retrouvent leur accès dès que les deux sont là."
+    },
+    "push_test": {
+      "title": "Notification de test de Timon",
+      "body": "Si vous lisez ceci sur votre téléphone, le canal fonctionne."
+    },
+    "update_available": {
+      "title": "Timon {version} est disponible",
+      "body": "Vous utilisez la {current}. Ouvrez Timon pour voir ce qui a changé et télécharger l’installeur."
+    },
+    "email_change_requested": {
+      "title": "Changement d’adresse demandé",
+      "body": "{name} ({email}) a demandé à déplacer son identifiant vers {newEmail}. Confirmation en attente."
+    },
+    "email_change_confirmed": {
+      "title": "Changement d’adresse confirmé",
+      "body": "{name} a déplacé son identifiant de {previous} vers {newEmail}."
+    },
+    "memory_curated": {
+      "title": "Mémoire triée — {label}",
+      "body": "+{added, plural, one {# règle} other {# règles}}, {merged, plural, one {# fusion} other {# fusions}}, {superseded} remplacée(s), {rejected} rejetée(s). Vous pouvez y opposer votre veto dans /memory."
+    },
+    "egress_new_hosts": {
+      "title": "{count, plural, one {Nouvel hôte sortant} other {# nouveaux hôtes sortants}} pour {scopeKind, select, project {le projet} other {l’agent}} {scopeName}",
+      "body": "Une mission de {agent} a joint {hosts}{more, plural, =0 {} other { et # autre(s)}} pour la première fois dans {scopeKind, select, project {ce projet} other {ce périmètre}}. Rien n’a été bloqué ; `timon mission egress {missionId}` liste les connexions de la mission."
+    },
+    "ui_document_to_answer": {
+      "title": "Document à remplir : {origin}"
+    },
+    "secret_requested": {
+      "title": "Secret demandé : {agent}"
+    },
+    "command_to_decide": {
+      "title": "Commande à décider : {agent}"
+    },
+    "task_auto_close_refused": "La mission s’est terminée sans clore sa task, et la clôture automatique a été refusée. {refusal}",
+    "telegram_worker_stopped": {
+      "title": "Le worker Telegram {worker} ne démarre plus",
+      "body": "{restarts} redémarrages sans tenir {seconds} s ({why}). Les messages Telegram ne sont plus relevés : vérifiez les jetons des bots (`~/.timon/secrets.env`) et les journaux du daemon."
+    },
+    "web_app_port_occupied": {
+      "title": "L'app web ne démarre plus",
+      "body": "{why}. Un autre programme écoute sur le port de l'app web. Timon continue de vérifier et démarre l'app web dès que le port se libère ; fermez l'instance précédente de Timon ou changez app.listen.port. Aucun processus n'a été tué."
+    },
+    "web_app_clean_exit": {
+      "title": "L'app web ne démarre plus",
+      "body": "{why}. L'app web s'est arrêtée normalement mais n'est plus supervisée. Consultez les journaux du daemon. Une fois corrigé, `timon app restart` ou la réouverture de l'app desktop la relance."
+    },
+    "web_app_stopped": {
+      "title": "L'app web ne démarre plus",
+      "body": "{why}. L'app web n'a pas pu rester lancée. Cherchez dans les journaux du daemon l'erreur de démarrage, le code de sortie et le signal. Une fois corrigé, `timon app restart` ou la réouverture de l'app desktop la relance."
+    },
+    "layout_proposal_to_review": {
+      "title": "{kind, select, widgets {Disposition de widgets} islands {Disposition d'îlots} island_arrangement {Agencement d'îlots} nav {Menu} navigate {Navigation} trigger {Déclencheur} other {Disposition}} à examiner : {agent}",
+      "body": "{mission}{project, select, none {} other { ({project})}}{note, select, none {} other { — {note}}}"
+    },
+    "forge_proposal_pending": {
+      "title": "Un commentaire GitHub attend votre validation",
+      "body": "Lisez puis publiez, modifiez ou écartez le commentaire proposé sur {target}."
+    },
+    "forge_branch_update_pending": {
+      "title": "Une mise à jour de branche attend votre accord",
+      "body": "Publiez ou abandonnez la mise à jour de la branche de {target} sur GitHub."
+    },
+    "forge_conflict_push_pending": {
+      "title": "Une résolution de conflit attend votre accord",
+      "body": "Lisez la résolution préparée pour {target}, puis publiez-la ou abandonnez-la."
+    },
+    "landing_repair_pushed": {
+      "title": "Réparation poussée sur {pr}",
+      "body": "La réparation de {branch} a été poussée sur sa pull request {pr} ; GitHub relance ses contrôles."
+    },
+    "landing_repair_unchanged": {
+      "title": "La réparation de {pr} n'a rien changé",
+      "body": "La réparation de {branch} s'est terminée sans nouveau commit : rien n'a été poussé. Lisez le commentaire de clôture de sa task."
+    },
+    "landing_repair_failed": {
+      "title": "Réparation de {pr} non poussée",
+      "body": "La réparation de {branch} n'a pas été poussée : {reason}"
+    },
+    "integration_merged": {
+      "title": "{pr, select, none {Branche d'intégration fusionnée : {branch}} other {Pull request fusionnée : {branch}}}",
+      "body": "{branch} a atterri dans {target}. Ses idées TO DO et ses tâches de doc suivent d'elles-mêmes."
+    },
+    "integration_closed": {
+      "title": "{pr, select, none {Branche d'intégration fermée : {branch}} other {Pull request fermée : {branch}}}",
+      "body": "{branch} n'a pas atterri dans {target} : rien ne se ferme et les branches sont gardées. Son pilote décide de la suite."
     }
   }
 }

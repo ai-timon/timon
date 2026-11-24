@@ -1,18 +1,18 @@
 /**
- * Le retour d'une mission part À LA FIN DU TOUR, jamais à la mort du process,
- * et jamais deux fois.
+ * The return of a mission leaves AT THE END OF THE TURN, never at the death of the process,
+ * and never twice.
  *
- * Défaut corrigé (11/09/2026) : une mission SANS task (délégation
- * `mission_spawn`) ne rendait compte que depuis `notifyParentOnComplete`,
- * accroché à la mort du process. Avec un backend persistant, ce process attend
- * le reap d'inactivité (`TIMON_REAP_IDLE_MS`, 600 000 ms) : tour fini à 12:34 →
- * retour à 12:48, tour fini à 13:08 → retour à 13:20. Le pilote recevait son
- * retour dix minutes après l'avoir déjà traité, en plein milieu d'une autre
+ * Defect fixed (11/09/2026): a mission WITHOUT a task (`mission_spawn`
+ * delegation) only reported from `notifyParentOnComplete`,
+ * hooked to the death of the process. With a persistent backend, that process waits for
+ * the idle reap (`TIMON_REAP_IDLE_MS`, 600,000 ms): turn ended at 12:34 →
+ * return at 12:48, turn ended at 13:08 → return at 13:20. The pilot received its
+ * return ten minutes after having already handled it, in the middle of another
  * conversation.
  *
- * Règle protégée ici : UN retour par tour. La mort qui suit un tour rapporté
- * n'empile rien ; la mort d'un tour jamais terminé (crash, SIGTERM, kill)
- * empile bien, c'est le seul cas où le pilote a tout à apprendre.
+ * Rule protected here: ONE return per turn. The death that follows a reported turn
+ * stacks nothing; the death of a turn never finished (crash, SIGTERM, kill)
+ * does stack, it is the only case where the pilot has everything to learn.
  *
  * `node --test --import tsx src/mission-return.test.ts`
  */
@@ -22,6 +22,8 @@ import { mkdtempSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+
+// french-ok-file: French sample titles and reports the test feeds in
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-mission-return-test-'));
 
@@ -37,7 +39,7 @@ for (const a of [PILOT, WORKER]) mkdirSync(join(AGENTS_DIR, a), { recursive: tru
 
 type Payload = { kind?: string; mission_id?: string; status?: string; final_text?: string | null };
 
-/** Retours déposés dans la boîte du pilote par CETTE mission. */
+/** Returns dropped in the pilot's inbox by THIS mission. */
 function returnsOf(missionId: string): Payload[] {
   return dbApi.listInbox(PILOT, { limit: 200 })
     .filter((m) => m.from_mission === missionId)
@@ -45,7 +47,7 @@ function returnsOf(missionId: string): Payload[] {
     .filter((p) => p.kind === 'mission_complete' || p.kind === 'task_closed');
 }
 
-/** Mission autonome déléguée par le pilote, comme `mission_spawn` la crée. */
+/** An autonomous mission delegated by the pilot, as `mission_spawn` creates it. */
 function delegated(channel = 'agent'): string {
   const id = randomUUID();
   dbApi.createMission(id, WORKER, 'un volet délégué', { channel });
@@ -60,49 +62,49 @@ function report(missionId: string, text: string): void {
   });
 }
 
-test('(a) fin de tour : le retour part tout de suite, marqueur posé', () => {
+test('(a) end of turn: the return leaves at once, marker set', () => {
   const id = delegated();
-  report(id, 'Commit `abc1234` — volet livré');
+  report(id, 'Commit `abc1234` — volet livré'); // french-ok: a free-text report
 
   handleMissionTurnComplete(id);
 
   const sent = returnsOf(id);
   assert.equal(sent.length, 1);
   assert.equal(sent[0]?.kind, 'mission_complete');
-  // Le rapport final voyage par le même chemin qu'à la mort du process : les
-  // deux producteurs sont le même code (`enqueueMissionReturn`).
-  assert.equal(sent[0]?.final_text, 'Commit `abc1234` — volet livré');
+  // The final report travels the same path as at the death of the process: the
+  // two producers are the same code (`enqueueMissionReturn`).
+  assert.equal(sent[0]?.final_text, 'Commit `abc1234` — volet livré'); // french-ok: a free-text report
   assert.equal(dbApi.isMissionReturnNotified(id), true);
 });
 
-test('(b) la mort qui suit un tour rapporté n\'empile RIEN', () => {
+test('(b) the death following a reported turn stacks NOTHING', () => {
   const id = delegated();
   handleMissionTurnComplete(id);
   assert.equal(returnsOf(id).length, 1);
 
-  // Ce que fait `notifyParentOnComplete` au reap d'inactivité, dix minutes plus
-  // tard : le doublon qui arrivait en plein milieu d'une conversation.
+  // What `notifyParentOnComplete` does at the idle reap, ten minutes
+  // later: the duplicate that arrived in the middle of a conversation.
   assert.equal(enqueueMissionReturn(id, 'terminated'), false);
   assert.equal(returnsOf(id).length, 1);
 });
 
-test('(c) mission tuée en plein tour : la mort empile bien le retour', () => {
+test('(c) mission killed mid-turn: the death does stack the return', () => {
   const id = delegated();
-  // Aucun `turn_complete` : le process est mort avant la fin du tour.
+  // No `turn_complete`: the process died before the end of the turn.
   assert.equal(enqueueMissionReturn(id, 'failed'), true);
   const sent = returnsOf(id);
   assert.equal(sent.length, 1);
   assert.equal(sent[0]?.status, 'failed');
 });
 
-test('(d) mission avec task : un seul task_closed, aucun mission_complete', () => {
+test('(d) mission with a task: a single task_closed, no mission_complete', () => {
   const taskId = randomUUID();
   const id = randomUUID();
   dbApi.createTask(taskId, 'volet dispatché', WORKER, { type: 'code' });
   dbApi.createMission(id, WORKER, 'volet dispatché', { channel: 'dispatcher' });
   dbApi.setMissionLineage(id, { parentAgent: PILOT, taskId });
   dbApi.assignTaskMission(taskId, id);
-  dbApi.updateTaskStatus(taskId, 'DONE', { doneComment: 'branche intégrée' });
+  dbApi.updateTaskStatus(taskId, 'DONE', { doneComment: 'branche intégrée' }); // french-ok: a free-text comment
 
   handleTaskDone(taskId);
   handleMissionTurnComplete(id);
@@ -113,19 +115,19 @@ test('(d) mission avec task : un seul task_closed, aucun mission_complete', () =
   assert.equal(sent[0]?.kind, 'task_closed');
 });
 
-test('(e) second tour après `timon send` : un nouveau retour', () => {
+test('(e) second turn after `timon send`: a new return', () => {
   const id = delegated();
   handleMissionTurnComplete(id);
   assert.equal(returnsOf(id).length, 1);
 
-  // Ce que fait `sendToAgent` / le spawn au démarrage du tour suivant : le
-  // marqueur est par TOUR, sinon une mission relancée en place resterait muette.
+  // What `sendToAgent` / the spawn does at the start of the next turn: the
+  // marker is per TURN, otherwise a mission relaunched in place would stay mute.
   dbApi.markMissionReturnNotified(id, false);
   handleMissionTurnComplete(id);
   assert.equal(returnsOf(id).length, 2);
 });
 
-test('(f) l\'agent a écrit lui-même à son pilote par une request : plus rien derrière', () => {
+test('(f) the agent wrote to its pilot itself through a request: nothing more behind', () => {
   const id = delegated();
   sendAgentMessage({
     id: randomUUID(),
@@ -142,11 +144,11 @@ test('(f) l\'agent a écrit lui-même à son pilote par une request : plus rien 
   assert.equal(returnsOf(id).length, 0);
 });
 
-// Mission f81d9a3a du 11/11/2026 : le relecteur poste son verdict en `msg`
-// libre, sans `to_mission`. Ce message ne réveille pas le pilote et expire en
-// boîte au bout de 2 h ; il ne doit donc pas couper le retour de fin de tour.
+// Mission of 11/11/2026: the reviewer posts its verdict as a free
+// `msg`, without `to_mission`. That message does not wake the pilot and expires in
+// the inbox after 2 h; it must therefore not cut the end-of-turn return.
 for (const kind of ['msg', 'notification'] as const) {
-  test(`(h) un ${kind} libre au pilote ne remplace pas le retour de fin de tour`, () => {
+  test(`(h) a free ${kind} to the pilot does not replace the end-of-turn return`, () => {
     const id = delegated();
     report(id, 'CHANGES_REQUESTED — bloquant dans loader.ts');
     sendAgentMessage({
@@ -164,13 +166,13 @@ for (const kind of ['msg', 'notification'] as const) {
     assert.equal(sent.length, 1);
     assert.equal(sent[0]?.kind, 'mission_complete');
     assert.equal(sent[0]?.final_text, 'CHANGES_REQUESTED — bloquant dans loader.ts');
-    // La mort qui suit (le kill du 11/11) reste muette : un retour par tour.
+    // The death that follows (the kill of 11/11) stays mute: one return per turn.
     assert.equal(enqueueMissionReturn(id, 'terminated'), false);
     assert.equal(returnsOf(id).length, 1);
   });
 }
 
-test('un message à un pair ne vaut pas compte rendu', () => {
+test('a message to a peer does not count as a report', () => {
   const id = delegated();
   mkdirSync(join(AGENTS_DIR, 'p.reviewer'), { recursive: true });
   sendAgentMessage({
@@ -184,13 +186,13 @@ test('un message à un pair ne vaut pas compte rendu', () => {
   assert.equal(dbApi.isMissionReturnNotified(id), false);
 });
 
-test('une mission de chat ne rend compte à personne en boîte', () => {
+test('a chat mission reports to nobody in the inbox', () => {
   const id = delegated('chat');
   handleMissionTurnComplete(id);
   assert.equal(returnsOf(id).length, 0);
 });
 
-test('pas de pilote, ou pilote = soi-même : rien ne part', () => {
+test('no pilot, or pilot = itself: nothing leaves', () => {
   const orphan = randomUUID();
   dbApi.createMission(orphan, WORKER, 'sans lignée', { channel: 'agent' });
   assert.equal(enqueueMissionReturn(orphan, 'completed'), false);
@@ -201,7 +203,7 @@ test('pas de pilote, ou pilote = soi-même : rien ne part', () => {
   assert.equal(enqueueMissionReturn(self, 'completed'), false);
 });
 
-test('(g) rapport trop long : le renvoi nomme la mission, pas une task absente', () => {
+test('(g) report too long: the pointer names the mission, not a missing task', () => {
   const id = delegated();
   report(id, 'Rapport\n' + 'x'.repeat(20_000));
 
@@ -210,5 +212,5 @@ test('(g) rapport trop long : le renvoi nomme la mission, pas une task absente',
   const text = returnsOf(id)[0]?.final_text ?? '';
   assert.match(text, new RegExp(`timon status ${id}`));
   assert.doesNotMatch(text, /sur la task/);
-  assert.ok(text.length < 5_000, `un rapport de 20 ko ne doit pas voyager entier : ${text.length}`);
+  assert.ok(text.length < 5_000, `a 20 kB report must not travel whole: ${text.length}`);
 });

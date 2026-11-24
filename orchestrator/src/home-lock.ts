@@ -20,6 +20,12 @@ import { join } from 'node:path';
 
 export const homeLockFile = (home: string): string => join(home, 'daemon.lock');
 export const homeLockHolderFile = (home: string): string => join(home, 'daemon.lock.json');
+/**
+ * Left by a service daemon refused the home, read by the desktop (copy in `desktop/src/service.ts`).
+ * After a handover that fell back on the embedded daemon, it proves the service is up and only
+ * waits for the home: the desktop then hands the home over again, without a quit and reopen.
+ */
+export const serviceHeldOutFile = (home: string): string => join(home, 'run', 'service-held-out');
 
 /** Distinct from `RESTORE_EXIT_CODE` (75): a supervisor or a log reader can tell the two apart. */
 export const HOME_HELD_EXIT_CODE = 76;
@@ -98,6 +104,27 @@ export function holdHomeLock(
     try { lock?.close(); } catch { /* Closing an unusable handle cannot make things worse. */ }
     if (error instanceof HomeHeldError) throw error;
     warn(`[timon] could not lock ${home} against a second daemon (${(error as Error).message}); continuing without the lock`);
+  }
+}
+
+/**
+ * Records that the installed service was refused the home. Only a service daemon writes it
+ * (`TIMON_DESKTOP_SERVICE=1`, never the desktop's embedded child): a refused embedded start says
+ * nothing about the service. Never throws, the refusal goes on to exit either way.
+ */
+export function recordServiceHeldOut(
+  home: string,
+  env: NodeJS.ProcessEnv = process.env,
+  opts: { pid?: number; now?: () => number } = {},
+): boolean {
+  if (env.TIMON_DESKTOP_SERVICE !== '1' || env.TIMON_DESKTOP_EMBEDDED === '1') return false;
+  try {
+    const file = serviceHeldOutFile(home);
+    mkdirSync(join(home, 'run'), { recursive: true, mode: 0o700 });
+    writeFileSync(file, `${JSON.stringify({ at: (opts.now ?? Date.now)(), pid: opts.pid ?? process.pid })}\n`, { mode: 0o600 });
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -9,6 +9,7 @@
  */
 import { createContext, useContext, useEffect, useRef } from 'react';
 import type { OnboardingStepId } from './onboarding-flow';
+import type { OnboardingScreenDetail } from '@/lib/usage-events';
 
 export type OnboardingNav = {
   step: OnboardingStepId;
@@ -19,6 +20,14 @@ export type OnboardingNav = {
   /** To the step before this one — after a sub-view's own "Back" declined. */
   back: () => void;
   goTo: (id: OnboardingStepId) => void;
+  /**
+   * Steps over this step without the person answering it (nothing to ask, an
+   * account already made, "Skip all"), in the direction given (forward by
+   * default). The funnel counts it `skipped`, not `completed`.
+   */
+  skip: (direction?: 1 | -1) => void;
+  /** What the funnel's `completed` of this step carries ("Choose your LLM": the choice and its outcome). */
+  setOutcome: (detail: OnboardingScreenDetail) => void;
   /**
    * Switches the interface language at once (cookie, `<html lang>`, every
    * `t()` of the onboarding). Resolves with the language actually applied.

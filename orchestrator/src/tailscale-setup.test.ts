@@ -179,7 +179,7 @@ test('the app reports a cancelled or failed installer: typed, with the command, 
   }
 });
 
-test('« installed » while Tailscale is still missing (macOS Installer closed): cancelled', async () => {
+test('"installed" while Tailscale is still missing (macOS Installer closed): cancelled', async () => {
   const h = harness({ platform: 'darwin', binary: null });
   await h.setup.install({ client: 'desktop' });
   h.finishInstall({ ok: true, method: 'macos-pkg', installer: { dir: '/tmp/timon-tailscale-2', path: '/tmp/timon-tailscale-2/Tailscale.pkg', sha256: SHA } });

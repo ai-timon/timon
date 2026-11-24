@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 
+// french-ok-file: Unicode agent names are what this test is about
 const HOME = mkdtempSync(join(tmpdir(), 'timon-agent-name-unicode-'));
 process.env.TIMON_HOME = HOME;
 process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';

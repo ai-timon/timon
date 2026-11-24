@@ -1,7 +1,7 @@
 /**
  * The onboarding's account step (docs/EMAIL-CODE-UI.md): what the form lets
  * through, the eye that stays out of Tab and keeps the focus, the code
- * sub-view (« Back » and « Change email » return to the filled form), the
+ * sub-view ("Back" and "Change email" return to the filled form), the
  * account created only by the accepted code, and every refusal of the daemon
  * said — never a silent failure.
  */
@@ -66,7 +66,7 @@ async function mount(ctx: TestContext, replies: Record<string, Reply[]>, me: Rec
   const nav = {
     step: 'account' as const, direction: 1 as const,
     next: () => { nexts += 1; }, back: () => {}, goTo: () => {},
-    setLanguage: async (tag: string) => tag,
+    setLanguage: async (tag: string) => tag, skip: () => {}, setOutcome: () => {},
     setBackHandler: (h: (() => boolean) | null) => { backHandler = h; },
   };
   const root = createRoot(dom.window.document.getElementById('root')!);
@@ -158,7 +158,7 @@ test('the eye: no text, a label, out of Tab, the field keeps the focus, both fie
   assert.equal(eyes[1]!.getAttribute('aria-label'), 'Hide the password');
 });
 
-test('« Create my account » opens the code; the account is created by the accepted code, with tries left said', async (t) => {
+test('"Create my account" opens the code; the account is created by the accepted code, with tries left said', async (t) => {
   const w = await mount(t, {
     '/api/ui/auth/setup/email-code': [{ status: 202, body: { challengeId: 'c1', email: 'ada@example.com', expiresAt: Date.now() + 600_000, resendAt: Date.now() + 60_000 } }],
     '/api/ui/auth/setup': [
@@ -192,14 +192,14 @@ test('« Create my account » opens the code; the account is created by the acce
   assert.equal(w.nexts(), 1, 'the next step once confirmed');
 });
 
-test('« Back » and « Change email » return to the form as it was filled', async (t) => {
+test('"Back" and "Change email" return to the form as it was filled', async (t) => {
   const challenge = () => ({ status: 202, body: { challengeId: 'c1', resendAt: Date.now() + 60_000 } });
   const w = await mount(t, { '/api/ui/auth/setup/email-code': [challenge(), challenge()] });
   await w.fillForm({ name: 'Ada', email: 'ada@example.com', password: 'aaaaaaaa' });
-  assert.equal(w.back(), false, 'on the form, « Back » leaves the step');
+  assert.equal(w.back(), false, 'on the form, "Back" leaves the step');
   await w.press(w.submit());
   assert.ok(w.doc.querySelector('[data-email-code-boxes]'));
-  await w.act(() => { assert.equal(w.back(), true, 'on the code, « Back » stays in the step'); });
+  await w.act(() => { assert.equal(w.back(), true, 'on the code, "Back" stays in the step'); });
   await w.flush();
   assert.deepEqual(w.inputs().map((i) => i.value), ['Ada', 'ada@example.com', 'aaaaaaaa', 'aaaaaaaa']);
 
@@ -232,12 +232,16 @@ test('no internet, the email service down, no answer at all: a sentence each, ne
     ],
   });
   await w.fillForm({ email: 'ada@example.com', password: 'aaaaaaaa' });
+  const offline = () => w.doc.querySelector('[data-account-offline] code')?.textContent ?? null;
   await w.press(w.submit());
   assert.equal(w.status(), 'An internet connection is needed to confirm the email address.');
+  assert.equal(offline(), 'timon user create-admin', 'offline: the terminal command to make the account without the code');
   await w.press(w.submit());
   assert.equal(w.status(), "Timon's email service is unavailable right now. Try again in a few minutes.", 'the relay down is not a connection problem');
+  assert.equal(offline(), 'timon user create-admin', 'the relay down: the same way out');
   await w.press(w.submit());
   assert.equal(w.status(), 'Timon does not answer. Check that it is running, then try again.');
+  assert.equal(offline(), null, 'the daemon out of reach: a terminal command would not help');
   await w.press(w.submit());
   assert.equal(w.status(), 'Setup token missing or wrong. Run the command below on the server and try again.');
 });

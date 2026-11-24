@@ -10,7 +10,7 @@ import { toAgentName } from './agent-name';
 test('a typed display name becomes a valid agent name', () => {
   assert.equal(toAgentName('Nova'), 'Nova');
   assert.equal(toAgentName('Nova, mon assistante'), 'Nova-mon-assistante');
-  assert.equal(toAgentName('  Éléa  '), 'Éléa', 'accents stay');
+  assert.equal(toAgentName('  Éléa  '), 'Éléa', 'accents stay'); // french-ok: an accented name, kept as is
   assert.equal(toAgentName('马斯克'), '马斯克', 'every script stays');
   assert.equal(toAgentName('a'.repeat(100)).length, 80, 'cut at 80 bytes');
   assert.equal(toAgentName('马'.repeat(40)), '马'.repeat(26), 'a Chinese character is 3 bytes');

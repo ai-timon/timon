@@ -10,8 +10,8 @@ import { z } from 'zod';
 import { AgentConfig, killAgent, listAgents } from '../../agent.js';
 import { backendIdForModel, catalogClaimsModel } from '../../backends/catalog.js';
 import { asBackendName } from '../../backends/index.js';
-import { codeCloseRefusal, effectiveMergeSha, evaluateCodeDone, inspectGitBranch, mergeCloseRefusal, shaInBase, taskRepo } from '../../code-gate.js';
-export { codeCloseRefusal, effectiveMergeSha, mergeCloseRefusal } from '../../code-gate.js';
+import { codeCloseRefusal, effectiveMergeSha, evaluateCodeDone, inspectGitBranch, mergeCloseRefusal, pullRequestCloseRefusal, shaInBase, taskRepo } from '../../code-gate.js';
+export { codeCloseRefusal, effectiveMergeSha, mergeCloseRefusal, pullRequestCloseRefusal } from '../../code-gate.js';
 import { config } from '../../config/load.js';
 import { FALLBACK_SCOPES, TASK_TYPES, db, dbApi, isCodeOnlyPipeline, isFallbackScope, isTaskType, normalizeTaskStatusInput, rowVisible, type TaskDeleteOutcome, type TaskDeleteResult, type TaskRow, type TaskType } from '../../db.js';
 import { forbidden, forbiddenBody, isPersonAuth, rejectIfDenied, requireAuth, viewerFromRequest } from '../../users/identity.js';
@@ -29,6 +29,9 @@ import { readRoles, type RoleSpec, type TaskRole } from '../../projects.js';
 import { isTemplateBackend, llmOfMission, previewRoleAgent, roleForTaskType } from '../../agent-seed.js';
 import { taskProjectSlug } from '../../task-project.js';
 import { codeAwaitsMerge } from '../../merge-gate.js';
+import { integrationTargetLabel, usesIntegrationBranch } from '../../git-integration.js';
+import { chainLanding, integrationOfTask } from '../../chain-landing.js';
+import { concludeMerged, type Notify } from '../../integration-poller.js';
 import { applyTodoClosure } from '../../todo-closure.js';
 import { checkScheduledAtPlausibility, validateScheduledAt } from '../../task-guards.js';
 import { delegatingAgent, delegationRefusal } from '../../delegation-guard.js';
@@ -44,14 +47,14 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { gitTaskRefusal, isPlausibleGitRef } from '../../task-git.js';
 import { taskOriginFromRequest, withTaskOrigin } from '../../task-origin.js';
-import { backendRefusal, pipelineRefusal, planGroupRefusal, projectRefusal } from './task-field-guards.js';
+import { backendRefusal, landingRefusal, pipelineRefusal, planGroupRefusal, projectRefusal } from './task-field-guards.js';
 import { isClosingOnly, parseTaskUpdateBody } from './task-update-body.js';
 import { parseAttachSeriesBody, parseMarkMergedBody, parseTaskCloseBody } from './task-write-bodies.js';
 import { parsePipelineCreateBody, parsePipelineRunBody, parsePipelineUpdateBody } from './pipeline-body.js';
 import { isOwnMissionTask, ownMissionTaskId } from './own-task.js';
 import { parseTaskCreateBody, type TaskCreateBody } from './task-create-body.js';
 import { countTaskAttachments, publicTaskAttachment, taskAttachmentsWithInherited } from '../../attachments.js';
-import { apiError } from '../../api-error.js';
+import { apiError, type ApiErrorBody } from '../../api-error.js';
 
 /** `:id` of a series route, resolved by the shared rule (`series-service.ts`). */
 function resolveSeriesParam(req: express.Request): string | null {
@@ -282,16 +285,16 @@ function groupQuery(req: express.Request): string | undefined | null {
 function seriesForRolesRoute(req: express.Request, res: express.Response): string | null {
   if (!requireAuth(req, res)) return null;
   if (!SeriesParamSchema.safeParse(req.params).success) {
-    res.status(400).json({ error: 'invalid series identifier' });
+    res.status(400).json(apiError('series_invalid', 'invalid series identifier'));
     return null;
   }
   const seriesId = resolveSeriesParam(req);
   if (!seriesId) {
-    res.status(400).json({ error: 'series unknown (X-TIMON-Mission header missing?)' });
+    res.status(400).json(apiError('series_unresolved', 'series unknown (X-TIMON-Mission header missing?)'));
     return null;
   }
   if (!seriesVisible(req, seriesId)) {
-    res.status(404).json({ error: 'series not found' });
+    res.status(404).json(apiError('series_not_found', 'series not found'));
     return null;
   }
   return seriesId;
@@ -326,13 +329,13 @@ const TodoIdSchema = z.number().int().positive();
 function parseTodoLink(
   req: express.Request,
   raw: unknown,
-): { ok: true; value: number | null | undefined } | { ok: false; error: string } {
+): { ok: true; value: number | null | undefined } | { ok: false; body: ApiErrorBody } {
   if (raw === undefined) return { ok: true, value: undefined };
   if (raw === null) return { ok: true, value: null };
   const parsed = TodoIdSchema.safeParse(raw);
-  if (!parsed.success) return { ok: false, error: 'todo_id must be a positive integer' };
+  if (!parsed.success) return { ok: false, body: apiError('todo_id_invalid', 'todo_id must be a positive integer') };
   if (!scopedDb(viewerFromRequest(req)).getProjectTodo(parsed.data)) {
-    return { ok: false, error: `todo_id ${parsed.data}: no such TO DO item` };
+    return { ok: false, body: apiError('todo_link_not_found', `todo_id ${parsed.data}: no such TO DO item`, { id: String(parsed.data) }) };
   }
   return { ok: true, value: parsed.data };
 }
@@ -380,10 +383,13 @@ export function mergedShaRefusal(task: TaskRow, sha: string): string | null {
 
 /** Answers 409 when a `merge` or `full` code task may not go DONE yet; true if it did. */
 function rejectUnprovenClose(res: express.Response, task: TaskRow, sha: string | null): boolean {
+  // First: until its pull request is open, the PR task has nothing to prove.
+  const prRefusal = pullRequestCloseRefusal(task);
+  if (prRefusal) { res.status(409).json(apiError('pr_not_opened', prRefusal, { detail: prRefusal })); return true; }
   const mergeRefusal = mergeCloseRefusal(task, sha);
-  if (mergeRefusal) { res.status(409).json({ error: mergeRefusal, code: 'merge_not_proven' }); return true; }
+  if (mergeRefusal) { res.status(409).json(apiError('merge_not_proven', mergeRefusal, { detail: mergeRefusal })); return true; }
   const codeRefusal = codeCloseRefusal(task);
-  if (codeRefusal) { res.status(409).json({ error: codeRefusal, code: 'branch_unreviewable' }); return true; }
+  if (codeRefusal) { res.status(409).json(apiError('branch_unreviewable', codeRefusal, { detail: codeRefusal })); return true; }
   return false;
 }
 
@@ -679,13 +685,13 @@ export function createTaskFromBody(
   body: TaskCreateBody,
 ): { status: number; json: Record<string, unknown> } {
   if (!body.title || !body.agent_name) {
-    return { status: 400, json: { error: 'title and agent_name required' } };
+    return { status: 400, json: { ...apiError('task_fields_required', 'title and agent_name required') } };
   }
   // Delegation list: assigning work to another agent is delegating. Checked
   // first so a refused caller learns nothing from the other validations.
   const refusal = delegationRefusal(req, body.agent_name);
   if (refusal) {
-    return { status: 403, json: { error: `task refused: ${refusal}`, code: 'orchestration_denied' } };
+    return { status: 403, json: { ...apiError('orchestration_denied', `task refused: ${refusal}`, { detail: refusal }) } };
   }
   const overrideRefusal = taskOverrideDenied(req, body, body.agent_name);
   if (overrideRefusal) {
@@ -696,28 +702,30 @@ export function createTaskFromBody(
   // the review if it were let through. Reject instead of guessing.
   const fieldRefusal = pipelineRefusal(body.pipeline) ?? backendRefusal(body) ?? projectRefusal(body.project)
     ?? planGroupRefusal(body.plan_group);
-  if (fieldRefusal) return { status: 400, json: { error: fieldRefusal } };
+  if (fieldRefusal) return { status: 400, json: { ...apiError('task_field_invalid', fieldRefusal, { detail: fieldRefusal }) } };
   const planGroup = parsePlanGroup(body.plan_group);
   // Same discipline: a `scheduled_at` as an ISO string was stored as is,
   // then compared numerically at dispatch → the task never left (or
   // left right away). No error anywhere. Reject.
   const sched = validateScheduledAt(body.scheduled_at);
   if (!sched.ok) {
-    return { status: 400, json: { error: sched.error } };
+    return { status: 400, json: { ...apiError('scheduled_at_invalid', sched.error, { detail: sched.error }) } };
   }
   const schedWarning = checkScheduledAtPlausibility(sched.value, Date.now());
   if (schedWarning) console.warn(`[tasks] ${schedWarning}`);
   let type: TaskType | undefined;
   if (body.type !== undefined) {
     if (!isTaskType(body.type)) {
-      return { status: 400, json: { error: `invalid type "${body.type}"` } };
+      return { status: 400, json: { ...apiError('task_type_invalid', `invalid type "${body.type}"`, { type: String(body.type) }) } };
     }
     type = body.type;
   }
+  const landing = landingRefusal(body.landing, type);
+  if (landing) return { status: 400, json: { ...apiError('task_field_invalid', landing, { detail: landing }) } };
   // Refused here rather than BLOCKED at dispatch: the caller learns at once
   // that this host cannot run it (TODO #275).
   const gitRefusal = gitTaskRefusal(type, { cwd: agentCwd(body.agent_name) });
-  if (gitRefusal) return { status: 400, json: { error: gitRefusal, code: 'git_missing' } };
+  if (gitRefusal) return { status: 400, json: { ...apiError('git_missing', gitRefusal) } };
   // The base becomes an argument of `git worktree add`: a leading `-` would be
   // read as a flag there. The dubious shape is refused here rather than
   // discovered at dispatch, as for an unknown pipeline or project. A
@@ -727,12 +735,12 @@ export function createTaskFromBody(
   if (body.base != null && body.base !== '') {
     base = String(body.base).trim();
     if (!isPlausibleGitRef(base)) {
-      return { status: 400, json: { error: `base "${body.base}" is not a plausible git ref` } };
+      return { status: 400, json: { ...apiError('task_base_invalid', `base "${body.base}" is not a plausible git ref`, { base }) } };
     }
   }
   // Checked before the task exists: a refused link must not leave a task behind.
   const todo = parseTodoLink(req, body.todo_id);
-  if (!todo.ok) return { status: 400, json: { error: todo.error } };
+  if (!todo.ok) return { status: 400, json: { ...todo.body } };
   // Calling mission: the header is authoritative (it comes from the agent process), the body
   // is only a fallback. Only a mission that REALLY exists is kept — a ghost
   // id would attach the series to an unreachable pilot.
@@ -788,6 +796,7 @@ export function createTaskFromBody(
     pipeline: body.pipeline ?? null,
     project: body.project || null,
     traceId: typeof body.trace_id === 'string' ? body.trace_id : null,
+    landing: body.landing || null,
   });
   if (base) dbApi.setTaskBaseBranch(id, base);
   if (todo.value) dbApi.setTaskTodoId(id, todo.value);
@@ -827,7 +836,79 @@ function rejectReadOnlyPipeline(req: express.Request, res: express.Response, p: 
   return true;
 }
 
-export function registerRoutes(app: Router): void {
+export type KanbanRouteDeps = {
+  /** How a landing reaches the series pilot; the wake loop by default. */
+  notifyLanding?: Notify;
+};
+
+/**
+ * `mark-merged` for a chain whose base is an integration branch (`pr`, or
+ * `branch` under embargo or in a project that merges locally): the sha is the
+ * commit of the target that brought the branch in, so it is checked against
+ * `<remote>/<target>` (the local target when there is no remote), and the whole
+ * job lands through the same gate as the poller's (`concludeMerged`). The
+ * task itself closes like a local one when it was BLOCKED or had no sha.
+ */
+async function markIntegrationMerged(
+  req: express.Request, res: express.Response, task: TaskRow, sha: string, comment: string | undefined,
+  deps: KanbanRouteDeps,
+): Promise<void> {
+  // A PENDING or running task still belongs to its agent.
+  if (task.status !== 'BLOCKED' && task.status !== 'DONE') {
+    res.status(409).json(apiError('task_still_running', 'The task is still running: wait for it to finish before marking it merged.'));
+    return;
+  }
+  // Keyed by the agent's repository, as the dispatcher recorded it: never the
+  // task's worktree.
+  const row = integrationOfTask(task);
+  if (!row) {
+    const branch = task.base_branch ?? '';
+    res.status(409).json(apiError('integration_not_found', `Timon has no record of the integration branch ${branch}: dispatch the job first.`, { branch }));
+    return;
+  }
+  if (row.state === 'merged') {
+    res.status(409).json(apiError('integration_already_landed', `${row.branch} has already landed.`, { branch: row.branch }));
+    return;
+  }
+  // `origin/main`, or the local `main` of a job that merges locally.
+  const target = integrationTargetLabel(row);
+  const found = shaInBase(row.repo, target, sha);
+  if (found === 'not_contained') {
+    res.status(409).json(apiError('sha_not_in_base', `Commit ${sha} is not in ${target} of this repository. Check the sha of the merge.`, { sha, base: target }));
+    return;
+  }
+  await concludeMerged(row.id, sha, deps.notifyLanding);
+  const note = found === 'contained'
+    ? `Marked as merged outside Timon: ${row.branch} landed as ${sha} (found in ${target}).`
+    : `Marked as merged outside Timon: ${row.branch} landed as ${sha} (not found in the local ${target}: not verified, fetch to check).`;
+  const trimmed = comment?.trim();
+  const report = trimmed ? `${note}\n\n${trimmed}` : note;
+  const scope = scopedDb(viewerFromRequest(req));
+  if (task.status === 'BLOCKED') {
+    dbApi.setTaskMergedSha(task.id, sha);
+    task.merged_commit_sha = sha;
+    closeTask(task.id, task, 'DONE', { doneComment: report });
+  } else {
+    // A DONE task keeps the sha of its merge into the integration branch;
+    // one without any gets the target's, as in a local chain.
+    if (!task.merged_commit_sha) dbApi.setTaskMergedSha(task.id, sha);
+    dbApi.appendTaskDoneComment(task.id, report);
+    try {
+      applyTodoClosure(scope.getTask(task.id) ?? task);
+    } catch (err) {
+      console.error(`[kanban] TO DO closure failed for ${task.id}: ${(err as Error).message}`);
+    }
+  }
+  auditRequest(req, 'task.mark_merged', `${task.id} ${sha} ${row.branch}`);
+  const landed = dbApi.getIntegrationById(row.id);
+  res.json({
+    task: scope.getTask(task.id),
+    verified: found === 'contained',
+    integration: { id: row.id, branch: row.branch, state: landed?.state ?? row.state, merge_sha: landed?.merge_sha ?? sha },
+  });
+}
+
+export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
   // The writer of every task write below, for the `origin` that the lifecycle
   // events carry: without it a change made from the board would read as the
   // daemon's, and a sync plugin could not tell it from its own echo.
@@ -847,7 +928,7 @@ export function registerRoutes(app: Router): void {
     if (!requireAuth(req, res)) return;
     if (rejectIfDenied(req, res, 'kanban:write')) return;
     const parsed = parsePipelineCreateBody(req.body);
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'pipeline_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('pipeline_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const body = parsed.value;
     const widening = pipelineWideningDenied(req, body.definition as PipelineDefinition);
     if (widening) { res.status(403).json(forbiddenBody(req, { kind: 'override', reason: widening })); return; }
@@ -861,7 +942,7 @@ export function registerRoutes(app: Router): void {
       emitAutomationEvent({ kind: 'pipeline_created', pipeline, origin: automationOriginOf(req) });
       res.status(201).json({ pipeline });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('pipeline_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -878,7 +959,7 @@ export function registerRoutes(app: Router): void {
     if (!requireAuth(req, res)) return;
     if (rejectIfDenied(req, res, 'kanban:write')) return;
     const parsed = parsePipelineUpdateBody(req.body);
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'pipeline_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('pipeline_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const existing = visiblePipeline(req, req.params.id);
     if (!existing) { res.status(404).json(apiError('pipeline_not_found', 'pipeline not found')); return; }
     if (rejectReadOnlyPipeline(req, res, existing)) return;
@@ -890,7 +971,7 @@ export function registerRoutes(app: Router): void {
       emitAutomationEvent({ kind: 'pipeline_updated', pipeline: updated, origin: automationOriginOf(req) });
       res.json({ pipeline: updated });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('pipeline_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -909,7 +990,7 @@ export function registerRoutes(app: Router): void {
     if (!requireAuth(req, res)) return;
     if (rejectIfDenied(req, res, 'kanban:write')) return;
     const parsed = parsePipelineRunBody(req.body);
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'pipeline_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('pipeline_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const target = visiblePipeline(req, req.params.id);
     if (!target) { res.status(404).json(apiError('pipeline_not_found', 'pipeline not found')); return; }
     // Each step assigns work to its agent: the delegation list `POST /api/tasks`
@@ -919,7 +1000,7 @@ export function registerRoutes(app: Router): void {
     for (const step of target.definition.steps) {
       const refusal = delegationRefusal(req, step.agent);
       if (refusal) {
-        res.status(403).json({ error: `pipeline run refused: step ${step.id}: ${refusal}`, code: 'orchestration_denied' });
+        res.status(403).json(apiError('orchestration_denied', `pipeline run refused: step ${step.id}: ${refusal}`, { detail: `step ${step.id}: ${refusal}` }));
         return;
       }
     }
@@ -948,7 +1029,7 @@ export function registerRoutes(app: Router): void {
       }
       res.status(201).json(result);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('pipeline_run_failed', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -957,7 +1038,7 @@ export function registerRoutes(app: Router): void {
     const run = dbApi.getPipelineRun(req.params.runId);
     const status = run && pipelineRunVisibleTo(run, viewerFromRequest(req)) ? getRunStatus(run.id) : null;
     if (!status) {
-      res.status(404).json({ error: 'run not found' });
+      res.status(404).json(apiError('pipeline_run_not_found', 'run not found'));
       return;
     }
     res.json(status);
@@ -974,7 +1055,7 @@ export function registerRoutes(app: Router): void {
     if (req.query.todo_id !== undefined) {
       const parsed = TodoIdSchema.safeParse(Number(req.query.todo_id));
       if (typeof req.query.todo_id !== 'string' || !parsed.success) {
-        res.status(400).json({ error: 'todo_id must be a positive integer' });
+        res.status(400).json(apiError('todo_id_invalid', 'todo_id must be a positive integer'));
         return;
       }
       todoId = parsed.data;
@@ -989,7 +1070,7 @@ export function registerRoutes(app: Router): void {
     if (req.query.done_project !== undefined && req.query.done_project !== '') {
       const parsed = ProjectSlugSchema.safeParse(req.query.done_project);
       if (!parsed.success) {
-        res.status(400).json({ error: 'done_project must be a project slug' });
+        res.status(400).json(apiError('done_project_invalid', 'done_project must be a project slug'));
         return;
       }
       doneProject = parsed.data;
@@ -1023,6 +1104,9 @@ export function registerRoutes(app: Router): void {
         attachment_count: attachmentCounts.get(t.id) ?? 0,
         ...(runner ? { run_by: runner } : {}),
         ...(codeAwaitsMerge(t, listChain) ? { awaiting_merge: true } : {}),
+        // Only on a chain merged into an integration branch: 'integrated'
+        // until that branch lands, then 'landed' (or 'closed').
+        ...(usesIntegrationBranch(t.integration_mode) ? { landing: chainLanding(t) } : {}),
       };
     });
     res.json({
@@ -1037,7 +1121,7 @@ export function registerRoutes(app: Router): void {
     if (rejectIfDenied(req, res, 'kanban:write')) return;
     // After the right, like the update: a refused caller learns nothing of the shape.
     const parsed = parseTaskCreateBody(req.body);
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'task_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('task_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const r = createTaskFromBody(req, parsed.value);
     res.status(r.status).json(r.json);
   });
@@ -1057,7 +1141,7 @@ export function registerRoutes(app: Router): void {
     try {
       res.json(await setSeriesFallbackRule(seriesId, (req.body ?? {}) as FallbackRuleInput));
     } catch (err) {
-      if (err instanceof SeriesServiceError) { res.status(400).json({ error: err.message }); return; }
+      if (err instanceof SeriesServiceError) { res.status(400).json(apiError('series_rule_refused', err.message, { detail: err.message })); return; }
       throw err;
     }
   });
@@ -1066,11 +1150,11 @@ export function registerRoutes(app: Router): void {
     const seriesId = seriesForRolesRoute(req, res);
     if (!seriesId) return;
     const group = groupQuery(req);
-    if (group === null) { res.status(400).json({ error: 'group must be a single string' }); return; }
+    if (group === null) { res.status(400).json(apiError('series_group_invalid', 'group must be a single string')); return; }
     try {
       res.json({ series_id: seriesId, fallbacks: clearSeriesFallbackRule(seriesId, req.params.scope, group) });
     } catch (err) {
-      if (err instanceof SeriesServiceError) { res.status(400).json({ error: err.message }); return; }
+      if (err instanceof SeriesServiceError) { res.status(400).json(apiError('series_rule_refused', err.message, { detail: err.message })); return; }
       throw err;
     }
   });
@@ -1088,7 +1172,7 @@ export function registerRoutes(app: Router): void {
     try {
       res.json({ series_id: seriesId, roles: setSeriesRoleChoice(seriesId, req.body) });
     } catch (err) {
-      if (err instanceof SeriesServiceError) { res.status(400).json({ error: err.message }); return; }
+      if (err instanceof SeriesServiceError) { res.status(400).json(apiError('series_rule_refused', err.message, { detail: err.message })); return; }
       throw err;
     }
   });
@@ -1097,11 +1181,11 @@ export function registerRoutes(app: Router): void {
     const seriesId = seriesForRolesRoute(req, res);
     if (!seriesId) return;
     const group = groupQuery(req);
-    if (group === null) { res.status(400).json({ error: 'group must be a single string' }); return; }
+    if (group === null) { res.status(400).json(apiError('series_group_invalid', 'group must be a single string')); return; }
     try {
       res.json({ series_id: seriesId, roles: clearSeriesRoleChoice(seriesId, req.params.scope, group) });
     } catch (err) {
-      if (err instanceof SeriesServiceError) { res.status(400).json({ error: err.message }); return; }
+      if (err instanceof SeriesServiceError) { res.status(400).json(apiError('series_rule_refused', err.message, { detail: err.message })); return; }
       throw err;
     }
   });
@@ -1138,12 +1222,12 @@ export function registerRoutes(app: Router): void {
       ? explicitId === ownTaskId
       : !claimedMission || claimedMission === auth.missionId);
     if (!ownClose && rejectIfDenied(req, res, 'kanban:write')) return;
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'task_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('task_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const body = parsed.value;
     const scope = scopedDb(viewerFromRequest(req));
     const outcome = body.outcome ?? 'done';
     if (outcome !== 'done' && outcome !== 'failed') {
-      res.status(400).json({ error: `invalid outcome "${String(body.outcome)}" (expected: done | failed)` });
+      res.status(400).json(apiError('task_outcome_invalid', `invalid outcome "${String(body.outcome)}" (expected: done | failed)`));
       return;
     }
     // Resolution by mission: no id to copy, the first cause of a failed
@@ -1152,12 +1236,12 @@ export function registerRoutes(app: Router): void {
     if (!taskId) {
       const missionId = claimedMission || (ownClose ? auth.missionId ?? '' : '');
       if (!missionId) {
-        res.status(400).json({ error: 'no task id, and no mission to resolve one from (X-TIMON-Mission absent)' });
+        res.status(400).json(apiError('task_close_target_missing', 'no task id, and no mission to resolve one from (X-TIMON-Mission absent)'));
         return;
       }
       const resolved = dbApi.getTaskByMission(missionId);
       if (!resolved) {
-        res.status(404).json({ error: `no task attached to mission ${missionId}` });
+        res.status(404).json(apiError('mission_has_no_task', `no task attached to mission ${missionId}`));
         return;
       }
       taskId = resolved.id;
@@ -1172,7 +1256,7 @@ export function registerRoutes(app: Router): void {
       const reason = (typeof body.reason === 'string' ? body.reason
         : typeof body.blocked_reason === 'string' ? body.blocked_reason : '').trim();
       if (!reason) {
-        res.status(400).json({ error: 'reason is required to mark a task as failed' });
+        res.status(400).json(apiError('task_reason_required', 'reason is required to mark a task as failed'));
         return;
       }
       closeTask(taskId, task, 'BLOCKED', { blockedReason: reason, byPerson: isPersonAuth(req.auth) });
@@ -1182,24 +1266,24 @@ export function registerRoutes(app: Router): void {
 
     const comment = typeof body.comment === 'string' ? body.comment.trim() : '';
     if (!comment) {
-      res.status(400).json({ error: 'comment is required to mark a task as done' });
+      res.status(400).json(apiError('task_comment_required', 'comment is required to mark a task as done'));
       return;
     }
     let verdict: 'pass' | 'changes_requested' | null = null;
     if (body.verdict !== undefined && body.verdict !== null) {
       if (body.verdict !== 'pass' && body.verdict !== 'changes_requested') {
-        res.status(400).json({ error: `invalid verdict "${String(body.verdict)}" (expected: pass | changes_requested)` });
+        res.status(400).json(apiError('task_verdict_invalid', `invalid verdict "${String(body.verdict)}" (expected: pass | changes_requested)`));
         return;
       }
       verdict = body.verdict;
     }
     if (body.merged_sha !== undefined) {
       if (typeof body.merged_sha !== 'string' || !MERGED_SHA_RE.test(body.merged_sha)) {
-        res.status(400).json({ error: 'merged_sha must be 7-40 hex chars' });
+        res.status(400).json(apiError('sha_invalid', 'merged_sha must be 7-40 hex chars'));
         return;
       }
       const shaRefusal = mergedShaRefusal(task, body.merged_sha);
-      if (shaRefusal) { res.status(409).json({ error: shaRefusal, code: 'sha_not_in_base' }); return; }
+      if (shaRefusal) { res.status(409).json(apiError('sha_not_in_base', shaRefusal, { sha: body.merged_sha, base: task.base_branch ?? '' })); return; }
     }
     const declaredSha = typeof body.merged_sha === 'string' ? body.merged_sha : null;
     if (rejectUnprovenClose(res, task, effectiveMergeSha(task, declaredSha, comment))) return;
@@ -1229,15 +1313,18 @@ export function registerRoutes(app: Router): void {
    * A task already DONE without a sha (a `full` code task whose review or
    * merge never came, its PR merged elsewhere) only records the sha and a
    * note: it is not closed again, so its return and follow-ups do not replay.
+   *
+   * A chain on an integration branch (`integration_mode` 'pr' or 'branch')
+   * lands its whole job instead: `markIntegrationMerged`.
    */
-  app.post('/api/tasks/:id/mark-merged', (req, res) => {
+  app.post('/api/tasks/:id/mark-merged', async (req, res) => {
     if (!requireAuth(req, res)) return;
     // A human gesture of the board: no exception for a mission (TODO #787).
     if (rejectIfDenied(req, res, 'kanban:write')) return;
     const params = z.object({ id: z.string().min(1).max(255).regex(/^[A-Za-z0-9_-]+$/) }).safeParse(req.params);
     if (!params.success) { res.status(400).json(apiError('task_invalid', 'Invalid task identifier.')); return; }
     const parsed = parseMarkMergedBody(req.body);
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'task_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('task_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const rawSha = parsed.value.sha;
     if (typeof rawSha !== 'string' || !MERGED_SHA_RE.test(rawSha)) {
       res.status(400).json(apiError('sha_invalid', 'sha must be a commit id (7 to 40 hex characters).'));
@@ -1250,22 +1337,30 @@ export function registerRoutes(app: Router): void {
       res.status(400).json(apiError('task_not_mergeable', 'Only a code or merge task can be marked merged.'));
       return;
     }
+    if (usesIntegrationBranch(task.integration_mode)) {
+      try {
+        await markIntegrationMerged(req, res, task, rawSha.toLowerCase(), parsed.value.comment, deps);
+      } catch (err) {
+        // Not echoed: an unexpected failure may quote a path of this machine.
+        console.error(`[kanban] marking ${task.id} merged failed: ${(err as Error).message}`);
+        if (!res.headersSent) res.status(500).json(apiError('task_mark_merged_failed', 'The task could not be marked merged.'));
+      }
+      return;
+    }
     // A PENDING or running task still belongs to its agent.
     const doneUnmerged = task.status === 'DONE' && !task.merged_commit_sha;
     if (task.status !== 'BLOCKED' && !doneUnmerged) {
-      res.status(409).json({
-        error: task.merged_commit_sha ? `The task is already merged (${task.merged_commit_sha}).` : 'Only a blocked task, or a done one without a merge commit, can be marked merged.',
-        code: task.status === 'DONE' && task.merged_commit_sha ? 'task_already_merged' : 'task_not_blocked',
-      });
+      res.status(409).json(task.status === 'DONE' && task.merged_commit_sha
+        ? apiError('task_already_merged', `The task is already merged (${task.merged_commit_sha}).`, { sha: task.merged_commit_sha })
+        : apiError('task_not_blocked', task.merged_commit_sha
+          ? `The task is already merged (${task.merged_commit_sha}).`
+          : 'Only a blocked task, or a done one without a merge commit, can be marked merged.'));
       return;
     }
     const sha = rawSha.toLowerCase();
     const found = shaInBase(taskRepo(task), task.base_branch, sha);
     if (found === 'not_contained') {
-      res.status(409).json({
-        error: `Commit ${sha} is not in ${task.base_branch} of this repository. Check the sha of the merge.`,
-        code: 'sha_not_in_base',
-      });
+      res.status(409).json(apiError('sha_not_in_base', `Commit ${sha} is not in ${task.base_branch} of this repository. Check the sha of the merge.`, { sha, base: task.base_branch ?? '' }));
       return;
     }
     dbApi.setTaskMergedSha(task.id, sha);
@@ -1309,7 +1404,7 @@ export function registerRoutes(app: Router): void {
     const params = z.object({ id: z.string().min(1).max(255).regex(/^[A-Za-z0-9_-]+$/) }).safeParse(req.params);
     if (!params.success) { res.status(400).json(apiError('task_invalid', 'Invalid task identifier.')); return; }
     const parsed = parseAttachSeriesBody(req.body);
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'task_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('task_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const named = parsed.value.series;
     if (!named || !SeriesParamSchema.safeParse({ id: named }).success) {
       res.status(400).json(apiError('series_invalid', 'series must be a series id, a pilot mission id or "current".'));
@@ -1367,7 +1462,7 @@ export function registerRoutes(app: Router): void {
     // task its owner can no longer close would hang IN_PROGRESS.
     const ownClose = parsed.ok && isClosingOnly(parsed.value) && isOwnMissionTask(req, req.params.id);
     if (!ownClose && rejectIfDenied(req, res, 'kanban:write')) return;
-    if (!parsed.ok) { res.status(400).json({ error: parsed.error, code: 'task_body_invalid' }); return; }
+    if (!parsed.ok) { res.status(400).json(apiError('task_body_invalid', parsed.error, { detail: parsed.error })); return; }
     const body = parsed.value;
     const scope = scopedDb(viewerFromRequest(req));
     const task = scope.getTask(req.params.id);
@@ -1380,7 +1475,7 @@ export function registerRoutes(app: Router): void {
     if (typeof body.agent_name === 'string' && body.agent_name !== task.agent_name) {
       const refusal = delegationRefusal(req, body.agent_name);
       if (refusal) {
-        res.status(403).json({ error: `task refused: ${refusal}`, code: 'orchestration_denied' });
+        res.status(403).json(apiError('orchestration_denied', `task refused: ${refusal}`, { detail: refusal }));
         return;
       }
     }
@@ -1398,39 +1493,39 @@ export function registerRoutes(app: Router): void {
       const refusal = agentRequeueRefusal(task, isCorrection(task, body));
       if (refusal) {
         auditRequest(req, 'task.requeue_refused', task.id);
-        res.status(409).json({ error: refusal, code: 'crash_loop' });
+        res.status(409).json(apiError('crash_loop', refusal, { detail: refusal }));
         return;
       }
     }
     // Before any write, like the delegation check: a refused link changes nothing.
     const todo = parseTodoLink(req, body.todo_id);
-    if (!todo.ok) { res.status(400).json({ error: todo.error }); return; }
+    if (!todo.ok) { res.status(400).json(todo.body); return; }
     // The merge sha's shape and base, checked with the rest: every refusal
     // comes before the first write, so a 400 or 409 leaves the task untouched.
     const sha = typeof body.merged_commit_sha === 'string' ? body.merged_commit_sha : null;
     if (sha !== null) {
       if (!/^[0-9a-f]{7,40}$/i.test(sha)) {
-        res.status(400).json({ error: 'merged_commit_sha must be 7-40 hex chars' });
+        res.status(400).json(apiError('sha_invalid', 'merged_commit_sha must be 7-40 hex chars'));
         return;
       }
       const shaRefusal = mergedShaRefusal(task, sha);
-      if (shaRefusal) { res.status(409).json({ error: shaRefusal, code: 'sha_not_in_base' }); return; }
+      if (shaRefusal) { res.status(409).json(apiError('sha_not_in_base', shaRefusal, { sha, base: task.base_branch ?? '' })); return; }
     }
     if (normalizeTaskStatusInput(body.status) === 'DONE' && task.status !== 'DONE'
       && rejectUnprovenClose(res, task, effectiveMergeSha(task, sha, body.done_comment))) return;
     // See creation: a non-numeric scheduled_at would go into the database as is.
     const sched = validateScheduledAt(body.scheduled_at);
     if (!sched.ok) {
-      res.status(400).json({ error: sched.error });
+      res.status(400).json(apiError('scheduled_at_invalid', sched.error, { detail: sched.error }));
       return;
     }
     // See creation: an unknown backend would be dropped at dispatch silently.
     const backendError = backendRefusal(body);
-    if (backendError) { res.status(400).json({ error: backendError }); return; }
+    if (backendError) { res.status(400).json(apiError('task_field_invalid', backendError, { detail: backendError })); return; }
     let type: TaskType | undefined;
     if (body.type !== undefined) {
       if (!isTaskType(body.type)) {
-        res.status(400).json({ error: `invalid type "${body.type}"` });
+        res.status(400).json(apiError('task_type_invalid', `invalid type "${body.type}"`, { type: String(body.type) }));
         return;
       }
       type = body.type;

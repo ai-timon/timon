@@ -3,8 +3,10 @@
  * preferences, and the operator's account recovery. Administering accounts
  * belongs to the plugin that serves them (`ctx.accountProvider`).
  */
+import { daemonMessage, type DaemonMessage } from '../../daemon-message.js';
 import { writeAppearance } from '../../appearance.js';
 import type { Router, Request, RequestHandler, Response } from 'express';
+import { z } from 'zod';
 import { freeAccountAllowed, FREE_ACCOUNT_RESTRICTED_MESSAGE } from '../../users/free-access.js';
 import { config } from '../../config/load.js';
 import { setupPolicy, type SetupPolicy } from '../../users/setup-policy.js';
@@ -39,6 +41,7 @@ import {
   forbidden,
   requireAuth,
   requestHasPermission,
+  requireSuperadmin,
   toPublicUser,
   viewerFromRequest,
   type PublicUser,
@@ -97,6 +100,12 @@ type AuthBody = {
   code?: unknown;
 };
 
+const FirstAdminBody = z.object({
+  email: z.string().trim().toLowerCase().max(254).regex(EMAIL_RE),
+  name: z.string().trim().min(1).max(200),
+  password: z.string().min(MIN_PASSWORD).max(1024),
+});
+
 function parseEmail(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const email = raw.trim().toLowerCase();
@@ -139,10 +148,10 @@ function parseAvatarUrl(raw: unknown): string | null | undefined {
  * to a person; a single unowned notification would be an announcement to the
  * whole instance, which is not what an identity move deserves.
  */
-function notifySuperadmins(title: string, body: string): void {
+function notifySuperadmins(title: string, body: string, message: DaemonMessage): void {
   for (const admin of dbApi.listUsers()) {
     if (!admin.is_superadmin || admin.status !== 'active') continue;
-    createNotification({ type: 'alert', title, body, ownerUserId: admin.id });
+    createNotification({ type: 'alert', title, body, ownerUserId: admin.id, message });
   }
 }
 
@@ -193,6 +202,8 @@ function mePayload(req: Request, signedOut = false): {
   prefs: UserPrefs;
   can: MeCan;
   welcome: MeWelcome;
+  /** The address was made without its mailed code: the app offers to confirm it. */
+  emailUnverified: boolean;
 } {
   const needsSetup = dbApi.countUsers() === 0;
   const user = signedOut ? null : req.auth?.user ?? null;
@@ -206,6 +217,7 @@ function mePayload(req: Request, signedOut = false): {
     prefs: dbApi.userPrefsGet(user?.id),
     can,
     welcome: meWelcome(user?.id ?? null),
+    emailUnverified: user ? dbApi.userEmailUnverified(user.id) : false,
   };
 }
 
@@ -586,6 +598,9 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       dbApi.assignUnownedOwnedTo(user.id);
       consumeSetupToken();
       if (emailChallenge) confirmSetupEmail(emailDeps, emailChallenge, email);
+      // The operator's path (`timon init`) skipped the code: the address waits
+      // for it, asked again from the owner's first signed-in session.
+      else if (emailVerification) dbApi.setUserEmailUnverified(user.id, true);
       // Without a row the account falls back on the product default (dark),
       // and the app flipped away from the scheme the onboarding had shown.
       if (isColorScheme(body.scheme)) {
@@ -594,7 +609,9 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       }
       audit(req, 'user.create', `user:${user.id}`);
       setSession(res, user.id, req.header('user-agent') ?? undefined);
-      onboardingStep('account', 'completed');
+      onboardingStep('account', 'completed', {
+        via: emailChallenge ? 'code' : req.auth?.kind === 'daemon-token' ? 'operator' : 'no_code',
+      });
       res.status(201).json({ user: toPublicUser(user) });
       // Recomposition must not hold up admission or turn a successful account
       // creation into an HTTP error. The helper already reports surface failures.
@@ -645,7 +662,7 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       return;
     }
     if (!freeAccountAllowed(user.id)) {
-      res.status(403).json({ error: 'free_account_restricted', message: FREE_ACCOUNT_RESTRICTED_MESSAGE });
+      res.status(403).json(apiError('free_account_restricted', FREE_ACCOUNT_RESTRICTED_MESSAGE));
       return;
     }
     clearThrottle(keys);
@@ -849,6 +866,7 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
     notifySuperadmins(
       'Email change requested',
       `${user.name} (${user.email}) asked to move their login to ${email}. Pending confirmation.`,
+      daemonMessage('email_change_requested', { name: user.name, email: user.email, newEmail: email }),
     );
     res.status(201).json({ token, email, expires_at: expiresAt });
   });
@@ -898,10 +916,15 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
       throw err;
     }
     dbApi.markEmailChangeConfirmed(tokenHash);
+    // The link proves a session asked for the move, not that anyone reads the
+    // new address (it is handed over by hand): the owner confirms it with a
+    // mailed code from their profile, or a reset by email stays refused.
+    if (emailVerification) dbApi.setUserEmailUnverified(user.id, true);
     audit(req, 'user.change_email', `user:${user.id}`);
     notifySuperadmins(
       'Email change confirmed',
       `${user.name} moved their login from ${previous} to ${pending.new_email}.`,
+      daemonMessage('email_change_confirmed', { name: user.name, previous, newEmail: pending.new_email }),
     );
     res.json({ ok: true, email: pending.new_email });
   });
@@ -952,6 +975,18 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
     res.json({ users: dbApi.listUsers().map(toPublicUser) });
   });
 
+  /**
+   * Who a superadmin can name on a shared subscription account (owner, people it
+   * is shared with): a signed-in superadmin, or the daemon token. Id and display
+   * name only, never an e-mail, a status or a date: the core owns the accounts
+   * table whatever plugin serves the accounts, and a Free install lists its one
+   * account without needing that plugin.
+   */
+  app.get('/api/users/directory', (req, res) => {
+    if (!requireSuperadmin(req, res)) return;
+    res.json({ users: dbApi.listUsers().map((user) => ({ id: user.id, name: user.name })) });
+  });
+
   app.post('/api/users/:id/reset-password', operatorOnly, async (req, res) => {
     const user = dbApi.getUserById(String(req.params.id));
     if (!user) {
@@ -963,5 +998,62 @@ export function registerRoutes(app: Router, options: UserRoutesOptions = {}): vo
     dbApi.revokeUserAccess(user.id);
     audit(req, 'user.reset_password', `user:${user.id}`);
     res.json({ user: toPublicUser(dbApi.getUserById(user.id)!), password });
+  });
+
+  /**
+   * The first account, from the operator's terminal (`timon user create-admin`):
+   * the way in for a machine that cannot reach the mail relay, so no code is
+   * asked. The same admission as `POST /api/auth/setup` otherwise — nobody set
+   * up yet, a build still in date, one creation at a time — and one superadmin,
+   * the only account the core ever creates. No session is opened: the owner
+   * signs in from the app. The address is kept unconfirmed until the owner
+   * confirms it from a signed-in session.
+   */
+  app.post('/api/users/first-admin', operatorOnly, async (req, res) => {
+    if (dbApi.countUsers() > 0) {
+      res.status(409).json(apiError('already_set_up', 'an account already exists: use `timon user reset-password` to recover it'));
+      return;
+    }
+    if (licenseState().reason === 'build_expired') {
+      res.status(403).json({ error: 'build_expired' });
+      return;
+    }
+    // A closed beta asks for a key with the first account: that path is the
+    // setup form or `timon init`, which carry one.
+    if (requiresLicense) {
+      res.status(409).json(apiError('license_required', 'this build needs a licence key with the first account: run `timon init`'));
+      return;
+    }
+    const parsed = FirstAdminBody.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json(apiError('setup_fields_required', `email, name and password (min ${MIN_PASSWORD} characters) required`, { min: MIN_PASSWORD }));
+      return;
+    }
+    if (setupInProgress) {
+      res.status(409).json({ error: 'setup_in_progress' });
+      return;
+    }
+    setupInProgress = true;
+    try {
+      const { email, name, password } = parsed.data;
+      const passwordHash = await hashPassword(password);
+      // Another account-creation path may have run while the hash was computed.
+      if (dbApi.countUsers() > 0) {
+        res.status(409).json(apiError('already_set_up', 'an account already exists: use `timon user reset-password` to recover it'));
+        return;
+      }
+      const user = dbApi.createUser({ email, name, passwordHash, isSuperadmin: true, status: 'active', source: 'setup' });
+      dbApi.assignUnownedOwnedTo(user.id);
+      consumeSetupToken();
+      if (emailVerification) dbApi.setUserEmailUnverified(user.id, true);
+      audit(req, 'user.create', `user:${user.id}`);
+      onboardingStep('account', 'completed', { via: 'operator' });
+      res.status(201).json({ user: toPublicUser(user), emailUnverified: emailVerification });
+    } catch (err: unknown) {
+      if (err instanceof LicenseCapabilityError) { res.status(409).json({ error: err.code, message: err.message }); return; }
+      res.status(500).json({ error: 'setup_failed' });
+    } finally {
+      setupInProgress = false;
+    }
   });
 }

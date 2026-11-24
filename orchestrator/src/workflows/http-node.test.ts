@@ -169,6 +169,8 @@ test('an account without http:outbound is refused at publish and at run; private
   const described = describeWorkflowError(refusal);
   assert.equal(described.issues?.[0]?.nodeId, 'call');
   assert.match(described.error, /needs http:outbound/);
+  assert.equal(described.code, 'workflow_refused');
+  assert.deepEqual(described.params, { detail: described.error });
   assert.doesNotThrow(() => assertHttpNodesAllowed(nodes, caller));
 
   // The run re-checks the owner: nothing leaves the host for a refused account.

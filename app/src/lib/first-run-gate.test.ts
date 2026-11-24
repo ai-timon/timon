@@ -3,54 +3,54 @@ import assert from 'node:assert/strict';
 import { FIRST_RUN_PATH, MAIN_AGENT_REPAIR_PATH, WELCOME_PATH, firstRunTarget, schemeFollowsSystem, firstRunScheme } from './first-run-gate';
 
 /**
- * Le parcours réel du 04/09/2026, celui que personne n'avait joué : paquet
- * lancé, compte créé, accueil atteint — et l'écran bloquant de l'étape 5.7.4
- * jamais affiché, donc aucun service installé.
+ * The real journey of 04/09/2026, the one nobody had played: package
+ * launched, account created, home reached — and the blocking screen of step 5.7.4
+ * never shown, hence no service installed.
  */
-test("le parcours « compte créé → accueil » passe par l'onboarding", () => {
-  // 1. Anonyme : on ne détourne pas vers un écran qui a besoin d'une session.
+test('the "account created → home" journey goes through the onboarding', () => {
+  // 1. Anonymous: we do not divert to a screen that needs a session.
   assert.equal(firstRunTarget({ pathname: '/login', firstRun: true }), null);
-  // 2. Compte créé, la page de login renvoie vers l'accueil…
+  // 2. Account created, the login page sends to the home page…
   assert.equal(firstRunTarget({ pathname: '/', firstRun: true }), FIRST_RUN_PATH);
-  // 3. …et toute autre page du produit y renvoie aussi.
+  // 3. …and every other page of the product sends there too.
   for (const page of ['/dashboard', '/missions', '/chat', '/plugins', '/settings/general']) {
     assert.equal(firstRunTarget({ pathname: page, firstRun: true }), FIRST_RUN_PATH);
   }
-  // 4. Ni le parcours, ni l'écran de réparation ne se renvoient vers eux-mêmes.
+  // 4. Neither the journey nor the repair screen send back to themselves.
   assert.equal(firstRunTarget({ pathname: '/onboarding', firstRun: true }), null);
   assert.equal(firstRunTarget({ pathname: '/setup', firstRun: true }), null);
 });
 
-test('une installation configurée ne voit jamais cet écran', () => {
+test('a configured install never sees this screen', () => {
   for (const page of ['/', '/dashboard', '/setup']) {
     assert.equal(firstRunTarget({ pathname: page, firstRun: false }), null);
   }
 });
 
-test("tant que les capacités sont inconnues, on ne détourne rien", () => {
-  // Sinon `/setup` clignoterait au démarrage à froid de toute installation.
+test('as long as the capabilities are unknown, nothing is diverted', () => {
+  // Otherwise `/setup` would flicker on the cold start of every install.
   assert.equal(firstRunTarget({ pathname: '/', firstRun: undefined }), null);
 });
 
-test('les variantes de chemin ne servent pas de contournement', () => {
+test('path variants do not serve as a bypass', () => {
   assert.equal(firstRunTarget({ pathname: '/dashboard/', firstRun: true }), FIRST_RUN_PATH);
   assert.equal(firstRunTarget({ pathname: '/login/', firstRun: true }), null);
-  // Un sous-chemin de /setup reste dans l'onboarding.
+  // A sub-path of /setup stays in the onboarding.
   assert.equal(firstRunTarget({ pathname: '/setup/anything', firstRun: true }), null);
-  // …mais un chemin qui COMMENCE par les mêmes lettres, non.
+  // …but a path that STARTS with the same letters does not.
   assert.equal(firstRunTarget({ pathname: '/setup-other', firstRun: true }), FIRST_RUN_PATH);
 });
 
 /**
- * On redirige avec `replace` : envoyer quelqu'un sur un écran qu'il ne peut pas
- * afficher l'enfermerait sans historique pour revenir. Piéger un utilisateur
- * est pire que le bug que ce garde corrige.
+ * We redirect with `replace`: sending someone to a screen they cannot
+ * display would lock them in with no history to go back. Trapping a user
+ * is worse than the bug this guard fixes.
  */
-test("un visiteur qui ne peut pas voir /setup n'y est pas envoyé", () => {
+test('a visitor who cannot see /setup is not sent there', () => {
   assert.equal(firstRunTarget({ pathname: '/', firstRun: true, canConfigure: false }), null);
   assert.equal(firstRunTarget({ pathname: '/', firstRun: true, canConfigure: true }), FIRST_RUN_PATH);
-  // Non renseigné = le cas normal (superadmin de premier lancement, surfaces
-  // non restreintes) : on redirige.
+  // Not filled in = the normal case (first-launch superadmin, surfaces
+  // not restricted): we redirect.
   assert.equal(firstRunTarget({ pathname: '/', firstRun: true }), FIRST_RUN_PATH);
 });
 

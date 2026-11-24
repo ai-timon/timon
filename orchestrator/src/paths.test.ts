@@ -1,8 +1,8 @@
 /**
- * Garde-fou `TIMON_HOME` : sous le runner, jamais le home réel, jamais ~/.pkos. public-name-ok: the archive guard
+ * `TIMON_HOME` guard: under the runner, never the real home, never ~/.pkos. public-name-ok: the archive guard
  *
- * `paths.ts` se fige à l'import : on sonde le module dans un process enfant
- * pour ne pas polluer le TIMON_HOME déjà posé par `test-home.ts`.
+ * `paths.ts` freezes at import: the module is probed in a child process
+ * so as not to pollute the TIMON_HOME already set by `test-home.ts`.
  */
 import './test-home.js';
 import { test } from 'node:test';
@@ -29,7 +29,7 @@ function probe(patch: Record<string, string | null>) {
 }
 
 // public-name-ok: the archive guard refuses it by name
-test('le home du process de test n\'est ni ~/.pkos ni ~/.timon', () => {
+test('the home of the test process is neither ~/.pkos nor ~/.timon', () => {
   assert.notEqual(TIMON_HOME, join(homedir(), '.pkos'));
   assert.notEqual(TIMON_HOME, join(homedir(), '.timon'));
   assert.ok(
@@ -38,20 +38,20 @@ test('le home du process de test n\'est ni ~/.pkos ni ~/.timon', () => {
   );
 });
 
-test('sans TIMON_HOME, le runner refuse de charger paths.ts', () => {
+test('without TIMON_HOME, the runner refuses to load paths.ts', () => {
   const r = probe({ TIMON_HOME: null });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /TIMON_HOME is required/);
 });
 
 // public-name-ok: the archive guard refuses it by name
-test('TIMON_HOME=~/.pkos est refusé (home du PKOS quotidien)', () => {
+test('TIMON_HOME=~/.pkos is refused (home of the daily PKOS)', () => {
   const r = probe({ TIMON_HOME: join(homedir(), '.pkos') });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /~\/\.pkos/); // public-name-ok: the refusal names the archive
 });
 
-test('TIMON_HOME=~/.timon réel est refusé sous le runner', () => {
+test('TIMON_HOME=the real ~/.timon is refused under the runner', () => {
   const r = probe({ TIMON_HOME: join(homedir(), '.timon') });
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /the real ~\/\.timon/);

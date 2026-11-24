@@ -17,6 +17,7 @@ import type { BrowserProfile } from './browser-profiles.js';
 import { isSealed } from './secrets/box.js';
 import { openWithVault, pluginKvIdentity, sealWithVault } from './secrets/store.js';
 import { NativeBrowserError } from './native-browser-provider.js';
+import { apiError, type ApiErrorBody } from './api-error.js';
 import {
   isSecretPlaceholder, RECORDING_STEP_TYPES, RECORDING_STOP_REASONS, sanitizeRecording,
   type RecordedStep,
@@ -67,8 +68,8 @@ const Metadata = z.object({
 const metaKey = (id: string) => `${META_PREFIX}${id}`;
 const secretKey = (id: string) => `${SECRET_PREFIX}${id}`;
 const learnMissionKey = (missionId: string) => `${LEARN_MISSION_PREFIX}${missionId}`;
-const unavailable = () => new NativeBrowserError('The browser recording vault is unavailable or its encrypted data is invalid.', 503);
-const notFound = () => new NativeBrowserError('Browser recording not found.', 404);
+const unavailable = () => new NativeBrowserError(apiError('browser_vault_unavailable', 'The browser recording vault is unavailable or its encrypted data is invalid.'), 503);
+const notFound = () => new NativeBrowserError(apiError('browser_recording_not_found', 'Browser recording not found.'), 404);
 
 export function isBrowserRecordingId(id: unknown): id is string {
   return typeof id === 'string' && RECORDING_ID.test(id);
@@ -148,7 +149,7 @@ function defaultTitle(url: string): string {
 /** Seals what the desktop returned at stop. Nothing of it goes back to the caller but the metadata. */
 export function saveBrowserRecording(profile: BrowserProfile, raw: unknown, origin: BrowserRecordingOrigin, now = Date.now()): BrowserRecordingMetadata {
   const recording = sanitizeRecording(raw, () => now);
-  if (!recording) throw new NativeBrowserError('The browser returned an invalid recording.', 502);
+  if (!recording) throw new NativeBrowserError(apiError('browser_recording_invalid', 'The browser returned an invalid recording.'), 502);
   const startUrl = recording.url || recording.steps.find((step) => step.url)?.url || '';
   const meta: BrowserRecordingMetadata = {
     id: `br-${randomUUID()}`, profileId: profile.id, ownerUserId: profile.owner_user_id,
@@ -235,7 +236,7 @@ const placeholderOf = (step: RecordedStep) =>
 function applyOp(steps: RecordedStep[], op: BrowserRecordingOp, meta: { title: string }): RecordedStep[] {
   if (!('step' in op)) { meta.title = op.title.trim(); return steps; }
   const index = steps.findIndex((step) => step.n === op.step);
-  if (index < 0) throw new NativeBrowserError(`Step ${op.step} does not exist.`, 400);
+  if (index < 0) throw new NativeBrowserError(apiError('browser_recording_step_missing', `Step ${op.step} does not exist.`, { step: op.step }), 400);
   const step = { ...steps[index]! };
   switch (op.op) {
     case 'drop': return steps.filter((_, i) => i !== index);
@@ -245,17 +246,17 @@ function applyOp(steps: RecordedStep[], op: BrowserRecordingOp, meta: { title: s
     case 'mask':
       if (step.value !== undefined && step.value !== '') step.value = placeholderOf(step);
       else if (step.text) step.text = '{SECRET:text}';
-      else throw new NativeBrowserError(`Step ${op.step} has no value to mask.`, 400);
+      else throw new NativeBrowserError(apiError('browser_recording_step_no_value', `Step ${op.step} has no value to mask.`, { step: op.step }), 400);
       delete step.flagged;
       break;
     case 'unmask':
       if (!step.flagged && (isSecretPlaceholder(step.value) || isSecretPlaceholder(step.text))) {
-        throw new NativeBrowserError(`Step ${op.step} was masked; a masked value cannot be restored.`, 409);
+        throw new NativeBrowserError(apiError('browser_recording_step_masked', `Step ${op.step} was masked; a masked value cannot be restored.`, { step: op.step }), 409);
       }
       delete step.flagged;
       break;
     case 'param':
-      if (step.type !== 'input') throw new NativeBrowserError(`Step ${op.step} is not a typed value.`, 400);
+      if (step.type !== 'input') throw new NativeBrowserError(apiError('browser_recording_step_not_typed', `Step ${op.step} is not a typed value.`, { step: op.step }), 400);
       step.param = op.name;
       // A flagged value is not kept as the parameter's example: it may be the secret itself.
       if (step.flagged) { step.value = `{PARAM:${op.name}}`; delete step.flagged; }
@@ -265,9 +266,9 @@ function applyOp(steps: RecordedStep[], op: BrowserRecordingOp, meta: { title: s
 }
 
 export function patchBrowserRecording(meta: BrowserRecordingMetadata, ops: readonly BrowserRecordingOp[], origin: BrowserRecordingOrigin, now = Date.now()): { recording: BrowserRecordingMetadata; steps: RecordedStep[] } {
-  if (meta.status === 'learned') throw new NativeBrowserError('This recording was already learned; record it again to change it.', 409);
+  if (meta.status === 'learned') throw new NativeBrowserError(apiError('browser_recording_learned', 'This recording was already learned; record it again to change it.'), 409);
   let steps = readBrowserRecordingSteps(meta);
-  if (!steps) throw new NativeBrowserError('The steps of this recording are no longer available.', 409);
+  if (!steps) throw new NativeBrowserError(apiError('browser_recording_steps_gone', 'The steps of this recording are no longer available.'), 409);
   const draft = { title: meta.title };
   for (const op of ops) steps = applyOp(steps, op, draft);
   const flagged = flaggedCount(steps);
@@ -289,11 +290,11 @@ export function deleteBrowserRecording(meta: BrowserRecordingMetadata, origin: B
 
 export function setBrowserRecordingExternalRef(meta: BrowserRecordingMetadata, ref: unknown, now = Date.now()): BrowserRecordingMetadata {
   const parsed = ref === null ? null : ExternalRef.safeParse(ref);
-  if (parsed && !parsed.success) throw new NativeBrowserError('The external reference is invalid.', 400);
+  if (parsed && !parsed.success) throw new NativeBrowserError(apiError('browser_external_ref_invalid', 'The external reference is invalid.'), 400);
   const externalRef = parsed ? parsed.data : null;
   if (externalRef) {
     const taken = allRecordings().find((row) => row.id !== meta.id && row.externalRef?.provider === externalRef.provider && row.externalRef.ref === externalRef.ref);
-    if (taken) throw new NativeBrowserError('This external reference is already linked to another recording.', 409);
+    if (taken) throw new NativeBrowserError(apiError('browser_external_ref_taken', 'This external reference is already linked to another recording.'), 409);
   }
   const next = { ...meta, externalRef, updatedAt: now };
   dbApi.pluginKvSet(STORE, metaKey(meta.id), JSON.stringify(next));
@@ -308,11 +309,11 @@ export function findBrowserRecordingByRef(provider: string, ref: string): Browse
 // Learning: one conversion mission, named before it starts, so that it alone may read the steps.
 
 /** Why this recording cannot be learned now, or null. */
-export function learnRefusal(meta: BrowserRecordingMetadata): string | null {
-  if (meta.status === 'learned') return 'This recording was already learned.';
-  if (!meta.stepsAvailable) return 'The steps of this recording are no longer available.';
-  if (meta.flagged > 0) return 'Review the flagged steps (mask, keep or drop them) before learning.';
-  if (meta.steps === 0) return 'This recording has no step to learn.';
+export function learnRefusal(meta: BrowserRecordingMetadata): ApiErrorBody | null {
+  if (meta.status === 'learned') return apiError('browser_recording_learned', 'This recording was already learned.');
+  if (!meta.stepsAvailable) return apiError('browser_recording_steps_gone', 'The steps of this recording are no longer available.');
+  if (meta.flagged > 0) return apiError('browser_recording_flagged', 'Review the flagged steps (mask, keep or drop them) before learning.');
+  if (meta.steps === 0) return apiError('browser_recording_empty', 'This recording has no step to learn.');
   return null;
 }
 

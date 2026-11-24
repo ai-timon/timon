@@ -1,6 +1,7 @@
 /**
  * The browser's side of the email code routes (docs/EMAIL-CODES.md): the
- * first account's confirmation and the forgotten password. Every call goes
+ * first account's confirmation, the forgotten password, and the signed-in
+ * account confirming an address made without a code. Every call goes
  * through the same-origin proxy (`/api/ui/auth/…`), which anchors `/api/auth/*`
  * on this computer's daemon.
  *
@@ -110,6 +111,22 @@ export function resendResetCode(challengeId: string, fetchImpl: Fetch = fetch): 
 
 export async function confirmReset(input: { challengeId: string; code: string; password: string }, fetchImpl: Fetch = fetch): Promise<CodeResult<null>> {
   const answer = await post('/api/ui/auth/password-reset/confirm', input, fetchImpl);
+  if (!answer) return { ok: false, failure: networkFailure() };
+  if (answer.status === 200) return { ok: true, value: null };
+  return { ok: false, failure: refusal(answer, Date.now()) };
+}
+
+/** A code to the signed-in account's own address, made without one (member, admin made offline, moved login). */
+export function requestEmailVerification(fetchImpl: Fetch = fetch): Promise<CodeResult<CodeChallenge>> {
+  return challengeCall('/api/ui/auth/email-verification', { locale: getLocale() }, fetchImpl);
+}
+
+export function resendEmailVerification(challengeId: string, fetchImpl: Fetch = fetch): Promise<CodeResult<CodeChallenge>> {
+  return challengeCall('/api/ui/auth/email-verification/resend', { challengeId }, fetchImpl);
+}
+
+export async function confirmEmailVerification(input: { challengeId: string; code: string }, fetchImpl: Fetch = fetch): Promise<CodeResult<null>> {
+  const answer = await post('/api/ui/auth/email-verification/confirm', input, fetchImpl);
   if (!answer) return { ok: false, failure: networkFailure() };
   if (answer.status === 200) return { ok: true, value: null };
   return { ok: false, failure: refusal(answer, Date.now()) };

@@ -1,13 +1,13 @@
 /**
- * Routes `/api/plugins/*`, serveur de bundles branché sur le loader, event
- * SSE `plugins_changed`.
+ * The `/api/plugins/*` routes, the bundle server wired to the loader, the
+ * `plugins_changed` SSE event.
  *
- * Ce que ces tests protègent : l'UI lit l'état RÉEL du loader (installé,
- * actif, désactivé, en erreur, et la raison), charge la moitié navigateur
- * depuis une URL dont `rev` change avec le fichier, et se recompose sans
- * rechargement parce que le daemon émet `plugins_changed` à chaque
- * recomposition. Les quatre opérations (add / remove / enable / disable)
- * passent par `loader.update()` — c'est déjà le chemin de `timon plugin`.
+ * What these tests protect: the UI reads the REAL state of the loader (installed,
+ * active, disabled, failed, and the reason), loads the browser half
+ * from a URL whose `rev` changes with the file, and recomposes without
+ * reloading because the daemon emits `plugins_changed` on each
+ * recomposition. The four operations (add / remove / enable / disable)
+ * go through `loader.update()`: that is already the path of `timon plugin`.
  */
 import '../test-home.js';
 import '../../tests/helpers/paid-license.js';
@@ -59,7 +59,7 @@ function install(root: string, fixtures: (keyof typeof PKG)[]): void {
     const pkg = PKG[f];
     const dest = join(root, 'node_modules', pkg);
     mkdirSync(dirname(dest), { recursive: true });
-    try { symlinkSync(join(FIXTURES, f), dest, 'dir'); } catch { /* déjà lié */ }
+    try { symlinkSync(join(FIXTURES, f), dest, 'dir'); } catch { /* already linked */ }
     dependencies[pkg] = 'file:fixture';
   }
   writeFileSync(
@@ -89,8 +89,8 @@ async function daemon(authToken?: string): Promise<{
   });
   const ctx = new Context();
   await ctx.plugin(createHttpPlugin(app));
-  // Directement les routes : `ctx.plugin({ inject: ['http'] })` resterait
-  // PENDING si le service n'est pas vu comme injectable dans ce mini-arbre.
+  // The routes directly: `ctx.plugin({ inject: ['http'] })` would stay
+  // PENDING if the service is not seen as injectable in this mini tree.
   registerRoutes(ctx.http.router());
   const server = app.listen(0);
   await new Promise((r) => server.once('listening', r));
@@ -179,7 +179,7 @@ function fakeStream(missionId: string): { chunks: string[]; close: () => void } 
   return { chunks, close: () => { (req as unknown as EventEmitter).emit('close'); } };
 }
 
-test('GET /api/plugins rend l\'état réel : actif, failed, skipped, disabled', async () => {
+test('GET /api/plugins returns the real state: active, failed, skipped, disabled', async () => {
   const plugins: Record<string, ModuleSetting> = { 'fixture-ok': false };
   await withDaemon(['ok', 'throws-in-apply', 'api-version-future', 'forbidden-inject'], () => plugins, async ({ d, loader }) => {
     await loader.update();
@@ -190,18 +190,18 @@ test('GET /api/plugins rend l\'état réel : actif, failed, skipped, disabled', 
     const disabled = byId.get('fixture-ok');
     assert.equal(disabled?.state, 'disabled');
     assert.match(disabled?.reason ?? '', /disabled in timon\.config\.json/);
-    assert.equal(disabled?.client, null, 'un plugin désactivé n\'est pas servi');
+    assert.equal(disabled?.client, null, 'a disabled plugin is not served');
 
     const failed = byId.get('fixture-throws');
     assert.equal(failed?.state, 'failed');
     assert.equal(failed?.reason, 'failed');
     assert.match(failed?.error ?? '', /boum/);
 
-    // apiVersion est refusée AVANT d'avoir un id de manifeste fiable : le
-    // loader indexe alors sur le nom npm. La raison `skipped:api-version` est
-    // le contrat ; le message nomme les deux versions.
+    // apiVersion is refused BEFORE having a reliable manifest id: the
+    // loader then indexes on the npm name. The `skipped:api-version` reason is
+    // the contract; the message names both versions.
     const future = list.plugins.find((p) => p.reason === 'skipped:api-version');
-    assert.ok(future, 'un plugin à apiVersion trop récente doit apparaître dans la liste');
+    assert.ok(future, 'a plugin with a too-recent apiVersion must appear in the list');
     assert.match(future?.error ?? '', /apiVersion 99/);
     assert.match(future?.error ?? '', new RegExp(`contract ${PLUGIN_API_VERSION}`));
 
@@ -218,14 +218,14 @@ test('GET /api/plugins rend l\'état réel : actif, failed, skipped, disabled', 
   });
 });
 
-test('GET /plugins/<id>/client.js suit le loader : présent à l\'activation, 404 sinon', async () => {
+test('GET /plugins/<id>/client.js follows the loader: present on activation, 404 otherwise', async () => {
   let plugins: Record<string, ModuleSetting> = {};
   await withDaemon(['ok'], () => plugins, async ({ d, loader }) => {
     await loader.update();
 
     const listed = await (await fetch(d.url('/api/plugins/fixture-ok'))).json() as PluginPublic;
     assert.equal(listed.state, 'active');
-    assert.ok(listed.client, 'la moitié navigateur doit être annoncée');
+    assert.ok(listed.client, 'the browser half must be announced');
     assert.ok(listed.client?.url.includes('rev='));
     assert.deepEqual(listed.client?.slots, ['nav.item']);
     assert.deepEqual(listed.client?.permissions, ['storage', 'notify'], 'the browser half gates transcript kinds on the manifest');
@@ -241,11 +241,11 @@ test('GET /plugins/<id>/client.js suit le loader : présent à l\'activation, 40
   });
 });
 
-test('la galerie lit le manifeste : kind, label, cover et slots survivent au débranchement', async () => {
-  // Le coeur de la galerie locale (§10.12) : elle liste les plugins PRÉSENTS,
-  // branchés ET débranchés. Tout ce que la carte affiche doit donc venir du
-  // manifeste, jamais du montage — `client` est `null` dès qu'un plugin est
-  // désactivé, et c'est précisément le plugin que le toggle vise.
+test('the gallery reads the manifest: kind, label, cover and slots survive unplugging', async () => {
+  // The heart of the local gallery (§10.12): it lists the PRESENT plugins,
+  // plugged AND unplugged. Everything the card shows must therefore come from the
+  // manifest, never from the mount: `client` is `null` as soon as a plugin is
+  // disabled, and that is precisely the plugin the toggle targets.
   let plugins: Record<string, ModuleSetting> = {};
   await withDaemon(['ok'], () => plugins, async ({ d, loader }) => {
     await loader.update();
@@ -275,20 +275,20 @@ test('la galerie lit le manifeste : kind, label, cover et slots survivent au dé
     await loader.update();
     const off = await (await fetch(d.url('/api/plugins/fixture-ok'))).json() as PluginPublic;
     assert.equal(off.state, 'disabled');
-    assert.equal(off.client, null, 'un plugin désactivé n\'est pas monté');
-    assert.equal(off.cover, active.cover, 'sa cover reste servie : la galerie doit dessiner sa carte');
-    assert.equal(off.icon, active.icon, 'son picto aussi');
-    assert.deepEqual(off.slots, ['nav.item'], 'où il s\'insérerait reste lisible');
+    assert.equal(off.client, null, 'a disabled plugin is not mounted');
+    assert.equal(off.cover, active.cover, 'its cover stays served: the gallery must draw its card');
+    assert.equal(off.icon, active.icon, 'its icon too');
+    assert.deepEqual(off.slots, ['nav.item'], 'where it would slot in stays readable');
     assert.equal((await fetch(d.url(off.cover!))).status, 200);
 
-    // Une révision périmée n'est jamais servie sous une autre clé : elle
-    // resterait collée un an dans le cache immuable du navigateur.
+    // A stale revision is never served under another key: it would
+    // stay stuck for a year in the browser's immutable cache.
     assert.equal((await fetch(d.url('/plugins/fixture-ok/cover?rev=deadbeef'))).status, 404);
     assert.equal((await fetch(d.url('/plugins/absent-plugin/cover'))).status, 404);
   });
 });
 
-test('POST /api/plugins/:id/enabled écrit la config voulue, pas l\'état du daemon', async () => {
+test('POST /api/plugins/:id/enabled writes the wanted config, not the daemon state', async () => {
   await withDaemon(['ok'], () => ({}), async ({ d, loader }) => {
     await loader.update();
 
@@ -301,7 +301,7 @@ test('POST /api/plugins/:id/enabled écrit la config voulue, pas l\'état du dae
     const cfg = JSON.parse(readFileSync(join(process.env.TIMON_HOME!, 'timon.config.json'), 'utf8')) as {
       plugins?: Record<string, unknown>;
     };
-    assert.equal(cfg.plugins?.['fixture-ok'], false, 'le toggle pose l\'état VOULU dans timon.config.json');
+    assert.equal(cfg.plugins?.['fixture-ok'], false, 'the toggle sets the WANTED state in timon.config.json');
 
     assert.equal((await fetch(d.url('/api/plugins/absent-plugin/enabled'), {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ enabled: true }),
@@ -312,7 +312,7 @@ test('POST /api/plugins/:id/enabled écrit la config voulue, pas l\'état du dae
   });
 });
 
-test('plugins_changed est émis sur add, disable, enable, remove — et seulement alors', async () => {
+test('plugins_changed is emitted on add, disable, enable, remove, and only then', async () => {
   let plugins: Record<string, ModuleSetting> = {};
   await withDaemon([], () => plugins, async ({ dir, loader }) => {
     const cap = collectChanged();
@@ -323,32 +323,32 @@ test('plugins_changed est émis sur add, disable, enable, remove — et seulemen
       // add
       install(dir, ['ok']);
       await loader.update();
-      assert.equal(cap.events.length, 1, 'add doit émettre');
+      assert.equal(cap.events.length, 1, 'add must emit');
       assert.equal(cap.events[0]?.plugins[0]?.id, 'fixture-ok');
       assert.equal(cap.events[0]?.plugins[0]?.state, 'active');
       assert.ok(cap.events[0]?.plugins[0]?.client);
 
-      // idempotent : pas d'event
+      // idempotent: no event
       await loader.update();
-      assert.equal(cap.events.length, 1, 'sans changement, pas de recomposition');
+      assert.equal(cap.events.length, 1, 'without a change, no recomposition');
 
       // disable
       plugins = { 'fixture-ok': false };
       await loader.update();
-      assert.equal(cap.events.length, 2, 'disable doit émettre');
+      assert.equal(cap.events.length, 2, 'disable must emit');
       assert.equal(cap.events[1]?.plugins[0]?.state, 'disabled');
       assert.equal(cap.events[1]?.plugins[0]?.client, null);
 
       // enable
       plugins = {};
       await loader.update();
-      assert.equal(cap.events.length, 3, 'enable doit émettre');
+      assert.equal(cap.events.length, 3, 'enable must emit');
       assert.equal(cap.events[2]?.plugins[0]?.state, 'active');
 
       // remove
       install(dir, []);
       await loader.update();
-      assert.equal(cap.events.length, 4, 'remove doit émettre');
+      assert.equal(cap.events.length, 4, 'remove must emit');
       assert.deepEqual(cap.events[3]?.plugins, []);
     } finally {
       cap.stop();
@@ -356,7 +356,7 @@ test('plugins_changed est émis sur add, disable, enable, remove — et seulemen
   });
 });
 
-test('le flux SSE global porte plugins_changed ; le flux d\'une mission non', () => {
+test('the global SSE stream carries plugins_changed; the stream of a mission does not', () => {
   const globalStream = fakeStream('');
   const mission = fakeStream('mission-plugins-changed');
   try {
@@ -424,7 +424,7 @@ test('PUT of a secret setting stores a sealed envelope and GET still returns emp
   });
 });
 
-test('traversal sur la route de bundle branchée au loader : 404', async () => {
+test('traversal on the bundle route wired to the loader: 404', async () => {
   await withDaemon(['ok'], () => ({}), async ({ d, loader }) => {
     await loader.update();
 
@@ -442,12 +442,12 @@ test('traversal sur la route de bundle branchée au loader : 404', async () => {
 });
 
 /**
- * Ce que la galerie promet depuis le volet "bundled" (§10.12) : une
- * installation du produit n'affiche JAMAIS "aucun plugin", parce que les ~30
- * modules embarqués sont des plugins comme les autres. Avant, `/api/plugins`
- * ne lisait que le loader tiers et un `~/.timon/plugins` vide rendait `[]`.
+ * What the gallery promises since the "bundled" part (§10.12): a product
+ * install NEVER shows "no plugin", because the ~30 embedded
+ * modules are plugins like the others. Before, `/api/plugins`
+ * only read the third-party loader and an empty `~/.timon/plugins` returned `[]`.
  */
-test('GET /api/plugins unionne les modules bundled et les paquets tiers', async () => {
+test('GET /api/plugins unites the bundled modules and the third-party packages', async () => {
   await withDaemon(['ok'], () => ({}), async ({ d, loader }) => {
     await loader.update();
     const { plugins } = await (await fetch(d.url('/api/plugins'))).json() as { plugins: PluginPublic[] };
@@ -455,34 +455,34 @@ test('GET /api/plugins unionne les modules bundled et les paquets tiers', async 
 
     for (const id of ['@timon/agent-chat', '@timon/dreams', '@timon/vault', '@timon/kanban']) {
       const row = byId.get(id);
-      assert.equal(row?.source, 'bundled', `${id} doit être listé comme module du produit`);
+      assert.equal(row?.source, 'bundled', `${id} must be listed as a product module`);
     }
     assert.deepEqual(byId.get('@timon/agent-chat')?.kind, ['widget']);
     assert.deepEqual(byId.get('@timon/kanban')?.kind, ['page', 'widget']);
     assert.deepEqual(byId.get('@timon/db')?.kind, ['behavior']);
     assert.equal(byId.get('@timon/agent-chat')?.author, 'Timon');
     assert.equal(byId.get('@timon/agent-chat')?.signed, null);
-    assert.equal(byId.get('fixture-ok')?.signed, false, 'unsigned même si le mode développeur le charge');
+    assert.equal(byId.get('fixture-ok')?.signed, false, 'unsigned even if developer mode loads it');
     assert.equal(byId.get('@timon/agent-chat')?.signature, null);
     assert.equal(byId.get('fixture-ok')?.signature, null);
-    // Aucun module du catalogue ne disparaît, y compris ceux que la licence ou
-    // les capacités hôte refusent : une carte grisée dit pourquoi, une carte
-    // absente ne dit rien.
+    // No catalogue module disappears, including those the licence or the
+    // host capabilities refuse: a greyed card says why, a missing card
+    // says nothing.
     assert.equal(plugins.filter((p) => p.source === 'bundled').length, CATALOG.length);
     assert.equal(byId.get('@timon/db')?.tier, 'core');
     assert.equal(byId.get('fixture-ok')?.source, 'third-party');
     assert.equal(byId.get('fixture-ok')?.tier, null);
-    assert.equal(new Set(plugins.map((p) => p.id)).size, plugins.length, 'un id ne paraît qu\'une fois');
+    assert.equal(new Set(plugins.map((p) => p.id)).size, plugins.length, 'an id appears only once');
 
-    // L'id porte un `/` : il ne traverse l'URL qu'encodé, sinon Express y voit
-    // deux segments et la route ne matche plus.
+    // The id carries a `/`: it only crosses the URL encoded, otherwise Express sees
+    // two segments and the route no longer matches.
     const one = await fetch(d.url(`/api/plugins/${encodeURIComponent('@timon/vault')}`));
     assert.equal(one.status, 200);
     assert.equal(((await one.json()) as PluginPublic).source, 'bundled');
   });
 });
 
-test('un paquet tiers ne peut pas masquer un module bundled en revendiquant son id', () => {
+test('a third-party package cannot hide a bundled module by claiming its id', () => {
   const shadow = {
     list: () => [{ id: '@timon/db', pkg: '@evil/core-db', version: '9.9.9', state: 'active' as const, reason: null, error: null, manifest: null, signed: false }],
     bundles: { get: () => null },
@@ -495,11 +495,11 @@ test('un paquet tiers ne peut pas masquer un module bundled en revendiquant son 
 });
 
 /**
- * Le bug d'origine : basculer `vault` répondait 404, parce que le loader ne
- * connaît que `~/.timon/plugins`. Un module bundled se règle dans
- * `modules[<id>]`, comme le fait le preset lite.
+ * The original bug: toggling `vault` answered 404, because the loader only
+ * knows `~/.timon/plugins`. A bundled module is set in
+ * `modules[<id>]`, as the lite preset does.
  */
-test('POST /api/plugins/:id/enabled écrit modules[] pour un bundled, et refuse le noyau', async () => {
+test('POST /api/plugins/:id/enabled writes modules[] for a bundled module, and refuses the kernel', async () => {
   await withDaemon([], () => ({}), async ({ d }) => {
     const off = await fetch(d.url(`/api/plugins/${encodeURIComponent('@timon/vault')}/enabled`), {
       method: 'POST',
@@ -508,11 +508,11 @@ test('POST /api/plugins/:id/enabled écrit modules[] pour un bundled, et refuse 
     });
     assert.equal(off.status, 200);
     const written = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as { modules: Record<string, unknown>; plugins?: Record<string, unknown> };
-    assert.equal(written.modules['@timon/vault'], false, 'un bundled se désactive dans modules[], pas dans plugins[]');
+    assert.equal(written.modules['@timon/vault'], false, 'a bundled module is disabled in modules[], not in plugins[]');
     assert.equal(written.plugins?.['@timon/vault'], undefined);
 
-    // `wanted` suit l'écriture tout de suite ; `state` non, et c'est voulu :
-    // un module bundled est monté au boot, il ne change de camp qu'au suivant.
+    // `wanted` follows the write at once; `state` does not, on purpose:
+    // a bundled module is mounted at boot, it only switches sides at the next one.
     const { plugins } = await (await fetch(d.url('/api/plugins'))).json() as { plugins: PluginPublic[] };
     assert.equal(plugins.find((p) => p.id === '@timon/vault')?.wanted, false);
 
@@ -521,20 +521,20 @@ test('POST /api/plugins/:id/enabled écrit modules[] pour un bundled, et refuse 
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: false }),
     });
-    assert.equal(core.status, 403, 'éteindre le noyau depuis la galerie briquerait le daemon');
+    assert.equal(core.status, 403, 'turning the kernel off from the gallery would brick the daemon');
     const after = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as { modules: Record<string, unknown> };
     assert.equal(after.modules['@timon/db'], undefined);
   });
 });
 
 /**
- * "Fin du tier core" (30/08) namespace les ids de nos modules : `@timon/…`
- * contient un `/`, et le toggle de la galerie les fait traverser un `:id`
- * Express mono-segment. Ce test verrouille le round-trip complet — encodage
- * côté appelant, décodage côté route, écriture sous l'id exact — et la
- * conséquence attendue : le module n'est plus du noyau, donc il s'éteint.
+ * "End of the core tier" (30/08) namespaces the ids of our modules: `@timon/…`
+ * holds a `/`, and the gallery toggle makes them cross a single-segment Express
+ * `:id`. This test locks the full round trip (encoding on the caller
+ * side, decoding on the route side, writing under the exact id) and the
+ * expected consequence: the module is no longer part of the kernel, so it turns off.
  */
-test('un module au nom namespacé (`@timon/projects`) se bascule et s\'éteint vraiment', async () => {
+test('a module with a namespaced name (`@timon/projects`) toggles and really turns off', async () => {
   await withDaemon([], () => ({}), async ({ d }) => {
     const id = '@timon/projects';
     const off = await fetch(d.url(`/api/plugins/${encodeURIComponent(id)}/enabled`), {
@@ -542,43 +542,43 @@ test('un module au nom namespacé (`@timon/projects`) se bascule et s\'éteint v
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: false }),
     });
-    assert.equal(off.status, 200, 'le `/` de l\'id ne doit pas casser le routage');
+    assert.equal(off.status, 200, 'the `/` of the id must not break the routing');
     assert.deepEqual(await off.json(), { ok: true, id, enabled: false });
 
     const written = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as { modules: Record<string, unknown> };
-    assert.equal(written.modules[id], false, 'la clé de config est l\'id namespacé, tel quel');
+    assert.equal(written.modules[id], false, 'the config key is the namespaced id, as is');
 
     const { planEntries } = await import('../kernel/registry.js');
     const { loadConfig } = await import('../config/load.js');
     const decision = planEntries(CATALOG, { config: loadConfig(CONFIG_FILE), capabilities: [] })
       .find((e) => e.id === id);
     assert.equal(decision?.tier, 'std');
-    assert.equal(decision?.disabled, true, 'hors noyau, la config a le dernier mot');
+    assert.equal(decision?.disabled, true, 'outside the kernel, the config has the last word');
   });
 });
 
-test('le segment plateforme `-/usage` sert les quotas au seul plugin qui les a déclarés', async () => {
+test('the platform segment `-/usage` serves the quotas only to the plugin that declared them', async () => {
   await withDaemon(['ok', 'usage-reader'], () => ({}), async ({ d, loader }) => {
     await loader.update();
 
-    // Un plugin qui déclare `usage:read` lit la vue agrégée, sans avoir de
-    // moitié hôte : c'est ce qui rend un widget de quotas écrivable par un tiers.
+    // A plugin that declares `usage:read` reads the aggregated view, without having a
+    // host half: that is what makes a quota widget writable by a third party.
     const granted = await fetch(d.url('/api/plugins/fixture-usage/-/usage'));
     assert.equal(granted.status, 200);
     const body = await granted.json() as { entries: { backend: string; available: boolean; usage: unknown }[] };
-    assert.ok(Array.isArray(body.entries) && body.entries.length > 0, 'au moins un backend actif');
+    assert.ok(Array.isArray(body.entries) && body.entries.length > 0, 'at least one active backend');
     for (const entry of body.entries) {
       assert.equal(typeof entry.backend, 'string');
-      // Rien de ce qui sert à obtenir la mesure ne sort : ni jeton, ni chemin.
+      // Nothing used to obtain the measure goes out: no token, no path.
       const keys = Object.keys(entry);
       for (const leaked of ['token', 'auth', 'path', 'file', 'home', 'env']) {
-        assert.ok(!keys.includes(leaked), `\`${leaked}\` ne doit jamais sortir`);
+        assert.ok(!keys.includes(leaked), `\`${leaked}\` must never go out`);
       }
     }
 
-    // Déclarer la permission est la condition : le plugin voisin est refusé.
+    // Declaring the permission is the condition: the neighbour plugin is refused.
     assert.equal((await fetch(d.url('/api/plugins/fixture-ok/-/usage'))).status, 403);
-    // Un plugin inconnu ne confirme pas son absence par un 403 (rideau M.4).
+    // An unknown plugin does not confirm its absence with a 403 (curtain M.4).
     assert.equal((await fetch(d.url('/api/plugins/absent-plugin/-/usage'))).status, 404);
 
     // The ↻ (`?refresh=1`, TODO #632) opens neither lock: both are checked before any probe.

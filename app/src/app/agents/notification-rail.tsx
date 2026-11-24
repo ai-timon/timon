@@ -152,7 +152,7 @@ export function NotifCard({
   return cardContent;
 }
 
-export function NotificationRail({ poignee, className }: WidgetProps) {
+export function NotificationRail({ handle, className }: WidgetProps) {
   // `notifications` module off: the column has no source left. The check
   // lives HERE rather than at both call sites (agents, agents-grid) so the
   // rail and its badge answer to the same condition.
@@ -246,7 +246,7 @@ export function NotificationRail({ poignee, className }: WidgetProps) {
       {filtered.length > 0 && <button type="button" onClick={() => void clearAll()} title={clearLabel} aria-label={clearLabel} className={cn('inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md p-1 text-muted-foreground hover:bg-muted', confirmClear && 'bg-destructive/10 pr-1.5 text-destructive hover:bg-destructive/15')}>
         <Trash2 className="size-3.5 shrink-0" />{confirmClear && <span className="text-xs">{t('notifications.sure')}</span>}
       </button>}
-      {poignee}
+      {handle}
     </>}>
       <div className="flex min-h-0 flex-1 flex-col gap-2">
         {/* Filter toggles chip — 4 tabs of equal width, never wrapping */}

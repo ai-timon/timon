@@ -65,7 +65,7 @@ export function WidgetCardIsland(): ReactElement {
   }
   return (
     <div className="flex h-full min-h-0 flex-col overflow-auto">
-      {entry.render({ poignee: null, className: 'h-full min-h-0' })}
+      {entry.render({ handle: null, className: 'h-full min-h-0' })}
     </div>
   );
 }

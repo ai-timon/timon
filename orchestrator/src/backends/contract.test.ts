@@ -1,33 +1,33 @@
 /**
- * Suite de CONFORMITÉ des backends.
+ * Backend CONFORMANCE suite.
  *
- * Un seul fichier, joué contre CHAQUE backend actif du registry
- * (`backendNames()`). C'est ce qui divise le coût du prochain provider : on
- * n'écrit pas une suite par backend, on déclare une entrée d'attentes + un
- * fichier de fixtures JSONL, et tout le contrat est vérifié.
+ * A single file, played against EACH active backend of the registry
+ * (`backendNames()`). That is what divides the cost of the next provider: one
+ * does not write a suite per backend, one declares an expectations entry + a
+ * JSONL fixtures file, and the whole contract is checked.
  *
- * Les vérifications elles-mêmes vivent dans le banc que le SDK publie
- * (`@timon-ai/sdk/testing`, `packages/sdk/src/testing/`) : un auteur de plugin
- * lance la MÊME suite sur son dialecte. Ce fichier ne garde que ce qui dépend du
- * registry du produit (couverture, table figée des dialectes, nom du profil).
+ * The checks themselves live in the bench the SDK publishes
+ * (`@timon-ai/sdk/testing`, `packages/sdk/src/testing/`): a plugin author
+ * runs the SAME suite on their dialect. This file only keeps what depends on the
+ * product registry (coverage, frozen table of dialects, profile name).
  *
- * Ce que la suite vérifie, sans jamais spawner de CLI ni toucher au réseau :
- *   - `buildSpawn` (fresh ET resume) produit un cmd/args/env/cwd cohérent, et
- *     achemine bien system prompt, message, modèle et id de resume ;
- *   - `parseLine` sur des fixtures JSONL réelles produit le vocabulaire
- *     normalisé TIMON (system/init, assistant, result) ;
- *   - `extractSessionId` retrouve l'id depuis le system/init de ces fixtures ;
- *   - les capacités déclarées collent au comportement réel (`initialStdin`
- *     non nul ⇔ `persistentProcess`, `writeUserInput` écrit ⇔ persistent…) ;
- *   - un backend SANS process (`RemoteDialect`) tient le contrat de son pilote :
- *     tour complet, annulation, échec lisible, fermeture (bloc "distants").
+ * What the suite checks, without ever spawning a CLI or touching the network:
+ *   - `buildSpawn` (fresh AND resume) produces a consistent cmd/args/env/cwd, and
+ *     does route the system prompt, message, model and resume id;
+ *   - `parseLine` on real JSONL fixtures produces the normalised TIMON
+ *     vocabulary (system/init, assistant, result);
+ *   - `extractSessionId` finds the id from the system/init of these fixtures;
+ *   - the declared capabilities match the real behaviour (`initialStdin`
+ *     non-null ⇔ `persistentProcess`, `writeUserInput` writes ⇔ persistent…);
+ *   - a backend WITHOUT a process (`RemoteDialect`) keeps the contract of its driver:
+ *     full turn, cancellation, readable failure, closing ("remote" block).
  *
- * `node --test --import tsx src/backends/contract.test.ts` (ou `npm test`).
+ * `node --test --import tsx src/backends/contract.test.ts` (or `npm test`).
  *
- * AJOUTER UN BACKEND : ajouter son entrée dans EXPECTATIONS ci-dessous et son
- * fichier `__fixtures__/<dialecte>.jsonl`. Sans ça la suite échoue — c'est tout
- * son intérêt : un backend enregistré mais non couvert n'est pas un backend
- * dont on connaît le contrat.
+ * ADDING A BACKEND: add its entry to EXPECTATIONS below and its
+ * `__fixtures__/<dialect>.jsonl` file. Without that the suite fails, which is its whole
+ * point: a registered but uncovered backend is not a backend
+ * whose contract is known.
  */
 
 import { test } from 'node:test';
@@ -38,9 +38,9 @@ import { delimiter, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { removeHomeOnExit } from '../../tests/helpers/test-home.js';
 
-/* TIMON_HOME jetable : les dialectes codex et grok matérialisent un home par
-   mission sur disque au buildSpawn. Posé AVANT l'import du registry (paths.js lit
-   process.env au chargement) → import dynamique obligatoire. */
+/* Throwaway TIMON_HOME: the codex and grok dialects materialise a home per
+   mission on disk at buildSpawn. Set BEFORE importing the registry (paths.js reads
+   process.env on load) → dynamic import required. */
 const TMP_HOME = mkdtempSync(join(tmpdir(), 'timon-contract-'));
 process.env.TIMON_HOME = TMP_HOME;
 process.env.CODEX_AUTH_DIR = join(TMP_HOME, 'codex-auth');
@@ -68,11 +68,11 @@ const { mountOfficialProviders, buildUnderSeal } = await import('../../tests/hel
 await mountOfficialProviders();
 const kit = await import('../../../packages/sdk/src/testing/index.js');
 
-/* Un dialecte TIERS entre dans la même suite que les first-party.
-   `examples/plugin-provider` est le gabarit qu'un auteur copie : le faire
-   passer ici est la seule façon de savoir que le contrat publié est celui que
-   le produit applique vraiment. Enregistré AVANT la boucle paramétrée, qui lit
-   `backendNames()` au chargement du module. */
+/* A THIRD-PARTY dialect enters the same suite as the first-party ones.
+   `examples/plugin-provider` is the template an author copies: making it
+   pass here is the only way to know that the published contract is the one
+   the product really applies. Registered BEFORE the parameterised loop, which reads
+   `backendNames()` when the module loads. */
 const { echoDialect } = await import('../../tests/helpers/example-dialects.js') as {
   echoDialect: import('./types.js').Dialect;
 };
@@ -84,16 +84,16 @@ registerDialect('examples/plugin-provider', 'echo', echoDialect);
 registerProfile('examples/plugin-provider', {
   id: 'echo-llm',
   dialect: 'echo',
-  label: 'Echo (démo)',
+  label: 'Echo (démo)', // french-ok: the label of the example provider
   vendor: 'Exemple',
   custom: true,
-  env: { ECHO_API_KEY: 'clé-de-test' },
+  env: { ECHO_API_KEY: 'clé-de-test' }, // french-ok: a non-ASCII key value
   defaultModel: 'echo-1',
   models: [{ slug: 'echo-1', label: 'echo-1', contextWindow: 8_000 }],
 });
-/* Dialecte DISTANT apporté par un plugin (`examples/plugin-remote-backend`) :
-   aucun process, un pilote en mémoire. Trois profils sur le même dialecte, un
-   par comportement que le contrat doit voir (cf. REMOTE_EXPECTATIONS). */
+/* REMOTE dialect brought by a plugin (`examples/plugin-remote-backend`):
+   no process, an in-memory driver. Three profiles on the same dialect, one
+   per behaviour the contract must see (see REMOTE_EXPECTATIONS). */
 const { memoryDialect } = await import('../../tests/helpers/example-dialects.js') as {
   memoryDialect: import('./types.js').RemoteDialect;
 };
@@ -112,21 +112,21 @@ for (const [id, env] of [
 const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '__fixtures__');
 
 /**
- * Attentes propres à un backend. Tout ce qui n'est PAS ici est vérifié de façon
- * générique plus bas — la règle est de garder cette table aussi maigre que
- * possible pour qu'un nouveau backend soit bon marché à couvrir.
+ * Expectations specific to a backend. Everything NOT here is checked
+ * generically below; the rule is to keep this table as thin as
+ * possible so that a new backend is cheap to cover.
  */
 type Expectation = {
-  /** Fichier de `__fixtures__/`, une ligne JSONL par event tel que le CLI
-   *  l'émet réellement (avant normalisation). */
+  /** File in `__fixtures__/`, one JSONL line per event as the CLI
+   *  really emits it (before normalisation). */
   fixture: string;
-  /** Session/thread id porté par le system:init de la fixture. */
+  /** Session/thread id carried by the system:init of the fixture. */
   sessionId: string;
   /** Binaire attendu au spawn. */
   cmd: string;
-  /** Clés d'env que `buildSpawn` DOIT poser (au-delà de process.env). */
+  /** Env keys `buildSpawn` MUST set (beyond process.env). */
   envKeys: string[];
-  /** Modèle passé à `cfg.model` — doit être cohérent avec le backend. */
+  /** Model passed to `cfg.model`: must be consistent with the backend. */
   model: string;
   /**
    * Where the stream announces its session. `head` (default): the system:init
@@ -143,7 +143,7 @@ const EXPECTATIONS: Record<string, Expectation> = {
     fixture: 'claude.jsonl',
     sessionId: '3f9a1c52-7e64-4d0b-9a11-0b2c8de41f77',
     cmd: 'claude',
-    // Profil first-party : rien à injecter, l'env de l'orchestrateur suffit.
+    // First-party profile: nothing to inject, the orchestrator env is enough.
     envKeys: [],
     model: 'opus',
   },
@@ -151,8 +151,8 @@ const EXPECTATIONS: Record<string, Expectation> = {
     fixture: 'codex.jsonl',
     sessionId: '0199f3c1-8b7a-7c2d-9e4f-5a6b7c8d9e0f',
     cmd: 'codex',
-    // CODEX_HOME per-mission : sans lui, config.toml et MCP de l'agent
-    // seraient ceux de l'hôte.
+    // Per-mission CODEX_HOME: without it, the agent's config.toml and MCP
+    // would be the host ones.
     envKeys: ['CODEX_HOME'],
     model: 'gpt-5.5',
   },
@@ -160,8 +160,8 @@ const EXPECTATIONS: Record<string, Expectation> = {
     fixture: 'grok.jsonl',
     sessionId: '01a014dc-392a-7753-9cf4-a111cc3ac77f',
     cmd: 'grok',
-    // GROK_HOME per-mission : porte config.toml (MCP), rules/ (prompt système)
-    // et les sessions, donc le resume en dépend.
+    // Per-mission GROK_HOME: carries config.toml (MCP), rules/ (system prompt)
+    // and the sessions, so resume depends on it.
     envKeys: ['GROK_HOME'],
     model: 'grok-4.6',
   },
@@ -176,9 +176,9 @@ const EXPECTATIONS: Record<string, Expectation> = {
     model: 'claude-sonnet-4.6',
     initAt: 'result',
   },
-  /* Profils tiers : même dialecte, donc mêmes fixtures. Ils ne sont actifs que
-     si leurs credentials sont dans l'env — les entrées restent ici pour que la
-     suite les couvre dès qu'ils le deviennent. */
+  /* Third-party profiles: same dialect, hence same fixtures. They are only active
+     if their credentials are in the env; the entries stay here so that the
+     suite covers them as soon as they become so. */
   kimi: {
     fixture: 'claude.jsonl',
     sessionId: '3f9a1c52-7e64-4d0b-9a11-0b2c8de41f77',
@@ -193,14 +193,14 @@ const EXPECTATIONS: Record<string, Expectation> = {
     envKeys: ['CODEX_HOME', 'OLLAMA_API_KEY'],
     model: 'gpt-oss:120b',
   },
-  /* Dialecte apporté par un PLUGIN (`examples/plugin-provider`), couvert
-     exactement comme les autres : c'est ce qui rend la promesse open-core
-     vérifiable plutôt que déclarative. */
+  /* Dialect brought by a PLUGIN (`examples/plugin-provider`), covered
+     exactly like the others: that is what makes the open-core promise
+     checkable rather than declarative. */
   'echo-llm': {
     fixture: 'echo.jsonl',
     sessionId: 'echo-session-7f21c0d4',
     cmd: 'echo',
-    // L'env vient du profil, que le plugin a rempli depuis ses réglages.
+    // The env comes from the profile, which the plugin filled from its settings.
     envKeys: ['ECHO_API_KEY'],
     model: 'echo-1',
   },
@@ -217,42 +217,42 @@ const sessionDriven = (name: string): boolean => 'openSession' in getBackend(nam
 const remote = (name: string): boolean => 'openRemoteSession' in getBackend(name);
 
 /**
- * Attentes d'un backend DISTANT : ses profils de scénario, sur le même
- * dialecte, qui font traîner un tour (`slow`, pour l'annuler ou fermer la
- * session dessous) et qui échouent (`failing`). Un backend distant est couvert
- * s'il est une clé de cette table ou l'un de ses scénarios.
+ * Expectations of a REMOTE backend: its scenario profiles, on the same
+ * dialect, which drag a turn out (`slow`, to cancel it or close the
+ * session under it) and which fail (`failing`). A remote backend is covered
+ * if it is a key of this table or one of its scenarios.
  */
 const REMOTE_EXPECTATIONS: Record<string, { model: string; slow: string; failing: string }> = {
   'memory-remote': { model: 'memory-1', slow: 'memory-remote-slow', failing: 'memory-remote-failing' },
 };
 const remoteCovered = new Set(Object.entries(REMOTE_EXPECTATIONS).flatMap(([name, e]) => [name, e.slow, e.failing]));
 
-test('tout backend enregistré est couvert par la suite de conformité', () => {
+test('every registered backend is covered by the conformance suite', () => {
   const uncovered = backendNames().filter((n) => remote(n)
     ? !remoteCovered.has(n)
     : !EXPECTATIONS[n] && !sessionDriven(n));
   assert.deepEqual(
     uncovered, [],
-    `Backend(s) sans attentes de conformité : ${uncovered.join(', ')}. `
-    + "Ajoute une entrée dans EXPECTATIONS (src/backends/contract.test.ts) et le "
-    + 'fichier de fixtures JSONL correspondant dans src/backends/__fixtures__/. '
-    + "Un backend enregistré sans fixtures est un backend dont personne ne "
-    + 'connaît le contrat.',
+    `Backend(s) without conformance expectations: ${uncovered.join(', ')}. `
+    + 'Add an entry to EXPECTATIONS (src/backends/contract.test.ts) and the '
+    + 'matching JSONL fixtures file in src/backends/__fixtures__/. '
+    + 'A backend registered without fixtures is a backend whose contract '
+    + 'nobody knows.',
   );
 });
 
-test('le registry contient au moins les deux backends first-party', () => {
+test('the registry holds at least the two first-party backends', () => {
   for (const name of ['claude', 'codex']) {
     assert.ok(backendNames().includes(name), `backend ${name} absent du registry`);
   }
 });
 
-/* ── Les quatre dialectes line-oriented, figés ──────────────────────────────
-   Ajouter un pilote de session (`Dialect.openSession`) est une extension du
-   contrat, pas une modification de ces dialectes. Cette table est ce qui le
-   prouve : chaque déclaration qu'un appelant peut lire, telle qu'elle était
-   avant l'extension. Un changement ici est un changement de comportement, à
-   assumer comme tel dans le commit qui le fait. */
+/* ── The four line-oriented dialects, frozen ──────────────────────────────
+   Adding a session driver (`Dialect.openSession`) is an extension of the
+   contract, not a change of these dialects. This table is what
+   proves it: each declaration a caller can read, as it was
+   before the extension. A change here is a change of behaviour, to
+   own as such in the commit that makes it. */
 
 const LINE_ORIENTED = {
   claude: {
@@ -279,39 +279,39 @@ const LINE_ORIENTED = {
 } as const;
 
 for (const [id, declared] of Object.entries(LINE_ORIENTED)) {
-  test(`[${id}] dialecte inchangé par l'extension pilote de session`, () => {
+  test(`[${id}] dialect unchanged by the session driver extension`, () => {
     const dialect = getDialect(id);
     assert.ok(dialect, `dialecte ${id} absent`);
     for (const [key, value] of Object.entries(declared)) {
       assert.equal((dialect as unknown as Record<string, unknown>)[key], value, `${id}.${key}`);
     }
-    assert.equal(dialect.openSession, undefined, `${id} ne doit pas déclarer de pilote de session`);
-    // Le Backend lié le dit pareil : l'absence EST le signal pour l'appelant.
+    assert.equal(dialect.openSession, undefined, `${id} must not declare a session driver`);
+    // The bound Backend says the same: the absence IS the signal for the caller.
     assert.equal('openSession' in getBackend(id), false);
   });
 }
 
-test('protocol est une valeur du contrat, et aucun dialecte first-party ne la revendique encore', () => {
+test('protocol is a value of the contract, and no first-party dialect claims it yet', () => {
   assert.ok(PERMISSION_MODELS.includes('protocol'));
   for (const id of Object.keys(LINE_ORIENTED)) {
     assert.notEqual(getDialect(id)?.permissionModel, 'protocol', id);
   }
 });
 
-test('NO_SESSION_CAPABILITIES ne promet rien, et ne se laisse pas réécrire', () => {
+test('NO_SESSION_CAPABILITIES promises nothing, and cannot be rewritten', () => {
   assert.deepEqual(NO_SESSION_CAPABILITIES, { loadSession: false, resume: false, mcp: false, image: false });
   assert.throws(() => { (NO_SESSION_CAPABILITIES as { mcp: boolean }).mcp = true; }, TypeError);
 });
 
-/* ── Contrat paramétré, un bloc par backend actif ─────────────────────────
-   Les vérifications sont celles du banc publié dans le SDK : le produit ne passe
-   pas une suite que ses auteurs de plugins n'ont pas. */
+/* ── Parameterised contract, one block per active backend ─────────────────
+   The checks are those of the bench published in the SDK: the product does not pass
+   a suite its plugin authors do not have. */
 
 const ctx = { cwd: TMP_HOME, scratchDirs: [TMP_HOME] };
 
 for (const name of backendNames()) {
   const exp = EXPECTATIONS[name];
-  // Le garde-fou ci-dessus a déjà signalé le trou ; ici on ne peut rien tester.
+  // The guard above has already reported the gap; nothing can be tested here.
   if (!exp || sessionDriven(name) || remote(name)) continue;
   const bound = getBackend(name);
   const backend = backendTrust(name) === 'official'
@@ -327,12 +327,12 @@ for (const name of backendNames()) {
     ...(exp.initAt ? { initAt: exp.initAt } : {}),
   }, ctx), `[${name}]`);
 
-  // Ce que seul le registry fait : annoncer le PROFIL sur l'init, jamais le
-  // dialecte. Un dialecte partagé se nomme lui-même (celui de codex écrit "codex"
-  // en dur), ce qui faisait qu'une mission servie par Ollama Cloud se déclarait
-  // "codex" dans son propre historique — et que l'agent, lisant son init, se
-  // croyait GPT.
-  test(`[${name}] l'init s'annonce sous le nom du profil, jamais du dialecte`, () => {
+  // What only the registry does: announce the PROFILE on init, never the
+  // dialect. A shared dialect names itself (codex's writes "codex"
+  // hard-coded), which made a mission served by Ollama Cloud declare itself
+  // "codex" in its own history, and the agent, reading its init, believed
+  // it was GPT.
+  test(`[${name}] the init announces itself under the profile name, never the dialect`, () => {
     const events = readFileSync(join(FIXTURES_DIR, exp.fixture), 'utf8')
       .split('\n').filter((l) => l.trim().length > 0).flatMap((line) => backend.parseLine(line));
     const init = events.find((e) => e.type === 'system' && (e.payload as { subtype?: string }).subtype === 'init');
@@ -340,7 +340,7 @@ for (const name of backendNames()) {
   });
 }
 
-/* ── Backends distants : le contrat du pilote, sans process ni réseau ─────── */
+/* ── Remote backends: the driver contract, without a process or network ─────── */
 
 for (const [name, exp] of Object.entries(REMOTE_EXPECTATIONS)) {
   if (!backendNames().includes(name)) continue;

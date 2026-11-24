@@ -153,6 +153,41 @@ test('a mascot pack\'s parts show in their grids under the pack\'s name, and fal
   assert.equal(w.document.querySelector(`button[data-eyes="${fallback.eyes}"]`)?.getAttribute('aria-pressed'), 'true');
 });
 
+test('a pack\'s own head shows in the skull grid and the preview; the fur, eyes and tool cells keep working', async (t) => {
+  const { register, resetSlotsForTests, MASCOT_PARTS_SLOT } = await import('@/lib/plugin-host/slots');
+  const { recordMascotDeclarations, resetMascotDeclarationsForTests } = await import('@/lib/mascot/parts-declarations');
+  const { useAgentMascot } = await import('../agent-mascot-context');
+  const { LookStylerHost } = await import('./look-styler');
+  resetSlotsForTests();
+  t.after(() => inAct(() => { resetSlotsForTests(); resetMascotDeclarationsForTests(); }));
+  recordMascotDeclarations([{ id: 'fire-pack', label: 'Fire', mascot: { shape: ['flame'] } }]);
+  function Flame() {
+    const m = useAgentMascot();
+    return React.createElement('svg', { 'data-flame': m?.fur, width: m?.size, height: m?.size });
+  }
+  register({ slot: MASCOT_PARTS_SLOT, pluginId: 'fire-pack', key: 'flame', mascotPart: { type: 'shape', label: 'Flame', head: Flame } });
+  const w = await mount(t);
+  const picked: Array<Record<string, string>> = [];
+  await w.render(React.createElement(LookStylerHost, {
+    look: { shape: 'fire-pack:flame', color: '#ff5fbf', eyes: 'heart', acc: 'none' } as never,
+    onChange: (next) => { picked.push(next as never); }, name: 'Nova', role: 'review',
+  }));
+  const cell = w.document.querySelector<HTMLElement>('button[data-shape="fire-pack:flame"]')!;
+  assert.equal(cell.getAttribute('aria-pressed'), 'true');
+  assert.equal(cell.getAttribute('aria-label'), 'Flame');
+  assert.ok(cell.querySelector('svg[data-flame]'), 'the skull cell is the pack\'s head');
+  // Each fur cell is the same head in that fur: the head reads it.
+  const furs = Array.from(w.document.querySelectorAll('button[data-fur] svg[data-flame]')).map((svg) => svg.getAttribute('data-flame'));
+  assert.ok(furs.length > 1 && new Set(furs).size === furs.length, 'one head per fur, each in its colour');
+  // The eyes and the tools are drawn alone, by Timon: they still show.
+  assert.ok(w.document.querySelector('button[data-eyes="heart"] svg[data-mascot-part="screen"]'));
+  assert.ok(w.document.querySelector('button[data-acc="globe"] svg[data-mascot-part="acc"]'));
+  const native = w.document.querySelector<HTMLElement>('button[data-shape="gem"]')!;
+  assert.ok(native.querySelector('svg[data-mascot]') && !native.querySelector('[data-flame]'), 'the product\'s skulls stay Timon\'s');
+  await w.act(() => { native.click(); });
+  assert.equal(picked.pop()?.shape, 'gem');
+});
+
 test('the examples/plugin-look-styler template replaces the configurator with the SDK alone', async (t) => {
   const { readFileSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
   const { tmpdir } = await import('node:os');
@@ -225,7 +260,7 @@ test('the configurator follows its container\'s width: two columns when wide, th
   const preview = root().querySelector<HTMLElement>(':scope > [data-look-styler-preview]');
   const choices = root().querySelector<HTMLElement>(':scope > [data-look-styler-choices]');
   assert.ok(preview && choices, 'the preview and the grids are two zones side by side');
-  assert.ok(preview.querySelector('[data-try="happy"]') && preview.querySelector('[data-surprise]'), 'the states and « Surprise me » stay with the preview');
+  assert.ok(preview.querySelector('[data-try="happy"]') && preview.querySelector('[data-surprise]'), 'the states and "Surprise me" stay with the preview');
   assert.ok(!preview.querySelector('button[data-shape]'), 'no grid under the preview');
   for (const cell of ['data-shape', 'data-fur', 'data-eyes', 'data-acc']) {
     assert.ok(choices.querySelector(`button[${cell}]`), `the ${cell} grid sits with the choices`);

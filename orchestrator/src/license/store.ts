@@ -37,7 +37,6 @@ import { LICENSE_STATE_FILE } from '../paths.js';
 
 const Schema = z.object({
   refusedToken: z.object({ digest: z.string(), reason: z.enum(['revoked', 'expired', 'deactivated', 'invalid:machine']) }).optional(),
-  restrictionToken: z.string().nullable().optional(),
   every: z.number().int().positive().optional(),
   offlineHours: z.number().nonnegative().optional(),
   lastContact: z.number().int().nonnegative().optional(),

@@ -1,8 +1,9 @@
 /**
  * Same-origin proxy to `@timon/telemetry`: what the web app reports about the
- * person using it (opening, page, licence offers). The daemon refuses anyone
- * but a signed-in person and validates the event; the session cookie is what
- * is forwarded.
+ * person using it (opening, page, licence offers, onboarding screens). The
+ * daemon refuses anyone but a signed-in person, except an onboarding screen
+ * while the machine has no account yet, and validates the event; the session
+ * cookie is what is forwarded.
  */
 import { proxyJson } from '@/lib/ui/proxy';
 

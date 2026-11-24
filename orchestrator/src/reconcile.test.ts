@@ -1,15 +1,15 @@
 /**
- * Tests de la sélection par cadence (reconcile.ts).
+ * Tests of the selection by cadence (reconcile.ts).
  *
- * `node --test --import tsx src/reconcile.test.ts` (ou `npm test`). On teste la
- * fonction pure `selectRules` : importer le registre réel tirerait dispatcher.js
- * et ouvrirait la base SQLite.
+ * `node --test --import tsx src/reconcile.test.ts` (or `npm test`). The pure
+ * function `selectRules` is tested: importing the real registry would pull dispatcher.js
+ * and open the SQLite database.
  *
- * L'enjeu couvert ici n'est pas cosmétique. Une règle qui NOTIFIE l'utilisateur
- * (`merge-without-sha`) doit rester strictement `boot` : la passer en périodique
- * renverrait la même notification toutes les 2 minutes.
+ * What is at stake here is not cosmetic. A rule that NOTIFIES the user
+ * (`merge-without-sha`) must stay strictly `boot`: making it periodic
+ * would send the same notification every 2 minutes.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import './test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +19,7 @@ function rule(name: string, cadence: ReconcileCadence) {
   return { name, cadence };
 }
 
-test('la passe de boot joue les règles boot et both, jamais les interval seules', () => {
+test('the boot pass plays the boot and both rules, never the interval ones alone', () => {
   const rules = [
     rule('au-boot', 'boot'),
     rule('periodique', 'interval'),
@@ -31,7 +31,7 @@ test('la passe de boot joue les règles boot et both, jamais les interval seules
   );
 });
 
-test('la passe périodique ne rejoue jamais une règle boot-only', () => {
+test('the periodic pass never replays a boot-only rule', () => {
   const rules = [
     rule('au-boot', 'boot'),
     rule('periodique', 'interval'),
@@ -39,30 +39,30 @@ test('la passe périodique ne rejoue jamais une règle boot-only', () => {
   ];
   const selected = selectRules(rules, 'interval').map((r) => r.name);
   assert.deepEqual(selected, ['periodique', 'les-deux']);
-  assert.ok(!selected.includes('au-boot'), 'une règle boot-only qui notifie spammerait l\'utilisateur');
+  assert.ok(!selected.includes('au-boot'), 'a boot-only rule that notifies would spam the user');
 });
 
-test('registre vide : aucune sélection, aucune erreur', () => {
+test('empty registry: no selection, no error', () => {
   assert.deepEqual(selectRules([], 'boot'), []);
   assert.deepEqual(selectRules([], 'interval'), []);
 });
 
-test('une règle both est jouée dans les deux passes', () => {
+test('a both rule is played in both passes', () => {
   const rules = [rule('les-deux', 'both')];
   assert.equal(selectRules(rules, 'boot').length, 1);
   assert.equal(selectRules(rules, 'interval').length, 1);
 });
 
-test('une règle enregistrée par un module rejoint la liste, et son retrait l\'en sort', async () => {
-  // L'intérêt du registre : `reconcile.ts` n'importe plus grepai ni
-  // browser-sessions, donc une installation sans ces modules n'a pas à les
-  // charger pour se réconcilier. Le prix serait une règle qui survit à son
-  // module — d'où la vérification du retrait.
+test('a rule registered by a module joins the list, and its removal takes it out', async () => {
+  // The point of the registry: `reconcile.ts` no longer imports grepai nor
+  // browser-sessions, so an install without these modules does not have to
+  // load them to reconcile itself. The price would be a rule that outlives its
+  // module, hence the check of the removal.
   const { registerReconcileRule, listReconcileRules } = await import('./reconcile.js');
   const before = listReconcileRules().length;
   const remove = registerReconcileRule({
     name: 'temoin',
-    invariant: 'Rien du tout — règle de test.',
+    invariant: 'Rien du tout — règle de test.', // french-ok: free-text sample data
     cadence: 'interval',
     run: () => { /* no-op */ },
   });

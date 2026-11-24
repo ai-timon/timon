@@ -1,7 +1,7 @@
 /**
- * Fixture : manifeste impeccable, `inject` qui réclame la base. Le manifeste
- * ne peut pas l'attraper (`inject` vit ici, pas dans le `package.json`) : c'est
- * le loader qui doit refuser, après l'import mais AVANT `apply`.
+ * Fixture: a flawless manifest, an `inject` that asks for the database. The manifest
+ * cannot catch it (`inject` lives here, not in `package.json`): the
+ * loader must refuse, after the import but BEFORE `apply`.
  */
 export const name = 'fixture-forbidden'
 export const inject = ['db']

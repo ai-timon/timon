@@ -166,25 +166,31 @@ test('/?notices-preview=1 shows one card of each kind, closed ones included, and
   try {
     const ctx = m.pluginContext('acme');
     await m.React.act(async () => ctx.notices.push({ id: 'real', title: 'A real card' }));
-    await m.until(() => cards().length === 5, 'the five demonstration cards');
+    await m.until(() => cards().length === 8, 'the eight demonstration cards');
     assert.deepEqual(cards(), [
       '@timon/settings:github-star',
       '@timon/settings:discord',
+      '@timon/settings:confirm-email-preview',
       '@timon/updates:update-0.2.0',
       '@timon/updates:build-ends-preview',
+      '@timon/settings:license-paused-preview',
+      '@timon/settings:license-refused-preview',
       '@timon/updates:feed.preview',
     ], 'more than three, in the demonstration\'s order; the closed star shows; the real card waits');
     const visuals = Array.from(document.querySelectorAll('[data-notice-card]'), (el) => el.getAttribute('data-notice-visual'));
-    assert.deepEqual(visuals, ['github', 'discord', 'timon', 'warning', 'youtube']);
+    assert.deepEqual(visuals, ['github', 'discord', 'info', 'timon', 'warning', 'warning', 'warning', 'youtube']);
+    assert.match(document.querySelector('[data-notice="@timon/settings:license-paused-preview"]')?.textContent ?? '', /Paid features are paused/);
+    assert.match(document.querySelector('[data-notice="@timon/settings:license-refused-preview"]')?.textContent ?? '', /Enter my key/);
     assert.match(document.querySelector('[data-notice="@timon/settings:discord"]')?.textContent ?? '', /Join the community/);
 
     await m.click(document.querySelector('[data-notice="@timon/settings:discord"] [data-notice-dismiss]'));
-    await m.until(() => cards().length === 4, 'closed in the page');
+    await m.until(() => cards().length === 7, 'closed in the page');
+    // "Update" opens the update window's preview (`update-preview.test.ts`) and keeps the card.
     await m.click(document.querySelector('[data-notice="@timon/updates:update-0.2.0"] [data-notice-action="0"]'));
-    await m.until(() => cards().length === 3, 'an action that closes, closed in the page');
+    assert.equal(cards().length, 7, 'Update keeps the card');
     await m.click(document.querySelector('[data-notice="@timon/settings:github-star"] [data-notice-action="0"]'));
     assert.deepEqual(m.opened, ['https://github.com/ai-timon/timon']);
-    await m.until(() => cards().length === 2, 'the link opened and the card closed in the page');
+    await m.until(() => cards().length === 6, 'the link opened and the card closed in the page');
     assert.deepEqual(m.writes, [], 'not a single write');
     assert.deepEqual([...m.server], ['@timon/settings:github-star'], 'the account\'s list untouched');
   } finally {

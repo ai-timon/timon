@@ -1,16 +1,16 @@
 /**
- * `gitWritableRoots` — les répertoires git déclarés inscriptibles dans le
- * config.toml per-mission d'un agent codex.
+ * `gitWritableRoots`: the git directories declared writable in the
+ * per-mission config.toml of a codex agent.
  *
- * Enjeu : le sandbox `workspace-write` de codex remonte le répertoire git en
- * bind READ-ONLY, y compris quand `.git` est dans le cwd. Sans ces roots, tout
- * agent passant par le dialecte codex (GPT, mais aussi DeepSeek/Kimi via
- * Ollama Cloud) échoue sur `git commit` avec "Unable to create
- * <repo>/.git/index.lock: Read-only file system". Les trois topologies
- * couvertes ici sont celles réellement rencontrées par une mission TIMON.
+ * At stake: the codex `workspace-write` sandbox mounts the git directory as a
+ * READ-ONLY bind, even when `.git` is in the cwd. Without these roots, any
+ * agent going through the codex dialect (GPT, but also DeepSeek/Kimi via
+ * Ollama Cloud) fails on `git commit` with "Unable to create
+ * <repo>/.git/index.lock: Read-only file system". The three topologies
+ * covered here are those a TIMON mission really meets.
  */
 
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,7 +40,7 @@ function makeRepo(): { root: string; dispose: () => void } {
   return { root, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-test('repo normal : le .git du cwd est déclaré inscriptible', () => {
+test('normal repository: the .git of the cwd is declared writable', () => {
   const { root, dispose } = makeRepo();
   try {
     assert.deepEqual(gitWritableRoots(root), [join(root, '.git')]);
@@ -49,7 +49,7 @@ test('repo normal : le .git du cwd est déclaré inscriptible', () => {
   }
 });
 
-test('cwd en sous-répertoire : remonte au .git du repo', () => {
+test('cwd in a subdirectory: goes up to the .git of the repository', () => {
   const { root, dispose } = makeRepo();
   try {
     const sub = join(root, 'orchestrator', 'src');
@@ -60,16 +60,16 @@ test('cwd en sous-répertoire : remonte au .git du repo', () => {
   }
 });
 
-test('worktree lié : gitdir, common dir, puis l’arbre de travail principal', () => {
+test('linked worktree: gitdir, common dir, then the main working tree', () => {
   const { root, dispose } = makeRepo();
   const wt = join(root, '..', `wt-${process.pid}`);
   try {
     git(root, 'worktree', 'add', '-q', wt, '-b', 'feat/test');
     const roots = gitWritableRoots(realpathSync.native(wt));
-    // Les deux premiers portent index + HEAD du worktree d'un côté, objects/ +
-    // refs/ de l'autre : un commit écrit dans les deux. Le troisième est l'arbre
-    // de travail du dépôt principal, que le fast-forward d'une task `merge`
-    // réécrit — sans lui, le ff échoue en "Read-only file system".
+    // The first two carry the worktree's index + HEAD on one side, objects/ +
+    // refs/ on the other: a commit writes into both. The third is the working
+    // tree of the main repository, which the fast-forward of a `merge` task
+    // rewrites; without it, the ff fails with "Read-only file system".
     assert.deepEqual(roots, [
       join(root, '.git', 'worktrees', `wt-${process.pid}`),
       join(root, '.git'),
@@ -81,30 +81,30 @@ test('worktree lié : gitdir, common dir, puis l’arbre de travail principal', 
   }
 });
 
-test('repo normal : le dépôt principal n’est PAS ajouté — c’est déjà le cwd', () => {
+test('normal repository: the main repository is NOT added, it is already the cwd', () => {
   const { root, dispose } = makeRepo();
   try {
     const sub = join(root, 'orchestrator');
     mkdirSync(sub, { recursive: true });
-    // Un cwd en sous-répertoire n'élargit pas le périmètre au repo entier :
-    // seul le worktree lié en a besoin.
+    // A cwd in a subdirectory does not widen the scope to the whole repository:
+    // only the linked worktree needs it.
     assert.deepEqual(gitWritableRoots(sub), [join(root, '.git')]);
   } finally {
     dispose();
   }
 });
 
-test('cwd hors repo git : aucun root, pas de crash', () => {
+test('cwd outside a git repository: no root, no crash', () => {
   const outside = realpathSync.native(mkdtempSync(join(tmpdir(), 'timon-nogit-')));
   try {
-    // Un /tmp/xxx isolé n'est pas dans un repo — sauf si TMPDIR est lui-même
-    // sous un repo, cas où git remonterait à lui : on ne teste alors rien.
+    // An isolated /tmp/xxx is not in a repository, unless TMPDIR is itself
+    // under a repository, in which case git would go up to it: then nothing is tested.
     assert.deepEqual(gitWritableRoots(outside), []);
   } finally {
     rmSync(outside, { recursive: true, force: true });
   }
 });
 
-test('cwd inexistant : renvoie une liste vide plutôt que de lever', () => {
+test('missing cwd: returns an empty list rather than throwing', () => {
   assert.deepEqual(gitWritableRoots(join(tmpdir(), 'timon-absent-cwd-xyz')), []);
 });

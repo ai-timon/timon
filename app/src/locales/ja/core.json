@@ -845,15 +845,6 @@
     "doneBody": "今後は {email} でサインインします。",
     "signIn": "サインイン"
   },
-  "license": {
-    "pastDue": "支払い期限超過 — サブスクリプションを更新してください",
-    "pastDueUntil": "支払い期限超過 — サブスクリプションは {date} に終了します",
-    "notActivated": "Free が有効です — アカウントを追加するにはライセンスが必要です",
-    "activate": "有効化",
-    "offlineSince": "{date} からライセンスサーバーに接続できません — オフライン猶予期間中は有料の権利を引き続き利用できますが、その後 Timon は Free に戻ります。",
-    "licenseEndsSoon": "ライセンスは {date} に終了します。それまでに新しいキーを入力してください。",
-    "licenseEndsUrgent": "ライセンスは {date} に終了します。今すぐ新しいキーを入力してください。"
-  },
   "betaLock": {
     "eyebrow": "ベータ",
     "build_expired_title": "このビルドは期限切れです",
@@ -984,6 +975,12 @@
   },
   "appearance": {
     "title": "外観",
+    "zoomTitle": "インターフェースのサイズ",
+    "zoomHint": "このコンピューター上のすべての Timon ウィンドウで、文字と操作部品を拡大または縮小します。ショートカット: Ctrl と +、Ctrl と −、Ctrl と 0 でリセット（macOS では 3 つとも Ctrl の代わりに Cmd）。Windows と Linux では Ctrl とマウスホイールも使えます。",
+    "zoomIn": "大きく",
+    "zoomOut": "小さく",
+    "zoomReset": "リセット",
+    "zoomError": "インターフェースのサイズを変更できませんでした。",
     "theme": "テーマ",
     "layout": "レイアウト",
     "themeHint": "このアカウントに適用する色トークン。",
@@ -1076,6 +1073,13 @@
     "mascotsStyle2dHint": "平面のイラスト。古いパソコンでも軽く動きます。",
     "mascotsStyleNoWebgl": "このブラウザーは 3D で描画できません（WebGL2 がオフか未対応）。マスコットは 2D で表示されます。",
     "mascotsStyleShared": "すべてのマスコットに適用されます。あとから「{settingsPath}」で変更できます。",
+    "dockIconTitle": "Dock のアイコン",
+    "dockIconHint": "アプリの実行中に macOS が Dock に表示する Timon のアイコンです。Finder と起動前の Dock ではクラシックのままです。",
+    "dockIconClassic": "クラシック",
+    "dockIconClassicHint": "Timon のカラー。",
+    "dockIconDark": "ダーク",
+    "dockIconDarkHint": "白黒。",
+    "dockIconError": "Dock のアイコンを変更できませんでした。",
     "variants": {
       "coral": {
         "name": "コーラル",
@@ -1295,12 +1299,10 @@
     "categories": "カテゴリー",
     "selectCategory": "カテゴリー",
     "modified": "変更済み",
+    "defaultValue": "既定値: {value}",
     "definedInConfig": "timon.config.json で定義",
     "forcedByEnv": "環境変数で強制",
-    "default": "既定値",
     "empty": "(空)",
-    "enabled": "有効",
-    "disabled": "無効",
     "save": "保存",
     "defaultBtn": "既定値",
     "outOfRange": "{min}〜{max}",
@@ -1541,6 +1543,10 @@
   },
   "settingsDialog": {
     "backToSettings": "設定に戻る",
+    "navGroup": {
+      "agents": "エージェント",
+      "machine": "このコンピューター"
+    },
     "close": "閉じる",
     "unsavedKept": "最後の変更はまだ保存されていません。保存するか、× または Escape で閉じて破棄してください。",
     "category": {
@@ -1601,7 +1607,7 @@
         "installation": "インストール",
         "updates": "アップデート",
         "backup": "バックアップとごみ箱",
-        "diagnostics": "診断",
+        "diagnostics": "ログと保持期間",
         "desktop": "デスクトップアプリ",
         "privacy": "プライバシー"
       },
@@ -1665,7 +1671,7 @@
         "installation": "バージョン 情報 インストール サービス デーモン タスク launchagent systemd パス データ フォルダー ログ ポート エクスポート インポート バックアップ 更新 version service daemon export import update",
         "updates": "アップデート 更新 新しいバージョン 確認 ダウンロード インストーラー リリースノート 自動 update",
         "backup": "バックアップ アーカイブ 夜間 復元 保持 期間 日数 ごみ箱 削除 エージェント 回復 元に戻す 完全削除 backup restore trash",
-        "diagnostics": "ログ デバッグ その他 インフラ トラブルシューティング logs debug",
+        "diagnostics": "診断 ログ デバッグ その他 インフラ トラブルシューティング logs debug",
         "desktop": "アンインストール 削除 electron アプリ uninstall remove",
         "privacy": "プライバシー テレメトリー 分析 使用状況 統計 匿名 トラッキング オプトアウト privacy telemetry analytics"
       },
@@ -2560,9 +2566,17 @@
       "title": "ファイル",
       "description": "プロジェクトの作業フォルダーのファイルを閲覧・編集します。"
     },
-    "git": {
-      "title": "Git",
-      "description": "プロジェクトのブランチ、コミットグラフ、公開: ブランチの切り替え、履歴とワークツリーの確認、プッシュ。"
+    "gitBranches": {
+      "title": "ブランチ",
+      "description": "リポジトリの作業ツリーとブランチ: 変更の確認、ブランチの切り替え。"
+    },
+    "gitGraph": {
+      "title": "グラフ",
+      "description": "リポジトリのコミットグラフとブランチ、ワークツリー。"
+    },
+    "gitPublish": {
+      "title": "公開",
+      "description": "リポジトリの公開状況: リモート、プッシュ待ちのコミット、プッシュとフェッチ。"
     },
     "agentTasks": {
       "title": "エージェントのタスクリスト",
@@ -3083,14 +3097,11 @@
   },
   "freeLicense": {
     "restrictedAccounts": "追加アカウント {count} 件を停止しました。最初のアクティブなスーパー管理者はアクセスを維持します。アカウントやデータは削除されていません。",
-    "retainedData": "Free に戻ると、追加アカウントは保存されたまま利用できなくなります。すべての機能とプラグインは引き続き利用できます。有効なライセンスがあれば、その対象アカウントが復元されます。",
-    "local_free": "Free はローカルで動作し、管理するマシンのアクティベーションはありません。",
-    "free_unavailable": "このバージョンでは Free の登録はまだ受け付けていません。後でもう一度試すか、既存のライセンスキーを使用してください。",
+    "local_free": "このマシンには管理するライセンスがありません。",
     "client_upgrade_required": "Timon をサポート対象のリリースに更新してから、もう一度お試しください。",
-    "summary": "Free はキーも更新も不要でローカルで動作します: アクティブなスーパー管理者 1 名に、すべての機能とプラグイン。",
     "plugin_composition_fixed": "このプランのプラグイン構成は固定です。含まれるプラグインを設定するか、アップグレードして変更してください。",
-    "single_superadmin_required": "Free で使えるアクティブなアカウントは 1 つだけで、スーパー管理者である必要があります。",
-    "free_incompatible": "Free の有効化が拒否されました。アクティブなスーパー管理者を 1 人だけ残して他のアカウントを無効にしてから、再試行してください。データと現在のライセンスは保持されています。",
+    "single_superadmin_required": "このライセンスで使えるアクティブなアカウントは 1 つだけで、スーパー管理者である必要があります。",
+    "free_incompatible": "このライセンスは現在のインストールに適用できません。アクティブなスーパー管理者を 1 人だけ残して他のアカウントを無効にしてから、再試行してください。データと現在のライセンスは保持されています。",
     "license_changed": "このリクエスト中にライセンスが変わりました。再読み込みして再試行してください。",
     "activation_key_missing": "このデバイスにはアクティベーションキーが保存されていません。解除するにはライセンスアカウントを使うか、サポートに連絡してください。",
     "deactivate": "このマシンを無効化",
@@ -3587,6 +3598,9 @@
     "cron": "cron 式 *",
     "project": "プロジェクト (スラッグ、任意)",
     "enabled": "有効",
+    "mcpServers": "各タスクの MCP サーバー",
+    "mcpServersHint": "タスクは MCP サーバーなしで開始します。各実行でエージェントが必要とするものを選んでください。",
+    "noMcpServers": "MCP サーバーが設定されていません",
     "cancel": "キャンセル",
     "saving": "保存中…",
     "creating": "作成中…",
@@ -4351,18 +4365,14 @@
   "telemetrySettings": {
     "tab": "プライバシー",
     "title": "匿名の使用状況統計",
-    "description": "Timon はアプリの使われ方 (どの機能か、ターンの成功頻度、セットアップがどこで止まるか) をチームに伝え、何を優先して直すべきかを把握できます。匿名です: このコンピューターで生成したランダムな識別子を使い、あなたのアカウントやマシンは送りません。",
     "share": "匿名の使用状況統計を共有",
-    "shareDescription": "既定でオンです。オフにするとすべての送信がすぐに止まります。オフにしたことを記録する最後のメッセージが 1 件送信されます。",
     "lockedEnv": "環境変数 TIMON_TELEMETRY で設定されています: そちらで変更してください。",
     "lockedEnvMalformed": "TIMON_TELEMETRY の値が yes でも no でもないため、共有はオフです。",
     "lockedConfig": "timon.config.json の telemetry.enabled で設定されています: そちらで変更してください。",
     "lockedConfigMalformed": "timon.config.json の telemetry.enabled が true でも false でもないため、共有はオフです。",
     "inactiveBuild": "この Timon のビルドは、この設定にかかわらず何も送信しません。",
     "sentTitle": "送信されるもの",
-    "sent": "アプリのバージョン、OS、ライセンスの種類。アプリの起動と更新。セットアップの手順。ターン、その所要時間、結果、トークン数。使われた組み込みツールとプロバイダー。タスク、プラグイン、ライセンス、ブラウザーの操作 (件数として)。",
     "neverTitle": "送信されないもの",
-    "never": "プロンプト、回答、ファイル。プロジェクト、エージェント、スキル、ルーティン、MCP サーバーの名前。パス、URL、コマンド。エラーメッセージ。メールアドレス、ユーザー名、コンピューター名、住所。",
     "learnMore": "プライバシーに関する通知を読む",
     "loadFailed": "この設定を読み取れませんでした。",
     "saveFailed": "この設定を保存できませんでした。",

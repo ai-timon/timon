@@ -168,10 +168,10 @@ export function registerRoutes(router: Router, deps: { fetch?: LiveFetch } = {})
     // Talking to a mission is sending it messages: same gate as spawning one.
     if (rejectIfDenied(req, res, 'missions:spawn')) return;
     const parsed = SessionBody.safeParse(req.body ?? {});
-    if (!parsed.success) { res.status(400).json({ error: 'an SDP offer is required, with at most 40 history messages' }); return; }
-    if (!settingBool(GPT_LIVE_SETTING)) { res.status(409).json({ error: 'GPT-Live is disabled', code: 'disabled' }); return; }
+    if (!parsed.success) { res.status(400).json(apiError('gpt_live_session_invalid', 'an SDP offer is required, with at most 40 history messages')); return; }
+    if (!settingBool(GPT_LIVE_SETTING)) { res.status(409).json(apiError('gpt_live_disabled', 'GPT-Live is disabled')); return; }
     const key = readGptLiveKey();
-    if (!key) { res.status(409).json({ error: `no ${GPT_LIVE_SECRET} in the secrets vault`, code: 'no-key' }); return; }
+    if (!key) { res.status(409).json(apiError('gpt_live_no_key', `no ${GPT_LIVE_SECRET} in the secrets vault`, { secret: GPT_LIVE_SECRET })); return; }
 
     const instructions = parsed.data.instructions
       ? `${DEFAULT_INSTRUCTIONS}\n\n${parsed.data.instructions}`
@@ -194,20 +194,23 @@ export function registerRoutes(router: Router, deps: { fetch?: LiveFetch } = {})
         signal: AbortSignal.timeout(20_000),
       });
     } catch {
-      res.status(502).json({ error: 'OpenAI is unreachable', code: 'upstream' });
+      res.status(502).json(apiError('gpt_live_unreachable', 'OpenAI is unreachable'));
       return;
     }
     if (!upstream.ok) {
       // Status only: an upstream error body may echo request details, and the
       // key must never ride back in a message.
       console.warn(`[gpt-live] session creation failed: HTTP ${upstream.status}`);
-      const code = upstream.status === 401 ? 'bad-key' : upstream.status === 429 ? 'rate-limited' : 'upstream';
-      res.status(502).json({ error: `OpenAI refused the session (HTTP ${upstream.status})`, code, upstreamStatus: upstream.status });
+      const message = `OpenAI refused the session (HTTP ${upstream.status})`;
+      const refusal = upstream.status === 401 ? apiError('gpt_live_bad_key', message)
+        : upstream.status === 429 ? apiError('gpt_live_rate_limited', message)
+          : apiError('gpt_live_refused', message, { status: upstream.status });
+      res.status(502).json({ ...refusal, upstreamStatus: upstream.status });
       return;
     }
     const answer = (await upstream.json().catch(() => ({}))) as LiveAnswer;
     const sdp = typeof answer.transport?.sdp === 'string' ? answer.transport.sdp : null;
-    if (!sdp) { res.status(502).json({ error: 'OpenAI returned no SDP answer', code: 'upstream' }); return; }
+    if (!sdp) { res.status(502).json(apiError('gpt_live_no_answer', 'OpenAI returned no SDP answer')); return; }
     const sessionId = typeof answer.session?.id === 'string' ? answer.session.id : null;
     res.status(201).json({ sessionId, sdp });
   });
@@ -222,8 +225,8 @@ export function registerRoutes(router: Router, deps: { fetch?: LiveFetch } = {})
     // Someone else's mission and a missing one get the same answer.
     if (!mission) { res.status(404).json(apiError('mission_not_found', 'mission not found')); return; }
     const parsed = VoiceTranscriptBody.safeParse(req.body ?? {});
-    if (!parsed.success) { res.status(400).json({ error: 'a role and a non-empty text (4000 characters max) are required' }); return; }
-    if (!settingBool(GPT_LIVE_SETTING)) { res.status(409).json({ error: 'GPT-Live is disabled', code: 'disabled' }); return; }
+    if (!parsed.success) { res.status(400).json(apiError('gpt_live_transcript_invalid', 'a role and a non-empty text (4000 characters max) are required')); return; }
+    if (!settingBool(GPT_LIVE_SETTING)) { res.status(409).json(apiError('gpt_live_disabled', 'GPT-Live is disabled')); return; }
     const { role, text, startMs, endMs, clientId, relay } = parsed.data;
     const payload = {
       type: VOICE_TRANSCRIPT_EVENT,

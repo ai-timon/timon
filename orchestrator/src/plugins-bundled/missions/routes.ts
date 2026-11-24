@@ -917,6 +917,9 @@ export function registerRoutes(
       owner: dbApi.missionOwner(m.owner_user_id),
       title: m.title ?? null,
       title_source: m.title_source ?? null,
+      // The retention deleted this history (retention in days), else null: the
+      // chat tells an emptied conversation from one that never had a message.
+      history_purged_days: m.history_purged_days ?? null,
       // Actual directory where the mission runs when it differs from the
       // agent's cwd (a task worktree). The UI needs it to open the terminal in
       // the right place; otherwise it would offer the main repository.

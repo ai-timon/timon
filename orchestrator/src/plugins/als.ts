@@ -10,7 +10,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Request } from 'express';
 import { PLUGIN_OWNER_PREFIX } from '../users/api-tokens.js';
-import { viewerFromRequest } from '../users/identity.js';
+import { isPersonAuth, viewerFromRequest } from '../users/identity.js';
 import type { DbViewer } from '../users/owned.js';
 import { viewerAllows } from '../users/surfaces.js';
 
@@ -30,6 +30,12 @@ export type PluginRequestIdentity = {
    * do either.
    */
   unattended?: true;
+  /**
+   * A person at a screen made this request (a session or a paired device),
+   * not the daemon token, a mission's token or a plugin's. Only
+   * `identityFromRequest` sets it.
+   */
+  person?: true;
 };
 
 const pluginRequestAls = new AsyncLocalStorage<PluginRequestIdentity>();
@@ -48,6 +54,7 @@ export function identityFromRequest(req: Request): PluginRequestIdentity {
     viewer: viewerFromRequest(req),
     user,
     ownerUserId: auth?.user?.id ?? null,
+    ...(isPersonAuth(auth) && auth.user ? { person: true as const } : {}),
   };
 }
 
@@ -72,6 +79,11 @@ export function inPluginRequest(): boolean {
 export function pluginCallUnattended(): boolean {
   const store = pluginRequestAls.getStore();
   return !store || store.unattended === true;
+}
+
+/** A signed-in person made the request this call serves. False in a job. */
+export function pluginCallByPerson(): boolean {
+  return pluginRequestAls.getStore()?.person === true;
 }
 
 export function currentPluginUser(): PluginUser | undefined {

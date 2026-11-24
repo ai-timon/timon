@@ -31,9 +31,33 @@ import { withRuntimeEnv } from './daemon-runtime.js';
 import { shellText } from './shell-i18n.js';
 import { startupText } from './startup-text.js';
 import {
-  WINDOWS_SERVICE_REVISION, windowsLauncherUnmarked, windowsLegacyLauncher, windowsRepairDeclinedFile, windowsServiceRefusedFile,
-  windowsServiceRevisionFile,
+  WINDOWS_SERVICE_REVISION, windowsLauncherUnmarked, windowsLegacyLauncher, windowsRepairDeclinedFile, windowsRewriteDeclinedFile,
+  windowsServiceRefusedFile, windowsServiceRevisionFile,
 } from './service.js';
+import type { WindowsTaskShape } from './windows-task-shape.js';
+
+/** Copy of `DESKTOP_SESSION_INTENT_ENV` (orchestrator `host/packaged-upgrade.ts`), held together by `upgrade.test.ts`. */
+export const DESKTOP_SESSION_INTENT_ENV = 'TIMON_DESKTOP_SESSION_INTENT';
+
+/** Copy of `UPGRADE_SESSION_FALLBACK_LINE` (orchestrator `host/packaged-upgrade.ts`), held together by `upgrade.test.ts`. */
+export const UPGRADE_SESSION_FALLBACK_LINE = 'timon-upgrade: session-fallback';
+
+/** Copy of `ServiceSessionMode` (orchestrator `host/service-session-mode.ts`). */
+export type ServiceSessionIntent = 'session' | 'always';
+
+/**
+ * What a task that opens a console was meant to do, for the runner that
+ * rewrites it. Timon registered every boot-triggered task under S4U: one now
+ * on the interactive token was switched by hand ("Run only when user is
+ * logged on"), and its boot trigger still says the user wanted it to run
+ * logged out (#116). The rewrite tries S4U again, and the host adapter falls
+ * back on the session task if Windows still refuses it. Any other task: no
+ * intent, the runner reads the recorded answer or the task as before.
+ */
+export function windowsSessionIntent(shape: WindowsTaskShape | null | undefined): ServiceSessionIntent | undefined {
+  if (!shape?.consoleVisible) return undefined;
+  return shape.triggers.includes('Boot') ? 'always' : 'session';
+}
 
 export function packagedReleaseId(version: string): string {
   const readable = version.trim().replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 48) || 'unknown';
@@ -48,10 +72,25 @@ export function activeReleaseFile(home: string): string {
 export function serviceUpgradeNeeded(
   home: string,
   version: string,
-  facts: { platform?: NodeJS.Platform; packaged: boolean; serviceInstalled: boolean },
+  facts: {
+    platform?: NodeJS.Platform; packaged: boolean; serviceInstalled: boolean;
+    /** Windows: Task Scheduler knows the boot task (`windowsTaskState().exists`). */
+    taskExists?: boolean;
+    /** Windows: what that task runs (`readWindowsTaskShape`), `null` when unreadable. */
+    taskShape?: WindowsTaskShape | null;
+  },
 ): boolean {
   const platform = facts.platform ?? process.platform;
-  if (platform === 'win32') return facts.packaged && windowsTaskOutdated(home);
+  if (platform === 'win32') {
+    if (!facts.packaged) return false;
+    // Declined for this version: asked again at the next one, or by an explicit
+    // install, rather than at every launch.
+    if (windowsTaskRepair(home, facts) && windowsRewriteDeclined(home, version)) return false;
+    // A task that opens a console on the desktop is outdated whatever its
+    // revision says: it was changed after Timon wrote it (#116).
+    if (facts.taskShape?.consoleVisible) return true;
+    return windowsTaskOutdated(home, facts.taskExists === true);
+  }
   if ((platform !== 'darwin' && platform !== 'linux') || !facts.packaged || !facts.serviceInstalled) return false;
   try {
     return readFileSync(activeReleaseFile(home), 'utf8').trim() !== packagedReleaseId(version);
@@ -60,18 +99,57 @@ export function serviceUpgradeNeeded(
   }
 }
 
-function windowsTaskOutdated(home: string): boolean {
+function windowsTaskOutdated(home: string, taskExists: boolean): boolean {
   let recorded: string;
   try {
     recorded = readFileSync(windowsServiceRevisionFile(home), 'utf8').trim();
   } catch {
-    // No revision: a task exists only if the revision-1 launcher does. Without
-    // either, there is no task to migrate — never install one unasked.
-    return existsSync(windowsLegacyLauncher(home));
+    // No revision, yet Task Scheduler has the task: one Timon did not record,
+    // or whose revision a failed install verdict removed, then changed outside
+    // Timon (#116, a task left on the interactive token that loops on a held
+    // home). Rewriting a task that exists is not an install. Without a task
+    // nor the revision-1 launcher, there is nothing to migrate: never install
+    // one unasked.
+    return taskExists || existsSync(windowsLegacyLauncher(home));
   }
   // Checked only once a task is known to exist: a launcher left behind by an
   // uninstall must not bring a task back.
   return recorded !== WINDOWS_SERVICE_REVISION || windowsLauncherUnmarked(home);
+}
+
+/**
+ * Is the Windows rewrite at launch the repair of a task changed outside Timon
+ * (#116) rather than the move to a new revision? A task that opens a console,
+ * or one Task Scheduler has with no revision recorded. The revision-1 logon
+ * task records none either, but its launcher marks it: moving it is a
+ * migration, which an approved update still cannot skip.
+ */
+export function windowsTaskRepair(
+  home: string,
+  facts: { taskExists?: boolean; taskShape?: WindowsTaskShape | null },
+): boolean {
+  if (facts.taskShape?.consoleVisible) return true;
+  return facts.taskExists === true && !existsSync(windowsServiceRevisionFile(home)) && !existsSync(windowsLegacyLauncher(home));
+}
+
+/**
+ * The repair was declined (or failed) at a launch of this very version: it
+ * is not asked again until the next version, or an explicit install
+ * (Settings › Installation, `timon service install`), which removes the file.
+ * Meanwhile the task in place serves and `timon doctor` still names it.
+ */
+export function windowsRewriteDeclined(home: string, version: string): boolean {
+  try {
+    return readFileSync(windowsRewriteDeclinedFile(home), 'utf8').trim() === version;
+  } catch {
+    return false;
+  }
+}
+
+export function declineWindowsRewrite(home: string, version: string): void {
+  const file = windowsRewriteDeclinedFile(home);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, `${version}\n`);
 }
 
 /**
@@ -223,15 +301,23 @@ const execUpgrade: UpgradeExec = (command, args, options) => new Promise((resolv
   });
 });
 
-/** Stages this release and rewrites the service; the runner rolls back if it does not answer. */
+/**
+ * Stages this release and rewrites the service; the runner rolls back if it
+ * does not answer. `sessionFallback`: Windows kept the rewritten task for the
+ * session only, so it stops at logout (the runner's fixed line says so).
+ */
 export async function upgradePackagedService(
   cfg: DesktopConfig,
-  input: { execPath: string; runtimeEnv?: Readonly<Record<string, string>>; resourcesPath: string; version: string },
+  input: {
+    execPath: string; runtimeEnv?: Readonly<Record<string, string>>; resourcesPath: string; version: string;
+    /** Windows: what the task in place was meant to do (`windowsSessionIntent`). */
+    sessionIntent?: ServiceSessionIntent;
+  },
   execute: UpgradeExec = execUpgrade,
-): Promise<void> {
+): Promise<{ sessionFallback: boolean }> {
   const runner = join(input.resourcesPath, 'orchestrator', 'dist', 'host', 'packaged-upgrade-runner.js');
   if (!existsSync(runner)) throw new Error(`The packaged service updater is missing: ${runner}`);
-  await execute(input.execPath, [runner], {
+  const { stdout } = await execute(input.execPath, [runner], {
     timeout: 300_000,
     env: {
       ...withRuntimeEnv(process.env, { execPath: input.execPath, env: input.runtimeEnv ?? { ELECTRON_RUN_AS_NODE: '1' } }),
@@ -244,8 +330,16 @@ export async function upgradePackagedService(
       TIMON_APP_ENABLED: cfg.app.enabled ? '1' : '0',
       TIMON_APP_PORT: String(cfg.app.listen.port),
       PORT: String(cfg.daemon.listen.port),
+      ...(input.sessionIntent ? { [DESKTOP_SESSION_INTENT_ENV]: input.sessionIntent } : {}),
     },
   });
+  return { sessionFallback: String(stdout ?? '').split(/\r?\n/).some(line => line.trim() === UPGRADE_SESSION_FALLBACK_LINE) };
+}
+
+/** Said once, when the rewrite kept the task for the session only (#116). */
+export function sessionFallbackMessage(locale: string): { message: string; detail: string } {
+  const t = shellText(locale);
+  return { message: t('service.sessionFallback'), detail: t('service.sessionFallbackDetail') };
 }
 
 /**

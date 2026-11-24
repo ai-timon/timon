@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getLocale, t } from '@/lib/i18n';
 import { settingsPath } from '@/lib/settings-path';
+import { apiErrorMessage } from '@/lib/api-error';
 import {
   appendFragment, closeIdle, emptyTranscript, flushAll, isSpeaking, startRelay, takeDelegation,
   type Step, type VoiceSpeaker, type VoiceTranscript, type VoiceTurn,
@@ -56,12 +57,18 @@ function newTurnId(): string {
   return `v_${crypto.randomUUID().replace(/-/g, '')}`;
 }
 
-function sessionError(code: unknown, status: number): string {
-  if (code === 'disabled') return t('gptLive.errorDisabled', { settingsPath: settingsPath('interface', 'voice') });
-  if (code === 'no-key') return t('gptLive.errorNoKey', { settingsPath: settingsPath('interface', 'voice') });
-  if (code === 'bad-key') return t('gptLive.errorBadKey');
-  if (code === 'rate-limited') return t('gptLive.errorRateLimited');
-  return t('gptLive.errorGeneric', { detail: `HTTP ${status}` });
+/**
+ * Why a voice session did not start. The settings cases keep this screen's
+ * own sentences, which name where to fix them; any other code reads its
+ * translated route error. The kebab-case codes are an older daemon's.
+ */
+export function sessionError(body: unknown, status: number): string {
+  const code = body && typeof body === 'object' ? (body as { code?: unknown }).code : undefined;
+  if (code === 'gpt_live_disabled' || code === 'disabled') return t('gptLive.errorDisabled', { settingsPath: settingsPath('interface', 'voice') });
+  if (code === 'gpt_live_no_key' || code === 'no-key') return t('gptLive.errorNoKey', { settingsPath: settingsPath('interface', 'voice') });
+  if (code === 'gpt_live_bad_key' || code === 'bad-key') return t('gptLive.errorBadKey');
+  if (code === 'gpt_live_rate_limited' || code === 'rate-limited') return t('gptLive.errorRateLimited');
+  return t('gptLive.errorGeneric', { detail: apiErrorMessage(body, { status }) });
 }
 
 async function waitForIce(peer: RTCPeerConnection): Promise<void> {
@@ -273,7 +280,7 @@ export function useGptLive(opts: {
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { sdp?: unknown; code?: unknown };
-      if (!res.ok || typeof body.sdp !== 'string') throw new Error(sessionError(body.code, res.status));
+      if (!res.ok || typeof body.sdp !== 'string') throw new Error(sessionError(body, res.status));
       // A stop() during the exchange already tore the peer down.
       if (peer.current !== pc) return;
       await pc.setRemoteDescription({ type: 'answer', sdp: body.sdp });

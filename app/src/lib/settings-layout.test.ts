@@ -8,6 +8,9 @@ import {
   parseSettingsParam,
   placeSetting,
   resolveSettingsTarget,
+  SETTINGS_CATEGORY_IDS,
+  SETTINGS_NAV_GROUPS,
+  STATIC_TABS,
   type SettingsLayoutInput,
   type SettingsRowLike,
 } from './settings-layout';
@@ -56,6 +59,18 @@ test('an owner with a functional home files there, any other owner under Plugins
   assert.deepEqual(placeSetting(ROWS[8]!), { category: 'plugins', tab: '@timon/video-factory' });
 });
 
+test('the built-in terminal switch sits in Interface › Terminal, where "terminal unavailable" points', () => {
+  const row: SettingsRowLike = { key: 'TIMON_TERMINAL_WEB_ENABLED', group: 'Terminal', advanced: false, owner: '@timon/terminal-web' };
+  assert.deepEqual(placeSetting(row), { category: 'interface', tab: 'terminal' });
+  assert.ok(!tabIds(buildSettingsLayout(input({ rows: [...ROWS, row] })), 'plugins').includes('@timon/terminal-web'));
+});
+
+test('the Misc and Infra strays with a home leave Diagnostics', () => {
+  assert.deepEqual(placeSetting({ key: 'TIMON_CHROME_PATH', group: 'Misc', advanced: true }), { category: 'network', tab: 'browser' });
+  assert.deepEqual(placeSetting({ key: 'DISPATCHER_INTERVAL_MS', group: 'Infra', advanced: true }), { category: 'missions', tab: 'execution' });
+  assert.deepEqual(placeSetting({ key: 'TIMON_LOG_MAX_MB', group: 'Infra', advanced: false }), { category: 'system', tab: 'diagnostics' });
+});
+
 test('an unknown group falls back to System › Diagnostics instead of vanishing', () => {
   assert.deepEqual(
     placeSetting({ key: 'X', group: 'Tomorrow', advanced: false }),
@@ -69,12 +84,13 @@ test('Wake and Missions share one tab; the digest joins memory injection', () =>
   const execution = missions.tabs.find((t) => t.id === 'execution');
   assert.ok(execution && execution.kind === 'rows');
   assert.deepEqual(execution.keys, ['TIMON_MAX_LIVE_MISSIONS', 'TIMON_WAKE_SWEEP_MS']);
-  assert.deepEqual(tabIds(layout, 'memory'), ['obsidian', 'injection']);
+  assert.deepEqual(tabIds(layout, 'memory'), ['injection', 'obsidian']);
 });
 
-test('Memory opens on the Obsidian tab', () => {
+test('Memory opens on Injection, where its master switch is; the vault comes last', () => {
   const layout = buildSettingsLayout(input());
-  assert.equal(resolveSettingsTarget({ category: 'memory', tab: null }, layout)?.tab.id, 'obsidian');
+  assert.equal(resolveSettingsTarget({ category: 'memory', tab: null }, layout)?.tab.id, 'injection');
+  assert.equal(tabIds(layout, 'memory').at(-1), 'obsidian');
 });
 
 test('advanced rows are always listed, except under a preset that hides the zone', () => {
@@ -172,6 +188,32 @@ test('backup retention and the agent trash share System › Backups & trash, not
   assert.deepEqual(offTab.keys, ['TIMON_AGENT_TRASH_ENABLED', 'TIMON_AGENT_TRASH_RETENTION_DAYS']);
 });
 
+test('the retention settings live in System › Privacy, above the telemetry pane, not in Diagnostics', () => {
+  const rows: SettingsRowLike[] = [
+    { key: 'TIMON_EVENTS_RETENTION_DAYS', group: 'Infra', advanced: false },
+    { key: 'TIMON_LEARNINGS_RETENTION_DAYS', group: 'Infra', advanced: false },
+    { key: 'TIMON_LOG_RETENTION_DAYS', group: 'Infra', advanced: false },
+  ];
+  const telemetry = { id: '@timon/telemetry', origin: 'occupant' as const, label: 'Privacy' };
+  const layout = buildSettingsLayout(input({ rows, plugins: [telemetry] }));
+  const system = layout.find((c) => c.id === 'system');
+  const privacy = system?.tabs.find((t) => t.id === 'privacy');
+  assert.ok(privacy && privacy.kind === 'native' && privacy.pane === 'privacy');
+  assert.deepEqual(privacy.keys, ['TIMON_EVENTS_RETENTION_DAYS', 'TIMON_LEARNINGS_RETENTION_DAYS']);
+  assert.deepEqual(privacy.hosted, { pluginId: '@timon/telemetry', origin: 'occupant' });
+  const diagnostics = system?.tabs.find((t) => t.id === 'diagnostics');
+  assert.ok(diagnostics && diagnostics.kind === 'rows');
+  assert.deepEqual(diagnostics.keys, ['TIMON_LOG_RETENTION_DAYS']);
+  assert.equal(layout.some((c) => c.id === 'plugins'), false, 'the hosted pane does not show again under Plugins');
+  assert.deepEqual(legacyGroupTarget('@timon/telemetry'), { category: 'system', tab: 'privacy' });
+
+  // Telemetry off: the retention rows keep the tab alive; with neither, it goes.
+  const alone = buildSettingsLayout(input({ rows }));
+  const kept = alone.find((c) => c.id === 'system')?.tabs.find((t) => t.id === 'privacy');
+  assert.ok(kept && kept.kind === 'native' && kept.hosted === undefined);
+  assert.equal(tabIds(buildSettingsLayout(input({ rows: [] })), 'system').includes('privacy'), false);
+});
+
 test('desktop tab only in the desktop client', () => {
   assert.equal(tabIds(buildSettingsLayout(input({ desktop: true })), 'system').includes('desktop'), true);
   assert.equal(tabIds(buildSettingsLayout(input()), 'system').includes('desktop'), false);
@@ -228,8 +270,8 @@ test('the GPT-Live switch lives in the Voice pane, not in a tab of its own under
 test('the instructions have a category of their own, third in the list', () => {
   const layout = buildSettingsLayout(input());
   assert.equal(layout[2]!.id, 'instructions');
-  assert.deepEqual(layout[2]!.tabs.map((t) => [t.id, t.kind]), [['preamble', 'native'], ['global', 'native']]);
-  assert.equal(resolveSettingsTarget({ category: 'instructions', tab: null }, layout)?.tab.id, 'preamble');
+  assert.deepEqual(layout[2]!.tabs.map((t) => [t.id, t.kind]), [['global', 'native'], ['preamble', 'native']]);
+  assert.equal(resolveSettingsTarget({ category: 'instructions', tab: null }, layout)?.tab.id, 'global');
   assert.equal(parseSettingsParam('instructions')?.category, 'instructions');
 });
 
@@ -248,4 +290,19 @@ test('the Updates pane sits under System, after Installation, for every account'
   // The module off: its pane goes, and its rows with it.
   const off = buildSettingsLayout(input({ rows: [row, notices], plugins: [], pluginStates: new Map([['@timon/updates', 'disabled']]) }));
   assert.equal(off.some((c) => c.id === 'system'), false);
+});
+
+test('every category with tabs sits in exactly one nav group', () => {
+  const grouped = SETTINGS_NAV_GROUPS.flatMap((group) => group.categories);
+  assert.equal(new Set(grouped).size, grouped.length);
+  assert.deepEqual(new Set(grouped), new Set(Object.keys(STATIC_TABS)));
+});
+
+test('the categories read workspace, agents, this computer, plugins', () => {
+  assert.deepEqual([...SETTINGS_CATEGORY_IDS], [
+    'interface',
+    'models', 'instructions', 'memory', 'missions', 'resources',
+    'network', 'secrets', 'system',
+    'plugins',
+  ]);
 });

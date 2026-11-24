@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { foldsCase } from '../tests/helpers/case-folding.js';
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-files-move-test-'));
 const { AGENTS_DIR } = await import('./paths.js');
@@ -70,10 +71,12 @@ test('renames in place and never overwrites', () => {
 
 test('a change of case only renames; another entry with that spelling is never overwritten (TIM-0132)', () => {
   writeFileSync(join(work, 'docs', 'case.txt'), 'mine');
-  // A case-sensitive volume (this one) holds both spellings: they are two files.
-  writeFileSync(join(work, 'docs', 'CASE.txt'), 'other');
-  assert.throws(() => renameAgentPath('a', 'docs/case.txt', 'CASE.txt'), /already exists/);
-  assert.equal(readFileSync(join(work, 'docs', 'CASE.txt'), 'utf8'), 'other', 'the other file is intact');
+  // Only a case-sensitive volume holds both spellings: there they are two files.
+  if (!foldsCase(work)) {
+    writeFileSync(join(work, 'docs', 'CASE.txt'), 'other');
+    assert.throws(() => renameAgentPath('a', 'docs/case.txt', 'CASE.txt'), /already exists/);
+    assert.equal(readFileSync(join(work, 'docs', 'CASE.txt'), 'utf8'), 'other', 'the other file is intact');
+  }
   // A hard link is the same inode under another name: still a different name, refused.
   linkSync(join(work, 'docs', 'case.txt'), join(work, 'docs', 'Linked.txt'));
   assert.throws(() => renameAgentPath('a', 'docs/case.txt', 'Linked.txt'), /already exists/);

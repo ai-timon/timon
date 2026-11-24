@@ -1,17 +1,17 @@
 /**
- * `timon plugin add|remove` d'un **bundle** (plan §10.12, étape U.8).
+ * `timon plugin add|remove` of a **bundle** (plan §10.12, step U.8).
  *
- * Ce que ces tests protègent tient en deux phrases. Installer un bundle
- * installe et active les ids de son `contains` qui manquent, et chacun reste
- * un plugin à part entière — installé au premier niveau, éteignable, monté par
- * le loader pour lui-même. Désinstaller le bundle n'emporte QUE ce qu'il a
- * apporté : un enfant déjà là avant, ou réinstallé à la main, survit.
+ * What these tests protect fits in two sentences. Installing a bundle
+ * installs and enables the ids of its `contains` that are missing, and each stays
+ * a plugin in its own right: installed at the top level, can be turned off, mounted by
+ * the loader for itself. Uninstalling the bundle takes away ONLY what it
+ * brought: a child already there before, or reinstalled by hand, survives.
  *
- * npm est injecté (`opts.npm`) plutôt que simulé derrière une façade : le
- * double ci-dessous fait ce que npm fait — copier le paquet dans
- * `node_modules/`, ses dépendances avec, et inscrire le premier niveau dans
- * `package.json`. Tout le reste du chemin (découverte, manifeste, provenance,
- * loader) est le vrai code, sans registre ni réseau.
+ * npm is injected (`opts.npm`) rather than faked behind a facade: the
+ * double below does what npm does: copy the package into
+ * `node_modules/`, its dependencies along, and record the top level in
+ * `package.json`. All the rest of the path (discovery, manifest, provenance,
+ * loader) is the real code, without a registry or network.
  */
 import { createTestAccount, grantTestPermissions } from '../../tests/helpers/accounts.js';
 import '../test-home.js';
@@ -47,9 +47,9 @@ function readJson(file: string): Json {
 }
 
 /**
- * Le double de npm. `install <spec>` copie le paquet et, récursivement, ses
- * dépendances (npm les remonte à la racine de l'arbre) ; seul le paquet nommé
- * par la commande entre dans les `dependencies` du premier niveau.
+ * The npm double. `install <spec>` copies the package and, recursively, its
+ * dependencies (npm hoists them to the root of the tree); only the package named
+ * by the command enters the top-level `dependencies`.
  */
 function fakeNpm(): { run: NpmRunner; calls: string[][] } {
   const calls: string[][] = [];
@@ -74,7 +74,7 @@ function fakeNpm(): { run: NpmRunner; calls: string[][] } {
   return { run, calls };
 }
 
-/** Copie un dossier-paquet dans `node_modules/`, ses dépendances locales avec. */
+/** Copies a package folder into `node_modules/`, its local dependencies along. */
 function copyTree(root: string, spec: string): string {
   const source = isAbsolute(spec) ? spec : resolve(spec);
   const json = readJson(join(source, 'package.json'));
@@ -106,7 +106,7 @@ function cleanup(f: Fixture): void {
 const BUNDLE = join(EXAMPLES, 'plugin-bundle');
 const WIDGET = join(EXAMPLES, 'plugin-widget');
 
-test('add d\'un bundle installe et active les enfants qui manquent', async () => {
+test('adding a bundle installs and enables the missing children', async () => {
   const f = fixture();
   const res = await addPlugin(BUNDLE, f.root, { npm: f.npm, config: f.config });
 
@@ -116,8 +116,8 @@ test('add d\'un bundle installe et active les enfants qui manquent', async () =>
     [['example-page', 'installed'], ['example-widget', 'installed']],
   );
 
-  // Premier niveau de l'arbre npm : un enfant n'est pas une dépendance cachée
-  // du bundle, c'est un plugin que le loader découvre pour lui-même.
+  // Top level of the npm tree: a child is not a hidden dependency
+  // of the bundle, it is a plugin the loader discovers for itself.
   const deps = Object.keys((readJson(join(f.root, 'package.json')).dependencies as Json) ?? {});
   assert.ok(deps.includes('@timon-ai/plugin-page'), deps.join(', '));
   assert.ok(deps.includes('@timon-ai/plugin-widget'), deps.join(', '));
@@ -125,8 +125,8 @@ test('add d\'un bundle installe et active les enfants qui manquent', async () =>
   const ids = inventory(f.root, f.config, []);
   for (const id of ['example-bundle', 'example-page', 'example-widget']) {
     const entry = ids.find((p) => p.id === id);
-    assert.equal(entry?.refused ?? null, null, `${id} : ${entry?.message}`);
-    assert.equal(entry?.enabled, true, `${id} devrait être actif`);
+    assert.equal(entry?.refused ?? null, null, `${id}: ${entry?.message}`);
+    assert.equal(entry?.enabled, true, `${id} should be enabled`);
   }
 
   assert.equal(pluginProvenance('example-page', f.config), 'example-bundle');
@@ -135,7 +135,7 @@ test('add d\'un bundle installe et active les enfants qui manquent', async () =>
   cleanup(f);
 });
 
-test('le loader monte chaque enfant du bundle comme un plugin à part', async () => {
+test('the loader mounts each child of the bundle as a plugin of its own', async () => {
   const f = fixture();
   await addPlugin(BUNDLE, f.root, { npm: f.npm, config: f.config });
 
@@ -150,11 +150,11 @@ test('le loader monte chaque enfant du bundle comme un plugin à part', async ()
   const state = Object.fromEntries(records.map((r) => [r.id, r.state]));
   assert.deepEqual(state, { 'example-bundle': 'active', 'example-page': 'active', 'example-widget': 'active' });
 
-  // Chaque enfant a sa moitié navigateur servie sous SON id : c'est ce qui le
-  // rend déplaçable indépendamment du bundle qui l'a apporté.
-  assert.ok(loader.bundles.get('example-widget'), 'le widget doit être servable seul');
+  // Each child has its browser half served under ITS id: that is what makes it
+  // movable independently of the bundle that brought it.
+  assert.ok(loader.bundles.get('example-widget'), 'the widget must be servable alone');
 
-  // Éteindre un enfant ne démonte pas le reste (§10.12).
+  // Turning a child off does not unmount the rest (§10.12).
   const off = new PluginLoader(ctx, {
     dir: f.root,
     host: daemonHost(ctx),
@@ -171,30 +171,30 @@ test('le loader monte chaque enfant du bundle comme un plugin à part', async ()
   cleanup(f);
 });
 
-test('remove du bundle ne retire que les enfants qu\'il a apportés', async () => {
+test('removing the bundle only removes the children it brought', async () => {
   const f = fixture();
-  // Le widget est là AVANT le bundle : il n'est à personne.
+  // The widget is there BEFORE the bundle: it belongs to nobody.
   await addPlugin(WIDGET, f.root, { npm: f.npm, config: f.config });
 
   const res = await addPlugin(BUNDLE, f.root, { npm: f.npm, config: f.config });
   assert.equal(res.children.find((c) => c.id === 'example-widget')?.state, 'kept');
-  assert.equal(pluginProvenance('example-widget', f.config), null, 'un enfant préexistant n\'est marqué par personne');
+  assert.equal(pluginProvenance('example-widget', f.config), null, 'a pre-existing child is marked by nobody');
 
   const removed = await removePlugin('example-bundle', f.root, { npm: f.npm, config: f.config });
   assert.deepEqual(removed.children, ['example-page']);
 
   const left = inventory(f.root, f.config, []).map((p) => p.id);
   assert.deepEqual(left, ['example-widget']);
-  assert.ok(!existsSync(join(f.root, 'node_modules/@timon-ai/plugin-page')), 'la page apportée est partie');
+  assert.ok(!existsSync(join(f.root, 'node_modules/@timon-ai/plugin-page')), 'the page it brought is gone');
   cleanup(f);
 });
 
-test('remove oublie les secrets de webhook du plugin et des enfants qu\'il emporte, jamais ceux d\'un autre', async () => {
+test('remove forgets the webhook secrets of the plugin and of the children it takes away, never those of another', async () => {
   const { resolveMasterKey } = await import('../secrets/key.js');
   const { pluginWebhookStatus, rotatePluginWebhookSecret } = await import('./webhooks.js');
   resolveMasterKey({ keyring: null });
   const f = fixture();
-  // Le widget est là avant le bundle : il reste, ses secrets avec.
+  // The widget is there before the bundle: it stays, its secrets with it.
   await addPlugin(WIDGET, f.root, { npm: f.npm, config: f.config });
   await addPlugin(BUNDLE, f.root, { npm: f.npm, config: f.config });
   for (const id of ['example-bundle', 'example-page', 'example-widget']) rotatePluginWebhookSecret(id, 'events', null, { pkg: id, trust: 'unsigned' });
@@ -203,7 +203,7 @@ test('remove oublie les secrets de webhook du plugin et des enfants qu\'il empor
   assert.deepEqual(removed.webhooks.sort(), ['example-bundle/events', 'example-page/events']);
   assert.equal(pluginWebhookStatus('example-bundle', 'events').configured, false);
   assert.equal(pluginWebhookStatus('example-page', 'events').configured, false);
-  assert.equal(pluginWebhookStatus('example-widget', 'events').configured, true, 'un enfant préexistant garde les siens');
+  assert.equal(pluginWebhookStatus('example-widget', 'events').configured, true, 'a pre-existing child keeps its own');
 
   const alone = await removePlugin('example-widget', f.root, { npm: f.npm, config: f.config });
   assert.deepEqual(alone.webhooks, ['example-widget/events']);
@@ -737,12 +737,12 @@ test('the daemon narrows its live grants on every pass and closes the cards of a
   }
 });
 
-test('un enfant réinstallé à la main survit au retrait du bundle', async () => {
+test('a child reinstalled by hand survives the removal of the bundle', async () => {
   const f = fixture();
   await addPlugin(BUNDLE, f.root, { npm: f.npm, config: f.config });
   assert.equal(pluginProvenance('example-widget', f.config), 'example-bundle');
 
-  // `timon plugin add` du widget : il devient son propre propriétaire.
+  // `timon plugin add` of the widget: it becomes its own owner.
   await addPlugin(WIDGET, f.root, { npm: f.npm, config: f.config });
   assert.equal(pluginProvenance('example-widget', f.config), null);
 
@@ -752,11 +752,11 @@ test('un enfant réinstallé à la main survit au retrait du bundle', async () =
   cleanup(f);
 });
 
-test('un bundle local déplie ses enfants même si npm n\'a pas hissé les file:', async () => {
-  // Ce que `npm install ./examples/plugin-bundle` fait vraiment : le paquet
-  // bundle est lié, ses `file:../plugin-page` ne montent PAS au premier
-  // niveau. Le fakeNpm historique les copiait, et le trou n'existait que
-  // contre un vrai npm.
+test('a local bundle unfolds its children even if npm did not hoist the file: entries', async () => {
+  // What `npm install ./examples/plugin-bundle` really does: the bundle
+  // package is linked, its `file:../plugin-page` do NOT rise to the top
+  // level. The old fakeNpm copied them, and the gap only existed
+  // against a real npm.
   const f = fixture();
   const shallow: NpmRunner = async (args, cwd) => {
     const root = args[args.indexOf('--prefix') + 1] ?? cwd;
@@ -793,7 +793,7 @@ test('un bundle local déplie ses enfants même si npm n\'a pas hissé les file:
   cleanup(f);
 });
 
-test('un plugin ordinaire ne déplie rien', async () => {
+test('an ordinary plugin unfolds nothing', async () => {
   const f = fixture();
   const res = await addPlugin(WIDGET, f.root, { npm: f.npm, config: f.config });
   assert.deepEqual(res.children, []);
@@ -803,12 +803,12 @@ test('un plugin ordinaire ne déplie rien', async () => {
 });
 
 /**
- * Le chemin "annuler" de la CLI : `timon plugin add` installe d'abord (les
- * permissions demandées vivent dans le paquet), demande ensuite, et rappelle
- * `removePlugin(result.pkg)` sur un refus. Le retrait passe donc par le NOM
- * NPM, et doit emporter les enfants comme s'il avait été demandé par id.
+ * The "cancel" path of the CLI: `timon plugin add` installs first (the
+ * requested permissions live in the package), asks next, and calls
+ * `removePlugin(result.pkg)` again on a refusal. The removal therefore goes through the NPM
+ * NAME, and must take the children away as if it had been asked by id.
  */
-test('annuler un add de bundle retire aussi ce qu\'il venait d\'apporter', async () => {
+test('cancelling a bundle add also removes what it had just brought', async () => {
   const f = fixture();
   const res = await addPlugin(BUNDLE, f.root, { npm: f.npm, config: f.config });
   const removed = await removePlugin(res.pkg, f.root, { npm: f.npm, config: f.config });
@@ -827,13 +827,13 @@ test('annuler un add de bundle retire aussi ce qu\'il venait d\'apporter', async
  * has verified the package's signature. Without the flag, the signature
  * protected only the load path, which a hostile package never has to take.
  */
-test('npm est appelé avec --ignore-scripts, y compris pour les enfants', async () => {
+test('npm is called with --ignore-scripts, the children included', async () => {
   const f = fixture();
   await addPlugin(BUNDLE, f.root, { npm: f.npm, config: f.config });
   const installs = f.calls.filter((args) => args[0] === 'install');
-  assert.ok(installs.length >= 3, `attendu bundle + 2 enfants, reçu ${installs.length}`);
+  assert.ok(installs.length >= 3, `expected bundle + 2 children, got ${installs.length}`);
   for (const args of installs) {
-    assert.ok(args.includes('--ignore-scripts'), `sans --ignore-scripts : ${args.join(' ')}`);
+    assert.ok(args.includes('--ignore-scripts'), `without --ignore-scripts: ${args.join(' ')}`);
   }
   cleanup(f);
 });
@@ -847,11 +847,11 @@ function ephemeralKey() {
 }
 
 /**
- * Copie signable d'un paquet d'exemple, hors de l'arborescence du dépôt.
+ * A signable copy of an example package, outside the repository tree.
  *
- * Tout le dossier `examples/` est copié, pas seulement le paquet : les
- * dépendances `file:` d'un bundle sont relatives à ses voisins, et les couper
- * ferait échouer l'installation avant la vérification qu'on teste.
+ * The whole `examples/` folder is copied, not just the package: the
+ * `file:` dependencies of a bundle are relative to its neighbours, and cutting them
+ * would make the install fail before the check under test.
  */
 function signedCopy(source: string, privateKey: ReturnType<typeof ephemeralKey>['privateKey']): string {
   const home = mkdtempSync(join(tmpdir(), 'timon-signed-'));
@@ -865,7 +865,7 @@ function signedCopy(source: string, privateKey: ReturnType<typeof ephemeralKey>[
   return dir;
 }
 
-test('un paquet signé est installé et sa signature rapportée', async () => {
+test('a signed package is installed and its signature reported', async () => {
   const f = fixture();
   const key = ephemeralKey();
   const dir = signedCopy(WIDGET, key.privateKey);
@@ -876,13 +876,13 @@ test('un paquet signé est installé et sa signature rapportée', async () => {
   cleanup(f);
 });
 
-/** Signature présente mais qui ne couvre plus les fichiers : jamais un
- *  travail en cours, toujours un paquet qui ment. Refusé, et non déplié. */
-test('un paquet altéré est refusé à l\'installation', async () => {
+/** A signature that no longer covers the files: never a work in
+ *  progress, always a package that lies. Refused, and not unfolded. */
+test('a tampered package is refused at install', async () => {
   const f = fixture();
   const key = ephemeralKey();
   const dir = signedCopy(BUNDLE, key.privateKey);
-  writeFileSync(join(dir, 'index.js'), '// injecté après signature\n');
+  writeFileSync(join(dir, 'index.js'), '// injecté après signature\n'); // french-ok: sample file content
   const res = await addPlugin(dir, f.root, { npm: f.npm, config: f.config, publicKeys: key.accepted });
   assert.equal(res.refused, 'skipped:tampered');
   assert.deepEqual(res.children, []);
@@ -891,9 +891,9 @@ test('un paquet altéré est refusé à l\'installation', async () => {
   cleanup(f);
 });
 
-/** Sans SIGNATURE, l'installation rapporte le manque sans le refuser : c'est
- *  le loader qui décide de monter ou non (mode développeur). */
-test('un paquet non signé est installé mais rapporté comme tel', async () => {
+/** Without a SIGNATURE, the install reports the gap without refusing it: the
+ *  loader decides whether to mount it or not (developer mode). */
+test('an unsigned package is installed but reported as such', async () => {
   const f = fixture();
   const res = await addPlugin(WIDGET, f.root, { npm: f.npm, config: f.config });
   assert.equal(res.refused, null);

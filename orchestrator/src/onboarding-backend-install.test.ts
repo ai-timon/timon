@@ -105,6 +105,24 @@ test('sign-in lines are built on the resolved path, quoted for the shell that wi
   assert.equal(posix[1]!.signInCommand, '/home/ann/.local/bin/claude login');
 });
 
+test('a sign-in line naming another program than the card\'s binary is built on that program\'s path (TIM-0159)', () => {
+  // `hermes-acp` is the stdio server Timon starts; `hermes setup` is what signs in.
+  const located: Record<string, string> = {
+    'hermes-acp': '/home/ann/.local/bin/hermes-acp',
+    hermes: '/home/ann/.local/bin/hermes',
+  };
+  const posix = setupBackends('linux', (name) => located[name] ?? null, () => null, NO_VERSION).find((b) => b.name === 'hermes-acp')!;
+  assert.equal(posix.path, '/home/ann/.local/bin/hermes-acp');
+  assert.equal(posix.signInCommand, '/home/ann/.local/bin/hermes setup');
+  const dir = 'C:\\Users\\Ann Lee\\AppData\\Local\\hermes\\bin';
+  const win = setupBackends('win32', (name) => (name === 'hermes-acp' ? `${dir}\\hermes-acp.exe` : name === 'hermes' ? `${dir}\\hermes.exe` : null), () => null, NO_VERSION)
+    .find((b) => b.name === 'hermes-acp')!;
+  assert.equal(win.signInCommand, `& "${dir}\\hermes.exe" setup`);
+  // Its program not found: the bare name, never the card's binary.
+  const missing = setupBackends('linux', (name) => (name === 'hermes-acp' ? '/opt/hermes-acp' : null), () => null, NO_VERSION).find((b) => b.name === 'hermes-acp')!;
+  assert.equal(missing.signInCommand, 'hermes setup');
+});
+
 test('an install is a success only once the daemon finds the binary', async () => {
   const ok = async () => ({ code: 0, stdout: '', stderr: '' });
   const found = await runInstallBackend('claude', 'linux', ok, () => '/home/ann/.local/bin/claude');

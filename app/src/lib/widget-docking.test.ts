@@ -111,20 +111,20 @@ test('creating an instance replaces its template in place and keeps the template
 test('a tab dropped on a sibling follows the direction of the gesture', () => {
   let layout = dockWidget(dockWidget(base(), 'a', 'b'), 'c', 'b');
   assert.deepEqual(stacks(layout), [['c', 'a', 'b'], ['d'], ['e']]);
-  // Vers la droite : on se pose APRÈS la cible.
+  // To the right: we land AFTER the target.
   layout = moveStackTab(layout, 'c', 'a');
   assert.deepEqual(stacks(layout), [['a', 'c', 'b'], ['d'], ['e']]);
-  // Vers la gauche : on se pose AVANT.
+  // To the left: we land BEFORE.
   layout = moveStackTab(layout, 'b', 'a');
   assert.deepEqual(stacks(layout), [['b', 'a', 'c'], ['d'], ['e']]);
-  // Le groupe, l'onglet actif et les hauteurs ne bougent pas.
+  // The group, the active tab and the heights do not move.
   assert.equal(entry(layout, 'b').group, entry(layout, 'c').group);
   assert.equal(entry(layout, 'c').activeTab, true);
 });
 
 test('tab reordering refuses everything that is not one', () => {
   const layout = dockWidget(base(), 'a', 'b');
-  // Hors pile, autre pile, ou soi-même : le layout revient à l'identique.
+  // Outside the stack, another stack, or itself: the layout comes back identical.
   assert.equal(moveStackTab(layout, 'a', 'd'), layout);
   assert.equal(moveStackTab(layout, 'd', 'e'), layout);
   assert.equal(moveStackTab(layout, 'a', 'a'), layout);
@@ -137,7 +137,7 @@ test('the caret side is the side the drop actually uses', () => {
   assert.deepEqual(pile.map((w) => w.id), ['c', 'a', 'b']);
   assert.equal(insertionSide(pile, 'c', 'a'), 'apres');
   assert.equal(insertionSide(pile, 'b', 'a'), 'avant');
-  // Un onglet venu d'ailleurs n'a pas de rang dans cette pile : côté forcé.
+  // A tab from elsewhere has no rank in this stack: forced side.
   assert.equal(insertionSide(pile, 'd', 'a'), 'avant');
   assert.equal(insertionSide(pile, 'c', 'a', 'avant'), 'avant');
 });
@@ -157,7 +157,7 @@ test('a widget from another stack can be dropped as the last tab', () => {
   assert.deepEqual(stacks(layout), [['c', 'a', 'b', 'e'], ['d']]);
   assert.equal(entry(layout, 'e').group, entry(layout, 'c').group);
   assert.equal(entry(layout, 'e').activeTab, true);
-  // La pile quittée, réduite à un onglet, redevient une carte seule.
+  // The stack left, down to one tab, becomes a single card again.
   assert.equal(entry(layout, 'd').group, undefined);
 });
 
@@ -181,7 +181,7 @@ test('a tab of the stack can be moved to the last place, and staying last is a n
   assert.deepEqual(stacks(layout), [['a', 'b', 'c'], ['d'], ['e']]);
   assert.equal(entry(layout, 'c').activeTab, true);
   assert.equal(placeAtStackEnd(layout, 'c', 'a'), layout);
-  // Une carte seule n'a pas de fin de pile.
+  // A single card has no end of stack.
   assert.equal(placeAtStackEnd(layout, 'd', 'd'), layout);
 });
 

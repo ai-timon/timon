@@ -25,8 +25,9 @@ import { readServiceSessionMode, sessionModeSupported, type ServiceSessionMode }
 import { serviceOptsFromEnvironment } from './onboarding.js';
 import {
   LINUX_UNIT, MACOS_LABEL, shQuote, statusService, WINDOWS_SERVICE_REVISION, WINDOWS_TASK,
-  windowsServiceFiles, type ServiceOpts,
+  windowsConsoleTaskTrap, windowsLauncherMarked, windowsServiceFiles, type ServiceOpts,
 } from './host/service-install.js';
+import type { WindowsTaskShape } from './host/windows-task-shape.js';
 import { effectiveEdition } from './license/license.js';
 import { licenseState } from './license/runtime.js';
 import { TIMON_HOME } from './paths.js';
@@ -50,7 +51,9 @@ export type ServiceReport = {
   running: boolean;
   /** The supervisor's refusal or warning, verbatim (paths only, no secret). */
   reason: string | null;
-  windows: { revision: string | null; expected: string; launcherMarked: boolean | null } | null;
+  /** `opensConsole`: the registered task opens a console window that a
+   *  reinstall removes (#116, `windowsConsoleTaskTrap`). */
+  windows: { revision: string | null; expected: string; launcherMarked: boolean | null; opensConsole: boolean } | null;
   stale: boolean;
   action: ServiceAction;
   /**
@@ -143,13 +146,19 @@ export function daemonLog(input: {
 }
 
 /** Same definition as the desktop's outdated-task check (TIM-0087): a
- *  different revision, or a packaged launcher without its marker. */
+ *  different revision, or a packaged launcher without its marker. Plus a
+ *  task of the current revision switched to a console after Timon wrote it
+ *  (#116): `timon service status` and doctor send its user to Settings ›
+ *  Installation, which must then offer the repair. `shape` is `null` when the
+ *  definition could not be read: nothing is claimed about it. */
 export function windowsTaskStale(input: {
   revision: string | null;
   launcherMarked: boolean | null;
   packagedRuntime: boolean;
+  shape?: WindowsTaskShape | null;
 }): boolean {
   if (input.revision !== WINDOWS_SERVICE_REVISION) return true;
+  if (input.shape && windowsConsoleTaskTrap(input.shape, input.packagedRuntime)) return true;
   return input.packagedRuntime && input.launcherMarked === false;
 }
 
@@ -220,10 +229,12 @@ function serviceReport(opts: ServiceOpts, mode: DaemonMode, packagedRuntime: boo
   if (platform === 'win32' && installed) {
     const files = windowsServiceFiles(opts.timonHome, join);
     const revision = readText(files.revision)?.trim() || null;
-    const launcher = readText(files.launcher);
-    const launcherMarked = launcher === null ? null : /set "TIMON_DESKTOP_SERVICE=1"/i.test(launcher);
-    windows = { revision, expected: WINDOWS_SERVICE_REVISION, launcherMarked };
-    stale = windowsTaskStale({ revision, launcherMarked, packagedRuntime });
+    const launcherMarked = windowsLauncherMarked(opts.timonHome);
+    // The shape `statusService` already read: no second schtasks query.
+    const shape = status.taskShape ?? null;
+    const opensConsole = shape !== null && windowsConsoleTaskTrap(shape, packagedRuntime);
+    windows = { revision, expected: WINDOWS_SERVICE_REVISION, launcherMarked, opensConsole };
+    stale = windowsTaskStale({ revision, launcherMarked, packagedRuntime, shape });
   }
   // Any OS: the service started the app's runtime without the desktop marker.
   if (installed && mode === 'service' && packagedRuntime && !packagedDaemon()) stale = true;

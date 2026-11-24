@@ -28,7 +28,7 @@ test('a long stderr keeps its end and stays bounded; French is translated', () =
   assert.ok(notice.length < 700);
   assert.match(notice, /the real cause$/);
   setLocale('fr');
-  assert.match(backendFailureNotice({ backend: 'copilot', exitCode: 1 }), /s'est arrêté sans répondre/);
+  assert.match(backendFailureNotice({ backend: 'copilot', exitCode: 1 }), /s'est arrêté sans répondre/); // french-ok: the French locale under test
   setLocale('en');
 });
 

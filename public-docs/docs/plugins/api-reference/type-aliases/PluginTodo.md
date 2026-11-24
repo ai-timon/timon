@@ -37,6 +37,12 @@
 
 ***
 
+### landing?
+
+> `optional` **landing?**: [`PluginTodoLanding`](PluginTodoLanding.md) \| `null`
+
+***
+
 ### links
 
 > **links**: [`PluginTodoLink`](PluginTodoLink.md)[]

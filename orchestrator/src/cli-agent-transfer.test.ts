@@ -135,17 +135,25 @@ test('export then import: a file is never replaced without --force, and the impo
   assert.ok(!`${done.out}${done.err}`.match(/[A-Za-z0-9_-]{43}/), 'the staging token is never printed');
 });
 
-/** The daemon here is this process: Hermes is looked for under its HOME, as the service would. */
+/**
+ * The daemon here is this process: Hermes is looked for under its HOME, as the
+ * service would — USERPROFILE and LOCALAPPDATA on Windows.
+ */
 async function withHome<T>(home: string, run: () => Promise<T>): Promise<T> {
-  const before = process.env.HOME;
+  const names = ['HOME', 'USERPROFILE', 'LOCALAPPDATA'] as const;
+  const before = names.map((name) => process.env[name]);
   process.env.HOME = home;
+  if (process.platform === 'win32') { process.env.USERPROFILE = home; delete process.env.LOCALAPPDATA; }
   try {
     return await run();
   } finally {
-    if (before === undefined) delete process.env.HOME;
-    else process.env.HOME = before;
+    names.forEach((name, i) => { if (before[i] === undefined) delete process.env[name]; else process.env[name] = before[i]; });
   }
 }
+
+/** Where Hermes keeps its root under a home on this host. */
+const hermesDir = (home: string): string =>
+  (process.platform === 'win32' ? join(home, 'AppData', 'Local', 'hermes') : join(home, '.hermes'));
 
 test('import --hermes: no Hermes on the daemon\'s machine is said, and nothing is staged', async () => {
   const empty = mkdtempSync(join(tmpdir(), 'timon-cli-hermes-none-'));
@@ -157,7 +165,7 @@ test('import --hermes: no Hermes on the daemon\'s machine is said, and nothing i
 test('import --hermes <profile>: only the named profile, the same preview, question and --yes', async () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-cli-hermes-'));
   const profile = (rel: string, text: string) => {
-    const path = join(home, '.hermes', rel);
+    const path = join(hermesDir(home), rel);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, text);
   };

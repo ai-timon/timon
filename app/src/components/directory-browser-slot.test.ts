@@ -31,7 +31,7 @@ const FILES: Record<string, Array<{ name: string; path: string; hidden: boolean 
 
 async function mount(plugins: unknown[] = []) {
   const { JSDOM } = await import('jsdom');
-  // A window driving another machine: « Browse… » goes to its daemon.
+  // A window driving another machine: "Browse…" goes to its daemon.
   const dom = new JSDOM('<html data-timon-machine="nas-01"><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   const install = (key: string, value: unknown) => {

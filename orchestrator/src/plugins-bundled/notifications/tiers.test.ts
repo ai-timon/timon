@@ -1,16 +1,16 @@
 /**
- * Fin du tier core : ce que chaque module éteint coûte, et ce qu'il ne coûte
- * PAS.
+ * End of the core tier: what each module turned off costs, and what it does
+ * NOT cost.
  *
- * Deux promesses tenues ici, dans cet ordre de risque :
- *   1. `notifications` éteint ne fait échouer personne. Un agent clôt sa task
- *      par un rapport ; si ce rapport jetait, la task partirait BLOCKED pour
- *      une raison qui n'a rien à voir avec son travail.
- *   2. `web-push` éteint ne touche pas au centre in-app. Le push est un relais
- *      du centre, jamais l'inverse — les couper ensemble serait le bug que
- *      l'extraction est censée rendre impossible.
+ * Two promises kept here, in this order of risk:
+ *   1. `notifications` off makes nobody fail. An agent closes its task
+ *      with a report; if that report threw, the task would go BLOCKED for
+ *      a reason that has nothing to do with its work.
+ *   2. `web-push` off does not touch the in-app centre. Push is a relay
+ *      of the centre, never the reverse; cutting them together would be the bug the
+ *      extraction is meant to make impossible.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../../test-home.js';
 import '../../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
@@ -24,19 +24,19 @@ const { CATALOG } = await import('../../kernel/catalog.js');
 const { planEntries } = await import('../../kernel/registry.js');
 const { config } = await import('../../config/load.js');
 
-test('notifications est std, web-push est opt, et web-push injecte notifications', async () => {
+test('notifications is std, web-push is opt, and web-push injects notifications', async () => {
   const notifications = CATALOG.find((m) => m.id === '@timon/notifications');
   const webPush = CATALOG.find((m) => m.id === '@timon/web-push');
   assert.equal(notifications?.tier, 'std');
   assert.equal(webPush?.tier, 'opt');
 
-  // Sans centre de notifications, le push n'a rien à relayer : la dépendance
-  // est déclarée à Cordis, pas seulement documentée.
+  // Without a notification centre, push has nothing to relay: the dependency
+  // is declared to Cordis, not only documented.
   const mod = await import('../web-push/index.js');
   assert.ok(mod.inject?.includes('notifications'));
 });
 
-test('le catalogue laisse éteindre notifications', () => {
+test('the catalogue lets notifications be turned off', () => {
   const cfg = { ...config(), modules: { '@timon/notifications': false } };
   const decisions = planEntries(CATALOG, { config: cfg, capabilities: [] });
   const d = decisions.find((x) => x.id === '@timon/notifications');
@@ -44,8 +44,8 @@ test('le catalogue laisse éteindre notifications', () => {
   assert.match(d?.reason ?? '', /timon\.config\.json/);
 });
 
-test('centre éteint : createNotification ne jette pas, rend null, n’écrit rien', () => {
-  // Le noyau a parlé et n'a pas nommé `notifications` : le centre est éteint.
+test('centre off: createNotification does not throw, returns null, writes nothing', () => {
+  // The kernel spoke and did not name `notifications`: the centre is off.
   setActiveModules(['@timon/db', '@timon/http']);
   try {
     assert.equal(notificationsEnabled(), false);
@@ -53,7 +53,7 @@ test('centre éteint : createNotification ne jette pas, rend null, n’écrit ri
     const n = createNotification({ type: 'report', title: 'rapport de fin de task' });
     assert.equal(n, null);
     assert.equal(dbApi.countActiveNotifications(), before);
-    // Fermer une notif système sans centre ni sink ne jette pas non plus.
+    // Closing a system notification without a centre or a sink does not throw either.
     closePushFor({ id: 'inexistante', anchor: null });
     closePushForAnchor('inexistante');
   } finally {
@@ -61,17 +61,17 @@ test('centre éteint : createNotification ne jette pas, rend null, n’écrit ri
   }
 });
 
-test('centre allumé sans web-push : la notification vit, le push est un vide', async () => {
-  // Aucun noyau n'a parlé = tout est allumé (cf. `kernel/module-state.ts`).
+test('centre on without web-push: the notification lives, the push is a no-op', async () => {
+  // No kernel spoke = everything is on (see `kernel/module-state.ts`).
   assert.equal(notificationsEnabled(), true);
   {
     const n = createNotification({ type: 'alert', urgent: true, title: 'sans push' });
-    assert.ok(n, 'le centre in-app ne dépend pas du push');
+    assert.ok(n, 'the in-app centre does not depend on push');
     assert.equal(dbApi.getNotification(n.id)?.title, 'sans push');
 
-    // `onPush` est bien appelé — avec le bilan d'un fan-out qui n'a pas eu
-    // lieu. `permissions.ts` en déduit "personne n'a été joint", donc la
-    // fenêtre courte : c'est la conclusion correcte, pas un repli.
+    // `onPush` is indeed called, with the report of a fan-out that did not
+    // happen. `permissions.ts` deduces "nobody was reached", hence the
+    // short window: that is the right conclusion, not a fallback.
     const seen: { delivered: number; configured: boolean }[] = [];
     createNotification({
       type: 'action_required',
@@ -83,7 +83,7 @@ test('centre allumé sans web-push : la notification vit, le push est un vide', 
   }
 });
 
-test('un sink enregistré reçoit le fan-out, et le débrancher l’arrête', async () => {
+test('a registered sink receives the fan-out, and unplugging it stops it', async () => {
   const targets: string[] = [];
   const unregister = registerPushSink({
     notify: async (n) => {
@@ -99,9 +99,9 @@ test('un sink enregistré reçoit le fan-out, et le débrancher l’arrête', as
     assert.deepEqual(targets, ['avec sink']);
 
     unregister();
-    createNotification({ type: 'action_required', title: 'sink débranché' });
+    createNotification({ type: 'action_required', title: 'sink débranché' }); // french-ok: free-text sample data
     await new Promise((r) => setImmediate(r));
-    assert.deepEqual(targets, ['avec sink'], 'un module déchargé ne pousse plus');
+    assert.deepEqual(targets, ['avec sink'], 'an unloaded module no longer pushes');
   } finally {
     unregister();
   }

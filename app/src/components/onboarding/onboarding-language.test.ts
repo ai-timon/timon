@@ -97,7 +97,7 @@ test('switching language on the welcome screen translates the titles, then the n
     });
     assert.equal(title(), 'Your AI team,\nat home.');
     await press('[data-lang="fr"]');
-    assert.equal(title(), 'Votre équipe d’IA,\nchez vous.');
+    assert.equal(title(), 'Votre équipe d’IA,\nchez vous.'); // french-ok: the French locale under test
     await press('[data-lang="es"]');
     assert.equal(title(), 'Tu equipo de IA,\nen casa.', 'a language other than French translates the title too');
     await press('[data-next]');

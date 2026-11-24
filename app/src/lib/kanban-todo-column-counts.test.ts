@@ -64,7 +64,7 @@ test('a keyword counts the rows it keeps', async () => {
   const calls: string[] = [];
   const { React, root } = await mount({ agent: '*', project: '*', q: 'idea 12' }, calls);
   assert.deepEqual(calls, ['/api/ui/project-todo?status=open&limit=500']);
-  // « idea 12 » and « idea 120 … 129 »: eleven cards.
+  // "idea 12" and "idea 120 … 129": eleven cards.
   assert.equal(document.querySelectorAll('article').length, 11);
   assert.match(document.querySelector('section')!.textContent!, /^To do\s*11/);
   await React.act(async () => { root.unmount(); });

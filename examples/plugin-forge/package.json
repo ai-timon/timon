@@ -1,0 +1,22 @@
+{
+  "name": "@timon-ai/plugin-forge",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "files": ["lib", "README.md", "SIGNATURE"],
+  "timon": {
+    "id": "forge-example",
+    "apiVersion": 19,
+    "kind": ["behavior"],
+    "label": "GitHub issues of a project (template)",
+    "description": "Template: lists the issues of a project carrying a label and proposes a thank-you comment, through ctx.forge. No gh, no token: a person publishes the comment. Copy it, rename it, adapt lib/index.js.",
+    "author": "Timon",
+    "permissions": ["forge:read", "forge:propose", "settings"],
+    "settings": [
+      { "key": "label", "type": "string", "label": "Label of the issues to list", "default": "accepted" }
+    ],
+    "license": { "required": false }
+  }
+}

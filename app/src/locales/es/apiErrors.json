@@ -60,6 +60,20 @@
     "invalid_event_id": "El identificador del mensaje no es válido.",
     "message_not_found": "No hay ningún mensaje con ese identificador en esta conversación.",
     "steer_unsupported": "Este agente no se puede redirigir ahora mismo: pon el mensaje en cola.",
-    "no_turn_to_steer": "No hay ningún turno en curso: envía un mensaje normal."
+    "no_turn_to_steer": "No hay ningún turno en curso: envía un mensaje normal.",
+    "setup_main_agent_unavailable": "No se encontró ningún agente principal en esta instalación. Continúa: podrás crear uno más tarde.",
+    "setup_main_agent_invalid_name": "Este nombre no contiene ninguna letra ni dígito que Timon pueda usar. Prueba con otro.",
+    "setup_main_agent_name_taken": "Ya hay un agente con este nombre. Elige otro.",
+    "setup_workspace_unavailable": "La carpeta de trabajo no está disponible. Comprueba su ubicación y sus permisos de acceso, y vuelve a intentarlo.",
+    "setup_main_agent_rename_failed": "No se pudo renombrar el agente. Vuelve a intentarlo en unos instantes.",
+    "setup_main_agent_invalid_avatar": "Esta imagen no es una que Timon haya guardado. Vuelve a subirla.",
+    "setup_main_agent_failed": "No se pudo guardar tu agente. Vuelve a intentarlo.",
+    "setup_invalid_identity": "Revisa el nombre y vuelve a intentarlo.",
+    "setup_team_backend_unavailable": "No hay ninguna herramienta de agentes disponible. Instala o conecta una y vuelve a intentarlo, o empieza desde cero.",
+    "setup_team_agent_conflict": "Un agente inicial se modificó desde que empezó la creación. Se conservaron tus cambios; resuelve el conflicto antes de reintentar.",
+    "setup_team_unavailable": "La configuración de equipos no está disponible en esta instalación.",
+    "setup_team_preset_locked": "La creación del equipo ya ha empezado. Continúa con el equipo seleccionado.",
+    "setup_team_instance_not_empty": "Timon ya contiene agentes o trabajo tuyos. Elige «Empezar desde cero» para conservar todo como está y terminar la configuración.",
+    "setup_team_failed": "No se pudo crear tu equipo por completo. Vuelve a intentarlo para continuar donde se detuvo."
   }
 }

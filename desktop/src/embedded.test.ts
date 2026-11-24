@@ -16,8 +16,15 @@ import {
   missionSweepRunnerOf,
   orphanNeedles,
   orphanSweepScript,
+  requestDaemonStop,
+  stopRequestFor,
+  stopWaitMs,
   MAX_RESTARTS,
+  STOP_WAIT_MS,
 } from './embedded.js';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 class FakeChild extends EventEmitter {
   pid = 4242;
@@ -67,7 +74,7 @@ test('the daemon runs on the Electron binary, as plain Node', () => {
   assert.equal(h.children[0]?.killed, true, 'stopping the shell kills the daemon');
 });
 
-test('macOS quitte tout le groupe du daemon, pas seulement son process parent', () => {
+test('macOS ends the whole process group of the daemon, not only its parent process', () => {
   const child = new FakeChild() as unknown as ChildProcess;
   const signals: Array<[number, NodeJS.Signals]> = [];
   assert.equal(terminateProcessTree(child, 'darwin', (pid, signal) => { signals.push([pid, signal]); }), true);
@@ -283,6 +290,91 @@ test('a stuck child refuses handover, without a forced kill, and can be retried'
 });
 
 
+test('Windows quit: the daemon is asked to stop, waited on, and never killed when it leaves', async () => {
+  const h = harness();
+  const order: string[] = [];
+  const stop = superviseEmbeddedDaemon({
+    entry: '/res/boot.js', installDir: '/res/orchestrator', home: '/tmp/h',
+    heapMb: 4096, execPath: '/opt/timon', spawn: h.spawn,
+    terminate: () => { order.push('forced kill'); return true; },
+    askToStop: async () => {
+      order.push('stop request');
+      setTimeout(() => { order.push('daemon exits'); h.children[0]!.emit('exit', 0, null); }, 5);
+      return true;
+    },
+    stopWaitMs: 1_000,
+    afterStop: async () => { order.push('leftovers swept'); },
+    onGiveUp: () => {}, log: h.silent,
+  });
+  await stop();
+  assert.deepEqual(order, ['stop request', 'daemon exits', 'leftovers swept']);
+  assert.equal(h.children.length, 1, 'no respawn after the requested stop');
+});
+
+test('Windows quit: a daemon still there after the wait is killed, as before', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const h = harness();
+  const order: string[] = [];
+  const stop = superviseEmbeddedDaemon({
+    entry: '/res/boot.js', installDir: '/res/orchestrator', home: '/tmp/h',
+    heapMb: 4096, execPath: '/opt/timon', spawn: h.spawn,
+    terminate: (child) => { order.push('forced kill'); child.emit('exit', 1, null); return true; },
+    askToStop: async () => { order.push('stop request'); return true; },
+    stopWaitMs: 2_000,
+    onGiveUp: () => {}, log: h.silent,
+  });
+  const done = stop();
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  assert.deepEqual(order, ['stop request'], 'waiting, not killing yet');
+  t.mock.timers.tick(2_000);
+  await done;
+  assert.deepEqual(order, ['stop request', 'forced kill']);
+});
+
+test('Windows quit: a refused or failed request kills at once, without waiting', async () => {
+  for (const askToStop of [async () => false, async () => { throw new Error('ECONNREFUSED'); }]) {
+    const h = harness();
+    const order: string[] = [];
+    const stop = superviseEmbeddedDaemon({
+      entry: '/res/boot.js', installDir: '/res/orchestrator', home: '/tmp/h',
+      heapMb: 4096, execPath: '/opt/timon', spawn: h.spawn,
+      terminate: (child) => { order.push('forced kill'); child.emit('exit', 1, null); return true; },
+      askToStop: async () => { order.push('stop request'); return askToStop(); },
+      stopWaitMs: 60_000,
+      onGiveUp: () => {}, log: h.silent,
+    });
+    await stop();
+    assert.deepEqual(order, ['stop request', 'forced kill']);
+  }
+});
+
+test('the stop request goes to Windows only, with the daemon token, to the loopback only', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'timon-embedded-stop-'));
+  const sent: Array<{ url: string; auth: string | null }> = [];
+  const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+    sent.push({ url: String(input), auth: new Headers(init?.headers).get('authorization') });
+    return new Response('{}', { status: 202 });
+  }) as typeof fetch;
+  assert.equal(stopRequestFor('linux', 'http://127.0.0.1:3100', home, {}, fetcher), undefined);
+  assert.equal(stopRequestFor('darwin', 'http://127.0.0.1:3100', home, {}, fetcher), undefined);
+  assert.equal(stopRequestFor('win32', 'http://127.0.0.1:3100', home, { TIMON_COOPERATIVE_STOP_MS: '0' }, fetcher), undefined);
+  const win = stopRequestFor('win32', 'http://127.0.0.1:3100', home, {}, fetcher);
+  assert.equal(win?.stopWaitMs, STOP_WAIT_MS);
+  assert.equal(await win!.askToStop(), false, 'no token yet: nothing is sent');
+  assert.deepEqual(sent, []);
+  writeFileSync(join(home, 'daemon-token'), 'witness-token\n');
+  assert.equal(await win!.askToStop(), true);
+  assert.deepEqual(sent, [{ url: 'http://127.0.0.1:3100/api/daemon/shutdown', auth: 'Bearer witness-token' }]);
+  for (const origin of ['http://example.com:3100', 'https://127.0.0.1:3100', 'http://u:p@127.0.0.1:3100']) {
+    assert.equal(await requestDaemonStop(origin, home, fetcher), false, origin);
+  }
+  assert.equal(sent.length, 1, 'the token never left for anything else');
+  const refusing = (async () => new Response('{}', { status: 401 })) as typeof fetch;
+  assert.equal(await requestDaemonStop('http://127.0.0.1:3100', home, refusing), false);
+  assert.equal(stopWaitMs({ TIMON_COOPERATIVE_STOP_MS: '2500' }), 2_500);
+  assert.equal(stopWaitMs({ TIMON_COOPERATIVE_STOP_MS: 'soon' }), STOP_WAIT_MS);
+});
+
 test('embedded runtime drops NODE_OPTIONS even from explicit overrides', () => {
   const env = embeddedEnv({ home: '/tmp/h', heapMb: 512, installDir: '/res/orchestrator',
     overrides: { NODE_OPTIONS: '--require untrusted.cjs', node_options: '--inspect' } });
@@ -301,8 +393,8 @@ test('DEV identity and injection overrides are both stripped with Windows casing
 
 // After `taskkill /T` on the daemon, the terminal host (started by an
 // intermediate that exits at once) and a mission's browser helper whose CLI
-// went first were still there, and the next installer looped on « Timon
-// cannot be closed » (tester report, 22/10/2026).
+// went first were still there, and the next installer looped on "Timon
+// cannot be closed" (tester report, 22/10/2026).
 test('Windows portable: quitting also ends the daemon\'s orphans — never the window nor Electron\'s helpers', async () => {
   const installDir = 'C:\\Users\\Robin\\AppData\\Local\\Programs\\Timon\\resources\\orchestrator';
   const needles = orphanNeedles(installDir);

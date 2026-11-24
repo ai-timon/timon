@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, AppWindow, ArrowLeft, ArrowRight, ClipboardPaste, Copy, Download, Globe, Settings2, KeyRound, Loader2, LogIn, Monitor, MousePointer2, Plus, Power, RotateCw, Send, Smartphone, Volume2, VolumeX, X } from 'lucide-react';
 import { useWorkspaceLayout } from '@/components/workspace-layout-provider';
 import { useChatConversation } from '@/lib/browser-panel-bus';
@@ -10,6 +10,7 @@ import { activeMachineId } from '@/lib/machines/machine-storage';
 import { LOCAL_MACHINE_ID } from '@/lib/machines/machine-id';
 import { addressBarTarget, browserPanelBounds, nativeBrowserCommand, nativeBrowserRequest, shouldAutoClaim, type BrowserCommand, type BrowserProfile, type BrowserShot, type NativeBrowserStatus } from '@/lib/native-browser';
 import { getLocale, t } from '@/lib/i18n';
+import { cachedUiZoom, readUiZoom, subscribeUiZoom } from '@/lib/ui-zoom';
 import { openAgentEditor } from '@/components/agent-editor/agent-editor-modal';
 import { cn } from '@/lib/utils';
 import { browserInputQueue, type RemoteInput } from '@/lib/native-browser-input';
@@ -104,10 +105,12 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
   const [creating, setCreating] = useState(false);
   const [area, setArea] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const surface = useRef<HTMLDivElement>(null);
+  // The native view is placed in window DIPs: under the desktop's interface size a CSS pixel is `zoom` of them.
+  const nativeViewRef = useRef(false);
   const measureSurface = useCallback(() => {
     const rect = surface.current?.getBoundingClientRect();
     if (!rect) return null;
-    const next = browserPanelBounds(rect, { width: window.innerWidth, height: window.innerHeight });
+    const next = browserPanelBounds(rect, { width: window.innerWidth, height: window.innerHeight }, nativeViewRef.current ? cachedUiZoom() : 1);
     setArea((old) => JSON.stringify(old) === JSON.stringify(next) ? old : next);
     return next;
   }, []);
@@ -159,6 +162,15 @@ export function NativeBrowserView({ agent, mission, visible, available, capabili
   const controlled = status?.control?.holder === 'you';
   // A remote daemon owns different tabs, even if its profile ids match the local ones.
   const electron = !!desktopBridge()?.browser && activeMachineId() === LOCAL_MACHINE_ID && failedNativeBinding !== bindingKey;
+  // Synced after render, before any effect measures: a layout effect runs ahead of every passive one.
+  useLayoutEffect(() => { nativeViewRef.current = electron; }, [electron]);
+  // A new interface size moves the panel in DIPs even when nothing moves in CSS pixels.
+  useEffect(() => {
+    measureSurface();
+    if (!electron) return;
+    void readUiZoom().then(() => { measureSurface(); });
+    return subscribeUiZoom(() => { measureSurface(); });
+  }, [electron, measureSurface]);
   const mobileViewport = display === 'mobile' || (display === 'auto' && narrow && !electron);
   const viewport = display === 'desktop' ? DESKTOP_RES : { width: Math.min(display === 'mobile' ? 430 : 3840, Math.max(240, area.width)), height: Math.min(2160, Math.max(240, area.height)) };
   // The native view is painted above the DOM: no drop layer can cover it. While

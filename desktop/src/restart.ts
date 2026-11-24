@@ -1,4 +1,5 @@
 import { isAbsolute } from 'node:path';
+import type { HealthResult } from './health.js';
 import { shellText } from './shell-i18n.js';
 
 export const SETUP_RESTART_CHANNEL = 'timon:restart-after-setup';
@@ -123,8 +124,19 @@ export function serviceHandover(actions: {
   waitService: () => Promise<boolean>;
   /** The service answers: the pages load the interface again. */
   resume: () => void;
-  /** It does not: the embedded daemon serves again, and the pages follow it. */
-  resumeEmbedded: () => Promise<void>;
+  /**
+   * The service's process may outlive the wait: ended before the embedded
+   * daemon starts again. Left alone, a service daemon that took the home
+   * makes each embedded start exit refused, until its supervisor gives up
+   * and reports a crash loop while the service is about to answer.
+   */
+  releaseService?: () => Promise<void>;
+  /**
+   * It does not: the embedded daemon serves again, and the pages follow it.
+   * `'service'` when, starting, it found the service answering after all and
+   * opened the pages on it: the handover happened, late.
+   */
+  resumeEmbedded: () => Promise<'embedded' | 'service' | void>;
   reportKept: (why: string | null) => void;
 }): (route: string) => Promise<HandoverOutcome> {
   let pending: Promise<HandoverOutcome> | undefined;
@@ -148,11 +160,122 @@ export function serviceHandover(actions: {
         actions.resume();
         return 'handed-over';
       }
-      await actions.resumeEmbedded();
+      await actions.releaseService?.().catch(() => undefined);
+      if (await actions.resumeEmbedded() === 'service') return 'handed-over';
       actions.reportKept(why);
       return 'kept-embedded';
     })().finally(() => { pending = undefined; });
     return pending;
+  };
+}
+
+/** Clock seams of the handover waits: tests run them on a fake clock. */
+export type WaitClock = { now: () => number; sleep: (ms: number) => Promise<void> };
+const realClock: WaitClock = { now: () => Date.now(), sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)) };
+
+/**
+ * Waits for the service the way `waitForHealth` does, `baseMs` first, then
+ * on for as long as `stillBooting` says its process lives, `maxMs` at most.
+ * A flat 90 s gave up on a Windows 10 PC whose service answered a minute
+ * later (TIM-0158): a first boot there verifies its release and loads its
+ * plugins under the antivirus' eye, and nothing was wrong with it.
+ */
+export async function waitWhileBooting(opts: {
+  probe: () => Promise<HealthResult>;
+  /** Asked past `baseMs`, every `recheckMs`: never at each probe, a query can take a second. */
+  stillBooting: () => Promise<boolean>;
+  baseMs: number;
+  maxMs: number;
+  intervalMs?: number;
+  recheckMs?: number;
+  clock?: WaitClock;
+}): Promise<{ health: HealthResult; waitedMs: number; extended: boolean }> {
+  const clock = opts.clock ?? realClock;
+  const interval = opts.intervalMs ?? 300;
+  const recheck = opts.recheckMs ?? 10_000;
+  const start = clock.now();
+  let checkedAt = Number.NEGATIVE_INFINITY;
+  let booting = false;
+  let extended = false;
+  for (;;) {
+    const health = await opts.probe();
+    const waitedMs = clock.now() - start;
+    // A foreign server answering here will not become Timon by waiting.
+    if (health.ok) return { health, waitedMs, extended };
+    if (waitedMs + interval >= opts.maxMs) return { health, waitedMs, extended };
+    if (waitedMs + interval >= opts.baseMs) {
+      if (clock.now() - checkedAt >= recheck) {
+        booting = await opts.stillBooting().catch(() => false);
+        checkedAt = clock.now();
+        extended ||= booting;
+      }
+      if (!booting) return { health, waitedMs, extended };
+    }
+    await clock.sleep(interval);
+  }
+}
+
+export type LateHandoverEnd = 'handed-over' | 'not-needed' | 'gave-up' | 'stopped' | 'failed';
+
+/**
+ * After a handover that kept the embedded daemon: the service may come up
+ * later, and its supervisor keeps starting it. Each start is refused the home
+ * the embedded daemon holds and leaves a mark (orchestrator `home-lock.ts`),
+ * which proves the service runs and only waits for the home. The handover is
+ * then made again, in the same window, rather than leaving the service and
+ * the embedded daemon on one home until the user quits and reopens Timon.
+ *
+ * Bounded: `attempts` handovers at most, each watch ending `maxMs` after the
+ * last fallback. A service that never shows up costs a file read every
+ * `intervalMs`, nothing else.
+ */
+export function lateHandover(actions: {
+  /** The service was refused the home at or after `since` (epoch ms). */
+  serviceWaiting: (since: number) => boolean;
+  handover: () => Promise<HandoverOutcome>;
+  log?: (line: string) => void;
+  clock?: WaitClock;
+  intervalMs?: number;
+  maxMs?: number;
+  attempts?: number;
+}): { start: (since: number) => Promise<LateHandoverEnd> | null; stop: () => void } {
+  const clock = actions.clock ?? realClock;
+  const interval = actions.intervalMs ?? 30_000;
+  const maxMs = actions.maxMs ?? 30 * 60_000;
+  const attempts = actions.attempts ?? 2;
+  const log = actions.log ?? (() => undefined);
+  let running: Promise<LateHandoverEnd> | null = null;
+  let stopped = false;
+  let made = 0;
+  const watch = async (from: number): Promise<LateHandoverEnd> => {
+    let since = from;
+    let deadline = clock.now() + maxMs;
+    for (;;) {
+      await clock.sleep(interval);
+      if (stopped) return 'stopped';
+      if (clock.now() >= deadline) { log(`no sign of the service in ${Math.round(maxMs / 60_000)} min, watch ended`); return 'gave-up'; }
+      if (!actions.serviceWaiting(since)) continue;
+      made += 1;
+      log(`the service was refused the home, handing over again (attempt ${made} of ${attempts})`);
+      let outcome: HandoverOutcome;
+      try { outcome = await actions.handover(); } catch (error) {
+        log(`the handover failed: ${(error as Error).message}`);
+        return 'failed';
+      }
+      if (outcome !== 'kept-embedded') return outcome;
+      if (made >= attempts || stopped) return stopped ? 'stopped' : 'gave-up';
+      since = clock.now();
+      deadline = since + maxMs;
+    }
+  };
+  return {
+    // Called again by the fallback of a late handover: the watch running already covers it.
+    start: (since) => {
+      if (running || stopped || made >= attempts) return null;
+      running = watch(since).finally(() => { running = null; });
+      return running;
+    },
+    stop: () => { stopped = true; },
   };
 }
 

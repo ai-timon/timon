@@ -1,109 +1,103 @@
 'use client';
 
 /**
- * Settings › System › Privacy, the own category of `@timon/telemetry`: the
- * "Share anonymous usage statistics" switch, what it sends and what it never
- * sends. When the environment (`TIMON_TELEMETRY`) or `timon.config.json`
- * decides, the switch is shown as it stands and cannot be moved from here.
+ * Settings › System › Privacy, the own part of `@timon/telemetry`: one row,
+ * "Share anonymous usage statistics", its state at the left, "Turn off" or
+ * "Turn on" at the right, what is sent and the privacy notice in the "…"
+ * menu. When the environment (`TIMON_TELEMETRY`) or `timon.config.json`
+ * decides, the row says so and offers no switch.
  */
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { ShieldCheck } from 'lucide-react';
-import { BRAND } from '@/lib/brand';
+import { ExternalLink } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { ProviderSection, ProviderSettingRow } from '@/components/provider-page/provider-section';
 import { t } from '@/lib/i18n';
 import {
-  TELEMETRY_PREFERENCE_URL, parseTelemetryPreference, telemetryLockKey, type TelemetryPreferenceView,
+  PRIVACY_DOCS_URL, fetchTelemetryPreference, putTelemetryPreference, telemetryStatusKeys, type TelemetryPreferenceView,
 } from '@/lib/telemetry-preference';
-
-const PRIVACY_DOCS_URL = `https://docs.${BRAND.domain}/usage/privacy`;
 
 export function TelemetrySettings(): ReactElement | null {
   const [pref, setPref] = useState<TelemetryPreferenceView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [details, setDetails] = useState(false);
 
   const load = useCallback(async () => {
-    try {
-      const res = await fetch(TELEMETRY_PREFERENCE_URL, { cache: 'no-store' });
-      if (!res.ok) throw new Error(String(res.status));
-      setPref(parseTelemetryPreference(await res.json()));
-    } catch {
-      setError(t('telemetrySettings.loadFailed'));
-    }
+    const read = await fetchTelemetryPreference();
+    if (read) setPref(read);
+    else setError(t('telemetrySettings.loadFailed'));
   }, []);
 
   useEffect(() => { void load(); }, [load]);
 
   const toggle = async (enabled: boolean) => {
     setBusy(true); setError('');
-    try {
-      const res = await fetch(TELEMETRY_PREFERENCE_URL, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ enabled }),
-      });
-      if (res.status === 403) { setError(t('telemetrySettings.forbidden')); return; }
-      if (!res.ok) throw new Error(String(res.status));
-      setPref(parseTelemetryPreference(await res.json()));
-    } catch {
-      setError(t('telemetrySettings.saveFailed'));
-    } finally {
-      setBusy(false);
-    }
+    const result = await putTelemetryPreference(enabled);
+    if (result.ok) setPref(result.pref);
+    else setError(result.message);
+    setBusy(false);
   };
 
-  const lock = pref ? telemetryLockKey(pref) : null;
+  const status = pref ? telemetryStatusKeys(pref) : [];
 
   return (
-    <section className="max-w-2xl space-y-5">
-      <div>
-        <h3 className="flex items-center gap-2 text-[13px] font-semibold tracking-[-0.01em]">
-          <ShieldCheck className="size-4" aria-hidden />
-          {t('telemetrySettings.title')}
-        </h3>
-        <p className="mt-1 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">
-          {t('telemetrySettings.description')}
-        </p>
-      </div>
-
-      <label className="flex cursor-pointer items-start justify-between gap-6 rounded-lg border border-border p-4">
-        <span>
-          <span className="block text-[13px] font-medium leading-snug">{t('telemetrySettings.share')}</span>
-          <span className="mt-0.5 block max-w-[65ch] text-[12px] leading-snug text-muted-foreground">
-            {t('telemetrySettings.shareDescription')}
-          </span>
-          {lock && <span className="mt-2 block text-[12px] leading-snug text-amber-600">{t(lock)}</span>}
-          {pref && !pref.active && (
-            <span className="mt-2 block text-[12px] leading-snug text-muted-foreground">{t('telemetrySettings.inactiveBuild')}</span>
+    <div className="max-w-2xl space-y-2" data-telemetry-settings="">
+      <ProviderSection title={t('telemetrySettings.title')}>
+        <ProviderSettingRow
+          data-telemetry-row=""
+          title={t('telemetrySettings.share')}
+          status={pref ? <span>{status.map((key) => t(key)).join(' · ')}</span> : undefined}
+          action={pref?.editable ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              disabled={busy}
+              onClick={() => { void toggle(!pref.enabled); }}
+              data-telemetry-toggle={pref.enabled ? 'off' : 'on'}
+            >
+              {t(pref.enabled ? 'telemetrySettings.turnOff' : 'telemetrySettings.turnOn')}
+            </Button>
+          ) : undefined}
+          menu={(
+            <>
+              <DropdownMenuItem onSelect={() => { setDetails(true); }} data-telemetry-details="">
+                {t('telemetrySettings.details')}
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href={PRIVACY_DOCS_URL} target="_blank" rel="noopener noreferrer" data-telemetry-notice="">
+                  {t('telemetrySettings.learnMore')}<ExternalLink className="ml-auto size-3" aria-hidden />
+                </a>
+              </DropdownMenuItem>
+            </>
           )}
-        </span>
-        <input
-          type="checkbox"
-          checked={pref?.enabled ?? false}
-          disabled={busy || !pref || !pref.editable}
-          onChange={(event) => { void toggle(event.target.checked); }}
-          className="mt-1 size-4 shrink-0 accent-primary"
-          aria-label={t('telemetrySettings.share')}
+          menuLabel={t('telemetrySettings.more')}
         />
-      </label>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg bg-muted/40 p-4">
-          <p className="text-[12.5px] font-medium">{t('telemetrySettings.sentTitle')}</p>
-          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">{t('telemetrySettings.sent')}</p>
-        </div>
-        <div className="rounded-lg bg-muted/40 p-4">
-          <p className="text-[12.5px] font-medium">{t('telemetrySettings.neverTitle')}</p>
-          <p className="mt-1 text-[12px] leading-snug text-muted-foreground">{t('telemetrySettings.never')}</p>
-        </div>
-      </div>
-
-      <p className="text-[12px] text-muted-foreground">
-        <a href={PRIVACY_DOCS_URL} target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">
-          {t('telemetrySettings.learnMore')}
-        </a>
-      </p>
-
+      </ProviderSection>
       {error && <p role="alert" className="text-[12px] text-destructive">{error}</p>}
-    </section>
+      <Dialog open={details} onOpenChange={setDetails}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('telemetrySettings.title')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-[13px]">
+            <div className="space-y-1">
+              <p className="font-medium">{t('telemetrySettings.sentTitle')}</p>
+              <p className="leading-snug text-muted-foreground">{t('telemetrySettings.sent')}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium">{t('telemetrySettings.neverTitle')}</p>
+              <p className="leading-snug text-muted-foreground">{t('telemetrySettings.never')}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => { setDetails(false); }}>{t('telemetrySettings.close')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

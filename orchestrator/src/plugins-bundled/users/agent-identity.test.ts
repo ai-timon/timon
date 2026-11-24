@@ -105,7 +105,7 @@ function fakeChild(): FakeChild {
 
 upsertAgent({
   name: 'env-temoin',
-  system_prompt: 'témoin M.5 — ne fait rien.',
+  system_prompt: 'témoin M.5 — ne fait rien.', // french-ok: free-text sample data
   config: {
     backend: 'claude',
     cwd: tmpdir(),

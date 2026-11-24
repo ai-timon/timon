@@ -68,8 +68,8 @@ export function registerHighlightLanguages(hljs: HLJSApi): void {
   hljs.registerAliases('rs', { languageName: 'rust' });
   hljs.registerLanguage('go', go);
   hljs.registerAliases('golang', { languageName: 'go' });
-  // Fichiers de configuration : .env, .ini, .toml, .properties. `ini` couvre
-  // aussi bien les sections `[bloc]` que les paires `CLE=valeur` d'un .env.
+  // Configuration files: .env, .ini, .toml, .properties. `ini` covers the
+  // `[bloc]` sections as well as the `CLE=valeur` pairs of a .env.
   hljs.registerLanguage('ini', ini);
   hljs.registerAliases(['toml', 'env', 'dotenv', 'conf'], { languageName: 'ini' });
   hljs.registerLanguage('properties', properties);

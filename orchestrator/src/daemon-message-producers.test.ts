@@ -139,3 +139,50 @@ test('a signed-out backend raises a coded card; the breaker a coded notice', asy
   assert.equal(payload.code, 'backend_breaker_tripped');
   assert.equal((payload.params as Record<string, unknown>).failures, 3);
 });
+
+test('the blocked-task card reads the coded reason as its body, and the return card carries it', async () => {
+  const { startNotificationResolver } = await import('./notifications.js');
+  const { daemonMessage } = await import('./daemon-message.js');
+  const { returnCardOf } = await import('./wake-digest.js');
+  const stop = startNotificationResolver();
+  try {
+    const id = mkTask('code');
+    dbApi.updateTaskStatus(id, 'BLOCKED', {
+      blockedReason: 'Base nope does not exist in the repository.',
+      blockedReasonCode: daemonMessage('task_base_missing', { base: 'nope', type: 'code' }),
+    });
+    const card = dbApi.listNotifications({ limit: 50 }).find((n) => n.task_id === id);
+    const stored = decodeDaemonMessage(card?.message_code);
+    assert.equal(card?.title, 'Task blocked: code task');
+    assert.deepEqual(stored, {
+      code: 'task_blocked',
+      params: { title: 'code task', taskId: id.slice(0, 8) },
+      body: { code: 'task_base_missing', params: { base: 'nope', type: 'code' } },
+    });
+
+    const shown = returnCardOf({
+      kind: 'task_closed', task_id: id, task_status: 'BLOCKED',
+      blocked_reason: 'Base nope does not exist in the repository.',
+      blocked_reason_code: { code: 'task_base_missing', params: { base: 'nope', type: 'code' } },
+    });
+    assert.equal(shown.blocked_reason_code?.code, 'task_base_missing');
+  } finally {
+    stop();
+  }
+});
+
+test('an agent\'s own reason gives the blocked-task card no body code', async () => {
+  const { startNotificationResolver } = await import('./notifications.js');
+  const stop = startNotificationResolver();
+  try {
+    const id = mkTask('code');
+    dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'I need the API key.' });
+    const card = dbApi.listNotifications({ limit: 50 }).find((n) => n.task_id === id);
+    const stored = decodeDaemonMessage(card?.message_code);
+    assert.equal(stored?.code, 'task_blocked');
+    assert.equal(stored?.body, undefined);
+    assert.equal(card?.body, 'I need the API key.');
+  } finally {
+    stop();
+  }
+});

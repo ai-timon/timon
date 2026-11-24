@@ -1,3 +1,4 @@
+// french-ok-file: the French texts an app card ships
 /**
  * The app card slot `apps.card` (TODO #832): declared at boot, the product's
  * card is painted while nothing claims it, a plugin that takes the slot paints

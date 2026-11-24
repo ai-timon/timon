@@ -5,7 +5,7 @@
  *
  * One line per refused start: the supervisor relaunches it for as long as the other one lives.
  */
-import { HOME_HELD_EXIT_CODE, HomeHeldError, holdHomeLock, releaseHomeLock } from './home-lock.js';
+import { HOME_HELD_EXIT_CODE, HomeHeldError, holdHomeLock, recordServiceHeldOut, releaseHomeLock } from './home-lock.js';
 import { TIMON_HOME } from './paths.js';
 
 try {
@@ -13,6 +13,7 @@ try {
 } catch (error) {
   if (!(error instanceof HomeHeldError)) throw error;
   console.error(`[timon] ${error.message}`);
+  recordServiceHeldOut(TIMON_HOME);
   process.exit(HOME_HELD_EXIT_CODE);
 }
 process.on('exit', () => releaseHomeLock(TIMON_HOME));

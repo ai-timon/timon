@@ -20,7 +20,7 @@ async function relay(plugin: string, name: string, body: string, headers: Record
 }
 
 test('plugin hooks: the relay forwards the exact bytes and the Standard Webhooks headers, never a credential', async () => {
-  const raw = '{"action":"closed","title":"é"}\n';
+  const raw = '{"action":"closed","title":"é"}\n'; // french-ok: a non-ASCII payload, the UTF-8 relay under test
   const { res, seen } = await relay('timon-todo-connector-discord', 'issues', raw, {
     'content-type': 'application/json',
     'webhook-id': 'msg_1',

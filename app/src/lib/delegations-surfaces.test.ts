@@ -1,6 +1,6 @@
 /**
- * Les deux surfaces d'une même liste : elles doivent se taire d'une seule
- * voix, et ne jamais recopier le détail l'une de l'autre.
+ * The two surfaces of the same list: they must fall silent with one
+ * voice, and never copy each other's detail.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -18,16 +18,16 @@ function delegation(over: Partial<Delegation> = {}): Delegation {
     turn_active: true,
     task_id: null,
     task_title: null,
-    excerpt: 'refonte du composer',
+    excerpt: 'composer rework',
     ...over,
   };
 }
 
-test('aucune délégation : le bandeau ne peint rien', () => {
+test('no delegation: the banner paints nothing', () => {
   assert.equal(renderToStaticMarkup(React.createElement(DelegationsBar, { delegations: [] })), '');
 });
 
-test('le bandeau annonce le compte et nomme chaque agent une seule fois', () => {
+test('the banner announces the count and names each agent once', () => {
   const html = renderToStaticMarkup(
     React.createElement(DelegationsBar, {
       delegations: [
@@ -39,6 +39,6 @@ test('le bandeau annonce le compte et nomme chaque agent une seule fois', () => 
   );
   assert.ok(html.includes('3 delegated missions running'));
   assert.ok(html.includes('timon.coder, timon.reviewer'));
-  // Sobriété : le brief appartient à la carte du rail, pas au fil.
-  assert.ok(!html.includes('refonte du composer'));
+  // Restraint: the brief belongs to the rail card, not to the thread.
+  assert.ok(!html.includes('composer rework'));
 });

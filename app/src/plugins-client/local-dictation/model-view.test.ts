@@ -1,3 +1,4 @@
+// french-ok-file: the language names in French under test
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

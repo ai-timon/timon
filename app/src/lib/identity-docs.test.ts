@@ -1,5 +1,5 @@
 /**
- * The «Identity docs» of the agent editor, mounted in jsdom: the docs in a
+ * The "Identity docs" of the agent editor, mounted in jsdom: the docs in a
  * column with the markdown rendered, an Edit button, suggestions for the
  * files the agent does not have yet, and the creation of a new doc.
  */

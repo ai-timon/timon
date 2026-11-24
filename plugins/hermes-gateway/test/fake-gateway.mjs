@@ -10,8 +10,8 @@
  *
  * The run a message starts follows a script picked from its text: `tool`,
  * `approve`, `subagent`, `slow` (runs until stopped), `lost` (the terminal
- * frame never reaches the stream), anything else answers « Hello from the
- * fake model. ».
+ * frame never reaches the stream), anything else answers "Hello from the
+ * fake model.".
  */
 import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';

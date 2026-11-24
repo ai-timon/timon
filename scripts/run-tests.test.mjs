@@ -132,6 +132,14 @@ const FLOOD = `
   });
 `;
 
+/** Windows makes a Node process's stdout pipe blocking (net.Socket, fd 1 and
+ *  2), and `setBlocking(false)` does not undo it: a wrapper whose reader never
+ *  reads waits inside a write, and no timer of its own can fire. A reader that
+ *  reads slowly, the CI log of 05/11/2026, still lets the limits fire between
+ *  two writes; one that never reads is what these cases build. */
+const NEVER_READ = process.platform === 'win32'
+  && 'Windows blocks a write to an unread stdout pipe, and the wrapper with it';
+
 /** The wrapper with a reader that never reads: its pipes fill up and stay full. */
 function runUnread(cwd, file, env, deadlineMs) {
   return new Promise((resolve) => {
@@ -158,7 +166,7 @@ function runUnread(cwd, file, env, deadlineMs) {
 // CI run of 05/11/2026, cancelled by hand after 68 minutes: the GitHub log read
 // slower than a flood of warnings came, the wrapper queued it all, and its
 // verdict — the limit had fired — waited at the end of that queue.
-test('the total limit ends the run even when nothing reads its output', async () => {
+test('the total limit ends the run even when nothing reads its output', { skip: NEVER_READ }, async () => {
   for (const limit of [3000, 12_000, 48_000]) {
     const dir = fixture('flood.test.mjs', FLOOD);
     const { code, ms } = await runUnread(dir, 'flood.test.mjs', {
@@ -177,7 +185,7 @@ test('the total limit ends the run even when nothing reads its output', async ()
   assert.fail('the flooding test never started');
 });
 
-test('a reader that stops reading trips the inactivity limit', async () => {
+test('a reader that stops reading trips the inactivity limit', { skip: NEVER_READ }, async () => {
   const dir = fixture('flood.test.mjs', FLOOD);
   const { code, ms } = await runUnread(dir, 'flood.test.mjs', {
     TIMON_TEST_TOTAL_TIMEOUT_MS: '600000',
@@ -244,7 +252,9 @@ test('a memory leak dies on the heap ceiling instead of growing unbounded', asyn
 // Buffers live outside the V8 heap: the heap ceiling alone let a jsdom test
 // reach 12.4 GB of RSS and the mission's cgroup OOM-kill the agent. The loop
 // is synchronous, like that runaway, and capped at 3 GB so a broken guard
-// fails this test instead of eating the machine.
+// fails this test instead of eating the machine. Its pace is bounded (about
+// 500 MB/s, the main thread still held): unpaced, a Mac fills 2 GB between
+// two readings of the guard, and the bound below would measure the machine.
 test('memory outside the heap is stopped by the RSS limit, not the heap ceiling', async () => {
   const dir = fixture('buffers.test.mjs', `
     import { test } from 'node:test';
@@ -252,7 +262,11 @@ test('memory outside the heap is stopped by the RSS limit, not the heap ceiling'
     test('hoards buffers', () => {
       writeFileSync('PIDFILE', String(process.pid));
       const hoard = [];
-      for (let i = 0; i < 300; i++) hoard.push(Buffer.alloc(10 * 1024 * 1024, 1));
+      const pace = new Int32Array(new SharedArrayBuffer(4));
+      for (let i = 0; i < 300; i++) {
+        hoard.push(Buffer.alloc(10 * 1024 * 1024, 1));
+        Atomics.wait(pace, 0, 0, 20);
+      }
       for (;;) { /* 3 GB reached: the guard failed, wait for the clock */ }
     });
   `);

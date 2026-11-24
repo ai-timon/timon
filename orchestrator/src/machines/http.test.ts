@@ -158,7 +158,7 @@ test('the daemon-token, a mission token and a paired device are not a fleet owne
 
 test('a URL outside the policy is refused before any call', async () => {
   resetThrottle();
-  const tried = async (url: string) => (await call('POST', '/api/machines/pair', { cookie: aliceCookie, body: { url, code: 'ABCD-EFGH-JKMN' } })).json.error;
+  const tried = async (url: string) => (await call('POST', '/api/machines/pair', { cookie: aliceCookie, body: { url, code: 'ABCD-EFGH-JKMN' } })).json.code;
   assert.equal(await tried('http://vps.example.com'), 'https_required');
   assert.equal(await tried('http://192.168.1.20:3001'), 'https_required');
   assert.equal(await tried('https://169.254.169.254'), 'blocked_address');
@@ -177,22 +177,22 @@ test('what a remote answers is mapped, never relayed', async () => {
   fakeAnswer = { status: 401, body: JSON.stringify({ error: 'invalid_code' }) };
   let res = await pairFake();
   assert.equal(res.status, 422);
-  assert.equal(res.json.error, 'invalid_code');
+  assert.equal(res.json.code, 'invalid_code');
   fakeAnswer = { status: 404, body: '{"error":"Cannot POST"}' };
   res = await pairFake();
-  assert.equal(res.json.error, 'not_a_timon_machine');
+  assert.equal(res.json.code, 'not_a_timon_machine');
   resetThrottle();
   fakeAnswer = { status: 302, headers: { location: 'http://169.254.169.254/' } };
   res = await pairFake();
   assert.equal(res.status, 502);
-  assert.equal(res.json.error, 'machine_redirect');
+  assert.equal(res.json.code, 'machine_redirect');
   fakeAnswer = { status: 200, body: JSON.stringify({ token: 'not-a-device-token', device: { id: 'd' }, user: {} }) };
   res = await pairFake();
-  assert.equal(res.json.error, 'machine_bad_response');
+  assert.equal(res.json.code, 'machine_bad_response');
   resetThrottle();
   fakeAnswer = { status: 403, body: JSON.stringify({ error: 'device_requires_tls' }) };
   res = await pairFake();
-  assert.equal(res.json.error, 'machine_requires_tls');
+  assert.equal(res.json.code, 'machine_requires_tls');
   fakeAnswer = { status: 429, headers: { 'retry-after': '30' } };
   res = await pairFake();
   assert.equal(res.status, 429);
@@ -218,7 +218,7 @@ test('with the vault switched off, nothing is paired', async () => {
   try {
     const res = await call('POST', '/api/machines/pair', { cookie: aliceCookie, body: { url: base, code: 'ABCD-EFGH-JKMN' } });
     assert.equal(res.status, 503);
-    assert.equal(res.json.error, 'vault_unavailable');
+    assert.equal(res.json.code, 'vault_unavailable');
   } finally {
     resetActiveModules();
   }

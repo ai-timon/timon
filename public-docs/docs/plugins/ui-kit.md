@@ -49,6 +49,13 @@ Timon serves these modules to the browser; nothing installs them. To type-check 
 | `useUpdateDialog` | The update window an `updates.dialog` occupant paints: `version`, `publishedAt`, `highlights`, `notesUrl`, `download`, `step`, `line`, `command`, `alert`, `actions`, `close` (API 17; see [Slots](slots.md#special-surfaces)) |
 | `useKanbanCard` | The `kanban.card` occupant's item: a TO DO idea (`kind: 'todo'`) or a task (`kind: 'task'`), its `density` and the gestures the host offers (API 15; see [Slots](slots.md#special-surfaces)) |
 | `useTodoForm` | The `todo.form` occupant's host: `mode`, the idea (or none), `defaultProject`, `submit`, `handoff`, `refresh`, `finish`, `close`, `remove`, `titleId`, `attachments` (API 15; see [Slots](slots.md#special-surfaces)) |
+| `useJobDialog` | The job a `kanban.job.dialog` occupant paints: `landing` (the job, its `links` and `repairs` included), `close`, `openTodo`, `openMission`, and Timon's gestures `refresh`, `repair(kind)` and `busy` (API 19; see [Slots](slots.md#special-surfaces)) |
+| `useGitStackProject` | The project a widget of the **Git** stack shows: `{ project, inChat }`, the chat's project in a chat's column, else the one picked once for the whole stack (API 19) |
+| `GitStackProjectPicker` | The stack's project picker for a widget's header (props `none`, `label`, `className?`); paints nothing in a chat's column (API 19) |
+| `useTodoOpener` | `{ openTodo(id), todoModal }`: opens a TO DO idea in Timon's idea form, read again with the reader's rights; paint `todoModal` where it stays mounted (API 19) |
+| `useProjectSettings` | The project a `project.settings` row is painted for: `{ project }` (API 19; see [Slots](slots.md#special-surfaces)) |
+| `useWidgetCount`, `useWidgetAttention`, `useWidgetMenu`, `useWidgetInFront` | What a widget hands its tab in a stack: a count, a dot while something waits, header actions moved to the widget's menu, and whether it is in view (API 19; see [Widget](widget.md#in-a-stack-of-tabs)) |
+| `usePublishDialog` | The **Publish on GitHub** window a `forge.publish.dialog` occupant paints: `project`, `proposal`, `loading`, `repo`, `target`, `account`, `body`, `setBody`, `editable`, `problem`, `busy`, `error`, and Timon's gestures `publish`, `save`, `discard`, `close` (API 19; see [Slots](slots.md#special-surfaces)) |
 | `BoardCard` | The tile of a Kanban item, the one Timon's own tiles are laid out with: `identity`, `corner`, `leading`, `title`, `badges`, `context`, `meta`, `actions`, `onOpen`, `muted`, `tone`, `dragging`, `density` (`card` or `row`), `as`. A zone you leave out paints nothing. With `onOpen`, the title becomes a button named after it, so the keyboard and screen readers reach it (on a `draggable` card, an element with the button role, so the card can still be dragged by its title in Firefox); a click elsewhere on the card opens it too, except on one of its own controls (`actions`, `leading`, a link in a badge). Keep links and buttons out of `title` (API 15) |
 | `DetailShell` | The inside of a Kanban item's window: `header`, the body as children, `rail` and `railLabel`, `attachments` and `attachmentsLabel`, `footer` (API 15) |
 | `DetailFrame` | The window around it: veil, focus kept inside and given back, Escape, a click outside. Props `labelledBy`, `onClose`, children. A `task.form` or `todo.form` occupant is already inside one (API 15) |
@@ -70,9 +77,11 @@ Theme custom properties remain usable in inline styles, for example `hsl(var(--m
 
 Use the existing `WidgetChromeProps` type from `@timon-ai/sdk` for a
 custom widget frame (`widget: { frame: 'none' }`). Forward `className`
-to the root, render `poignee` in the header actions, and use `editing`
-to show configuration controls. The SDK keeps `poignee` typed as `unknown`
+to the root, render `handle` in the header actions, and use `editing`
+to show configuration controls. The SDK keeps `handle` typed as `unknown`
 to avoid a React dependency; narrow it to `React.ReactNode` when rendering.
+`handle` is given from `"apiVersion": 17`; `poignee`, its former name,
+still holds the same controls and is deprecated.
 
 `DialogContent` includes its portal, overlay and close button. Set
 `hideClose` only when supplying your own accessible close control.

@@ -1,3 +1,4 @@
+// french-ok-file: an accented worktree path, the non-ASCII folder under test
 /**
  * The composer's branch picker: which rows can be switched to, and why not.
  */

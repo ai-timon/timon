@@ -40,7 +40,7 @@ test('the summary names the mechanism, or the reason there is none', () => {
     assert.equal(isolationSummary(status({})), 'No fence on this machine: kernel without Landlock.');
     assert.equal(isolationSummary(status({ state: 'off' })), 'Turned off.');
     setLocale('fr');
-    assert.equal(isolationSummary(status({})), 'Aucune clôture sur cette machine : kernel without Landlock.');
+    assert.equal(isolationSummary(status({})), 'Aucune clôture sur cette machine : kernel without Landlock.'); // french-ok: the French locale under test
   } finally {
     setLocale('en');
   }

@@ -1,3 +1,4 @@
+// french-ok-file: accented file names and contents, the encoding under test
 /**
  * Office previews: what the zip reader and the docx / xlsx / pptx readers make
  * of a file. The archives are built here, byte for byte, so the tests also pin

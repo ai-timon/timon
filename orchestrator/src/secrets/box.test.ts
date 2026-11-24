@@ -11,7 +11,7 @@ const KEY = randomBytes(MASTER_KEY_BYTES);
 const ID = { secretId: 'sec_a', name: 'GITHUB_TOKEN' };
 
 test('seal → open round-trips the original value', () => {
-  for (const value of ['ghp_0123456789', '', 'accentué — 🔐', 'x'.repeat(4096)]) {
+  for (const value of ['ghp_0123456789', '', 'accentué — 🔐', 'x'.repeat(4096)]) { // french-ok: a multi-byte sample
     assert.equal(open(seal(value, KEY, ID), KEY, ID), value);
   }
 });

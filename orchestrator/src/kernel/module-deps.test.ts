@@ -1,19 +1,19 @@
 /**
- * L'invariant qui empêche le prochain "dreams" : `inject` sans `dependsOn`.
+ * The invariant that prevents the next "dreams": `inject` without `dependsOn`.
  *
- * `inject` est une dépendance DURE en Cordis 4 et n'a pas de forme optionnelle.
- * Si le module qui fournit le service est éteint, le consommateur reste
- * PENDING **en silence** — et `auditActivation` fait alors sortir le daemon en
- * code 2. Un module éteint volontairement doit éteindre ceux qui en dépendent
- * (`dependsOn` + `cascadeDependencies`), jamais faire échouer le boot.
+ * `inject` is a HARD dependency in Cordis 4 and has no optional form.
+ * If the module providing the service is turned off, the consumer stays
+ * PENDING **silently**, and `auditActivation` then makes the daemon exit with
+ * code 2. A module turned off on purpose must turn off those that depend on it
+ * (`dependsOn` + `cascadeDependencies`), never make the boot fail.
  *
- * Le piège est asymétrique : un service fourni par un module `core` ne s'éteint
- * jamais, donc l'injecter ne demande rien. C'est exactement pour ça qu'on ne le
- * voit pas venir — `db`, `settings` et `http` marchent, puis un module `std`
- * fournit un service à son tour et la règle change sans que personne la relise.
+ * The trap is asymmetric: a service provided by a `core` module never turns
+ * off, so injecting it asks for nothing. That is exactly why one does not
+ * see it coming: `db`, `settings` and `http` work, then a `std` module
+ * provides a service in turn and the rule changes without anybody rereading it.
  *
- * Ce test lit la vérité des deux côtés : les `manifest.inject` sont importés
- * des modules eux-mêmes, les `ctx.provide` sont lus dans leur source.
+ * This test reads the truth on both sides: the `manifest.inject` are imported
+ * from the modules themselves, the `ctx.provide` are read in their source.
  */
 import '../test-home.js';
 import '../../tests/helpers/paid-license.js';
@@ -28,14 +28,14 @@ const { config } = await import('../config/load.js');
 import type { ModuleDescriptor } from './registry.js';
 
 /**
- * Services posés par `boot.ts` avant le loader : ils ne viennent d'aucune
- * entrée du catalogue et ne s'éteignent donc jamais.
+ * Services set by `boot.ts` before the loader: they come from no
+ * catalogue entry and so never turn off.
  */
 const ROOT_SERVICES = new Set(['http', 'host', 'timer', 'loader', 'logger']);
 
 const hosted = CATALOG.filter((m) => !m.clientOnly);
 
-/** `./plugins-bundled/x/index.js` (relatif à `dist/`) → chemin source. */
+/** `./plugins-bundled/x/index.js` (relative to `dist/`) → source path. */
 function sourcePath(m: ModuleDescriptor): string {
   const url = new URL(m.name.replace('./', '../').replace(/\.js$/, '.ts'), import.meta.url);
   return fileURLToPath(url);
@@ -44,11 +44,11 @@ function sourcePath(m: ModuleDescriptor): string {
 const injects = new Map<string, readonly string[]>();
 for (const m of hosted) {
   const mod = (await import(m.name.replace('./', '../'))) as { manifest?: { inject?: string[] } };
-  assert.ok(mod.manifest, `${m.id} n'exporte pas de manifest`);
+  assert.ok(mod.manifest, `${m.id} does not export a manifest`);
   injects.set(m.id, mod.manifest.inject ?? []);
 }
 
-/** Service → id du module qui le `provide`. */
+/** Service → id of the module that `provide`s it. */
 const providers = new Map<string, string>();
 for (const m of hosted) {
   const src = readFileSync(sourcePath(m), 'utf8');
@@ -57,59 +57,59 @@ for (const m of hosted) {
   }
 }
 
-test('tout service injecté a un fournisseur connu', () => {
+test('every injected service has a known provider', () => {
   for (const [id, list] of injects) {
     for (const service of list) {
       assert.ok(
         ROOT_SERVICES.has(service) || providers.has(service),
-        `${id} injecte « ${service} » que personne ne fournit`,
+        `${id} injects "${service}" that nobody provides`,
       );
     }
   }
 });
 
-test('injecter un service désactivable impose un dependsOn sur son fournisseur', () => {
+test('injecting a service that can be disabled requires a dependsOn on its provider', () => {
   const tierOf = new Map(CATALOG.map((m) => [m.id, m.tier]));
   for (const m of hosted) {
     for (const service of injects.get(m.id) ?? []) {
       if (ROOT_SERVICES.has(service)) continue;
       const provider = providers.get(service);
       if (provider === undefined || provider === m.id) continue;
-      if (tierOf.get(provider) === 'core') continue; // un module core ne s'éteint pas
+      if (tierOf.get(provider) === 'core') continue; // a core module never turns off
       assert.ok(
         (m.dependsOn ?? []).includes(provider),
-        `${m.id} injecte « ${service} » (fourni par ${provider}, tier `
-          + `${tierOf.get(provider)}) sans dependsOn : éteindre ${provider} le `
-          + 'laisserait PENDING et ferait sortir le daemon en code 2',
+        `${m.id} injects "${service}" (provided by ${provider}, tier `
+          + `${tierOf.get(provider)}) without dependsOn: turning ${provider} off would `
+          + 'leave it PENDING and make the daemon exit with code 2',
       );
     }
   }
 });
 
-test('les dependsOn nomment des modules du catalogue', () => {
+test('the dependsOn name catalogue modules', () => {
   const ids = new Set(CATALOG.map((m) => m.id));
   for (const m of CATALOG) {
     for (const dep of m.dependsOn ?? []) {
-      assert.ok(ids.has(dep), `${m.id} dépend de ${dep}, absent du catalogue`);
+      assert.ok(ids.has(dep), `${m.id} depends on ${dep}, missing from the catalogue`);
     }
   }
 });
 
 /**
- * Le même invariant, mais joué : on éteint chaque module désactivable, un par
- * un, et on vérifie qu'AUCUNE entrée restée active n'injecte un service dont
- * le fournisseur vient de disparaître. C'est le test de boot demandé, sans
- * booter trente fois trente modules : ce que `planEntries` rend est exactement
- * ce que `boot.ts` donne au loader.
+ * The same invariant, but played: each module that can be disabled is turned off, one
+ * by one, and we check that NO entry still active injects a service whose
+ * provider just disappeared. That is the requested boot test, without
+ * booting thirty modules thirty times: what `planEntries` returns is exactly
+ * what `boot.ts` gives the loader.
  */
-test('éteindre un module désactivable ne laisse aucun fiber PENDING', () => {
+test('turning off a module that can be disabled leaves no PENDING fiber', () => {
   const base = config();
   for (const target of CATALOG) {
     if (target.tier === 'core' || target.clientOnly) continue;
     const cfg = { ...base, modules: { ...base.modules, [target.id]: false } };
     const decisions = planEntries(CATALOG, { config: cfg, capabilities: [] });
     const off = new Set(decisions.filter((d) => d.disabled).map((d) => d.id));
-    assert.ok(off.has(target.id), `${target.id} devait s'éteindre`);
+    assert.ok(off.has(target.id), `${target.id} should have turned off`);
     for (const d of decisions) {
       if (d.disabled) continue;
       for (const service of injects.get(d.id) ?? []) {
@@ -118,8 +118,8 @@ test('éteindre un module désactivable ne laisse aucun fiber PENDING', () => {
         if (provider === undefined || provider === d.id) continue;
         assert.ok(
           !off.has(provider),
-          `${target.id} éteint : ${d.id} reste actif alors que son fournisseur `
-            + `${provider} (« ${service} ») est éteint — fiber PENDING, daemon en code 2`,
+          `${target.id} off: ${d.id} stays active while its provider `
+            + `${provider} ("${service}") is off: PENDING fiber, daemon at code 2`,
         );
       }
     }

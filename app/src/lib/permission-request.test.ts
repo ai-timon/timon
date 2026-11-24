@@ -1,3 +1,4 @@
+// french-ok-file: the French locale of the permission text under test
 /**
  * The permission card speaks the reader's language and names the tool so a
  * person can read it.

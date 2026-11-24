@@ -5,7 +5,7 @@ import { Loader2, LogIn, X } from 'lucide-react';
 import { nativeBrowserRequest, type BrowserCommand } from '@/lib/native-browser';
 import { t } from '@/lib/i18n';
 
-type Capability = { available: true; name: string } | { available: false; message: string };
+type Capability = { available: true; name: string } | { available: false; reason?: 'none' | 'confined'; message: string };
 export type ChromeSigninStatus = { state: 'idle' | 'open' | 'finished' | 'failed'; imported?: number; skipped?: number; error?: string };
 const actionClass = 'rounded border border-border px-2 py-1.5 text-xs hover:bg-muted disabled:opacity-40';
 
@@ -73,7 +73,10 @@ export function BrowserChromeSignin({ controlled, command, close, startUrl, reas
     finally { setBusy(false); }
   };
   const report = chromeSigninReport(status);
-  const missing = capability && !capability.available ? capability.message : null;
+  // The daemon names the reason: its English `message` is only the fallback of an older daemon.
+  const missing = !capability || capability.available ? null
+    : capability.reason === 'confined' ? t('apiErrors.browser_chrome_confined')
+      : capability.reason === 'none' ? t('apiErrors.browser_chrome_missing') : capability.message;
   return <section role="dialog" aria-modal="true" aria-label={t('browserPanel.native.chromeSignin')} className="absolute inset-0 z-20 flex flex-col overflow-hidden bg-card p-3">
     <div className="mb-3 flex items-center gap-2"><LogIn className="size-4" /><h2 className="min-w-0 flex-1 text-sm font-medium">{t('browserPanel.native.chromeSignin')}</h2><button type="button" className={actionClass} aria-label={t('browserPanel.native.close')} onClick={close}><X className="size-4" /></button></div>
     <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">

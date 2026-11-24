@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "Nuova finestra",
+      "view": "Vista",
+      "zoomReset": "Dimensioni reali",
+      "zoomIn": "Ingrandisci",
+      "zoomOut": "Riduci",
       "open": "Apri {appName}",
       "daemon": "Daemon: {state, select, running {attivo} other {irraggiungibile}} ({origin})",
       "quit": "Esci"
@@ -102,8 +106,8 @@
       "stopFailedDetail": "Timon resta aperto e il servizio continua a girare.",
       "startFailed": "Il servizio in background è fermo e non è stato possibile riavviarlo.",
       "startFailedDetail": "L’hai fermato con “Esci e ferma il servizio in background”. Riapri Timon e consenti la richiesta, oppure esegui timon service start. I tuoi dati in {home} sono intatti.",
-      "handoverKept": "Il servizio in background di Timon non ha risposto.",
-      "handoverKeptDetail": "La configurazione continua con Timon così com’è in esecuzione in questa finestra. Chiudi e riapri Timon al termine della configurazione: riproverà con il servizio. I tuoi dati restano in {home}.",
+      "handoverKept": "Il servizio in background di Timon è lento ad avviarsi.",
+      "handoverKeptDetail": "La configurazione continua con Timon così com’è in esecuzione in questa finestra. Timon passa il testimone al servizio da solo appena è pronto, o al prossimo avvio: non devi fare nulla. I tuoi dati restano in {home}.",
       "refused": "Windows non avvia il servizio in background di Timon per questo account.",
       "refusedDetail": "L’attività pianificata TimonOrchestrator è registrata, ma Windows non l’ha mai eseguita. Succede con gli account di lavoro o scuola su un PC aggiunto a Microsoft Entra ID. Timon usa invece il suo daemon integrato: si avvia con l’app e si ferma quando la chiudi o esci dalla sessione. Per rimuovere l’attività inutilizzata: timon service uninstall (Windows chiede l’autorizzazione).",
       "repair": "Il servizio in background di Timon non è più installato.",

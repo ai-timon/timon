@@ -27,6 +27,11 @@ import { createDaemonAuthMiddleware } from './plugins-bundled/http/auth.js';
 await import('../tests/helpers/claude-provider.js');
 
 const app = express();
+// One connection per request. The repositories are built with synchronous git
+// calls, which hold this process, server included, for seconds on a loaded
+// Windows machine: the server then drops an idle keep-alive socket at the very
+// moment fetch reuses it, and the request dies with ECONNRESET.
+app.use((_req, res, next) => { res.setHeader('connection', 'close'); next(); });
 app.use(express.json());
 app.use(createDaemonAuthMiddleware({ token: 'guard-test', required: true }));
 registerRoutes(app);
@@ -36,13 +41,15 @@ await once(server, 'listening');
 after(() => server.close());
 const api = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-async function call(method: string, path: string, body: unknown): Promise<{ status: number; json: { error?: string; code?: string } }> {
+type ErrorJson = { error?: string; code?: string; params?: Record<string, unknown> };
+
+async function call(method: string, path: string, body: unknown): Promise<{ status: number; json: ErrorJson }> {
   const r = await fetch(`${api}${path}`, {
     method,
     headers: { 'content-type': 'application/json', Authorization: 'Bearer guard-test' },
     body: JSON.stringify(body),
   });
-  return { status: r.status, json: await r.json() as { error?: string; code?: string } };
+  return { status: r.status, json: await r.json() as ErrorJson };
 }
 
 const closeDone = (id: string, extra: Record<string, unknown> = {}) =>
@@ -113,6 +120,8 @@ test('the CLI path (sha recorded first) is refused the same way', async () => {
   const r = await call('POST', `/api/tasks/${merge.id}/merged-sha`, { sha: mainHead });
   assert.equal(r.status, 409);
   assert.equal(r.json.code, 'merge_not_proven');
+  // The board translates the code with `{detail}`: without it, the template shows its braces.
+  assert.deepEqual(r.json.params, { detail: r.json.error });
   assert.equal(dbApi.getTask(merge.id)!.merged_commit_sha, null);
 });
 
@@ -343,6 +352,9 @@ test('an automatic close of a merge whose branch is outside the base goes BLOCKE
     assert.equal(after.status, 'BLOCKED');
     assert.match(after.blocked_reason ?? '', /automatic close was refused/);
     assert.match(after.blocked_reason ?? '', /branch feature .* is not contained in main/);
+    const code = JSON.parse(after.blocked_reason_code ?? 'null') as { code: string; params: { refusal: string } };
+    assert.equal(code.code, 'task_auto_close_refused');
+    assert.match(code.params.refusal, /branch feature .* is not contained in main/);
   } finally { stop(); }
 });
 

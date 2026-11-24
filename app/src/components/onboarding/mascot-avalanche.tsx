@@ -15,6 +15,11 @@
  * other style when the mascot style changes (the welcome's 3D / 2D switch):
  * the falling heads keep their old bitmaps until the new ones are drawn.
  *
+ * A head a mascot pack draws itself (`data-mascot-head`) is copied as it is,
+ * whatever the style: its canvas, or its SVG rasterised. Anything else (an
+ * element that is neither, a canvas that cannot be read, markup that does
+ * not decode) leaves that look out of the scene's drawing, never the scene.
+ *
  * In 3D, flat copies would spin in the screen plane like coins. Once the 3D
  * heads are in, each look is also rendered under a few head orientations
  * (`HEAD_VIEWS`), off screen, a few at a time while the browser is idle; every
@@ -25,6 +30,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState, 
 import { AgentMascotHost, usePrefersReducedMotion } from '@/components/mascot/agent-mascot';
 import { lookFurHex } from '@/components/mascot/agent-look';
 import { skullSize } from '@/components/mascot/mascot-geometry';
+import { mascotHeadOf, mascotPartIds } from '@/components/mascot/mascot-parts';
 import { useMascot3D, type MascotStyle } from '@/components/mascot/mascot-style-pref';
 import type { Mascot3DEngine } from '@/components/mascot/three/engine';
 import { mascot3DEngine } from '@/components/mascot/three/tile';
@@ -66,6 +72,22 @@ export type MascotAvalancheHandle = {
 /** How long a 3D head may take to come (models loading on a slow machine): past it, the 2D head stays. */
 const HEAD_WAIT_MS = 30000;
 
+/** A canvas copied into a bitmap of the scene's size; null when it is empty or cannot be read. */
+function copyCanvas(source: HTMLCanvasElement): HTMLCanvasElement | null {
+  if (!source.width || !source.height) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = BITMAP;
+  canvas.height = BITMAP;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  try {
+    ctx.drawImage(source, 0, 0, BITMAP, BITMAP);
+  } catch {
+    return null;
+  }
+  return canvas;
+}
+
 /** A 3D head's canvas copied into a bitmap once the engine has drawn the modelled head (`data-drawn`), else null. */
 async function copyHead(head: HTMLCanvasElement): Promise<HTMLCanvasElement | null> {
   const start = performance.now();
@@ -73,14 +95,32 @@ async function copyHead(head: HTMLCanvasElement): Promise<HTMLCanvasElement | nu
     if (performance.now() - start > HEAD_WAIT_MS || !head.isConnected) return null;
     await new Promise<void>((resolve) => { setTimeout(resolve, 100); });
   }
-  if (!head.width || !head.height) return null;
-  const canvas = document.createElement('canvas');
-  canvas.width = BITMAP;
-  canvas.height = BITMAP;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return null;
-  ctx.drawImage(head, 0, 0, BITMAP, BITMAP);
-  return canvas;
+  return copyCanvas(head);
+}
+
+/**
+ * What a cell of the cast is copied from. A pack's own head is taken as it
+ * is, its canvas or its SVG — never waited for as a 3D head, its canvas
+ * carries no `data-drawn` — and a pack head that is neither is left out.
+ * Anything else is Timon's head or an `agent.mascot` occupant's: its 2D
+ * drawing first, then its 3D canvas when one comes. Exported for the tests.
+ */
+export type CastSource =
+  | { kind: 'pack-canvas'; canvas: HTMLCanvasElement }
+  | { kind: 'pack-svg'; svg: SVGSVGElement }
+  | { kind: 'pack-none' }
+  | { kind: 'mascot'; svg: SVGSVGElement | null; head: HTMLCanvasElement | null };
+
+export function castSource(cell: Element): CastSource {
+  const pack = cell.querySelector('[data-mascot-head]');
+  if (pack) {
+    const own = pack.querySelector('canvas, svg');
+    const tag = own?.tagName.toLowerCase();
+    if (tag === 'canvas') return { kind: 'pack-canvas', canvas: own as HTMLCanvasElement };
+    if (tag === 'svg') return { kind: 'pack-svg', svg: own as SVGSVGElement };
+    return { kind: 'pack-none' };
+  }
+  return { kind: 'mascot', svg: cell.querySelector('svg'), head: cell.querySelector('canvas') };
 }
 
 async function rasterize(svg: SVGSVGElement): Promise<HTMLCanvasElement | null> {
@@ -141,7 +181,8 @@ export const MascotAvalanche = forwardRef<MascotAvalancheHandle, { className?: s
   const [drawn, setDrawn] = useState<MascotStyle | null>(null);
   const style: MascotStyle = useMascot3D() ? '3d' : '2d';
   const reduced = usePrefersReducedMotion();
-  const looks = useMemo(() => avalancheLooks(), []);
+  // The heads the installed packs draw themselves join the crowd.
+  const looks = useMemo(() => avalancheLooks(undefined, mascotPartIds('shape').filter((id) => mascotHeadOf(id) !== null)), []);
   // Read by the frame loop, which is built once: a switch of style or of motion preference applies at the next frame.
   const turning = useRef(false);
   turning.current = style === '3d' && !reduced;
@@ -161,8 +202,11 @@ export const MascotAvalanche = forwardRef<MascotAvalancheHandle, { className?: s
       const next3d: boolean[] = [];
       const heads: Promise<void>[] = [];
       void Promise.all(cells.map(async (cell, i) => {
-        const head = cell.querySelector('canvas');
-        const svg = cell.querySelector('svg');
+        const source = castSource(cell);
+        if (source.kind === 'pack-canvas') { next[i] = copyCanvas(source.canvas); return; }
+        if (source.kind === 'pack-svg') { next[i] = await rasterize(source.svg).catch(() => null); return; }
+        if (source.kind === 'pack-none') { next[i] = null; return; }
+        const { head, svg } = source;
         next[i] = svg ? await rasterize(svg).catch(() => null) : null;
         // The 3D head replaces it when it comes; the frame loop reads the array, so the swap shows by itself.
         if (head) heads.push(copyHead(head).then((bitmap) => { if (alive && bitmap) { next[i] = bitmap; next3d[i] = true; } }).catch(() => undefined));

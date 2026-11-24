@@ -1,3 +1,4 @@
+// french-ok-file: the French titles older notifications were stored with
 import assert from 'node:assert/strict';
 import test from 'node:test';
 

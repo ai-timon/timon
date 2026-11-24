@@ -25,6 +25,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { dbApi } from './db.js';
+import { decodeDaemonMessage } from './daemon-message.js';
 import { truncateFinalReport } from './wake-digest.js';
 
 export type MissionReturnStatus = 'completed' | 'failed' | 'terminated';
@@ -78,6 +79,7 @@ export function enqueueMissionReturn(
       done_comment: task?.done_comment ?? null,
       summary: task?.done_summary ?? null,
       blocked_reason: task?.blocked_reason ?? null,
+      blocked_reason_code: decodeDaemonMessage(task?.blocked_reason_code),
       // group_id: identifies the batch of tasks this one belongs to, so the
       // orchestrator knows which batch this recap comes from on wake-up.
       group_id: task?.group_id ?? null,

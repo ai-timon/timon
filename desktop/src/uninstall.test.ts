@@ -1,3 +1,4 @@
+// french-ok-file: an accented user name, the non-ASCII home under test
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as nodeFs from 'node:fs';

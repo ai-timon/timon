@@ -42,7 +42,7 @@ export type DiscoverStepProps = {
 };
 
 export function DiscoverStep({ loadAgent = loadMainAgent }: DiscoverStepProps): ReactElement {
-  const { next } = useOnboarding();
+  const { next, skip } = useOnboarding();
   const reduced = usePrefersReducedMotion();
   const [index, setIndex] = useState(0);
   const [held, setHeld] = useState(false);
@@ -150,7 +150,7 @@ export function DiscoverStep({ loadAgent = loadMainAgent }: DiscoverStepProps): 
       </div>
 
       <div className="mt-8 flex items-center justify-between gap-3">
-        <Button type="button" variant="ghost" data-discover-skip className={cn(last && 'invisible')} onClick={next}>
+        <Button type="button" variant="ghost" data-discover-skip className={cn(last && 'invisible')} onClick={() => skip()}>
           {t('onboarding.discover.skip')}
         </Button>
         <Button type="button" size="lg" data-discover-next={last ? undefined : ''} data-discover-finish={last ? '' : undefined} onClick={forward}>

@@ -146,7 +146,7 @@ test.describe('ui documents', { concurrency: false }, () => {
     const big = `<p>${'x'.repeat(MAX_HTML_BYTES)}</p>`;
     assert.equal((await send('POST', '', agentOf('m-a'), { title: 't', html: big })).status, 413);
     // Multi-byte characters count in bytes, not in UTF-16 units.
-    assert.equal((await send('POST', '', agentOf('m-a'), { title: 't', html: 'é'.repeat(MAX_HTML_BYTES / 2 + 1) })).status, 413);
+    assert.equal((await send('POST', '', agentOf('m-a'), { title: 't', html: 'é'.repeat(MAX_HTML_BYTES / 2 + 1) })).status, 413); // french-ok: a two-byte letter that doubles the UTF-8 size
     const reply = await send('POST', '', ownerSession, { mission_id: 'm-a', title: 't', html: HTML, reply: true });
     assert.equal(reply.status, 400, 'a document shown by its owner is display only');
     assert.equal((await send('POST', '', agentOf('m-a'), { title: 'x'.repeat(121), html: HTML })).status, 400);

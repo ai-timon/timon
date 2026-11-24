@@ -166,6 +166,6 @@ test('the handover page speaks the language and wears the mode chosen during the
   scheme = 'dark';
   view.restart('/onboarding?step=agent');
   const html = decodeURIComponent(loaded.at(-1)!.slice('data:text/html;charset=utf-8,'.length));
-  assert.match(html, /Timon redémarre…/);
+  assert.match(html, /Timon redémarre…/); // french-ok: the French locale under test
   assert.match(html, /color-scheme:dark/);
 });

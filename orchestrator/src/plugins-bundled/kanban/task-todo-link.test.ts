@@ -41,6 +41,7 @@ function send(url: string, method: string, body: unknown): Promise<Response> {
   return fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 }
 
+// french-ok-file: free-text sample ideas
 const adaIdea = dbApi.insertProjectTodo({ text: 'idée d\'Ada', ownerUserId: ADA }).id;
 const bobIdea = dbApi.insertProjectTodo({ text: 'idée de Bob', ownerUserId: BOB }).id;
 

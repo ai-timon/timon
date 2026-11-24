@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeCodexUsage } from '../../official-providers/provider-codex/lib/usage.js';
 
-test('normalise les fenêtres Codex selon leur durée et conserve les resets', () => {
+test('normalises the Codex windows by their duration and keeps the resets', () => {
   const usage = normalizeCodexUsage({
     rate_limit: {
       primary_window: {
@@ -27,7 +27,7 @@ test('normalise les fenêtres Codex selon leur durée et conserve les resets', (
   });
 });
 
-test('ignore une fenêtre absente ou invalide au lieu de fabriquer un zéro', () => {
+test('ignores a missing or invalid window instead of making up a zero', () => {
   const usage = normalizeCodexUsage({
     rate_limit: {
       primary_window: null,

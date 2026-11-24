@@ -7,7 +7,7 @@ import { applyEnvOverrides } from '../config/load.js';
 import { TimonConfigSchema } from '../config/schema.js';
 import { installWithRuntime, uninstallWithRuntime } from './packaged-install.js';
 import { agentBinDirs, markPackagedCli, serviceOptsForPlatform } from './service-environment.js';
-import { renderMacLauncher, renderWindowsLauncher, type ServiceOpts } from './service-install.js';
+import { renderMacLauncher, renderWindowsLauncherConfig, type ServiceOpts } from './service-install.js';
 
 const DESKTOP_KEYS = ['TIMON_DESKTOP_EMBEDDED', 'TIMON_DESKTOP_SERVICE', 'TIMON_DESKTOP_VERSION', 'TIMON_DESKTOP_UPGRADE'];
 
@@ -143,9 +143,9 @@ test('TODO #206: the Linux unit and the Windows task of the packaged CLI are mar
   const unit = cliOptions('linux', electron).unitContent ?? '';
   assert.match(unit, /Environment="ELECTRON_RUN_AS_NODE=1"/);
   assert.match(unit, /Environment="TIMON_DESKTOP_SERVICE=1"/);
-  const launcher = renderWindowsLauncher(cliOptions('win32', electron));
-  assert.match(launcher, /set "ELECTRON_RUN_AS_NODE=1"/);
-  assert.match(launcher, /set "TIMON_DESKTOP_SERVICE=1"/);
+  const { env } = JSON.parse(renderWindowsLauncherConfig(cliOptions('win32', electron))) as { env: Record<string, string> };
+  assert.equal(env.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(env.TIMON_DESKTOP_SERVICE, '1');
 });
 
 test('installWithRuntime: a source checkout installs without staging anything', async () => {

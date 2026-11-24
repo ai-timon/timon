@@ -7,6 +7,7 @@
  * and a host a project never reached raises a deduplicated alert (`alerts.ts`).
  * The daemon log only gets a record when the journal could not take it.
  */
+import { daemonMessage } from '../daemon-message.js';
 import type { AddressInfo } from 'node:net';
 import { apiBaseUrl } from '../api-url.js';
 import { config } from '../config/load.js';
@@ -90,6 +91,15 @@ export function sendNewHostNotification(alert: NewHostAlert): void {
     missionId: mission.id,
     ownerUserId: mission.owner_user_id,
     anchor: `egress:${mission.id}`,
+    message: daemonMessage('egress_new_hosts', {
+      count,
+      scopeKind: alert.projectKey.startsWith('project:') ? 'project' : 'agent',
+      scopeName: alert.projectKey.slice(alert.projectKey.indexOf(':') + 1),
+      agent: mission.agent_name,
+      hosts: alert.hosts.join(', '),
+      more: alert.more,
+      missionId: mission.id,
+    }),
   });
 }
 

@@ -12,7 +12,7 @@
  * touch. Any change to the numbers belongs in both places.
  */
 import { execFile, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, delimiter, join, win32 } from 'node:path';
 import { withRuntimeEnv } from './daemon-runtime.js';
 
@@ -26,6 +26,10 @@ export const MAX_DELAY_MS = 30_000;
  */
 export const MAX_RESTARTS = 5;
 export const RESTART_WINDOW_MS = 60_000;
+/** How long a quit waits for the daemon it asked to stop: past the daemon's own 5 s grace. */
+export const STOP_WAIT_MS = 10_000;
+/** Overrides that wait, in milliseconds; `0` skips the request (the orchestrator's `cooperative-stop.ts` reads it too). */
+export const STOP_WAIT_ENV = 'TIMON_COOPERATIVE_STOP_MS';
 
 /** Injected in tests; production passes `child_process.spawn`. */
 export type Spawner = (
@@ -51,6 +55,14 @@ export type EmbeddedOpts = {
   spawn: Spawner;
   /** Production terminates the whole detached process group; tests use child.kill. */
   terminate?: (child: ChildProcess) => boolean;
+  /**
+   * Windows: asks the daemon to run its own stop (`requestDaemonStop`), true
+   * when it accepted. The forced `terminate` then only ends a daemon that did
+   * not leave within `stopWaitMs`. Absent on POSIX, whose `terminate` already
+   * sends SIGTERM.
+   */
+  askToStop?: () => Promise<boolean>;
+  stopWaitMs?: number;
   /** Once the daemon has exited: ends what its tree no longer reached (`endEmbeddedLeftovers`). */
   afterStop?: () => Promise<void>;
   /**
@@ -208,9 +220,14 @@ export function superviseEmbeddedDaemon(opts: EmbeddedOpts): () => Promise<void>
     // `kill` on an undefined pid would signal the whole process group, us
     // included. Only ever this child, and only if it has a pid.
     const stopping = child;
+    // Windows runs no handler on a forced kill: asked first, the daemon exits
+    // through its own stop and its next start reads this run as clean.
+    const left = stopping?.pid !== undefined && opts.askToStop
+      ? await exitOnRequest(stopping, opts.askToStop, opts.stopWaitMs ?? STOP_WAIT_MS, log)
+      : false;
     // A relaunch must not probe the dying daemon and mistake it for the
     // installed service. Keep the AppImage mounted until this child exits.
-    if (stopping?.pid !== undefined) await new Promise<void>((resolve, reject) => {
+    if (stopping?.pid !== undefined && !left && !hasExited(stopping)) await new Promise<void>((resolve, reject) => {
       const cleanup = () => {
         clearTimeout(timeout);
         stopping.removeListener('exit', exited);
@@ -234,6 +251,87 @@ export function superviseEmbeddedDaemon(opts: EmbeddedOpts): () => Promise<void>
       try { await opts.afterStop(); } catch (error) { log.warn(`[embedded] could not end the daemon's orphans: ${(error as Error).message}`); }
     }
   };
+}
+
+function hasExited(child: ChildProcess): boolean {
+  return typeof child.exitCode === 'number' || typeof child.signalCode === 'string';
+}
+
+/**
+ * Asks the daemon to stop and waits for `child` to exit, `waitMs` at most.
+ * False when it refused, did not answer, or is still there: the caller then
+ * ends it by force, as it did before.
+ */
+async function exitOnRequest(
+  child: ChildProcess,
+  ask: () => Promise<boolean>,
+  waitMs: number,
+  log: Pick<Console, 'warn'>,
+): Promise<boolean> {
+  let accepted = false;
+  try { accepted = await ask(); } catch (error) { log.warn(`[embedded] the stop request failed: ${(error as Error).message}`); }
+  if (!accepted) return false;
+  if (hasExited(child)) return true;
+  return new Promise<boolean>((resolve) => {
+    const done = (exited: boolean): void => {
+      clearTimeout(timer);
+      child.removeListener('exit', onExit);
+      if (!exited) log.warn(`[embedded] the daemon was still running ${waitMs / 1000}s after the stop request: ending it`);
+      resolve(exited);
+    };
+    const onExit = (): void => done(true);
+    const timer = setTimeout(() => done(false), waitMs);
+    timer.unref?.();
+    child.once('exit', onExit);
+  });
+}
+
+/** The wait the environment asks for; anything unreadable keeps the default. */
+export function stopWaitMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[STOP_WAIT_ENV]?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return STOP_WAIT_MS;
+  return Math.min(Number(raw), 120_000);
+}
+
+/**
+ * `POST /api/daemon/shutdown` with the daemon token of `home`: true when the
+ * daemon accepted (202). The token only ever goes to this machine's loopback
+ * listener over plain HTTP. Never throws: a refusal is a forced stop.
+ */
+export async function requestDaemonStop(origin: string, home: string, fetcher: typeof fetch = fetch): Promise<boolean> {
+  let url: URL;
+  try { url = new URL(origin); } catch { return false; }
+  if (!['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname) || url.protocol !== 'http:' || url.username || url.password) return false;
+  let token: string;
+  try { token = readFileSync(join(home, 'daemon-token'), 'utf8').trim(); } catch { return false; }
+  if (!token) return false;
+  try {
+    const res = await fetcher(new URL('/api/daemon/shutdown', url), {
+      method: 'POST', redirect: 'error',
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(3_000),
+    });
+    return res.status === 202;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The request a quit sends before its forced stop: Windows only, where
+ * nothing else would let the daemon run its own stop. `undefined` on POSIX
+ * (SIGTERM already does) and when the wait is set to 0.
+ */
+export function stopRequestFor(
+  platform: NodeJS.Platform,
+  origin: string,
+  home: string,
+  env: NodeJS.ProcessEnv = process.env,
+  fetcher: typeof fetch = fetch,
+): { askToStop: () => Promise<boolean>; stopWaitMs: number } | undefined {
+  const waitMs = stopWaitMs(env);
+  if (platform !== 'win32' || waitMs === 0) return undefined;
+  return { askToStop: () => requestDaemonStop(origin, home, fetcher), stopWaitMs: waitMs };
 }
 
 /**

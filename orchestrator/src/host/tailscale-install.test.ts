@@ -222,7 +222,7 @@ test('Windows: the MSI for this CPU, Authenticode of Tailscale Inc., msiexec wit
   assert.deepEqual(f.execs[1], { file: 'msiexec.exe', args: ['/i', msi, '/passive', '/norestart'] });
 });
 
-test('Windows: a cancelled UAC prompt is « cancelled », an unsigned MSI never runs', async () => {
+test('Windows: a cancelled UAC prompt is "cancelled", an unsigned MSI never runs', async () => {
   const cancelled = fake({
     platform: 'win32',
     exec: (file) => (file === 'powershell.exe' ? ok(MSI_SIGNED) : { code: 1602, stdout: '', stderr: '' }),

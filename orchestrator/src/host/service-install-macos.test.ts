@@ -62,6 +62,9 @@ const INSTALLED = { write: 0, 'bootout-agent': 113, bootout: 113, wait: 0, boots
 const elevated = (calls: Call[]) => calls.filter((c) => c.name === 'osascript' || c.name === 'sudo');
 const scriptOf = (call: Call) => (call.name === 'sudo' ? call.args[2]! : call.args[6]!);
 
+/** The scripts are checked by running them under sh, which a Windows machine may not have. */
+const NO_SH = spawnSync('sh', ['-c', 'true']).status !== 0 && 'sh is not installed';
+
 test('the LaunchDaemon plist names the user and an explicit environment', () => {
   const { o } = mac();
   const xml = renderLaunchDaemonPlist(o);
@@ -78,7 +81,7 @@ test('the LaunchDaemon plist names the user and an explicit environment', () => 
   assert.equal(launchDaemonPath(), `/Library/LaunchDaemons/${MACOS_LABEL}.plist`);
 });
 
-test('the launcher logs to daemon.log and execs the daemon, and parses as sh', () => {
+test('the launcher logs to daemon.log and execs the daemon, and parses as sh', { skip: NO_SH }, () => {
   const { o } = mac();
   const sh = renderMacLauncher({ ...o, environment: { ELECTRON_RUN_AS_NODE: '1', PATH: '/custom/bin:/usr/bin' } });
   assert.ok(sh.includes(`exec >>${shQuote(join(o.timonHome, 'tmp', 'daemon.log'))} 2>&1`));
@@ -90,7 +93,7 @@ test('the launcher logs to daemon.log and execs the daemon, and parses as sh', (
   assert.throws(() => renderMacLauncher({ ...o, nodePath: '/a\nb' }));
 });
 
-test('shQuote survives quotes and refuses line breaks', () => {
+test('shQuote survives quotes and refuses line breaks', { skip: NO_SH }, () => {
   const value = `it's "$HOME" \`x\``;
   assert.equal(spawnSync('sh', ['-c', `printf %s ${shQuote(value)}`], { encoding: 'utf8' }).stdout, value);
   assert.throws(() => shQuote('a\nb'));
@@ -137,7 +140,7 @@ test('the recorded answer is read when the caller passes none (the desktop upgra
   assert.equal(elevated(calls).length, 0);
 });
 
-test('with a token: one prompt migrates the LaunchAgent to a LaunchDaemon', () => {
+test('with a token: one prompt migrates the LaunchAgent to a LaunchDaemon', { skip: NO_SH }, () => {
   const { o, calls } = mac({ token: true, steps: INSTALLED });
   mkdirSync(dirname(plistPath(o.homeDir)), { recursive: true });
   writeFileSync(plistPath(o.homeDir), '<plist>agent</plist>');
@@ -256,7 +259,7 @@ test('a LaunchDaemon definition round-trips through read and restore, launcher i
   assert.equal(elevated(removal.calls).length, 1);
 });
 
-test('the elevated script stops at a failed write and never runs a later step', () => {
+test('the elevated script stops at a failed write and never runs a later step', { skip: NO_SH }, () => {
   const script = renderMacElevatedScript([
     { label: 'write', command: 'exit 3', stopOnFailure: true },
     { label: 'bootstrap', command: 'echo should-not-run' },

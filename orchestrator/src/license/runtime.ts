@@ -27,7 +27,7 @@ const copy = (state: LicenseState): LicenseState => ({
  */
 export function unverifiedGrant(state: LicenseState, underTest: boolean = underTestRunner()): boolean {
   if (underTest) return false;
-  if (state.status !== 'valid' || state.planId === 'free') return false;
+  if (state.status !== 'valid') return false;
   return !isVerifiedLicense(state);
 }
 
@@ -43,9 +43,11 @@ export function setLicenseState(state: LicenseState, nowMs: number = Date.now())
   }
   revision++;
   initialized = true;
-  if (state.status !== 'valid' || state.planId === 'free') state = unlicensed(state.planId === 'free' && state.status === 'valid' ? 'missing' : state.reason);
   if (state.status === 'valid') state = { ...state, localFree: false };
-  else forgetVerifiedLicenses();
+  else {
+    state = unlicensed(state.reason);
+    forgetVerifiedLicenses();
+  }
   raw = copy(state);
   current = copy(applyBuildPolicy(raw, { nowMs }));
 }

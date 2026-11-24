@@ -68,7 +68,7 @@ async function call(
 test('me before setup reports needsSetup, health stays public, stats stay 401', async () => {
   const me = await call('GET', '/api/auth/me');
   assert.equal(me.status, 200);
-  assert.deepEqual(me.json, { user: null, needsSetup: true, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null });
+  assert.deepEqual(me.json, { user: null, needsSetup: true, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null, emailUnverified: false });
 
   const health = await fetch(`${base}/api/health`);
   assert.equal(health.status, 200);
@@ -83,7 +83,7 @@ test('setup with a short password is refused while the table is still empty', as
   });
   assert.equal(short.status, 400);
   const me = await call('GET', '/api/auth/me');
-  assert.deepEqual(me.json, { user: null, needsSetup: true, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null });
+  assert.deepEqual(me.json, { user: null, needsSetup: true, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null, emailUnverified: false });
 });
 
 test('setup creates the first superadmin, sets an httpOnly cookie, and refuses a second time', async () => {
@@ -137,7 +137,7 @@ test('login / logout round-trip, wrong password is 401', async () => {
   const out = await call('POST', '/api/auth/logout', { cookie });
   assert.equal(out.status, 200);
   const after = await call('GET', '/api/auth/me', { cookie });
-  assert.deepEqual(after.json, { user: null, needsSetup: false, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null });
+  assert.deepEqual(after.json, { user: null, needsSetup: false, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null, emailUnverified: false });
 });
 
 test('a password hashed with the old scrypt cost signs in and is rehashed', async () => {
@@ -251,7 +251,7 @@ test('loopback after setup: anonymous 401s, TIMON_API_TOKEN Bearer still works, 
 
     const me = await fetch(`${url}/api/auth/me`);
     assert.equal(me.status, 200);
-    assert.deepEqual(await me.json(), { user: null, needsSetup: false, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null });
+    assert.deepEqual(await me.json(), { user: null, needsSetup: false, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null, emailUnverified: false });
 
     // CLI / operator still send this header (`TIMON_API_TOKEN` = daemon-token).
     const agent = await fetch(`${url}/api/stats`, {

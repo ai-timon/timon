@@ -1,5 +1,5 @@
 // Sandboxed preloads must be CommonJS and expose capabilities, never raw IPC.
-const { contextBridge, ipcRenderer } = require('electron') as typeof import('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron') as typeof import('electron');
 
 contextBridge.exposeInMainWorld('timonDesktop', {
   selectDirectory: (defaultPath?: string): Promise<string | null> => ipcRenderer.invoke('timon:select-directory', defaultPath),
@@ -60,6 +60,27 @@ contextBridge.exposeInMainWorld('timonDesktop', {
   // paints the next window or page of that machine with it before it loads.
   windowScheme: (request: { scheme: 'light' | 'dark'; machineId?: string }): Promise<{ recorded: boolean }> =>
     ipcRenderer.invoke('timon:window-scheme', request),
+  // The Dock icon (macOS): `get` resolves to null where there is no Dock; a page of another machine is refused.
+  dockIcon: {
+    get: (): Promise<{ icon: string } | null> => ipcRenderer.invoke('timon:dock-icon-get'),
+    set: (icon: string): Promise<{ icon: string }> => ipcRenderer.invoke('timon:dock-icon-set', { icon }),
+  },
+  // The interface size of this screen, every window alike: a factor, snapped by the shell to one of `steps`.
+  // `current`: the factor this page is laid out at now, read from Blink without a round trip.
+  zoom: {
+    current: (): number => webFrame.getZoomFactor(),
+    get: (): Promise<{ factor: number; steps: number[] }> => ipcRenderer.invoke('timon:ui-zoom-get'),
+    set: (factor: number): Promise<{ factor: number }> => ipcRenderer.invoke('timon:ui-zoom-set', { factor }),
+    step: (direction: 'in' | 'out' | 'reset'): Promise<{ factor: number }> => ipcRenderer.invoke('timon:ui-zoom-step', { direction }),
+    onChange: (listener: (factor: number) => void): (() => void) => {
+      const forward = (_event: unknown, payload: unknown): void => {
+        const factor = (payload as { factor?: unknown } | null)?.factor;
+        if (typeof factor === 'number' && Number.isFinite(factor)) listener(factor);
+      };
+      ipcRenderer.on('timon:ui-zoom-changed', forward);
+      return () => { ipcRenderer.removeListener('timon:ui-zoom-changed', forward); };
+    },
+  },
   // One more window on this window's machine, at a route of this interface (V5): a path, never a URL.
   openWindow: (request: { route: string; machineId?: string }): Promise<{ opened: boolean }> => ipcRenderer.invoke('timon:open-window', request),
   browser: {

@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "Nova janela",
+      "view": "Visualizar",
+      "zoomReset": "Tamanho real",
+      "zoomIn": "Ampliar",
+      "zoomOut": "Reduzir",
       "open": "Abrir {appName}",
       "daemon": "Daemon: {state, select, running {em execução} other {inacessível}} ({origin})",
       "quit": "Sair"
@@ -102,8 +106,8 @@
       "stopFailedDetail": "O Timon continua aberto e o serviço continua em execução.",
       "startFailed": "O serviço em segundo plano está parado e não pôde ser iniciado novamente.",
       "startFailedDetail": "Você o parou com “Sair e parar o serviço em segundo plano”. Abra o Timon novamente e autorize o aviso, ou execute timon service start. Seus dados em {home} estão intactos.",
-      "handoverKept": "O serviço em segundo plano do Timon não respondeu.",
-      "handoverKeptDetail": "A configuração continua com o Timon em execução nesta janela. Saia e abra o Timon novamente quando a configuração terminar: ele tentará o serviço de novo. Seus dados permanecem em {home}.",
+      "handoverKept": "O serviço em segundo plano do Timon está demorando para iniciar.",
+      "handoverKeptDetail": "A configuração continua com o Timon em execução nesta janela. O Timon passa o controle ao serviço sozinho assim que ele estiver pronto, ou na próxima abertura: você não precisa fazer nada. Seus dados permanecem em {home}.",
       "refused": "O Windows não inicia o serviço em segundo plano do Timon para esta conta.",
       "refusedDetail": "A tarefa agendada TimonOrchestrator está registrada, mas o Windows nunca a executou. Isso acontece com contas de trabalho ou escola em um PC ingressado no Microsoft Entra ID. O Timon executa o daemon integrado: ele inicia com o aplicativo e para quando você o fecha ou encerra a sessão. Para remover a tarefa não utilizada: timon service uninstall (o Windows pede permissão).",
       "repair": "O serviço em segundo plano do Timon não está mais instalado.",

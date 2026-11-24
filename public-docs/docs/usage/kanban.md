@@ -301,7 +301,11 @@ chains landed (for example 1/7). A blocked sibling task keeps the idea open; a
 
 The stages are described step by step in [How Timon works](how-timon-works.md#the-kanban-pipeline).
 
+A project can also land its jobs through a pull request instead of a local merge: see [Land a job through a pull request](pull-requests.md).
+
 Git coding tasks use dedicated worktrees. This isolates tracked files, not an external database or a running service. A completed code task can still require downstream integration in a full pipeline.
+
+A `code` or `merge` task of a Git project never runs in the project's own folder, the checkout you and every agent share. When its base branch does not exist, or its worktree cannot be created, the task is blocked with the reason: create the branch or change the task's base, then move the task back to Pending. When a task is merged, its base branch moves by reference only: your checkout, its files and its current position stay as they are, unless you stand on that base branch yourself.
 
 A worktree starts with the tracked files only. Timon links the installed `node_modules` of the main checkout into it, and you can ask for more: list folders in a `.worktreelinks` file at the root of the repository, one path per line (`#` starts a comment), and every task worktree links them from the main checkout. Use it for a folder git ignores and the agents need, such as a notes repository cloned inside your project:
 
@@ -310,7 +314,7 @@ A worktree starts with the tracked files only. Timon links the installed `node_m
 docs
 ```
 
-Timon links a listed folder only when it exists in the main checkout, when the worktree has nothing at that path, and when git ignores it **as a file**: a link is a file to git, so write `/docs` in `.gitignore`, not `/docs/`, or the link would show as a new file and could be committed. A folder that does not pass is skipped, with a warning in the daemon log. Removing the worktree removes the link, never the folder it points to. What an agent writes there lands in the main checkout at once, so two tasks writing the same file at the same time can overwrite each other: keep such writes short, and commit them right away.
+Timon links a listed folder only when it exists in the main checkout, when the worktree has nothing at that path, and when git ignores it **as a file**: a link is a file to git, so write `/docs` in `.gitignore`, not `/docs/`, or the link would show as a new file and could be committed. A path can sit inside an untracked folder, such as `.claude/skills` for an agent's project skills: Timon creates the missing parent folders when git ignores them and they stay inside the worktree. A folder that does not pass is skipped, with a warning in the daemon log. Removing the worktree removes these links first, the `node_modules` ones included, never the folders they point to. When a link cannot be removed (on Windows, an antivirus or a process still exiting can hold it for a moment), the worktree is kept as it is and the removal fails with the link's path; the automatic cleanup tries again on its next pass. What an agent writes there lands in the main checkout at once, so two tasks writing the same file at the same time can overwrite each other: keep such writes short, and commit them right away.
 
 The board works without Git installed, but the `code`, `review` and `merge` tasks of a project that is a Git repository need it: on a machine without Git they are refused when created, and an existing one is blocked with the reason "git not found on this host". A project folder that is not a Git repository keeps its code and review tasks. Install Git, then restart Timon. `timon doctor` lists what the missing Git switches off or reduces.
 
@@ -347,6 +351,8 @@ Returns go to the orchestrator of the task's series. A task an orchestrator crea
 ## When a task keeps failing
 
 A task whose mission stops before the agent closed it (crash, timeout, process killed) is retried on its own up to three times, a few minutes apart. After that it stays **Blocked**, and its reason shows the last error the CLI reported, for example a missing sign-in or a CLI that cannot be found, and ends by saying that automatic retries are over and how to restart the task. A restart of Timon within a day of the block retries the task once more, since a restart often removes the cause; this stops after six failures in all.
+
+An agent that ends its turn with its task still open is asked twice whether it is finished. If it still leaves the task open and then stays idle until Timon stops it, the task is not retried: it is closed as **Done** with a comment saying the agent reported nothing, and a review closed that way has no verdict, so it is blocked for you or the orchestrator to decide. This close does not count as a failure. Only Timon's own stop of an idle agent counts: if you stop the mission yourself, stop its agent or project, or reload the agent's configuration, the task follows the usual path.
 
 An agent can no longer restart such a task as it is: it has to change its agent, backend or model in the same update (clearing a backend or model the task was pinned to counts, the project's default then applies), and its restart waits a few minutes. After six failures, only you can restart it, by setting it back to Pending from the Kanban or with `timon task update <id> --status PENDING` in a terminal. Your restart starts at once and gives the task a fresh set of retries. Fix the cause shown in the reason first: restarting a task without changing anything gives the same failure.
 

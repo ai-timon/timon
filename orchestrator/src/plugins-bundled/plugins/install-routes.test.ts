@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { generateKeyPairSync, randomUUID, sign as signCrypto } from 'node:crypto';
 import {
-  chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync,
+  chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -540,7 +540,8 @@ test('the perimeter holds when the Timon home is reached through a link (macOS /
 
 // ── A provider: the superadmin accepts the RESOLVED binary at install ─────
 const posix = process.platform !== 'win32';
-const BIN_DIR = mkdtempSync(join(tmpdir(), 'timon-provider-bin-'));
+// Canonical: the host resolves a program to its real path (`/private/var/...` on macOS).
+const BIN_DIR = realpathSync.native(mkdtempSync(join(tmpdir(), 'timon-provider-bin-')));
 const AGENT = join(BIN_DIR, 'acme-prov-agent');
 if (posix) {
   writeFileSync(AGENT, '#!/bin/sh\nexit 0\n');

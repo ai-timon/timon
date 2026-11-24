@@ -1,3 +1,4 @@
+// french-ok-file: French dictation samples, accented text the engine passes through
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 

@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { getHost } from './host/index.js';
 import { loadConfig } from './agent-config.js';
+import { integrationOfTask } from './chain-landing.js';
+import { localTargetOf } from './git-integration.js';
 import { db, dbApi, isCodeOnlyPipeline, type TaskRow } from './db.js';
 
 /** Null distinguishes an unavailable inspection from an empty branch. */
@@ -370,9 +372,14 @@ export function effectiveMergeSha(task: TaskRow, sha: string | null | undefined,
  * show, and no single branch head contains the others. Once git proves every
  * branch in the base and inside the sha, a sha another task carries (the
  * base's head, typically) is accepted: the proof is the ancestry, not the sha.
+ *
+ * The task that opens a job's pull request (`landing = 'pr'`) merges nothing of
+ * its own: it closes with the tip of the integration branch it published, the
+ * very sha the job's last merge may carry. Ancestry is checked all the same.
  */
 export function mergeCloseRefusal(task: TaskRow, sha: string | null): string | null {
   if (task.type !== 'merge') return null;
+  if (task.landing === 'local') return localLandingCloseRefusal(task, sha);
   const sources = mergeSourceBranches(task);
   const verdict = evaluateMergeClose({
     repoPath: taskRepo(task),
@@ -383,7 +390,7 @@ export function mergeCloseRefusal(task: TaskRow, sha: string | null): string | n
   if (sources.length === 0) verdict.undecided.push('no source branch found in its dependencies');
   const owner = sha ? mergedShaOwner(task, sha) : null;
   const allSourcesProven = sources.length > 1 && verdict.refusal === null && verdict.undecided.length === 0;
-  if (sha && owner && !allSourcesProven) {
+  if (sha && owner && !allSourcesProven && task.landing !== 'pr') {
     // Another user's task is not named: its id and title are theirs.
     const which = owner.sameOwner ? `task ${owner.id} ("${owner.title}")` : 'another task';
     return `Merge guard: commit ${sha} is already the merge of ${which}, ` +
@@ -398,6 +405,64 @@ export function mergeCloseRefusal(task: TaskRow, sha: string | null): string | n
     console.warn(`[merge-guard] task ${task.id}: merge not fully verified (${verdict.undecided.join('; ')})`);
   }
   return verdict.refusal;
+}
+
+/**
+ * Whether the task that merges a job's branch into its local target
+ * (`landing = 'local'`, `local-landing.ts`) may go DONE with `sha`. Its DONE
+ * lands the whole job (ideas closed, doc task created), so git must prove it,
+ * and nothing undecided passes: `sha` is in the target, and carries the
+ * branch's tip. The target is the chain's (`refs/heads/<target>`), else the
+ * integration row's.
+ */
+export function localLandingCloseRefusal(task: TaskRow, sha: string | null): string | null {
+  const branch = task.base_branch;
+  const target = localTargetOf(task.base_ref) ?? integrationOfTask(task)?.target ?? null;
+  const guard = 'Landing guard: this task merges the job\'s branch into its target, and its close lands the whole job';
+  if (!branch || !target) return `${guard}, but the job has no branch or no target to check. Mark the task failed with the reason.`;
+  const repo = taskRepo(task);
+  const how = `Merge ${branch} into ${target} as your brief says, then close with the full sha of \`git rev-parse ${target}\`.`;
+  if (!sha) return `${guard}: close it with the sha of the merge (\`--merged-sha\`). ${how}`;
+  if (!repo || !existsSync(repo)) return `${guard}, and the repository cannot be read to check it. Retry once it is back.`;
+  try {
+    const git = gitIn(repo);
+    const commit = resolveCommit(git, sha);
+    const tip = resolveCommit(git, `refs/heads/${target}`);
+    const head = resolveCommit(git, `refs/heads/${branch}`);
+    if (!commit) return `${guard}: commit ${sha} does not exist in this repository. ${how}`;
+    if (!tip || !head) return `${guard}: ${tip ? branch : target} is not a branch of this repository. Mark the task failed with the reason.`;
+    const inTarget = isAncestor(git, commit, tip);
+    if (inTarget !== true) {
+      return `${guard}: commit ${sha} is ${inTarget === false ? 'not' : 'not provably'} in ${target}. ${how}`;
+    }
+    const carries = isAncestor(git, head, commit);
+    if (carries !== true) {
+      return `${guard}: commit ${sha} does not ${carries === false ? '' : 'provably '}contain ${branch} (head ${head.slice(0, 12)}): ` +
+        `it is not the merge of the job's branch. ${how}`;
+    }
+    return null;
+  } catch {
+    return `${guard}, and git could not check it. Retry the close.`;
+  }
+}
+
+/**
+ * Whether the task that opens a job's pull request (`landing = 'pr'`) may go
+ * DONE (`docs/KANBAN-PR-PIPELINE.md` §2.4). Closing it without `timon pr open`
+ * left the integration row at 'branch': the poller only reads open pull
+ * requests, so the job never landed, its ideas stayed partial and nobody was
+ * told. DONE waits for the row to be open, merged or closed; a failed close
+ * stays possible. Fail-closed: a row that cannot be found has no pull request.
+ */
+export function pullRequestCloseRefusal(task: TaskRow): string | null {
+  if (task.type !== 'merge' || task.landing !== 'pr') return null;
+  const row = integrationOfTask(task);
+  if (row && row.state !== 'branch') return null;
+  const branch = task.base_branch ?? 'the integration branch';
+  const why = row ? `${branch} has no pull request yet` : `no integration branch of this job was found`;
+  return `Pull request guard: this task opens the job's pull request, and ${why}. ` +
+    `Open it first with \`timon pr open ${task.id} --title "<title>" --body-file <file>\` ` +
+    `(MCP tool \`pr_open\`), then close the task. If it cannot be opened, mark the task failed with the reason.`;
 }
 
 /**

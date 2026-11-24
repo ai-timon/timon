@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "新建窗口",
+      "view": "显示",
+      "zoomReset": "实际大小",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
       "open": "打开 {appName}",
       "daemon": "守护进程：{state, select, running {运行中} other {无法连接}}（{origin}）",
       "quit": "退出"
@@ -94,8 +98,8 @@
       "stopFailedDetail": "Timon 将保持打开，服务也会继续运行。",
       "startFailed": "后台服务已停止，且无法重新启动。",
       "startFailedDetail": "你通过“退出并停止后台服务”停止了服务。请重新打开 Timon 并在弹窗中授权，或运行 timon service start。你在 {home} 中的数据完好无损。",
-      "handoverKept": "Timon 后台服务未响应。",
-      "handoverKeptDetail": "设置将在此窗口中继续。设置完成后，请退出并重新打开 Timon，应用会再次尝试连接服务。你的数据仍保存在 {home}。",
+      "handoverKept": "Timon 后台服务启动较慢。",
+      "handoverKeptDetail": "设置将在此窗口中继续。服务就绪后，或在下次启动时，Timon 会自动切换到服务，你无需任何操作。你的数据仍保存在 {home}。",
       "refused": "Windows 未为此账户启动 Timon 后台服务。",
       "refusedDetail": "TimonOrchestrator 计划任务已注册，但 Windows 从未运行过它。使用工作或学校账户登录已加入 Microsoft Entra ID 的电脑时，可能出现此情况。Timon 将改用内置守护进程：它会随应用启动，在关闭应用或注销时停止。要移除未使用的任务，请运行 timon service uninstall（Windows 会请求授权）。",
       "repair": "Timon 后台服务已不再安装。",

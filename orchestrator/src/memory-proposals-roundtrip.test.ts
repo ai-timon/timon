@@ -23,7 +23,7 @@ test('a block written before #628, with the French label, keeps its target', () 
   const legacy =
     '<!-- proposal hash:def456 kind:decision count:3 agent:timon.coder ts:2026-09-01T00:00:00.000Z -->\n' +
     '- [decision ×3] Use node:path everywhere\n' +
-    '  → cible suggérée : `decisions.md`\n' +
+    '  → cible suggérée : `decisions.md`\n' + // french-ok: the French line of the legacy proposal format
     '<!-- /proposal hash:def456 -->';
   const [p] = parseProposals(legacy);
   assert.equal(p?.target, 'decisions.md');

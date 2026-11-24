@@ -10,6 +10,8 @@ Once your pro licence is active and Multi-user is installed and on, its **Team**
 
 Each person keeps their own missions, projects and settings; what they may see beyond their own work is what their groups allow.
 
+The address of an account invited or created from the Team page is not confirmed: nobody proved they read it. Its owner confirms it from **Profile**, under **Sign-in email**, with **Confirm your address** › **Send the code** (it needs an internet connection; a card at the bottom left of the app reminds them); until then, **Forgot password** cannot send them a code, and an administrator resets their password from the Team page. The same applies after anyone changes their sign-in email.
+
 ### What permissions do not cover
 
 Every mission runs under the same operating-system account as Timon itself, whoever started it. Permissions decide what a person may do through Timon's screens, commands and tools; against the files of the machine, what protects Timon is the [mission isolation](mission-isolation.md), and it depends on the system:

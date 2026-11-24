@@ -43,7 +43,7 @@
  * Choose the cadence with care — see `ReconcileCadence`.
  */
 import { reconcileOrphanedTasks, auditMergedTasksWithoutSha } from './dispatcher.js';
-import { reconcileUnchainedTasks } from './task-chain.js';
+import { reconcileLandedIntegrations, reconcileUnchainedTasks } from './task-chain.js';
 import { reconcileStaleWorktrees } from './worktree-gc.js';
 
 /**
@@ -99,6 +99,15 @@ const RULES: ReconcileRule[] = [
     // periodically we also catch up a chain that failed along the way.
     cadence: 'both',
     run: reconcileUnchainedTasks,
+  },
+  {
+    name: 'landed-integrations',
+    invariant: 'Every merged integration branch has had its landing replayed on its chains (TO DO, doc).',
+    // `both`: the poller marks a branch merged then replays its landing; a stop
+    // between the two writes is caught up at boot, a failed replay later on.
+    // Idempotent and silent when every merged branch has landed.
+    cadence: 'both',
+    run: reconcileLandedIntegrations,
   },
   {
     name: 'stale-worktrees',

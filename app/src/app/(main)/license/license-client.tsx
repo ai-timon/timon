@@ -41,7 +41,6 @@ function CurrentLicense({ license }: { license: PublicLicense }): ReactElement {
   return (
     <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="m-0 text-sm font-semibold">{t('licensePage.currentTitle')}</h2>
-      {license.capabilities?.plugins === 'fixed' && <p className="mt-3 text-sm">{t('freeLicense.summary')}</p>}
       <div className="mt-3">
         <Row label={t('licensePage.plan')} value={license.plan ?? t('licensePage.planUnnamed')} />
         <Row label={t('licensePage.edition')} value={license.edition} />
@@ -123,7 +122,6 @@ function NoLicense({ license }: { license: PublicLicense }): ReactElement {
     <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
       <h2 className="m-0 text-sm font-semibold">{t('licensePage.noneTitle')}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{t('licensePage.noneDescription')}</p>
-      <p className="mt-3 text-sm">{t('freeLicense.retainedData')}</p>
       {(license.restrictedAccounts ?? 0) > 0 && <p className="mt-3 text-sm" role="status">{t('freeLicense.restrictedAccounts', { count: license.restrictedAccounts! })}</p>}
       <a
         href={PURCHASE_URL}

@@ -5,7 +5,9 @@ import { createProviderContext, dialectConformance, defineConformanceTests } fro
 import { createClaudeProvider } from '../../official-providers/provider-claude/lib/claude.js';
 import { createClaudeToken } from '../../official-providers/provider-claude/lib/token.js';
 import { createClaudeUsage } from '../../official-providers/provider-claude/lib/usage.js';
-const ctx = createProviderContext();
+// The contract the plugin's manifest declares, which `scratch.profile` needs.
+const { timon: { apiVersion } } = JSON.parse((await import('node:fs')).readFileSync(new URL('../../official-providers/provider-claude/package.json', import.meta.url), 'utf8')) as { timon: { apiVersion: number } };
+const ctx = createProviderContext({ apiVersion });
 const token = createClaudeToken(ctx.provider);
 const usage = createClaudeUsage(ctx.provider, token);
 const definition = createClaudeProvider(ctx.provider, token, usage);
@@ -75,4 +77,12 @@ test('a claude api_retry is a provider retry with its attempt, ceiling, delay an
     type: 'system', subtype: 'api_retry', attempt: 1, max_retries: 10, retry_delay_ms: 500, error_status: null, error: 'unknown',
   }));
   assert.equal((network!.payload as { kind: string }).kind, 'transport');
+});
+
+test('#1104: the `claude` subscription profile keeps the CLI\'s own config folder', async () => {
+  const spec = await dialect.buildSpawn({
+    agentName: 'claude.contract', systemPrompt: 'contract', message: 'ping', resumeSession: null, missionId: 'mission-claude-config-1',
+    cfg: { cwd: scratch.path, permission_mode: 'auto', mcp_servers: [] },
+  } as never, { id: 'claude', cmd: 'claude', env: { ANTHROPIC_BASE_URL: 'https://example.invalid' } } as never);
+  assert.equal(spec.env?.CLAUDE_CONFIG_DIR, undefined);
 });

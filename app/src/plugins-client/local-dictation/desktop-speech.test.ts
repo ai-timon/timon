@@ -113,7 +113,7 @@ test('a tier this build does not know, or a peak below the steady memory, reads 
   const listing = { id: 'cohere', model, origin: { kind: 'builtin' }, state };
   const read = (patch: Record<string, unknown>) => readModelListings([{ ...listing, model: { ...model, ...patch } }])?.[0];
   assert.equal(read({ tier: 'fastest' })?.tier, null);
-  assert.equal(read({ tier: 'Précis, 2,9 Go' })?.tier, null);
+  assert.equal(read({ tier: 'Précis, 2,9 Go' })?.tier, null); // french-ok: a French tier label, the shape under test
   assert.equal(read({ tier: ['precise'] })?.tier, null);
   assert.equal(read({ memory: { ramBytes: 2_060_000_000, peakRamBytes: 1 } })?.peakRamBytes, null);
   assert.equal(read({ memory: { ramBytes: 2_060_000_000, peakRamBytes: -5 } })?.peakRamBytes, null);

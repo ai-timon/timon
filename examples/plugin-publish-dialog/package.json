@@ -1,0 +1,24 @@
+{
+  "name": "@timon-ai/plugin-publish-dialog",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": { "./client": "./lib/client.js" },
+  "files": ["lib", "README.md", "SIGNATURE"],
+  "timon": {
+    "id": "example-publish-dialog",
+    "apiVersion": 19,
+    "kind": "behavior",
+    "label": "Plain Publish on GitHub window",
+    "description": "Replaces the Publish on GitHub window with a plain one: the text to post, editable, where it goes and as which account, then Publish or Do not publish.",
+    "permissions": [],
+    "client": {
+      "slots": ["forge.publish.dialog"],
+      "external": ["react", "@timon/ui"],
+      "mode": "esm"
+    },
+    "settings": [],
+    "license": { "required": false }
+  }
+}

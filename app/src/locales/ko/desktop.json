@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "새 창",
+      "view": "보기",
+      "zoomReset": "실제 크기",
+      "zoomIn": "확대",
+      "zoomOut": "축소",
       "open": "{appName} 열기",
       "daemon": "데몬: {state, select, running {실행 중} other {연결할 수 없음}} ({origin})",
       "quit": "종료"
@@ -102,8 +106,8 @@
       "stopFailedDetail": "Timon은 열린 채로 있고 서비스도 계속 실행됩니다.",
       "startFailed": "백그라운드 서비스가 중지되었으며 다시 시작할 수 없습니다.",
       "startFailedDetail": "“종료하고 백그라운드 서비스 중지”로 중지했습니다. Timon을 다시 열어 확인을 허용하거나 timon service start를 실행하세요. {home}의 데이터는 그대로입니다.",
-      "handoverKept": "Timon 백그라운드 서비스가 응답하지 않았습니다.",
-      "handoverKeptDetail": "설정은 이 창에서 실행 중인 Timon으로 계속됩니다. 설정이 끝나면 Timon을 종료하고 다시 여세요: 서비스를 다시 시도합니다. 데이터는 {home}에 남아 있습니다.",
+      "handoverKept": "Timon 백그라운드 서비스의 시작이 늦어지고 있습니다.",
+      "handoverKeptDetail": "설정은 이 창에서 실행 중인 Timon으로 계속됩니다. 서비스가 준비되면, 또는 다음 실행 시 Timon이 자동으로 서비스에 넘겨줍니다. 따로 할 일은 없습니다. 데이터는 {home}에 남아 있습니다.",
       "refused": "Windows가 이 계정에서 Timon 백그라운드 서비스를 시작하지 않습니다.",
       "refusedDetail": "예약된 작업 TimonOrchestrator가 등록되어 있지만 Windows가 한 번도 실행하지 않았습니다. Microsoft Entra ID에 가입된 PC의 회사 또는 학교 계정에서 이런 일이 생깁니다. Timon은 대신 내장 데몬으로 실행됩니다: 앱과 함께 시작하고 앱을 닫거나 로그아웃하면 멈춥니다. 사용하지 않는 작업을 제거하려면: timon service uninstall (Windows가 권한을 요청함).",
       "repair": "Timon 백그라운드 서비스가 더 이상 설치되어 있지 않습니다.",

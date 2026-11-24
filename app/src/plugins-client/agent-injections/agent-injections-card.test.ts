@@ -1,3 +1,4 @@
+// french-ok-file: the French alternatives the card reads in either locale
 /**
  * The injections card, mounted: the list comes in the daemon's order, an
  * edit goes to the source the block names and the list is read again, and a
@@ -71,7 +72,7 @@ async function mount(opts: { gate?: Promise<void>; first?: unknown; list?: () =>
   const { ChatRailProvider } = await import('@/components/chat/chat-rails');
   const root = createRoot(document.getElementById('root')!);
   await React.act(async () => {
-    const card = React.createElement(AgentInjectionsCard, { poignee: null } as never);
+    const card = React.createElement(AgentInjectionsCard, { handle: null } as never);
     root.render(opts.inChat
       ? React.createElement(ChatRailProvider, { value: { agent: { name: 'timon.coder' } }, info: {} } as never, card)
       : card);

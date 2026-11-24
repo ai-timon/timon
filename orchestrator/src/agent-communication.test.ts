@@ -9,6 +9,7 @@ import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import readline from 'node:readline';
 import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-communication-'));
 await import('../tests/helpers/paid-license.js');
@@ -54,13 +55,20 @@ test.after(() => { server.closeAllConnections(); server.close(); });
 async function post(path: string, body: unknown, bearer = main.bearer) {
   return fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer}` }, body: JSON.stringify(body) });
 }
+/**
+ * A child with an empty PATH. A URL's `pathname` is no file path on Windows
+ * (`/D:/…`), and Windows needs SystemRoot to open a socket.
+ */
+const script = (rel: string): string => fileURLToPath(new URL(rel, import.meta.url));
+const systemRoot = process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {};
 type Reply = { result?: { isError?: boolean; content: Array<{ text: string }> }; error?: { message: string } };
 async function tool(name: string, args: unknown, caller = main): Promise<Reply> {
-  const child = spawn(process.execPath, [new URL('../bin/timon-mcp.mjs', import.meta.url).pathname], {
-    env: { PATH: '', TIMON_HOME: process.env.TIMON_HOME, TIMON_API_TOKEN: caller.bearer, TIMON_ORCH_URL: base, TIMON_MISSION_ID: caller.id, TIMON_AGENT: dbApi.getMission(caller.id)!.agent_name }, stdio: ['pipe', 'pipe', 'pipe'],
+  const child = spawn(process.execPath, [script('../bin/timon-mcp.mjs')], {
+    env: { ...systemRoot, PATH: '', TIMON_HOME: process.env.TIMON_HOME, TIMON_API_TOKEN: caller.bearer, TIMON_ORCH_URL: base, TIMON_MISSION_ID: caller.id, TIMON_AGENT: dbApi.getMission(caller.id)!.agent_name }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { child.kill(); reject(new Error('MCP timeout')); }, 5000);
+    // A cold Node start of the MCP server takes seconds on a loaded Windows machine.
+    const timer = setTimeout(() => { child.kill(); reject(new Error('MCP timeout')); }, 30_000);
     const lines = readline.createInterface({ input: child.stdout });
     lines.on('line', (line) => { clearTimeout(timer); child.kill(); lines.close(); resolve(JSON.parse(line)); });
     child.on('error', (err) => { clearTimeout(timer); reject(err); });
@@ -69,8 +77,8 @@ async function tool(name: string, args: unknown, caller = main): Promise<Reply> 
 }
 /** One `timon spawn` CLI process, in a mission: the CLI's own spawn path (not the MCP). */
 async function cliSpawn(args: string[], caller = main): Promise<{ code: number; out: string }> {
-  const child = spawn(process.execPath, [new URL('../bin/timon', import.meta.url).pathname, 'spawn', ...args], {
-    env: { PATH: '', TIMON_HOME: process.env.TIMON_HOME, TIMON_API: base, TIMON_API_TOKEN: caller.bearer, TIMON_MISSION_ID: caller.id, TIMON_AGENT: dbApi.getMission(caller.id)!.agent_name }, stdio: ['pipe', 'pipe', 'pipe'],
+  const child = spawn(process.execPath, [script('../bin/timon'), 'spawn', ...args], {
+    env: { ...systemRoot, PATH: '', TIMON_HOME: process.env.TIMON_HOME, TIMON_API: base, TIMON_API_TOKEN: caller.bearer, TIMON_MISSION_ID: caller.id, TIMON_AGENT: dbApi.getMission(caller.id)!.agent_name }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   let out = '';
   let err = '';
@@ -123,7 +131,7 @@ test('rejects self-recursion, unknown names and override payloads before launch'
 
 test('TIM-0074: mission_spawn from a mission carries its overrides through delegation, deduplicated per key', async () => {
   const count = launches;
-  const args = { agent_name: 'TIMON.librarian', mission: 'Summarise', model: 'sonnet', backend: 'claude', extra_skills: ['skill-a'], idempotency_key: 'tim-0074', title: 'Résumé du jour' };
+  const args = { agent_name: 'TIMON.librarian', mission: 'Summarise', model: 'sonnet', backend: 'claude', extra_skills: ['skill-a'], idempotency_key: 'tim-0074', title: 'Résumé du jour' }; // french-ok: an accented title the launcher keeps
   const first = await tool('mission_spawn', args);
   assert.notEqual(first.result?.isError, true, first.result?.content[0]?.text);
   const id = JSON.parse(first.result!.content[0]!.text).mission_id;
@@ -132,7 +140,7 @@ test('TIM-0074: mission_spawn from a mission carries its overrides through deleg
   assert.equal(lastLaunch?.backendOverride, 'claude');
   assert.deepEqual(lastLaunch?.extraSkills, ['skill-a']);
   assert.equal(lastLaunch?.ownerUserId, owner.id);
-  assert.equal(lastLaunch?.title, 'Résumé du jour', 'the preset title reaches the launcher (TODO #358)');
+  assert.equal(lastLaunch?.title, 'Résumé du jour', 'the preset title reaches the launcher (TODO #358)'); // french-ok: an accented title the launcher keeps
   assert.equal(dbApi.getMission(id)!.parent_mission_id, main.id);
   const replay = await tool('mission_spawn', args);
   assert.deepEqual(JSON.parse(replay.result!.content[0]!.text), { mission_id: id, idempotent: true });

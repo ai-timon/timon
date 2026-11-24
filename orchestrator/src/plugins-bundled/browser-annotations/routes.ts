@@ -16,7 +16,7 @@ import { getBrowserProfile, resolveBrowserProfile, type BrowserProfile } from '.
 import { resolveBrowserProject } from '../../browser-project.js';
 import { isPersonAuth, requestHasPermission, requireAuth, viewerFromRequest } from '../../users/identity.js';
 import { scopedDb } from '../../users/scoped-db.js';
-import { callNativeBrowser, NativeBrowserError } from '../../native-browser-provider.js';
+import { browserErrorBody, callNativeBrowser, NativeBrowserError } from '../../native-browser-provider.js';
 import { canonicalAgentName, loadConfig } from '../../agent-config.js';
 import { isValidAgentName, normalizeAgentName } from '../../agent-name.js';
 import { BackendExhaustedError, spawnAgent } from '../../agent.js';
@@ -33,6 +33,7 @@ import {
 } from '../../browser-annotations.js';
 import { ANNOTATION_COMMENT_MAX } from '../../browser-annotation-rules.js';
 import { formatBrowserAnnotations, type AgentAnnotationView } from '../../browser-annotation-format.js';
+import { apiError } from '../../api-error.js';
 
 const ProfileParam = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
 const AnnotationParam = z.string().regex(/^ba-[0-9a-f-]{36}$/);
@@ -103,16 +104,16 @@ export function pinsOf(result: unknown, ids: readonly string[]): Array<{ id: str
   return ids.map((id) => ({ id, rect: found.get(id) ?? null }));
 }
 
-const notFound = () => new NativeBrowserError('Browser annotation not found.', 404);
+const notFound = () => new NativeBrowserError(apiError('browser_annotation_not_found', 'Browser annotation not found.'), 404);
 
 /** A refusal that carries a machine-readable code, as the chat's own send answers it. */
 class PostRefusal extends NativeBrowserError {
-  constructor(message: string, status: number, readonly body: Record<string, unknown>) { super(message, status); }
+  constructor(message: string, status: number, readonly answer: Record<string, unknown>) { super(message, status); }
 }
 type TurnOutcome = { status: number; body: Record<string, unknown> };
 
 function personOf(req: Request): string {
-  if (!isPersonAuth(req.auth) || !req.auth.user) throw new NativeBrowserError('This operation requires a signed-in user.', 403);
+  if (!isPersonAuth(req.auth) || !req.auth.user) throw new NativeBrowserError(apiError('browser_sign_in_required', 'This operation requires a signed-in user.'), 403);
   return req.auth.user.id;
 }
 
@@ -126,7 +127,7 @@ function ownedProfile(req: Request): BrowserProfile {
   const userId = personOf(req);
   const id = ProfileParam.safeParse(req.params.profileId);
   const profile = id.success ? getBrowserProfile(id.data, viewerFromRequest(req)) : null;
-  if (!profile || profile.owner_user_id !== userId) throw new NativeBrowserError('Browser profile not found.', 404);
+  if (!profile || profile.owner_user_id !== userId) throw new NativeBrowserError(apiError('browser_profile_not_found', 'Browser profile not found.'), 404);
   return profile;
 }
 
@@ -210,9 +211,9 @@ export function registerBrowserAnnotationRoutes(app: Router, deps: BrowserAnnota
     res.setHeader('Cache-Control', 'no-store');
     try { res.json(await operation(req)); }
     catch (error) {
-      if (error instanceof z.ZodError) { res.status(400).json({ error: error.issues[0]?.message ?? 'Invalid request.' }); return; }
-      if (error instanceof PostRefusal) { res.status(error.status).json(error.body); return; }
-      res.status(error instanceof NativeBrowserError ? error.status : 400).json({ error: (error as Error).message });
+      if (error instanceof z.ZodError) { const detail = error.issues[0]?.message ?? 'Invalid request.'; res.status(400).json(apiError('invalid_detail', detail, { detail })); return; }
+      if (error instanceof PostRefusal) { res.status(error.status).json(error.answer); return; }
+      res.status(error instanceof NativeBrowserError ? error.status : 400).json(browserErrorBody(error));
     }
   };
   /** What the desktop handed back goes to the sealed store; the answer holds metadata only. */
@@ -298,7 +299,7 @@ export function registerBrowserAnnotationRoutes(app: Router, deps: BrowserAnnota
   // The owner's only: a mission sees the thumbnail when the composer hands it over with the turn.
   app.get('/api/native-browser/annotations/:id/thumbnail', handle((req) => {
     const thumbnail = readBrowserAnnotationThumbnail(ownedAnnotation(req));
-    if (!thumbnail) throw new NativeBrowserError('This annotation has no thumbnail.', 404);
+    if (!thumbnail) throw new NativeBrowserError(apiError('browser_annotation_no_thumbnail', 'This annotation has no thumbnail.'), 404);
     return { thumbnail };
   }));
 
@@ -317,19 +318,19 @@ export function registerBrowserAnnotationRoutes(app: Router, deps: BrowserAnnota
     const userId = personOf(req);
     const body = SendBody.parse(req.body ?? {});
     const metas = [...new Set(body.ids)].map((id) => ownedAnnotation(req, id));
-    if (new Set(metas.map((meta) => meta.profileId)).size !== 1) throw new NativeBrowserError('A batch holds the annotations of one browser.', 400);
+    if (new Set(metas.map((meta) => meta.profileId)).size !== 1) throw new NativeBrowserError(apiError('browser_annotation_batch_mixed', 'A batch holds the annotations of one browser.'), 400);
     if (body.missionId) {
       const mission = scopedDb(viewerFromRequest(req)).getMission(body.missionId);
       // A mission of someone else, even visible to a superadmin, never receives this person's page.
-      if (!mission || mission.owner_user_id !== userId) throw new NativeBrowserError('Mission not found.', 404);
+      if (!mission || mission.owner_user_id !== userId) throw new NativeBrowserError(apiError('mission_not_found', 'Mission not found.'), 404);
       if (missionAnnotationProfile(mission)?.id !== metas[0]!.profileId) {
-        throw new NativeBrowserError('This mission does not use the annotated browser profile.', 409);
+        throw new NativeBrowserError(apiError('browser_annotation_mission_profile', 'This mission does not use the annotated browser profile.'), 409);
       }
       const cwd = missionCwd(mission);
       return handoff(sendBrowserAnnotations(metas, { missionId: mission.id, agentName: mission.agent_name, cwd }, userOrigin(userId)), cwd, body.withImages === true);
     }
     const agent = canonicalAgentName(body.agent!);
-    if (!existsSync(agentDir(agent))) throw new NativeBrowserError('Agent not found.', 404);
+    if (!existsSync(agentDir(agent))) throw new NativeBrowserError(apiError('agent_not_found', 'Agent not found.'), 404);
     let cwd: string | null = null;
     try { cwd = loadConfig(agent).cwd ?? null; } catch { cwd = null; }
     return handoff(sendBrowserAnnotations(metas, { missionId: null, agentName: agent, cwd }, userOrigin(userId)), cwd, body.withImages === true);
@@ -349,21 +350,21 @@ export function registerBrowserAnnotationRoutes(app: Router, deps: BrowserAnnota
       // Oldest first: the order the user pointed them in.
       ? listBrowserAnnotations({ ownerUserId: userId, profileId: profile.id, status: 'draft' }).reverse().slice(0, MAX_ANNOTATIONS_PER_BATCH)
       : [...new Set(body.ids)].map((id) => ownedAnnotation(req, id));
-    if (!metas.length) throw new NativeBrowserError('No annotation is waiting to be sent.', 400);
-    if (metas.some((meta) => meta.profileId !== profile.id)) throw new NativeBrowserError('A batch holds the annotations of one browser.', 400);
+    if (!metas.length) throw new NativeBrowserError(apiError('browser_annotation_none_waiting', 'No annotation is waiting to be sent.'), 400);
+    if (metas.some((meta) => meta.profileId !== profile.id)) throw new NativeBrowserError(apiError('browser_annotation_batch_mixed', 'A batch holds the annotations of one browser.'), 400);
     const agent = canonicalAgentName(body.agent);
-    if (!existsSync(agentDir(agent))) throw new NativeBrowserError('Agent not found.', 404);
+    if (!existsSync(agentDir(agent))) throw new NativeBrowserError(apiError('agent_not_found', 'Agent not found.'), 404);
     const message = body.message ?? '';
     const origin = userOrigin(userId);
     const noConversation = () => new PostRefusal('This browser is not the one of that conversation.', 409,
-      { error: 'This browser is not the one of that conversation.', code: 'no_linked_conversation' });
+      { ...apiError('no_linked_conversation', 'This browser is not the one of that conversation.') });
 
     let mission: MissionRow | null = null;
     if (body.missionId) {
       mission = scopedDb(viewerFromRequest(req)).getMission(body.missionId) ?? null;
       // Someone else's mission, even visible to a superadmin, never receives this person's page.
-      if (!mission || mission.owner_user_id !== userId) throw new NativeBrowserError('Mission not found.', 404);
-      if (mission.agent_name !== agent) throw new NativeBrowserError('This mission belongs to another agent.', 400);
+      if (!mission || mission.owner_user_id !== userId) throw new NativeBrowserError(apiError('mission_not_found', 'Mission not found.'), 404);
+      if (mission.agent_name !== agent) throw new NativeBrowserError(apiError('browser_annotation_mission_agent', 'This mission belongs to another agent.'), 400);
       if (missionAnnotationProfile(mission)?.id !== profile.id) throw noConversation();
     } else if (agentAnnotationProfile(agent, userId)?.id !== profile.id) {
       throw noConversation();
@@ -402,7 +403,7 @@ export function registerBrowserAnnotationRoutes(app: Router, deps: BrowserAnnota
       resume = target.session_id ?? null;
       pinProfile = true;
     }
-    if (!requestHasPermission(req, 'missions:spawn')) throw new NativeBrowserError('Starting a conversation is not allowed for this account.', 403);
+    if (!requestHasPermission(req, 'missions:spawn')) throw new NativeBrowserError(apiError('browser_spawn_not_allowed', 'Starting a conversation is not allowed for this account.'), 403);
     const missionId = randomUUID();
     const delivered = await deliver(missionId, agentCwd(agent), async (turn) => {
       try {
@@ -417,7 +418,7 @@ export function registerBrowserAnnotationRoutes(app: Router, deps: BrowserAnnota
         if (error instanceof BackendExhaustedError) {
           return { status: 429, body: { error: (error as Error).message, code: 'backend_exhausted', backend: error.backend } };
         }
-        return { status: 500, body: { error: (error as Error).message } };
+        return { status: 500, body: { ...apiError('conversation_start_failed', (error as Error).message, { detail: (error as Error).message }) } };
       }
     });
     return answer(missionId, delivered, true);

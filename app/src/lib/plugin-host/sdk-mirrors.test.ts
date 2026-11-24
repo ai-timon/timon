@@ -218,7 +218,7 @@ for (const mutation of MUTATIONS) {
 }
 
 test('inventory bites: a new copy of an SDK type with no guard', () => {
-  const overrides = withEdit(SLOTS, 'export type SlotKind =', 'export type WidgetChromeProps = { poignee: unknown };\nexport type SlotKind =');
+  const overrides = withEdit(SLOTS, 'export type SlotKind =', 'export type WidgetChromeProps = { handle: unknown };\nexport type SlotKind =');
   assert.deepEqual(unguardedTwins(compile(overrides), overrides), ['src/lib/plugin-host/slots.ts WidgetChromeProps']);
 });
 

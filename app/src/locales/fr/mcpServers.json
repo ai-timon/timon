@@ -20,6 +20,10 @@
       "pending": "en attente",
       "unknown": "inconnu"
     },
+    "heldBack": {
+      "vaultOff": "Coffre à secrets requis",
+      "vaultOffHint": "Ce serveur porte une clé ou une connexion OAuth : les agents ne le reçoivent que si le coffre à secrets est activé."
+    },
     "oauth": {
       "title": "OAuth",
       "pending": "OAuth : en attente",
@@ -57,7 +61,7 @@
       "url": "URL",
       "saveBeforeOAuth": "Enregistrez d'abord le serveur, puis revenez ici l'autoriser via OAuth si l'adresse l'exige.",
       "headers": "En-têtes",
-      "headersHint": "(Clé: valeur par ligne, '=' fonctionne aussi)",
+      "headersHint": "(Clé: valeur par ligne, '=' fonctionne aussi. Une valeur enregistrée s'affiche ***, laissez-la pour la garder)",
       "saving": "Enregistrement…"
     },
     "heading": "Serveurs MCP",

@@ -1,14 +1,14 @@
 /**
- * L'audit d'activation — le seul garde-fou contre un module qui ne démarre pas
- * SANS RIEN DIRE.
+ * The activation audit: the only guard against a module that does not start
+ * WITHOUT A WORD.
  *
- * Le piège que ce test protège : en Cordis, un plugin dont un `inject` n'est
- * fourni par personne reste PENDING indéfiniment. Pas d'erreur, pas de log :
- * le module ne tourne simplement pas, et on s'en aperçoit des jours plus tard
- * parce qu'une task n'a jamais été dispatchée. Une dépendance mal orthographiée
- * ou un module désactivé par erreur produit exactement ça.
+ * The trap this test protects against: in Cordis, a plugin whose `inject` is
+ * provided by nobody stays PENDING forever. No error, no log:
+ * the module simply does not run, and one notices days later
+ * because a task was never dispatched. A misspelled dependency
+ * or a module disabled by mistake produces exactly that.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +18,7 @@ import Loader from '@deepseek-ai/cordis-plugin-loader';
 
 const { auditActivation, formatActivationFailures } = await import('./activation-audit.js');
 
-/** Arbre minimal : un loader et rien d'autre à fournir. */
+/** A minimal tree: a loader and nothing else to provide. */
 async function loaderContext(): Promise<Context> {
   const ctx = new Context();
   ctx.baseUrl = new URL('.', import.meta.url).href;
@@ -26,23 +26,23 @@ async function loaderContext(): Promise<Context> {
   return ctx;
 }
 
-test("l'audit échoue en NOMMANT le service manquant d'un module resté PENDING", async () => {
+test('the audit fails NAMING the missing service of a module left PENDING', async () => {
   const ctx = await loaderContext();
-  // `./fixtures/needs-dispatcher.js` déclare `inject: ['dispatcher']` et
-  // personne ne fournit `dispatcher` — le cas exact du plan.
+  // `./fixtures/needs-dispatcher.js` declares `inject: ['dispatcher']` and
+  // nobody provides `dispatcher`: the exact case of the plan.
   await ctx.loader.create({ id: 'needs-dispatcher', name: './fixtures/needs-dispatcher.js' });
 
   const failures: unknown[] = [];
   await auditActivation(ctx, { timeoutMs: 1_000, onFailure: (f) => void failures.push(...f) });
 
-  assert.equal(failures.length, 1, 'le module non activé doit être signalé');
+  assert.equal(failures.length, 1, 'the module that did not activate must be reported');
   const rendered = formatActivationFailures(failures as never);
-  assert.match(rendered, /needs-dispatcher/, "le rapport doit nommer l'entrée fautive");
-  assert.match(rendered, /dispatcher/, 'et le service qui lui manque');
+  assert.match(rendered, /needs-dispatcher/, 'the report must name the faulty entry');
+  assert.match(rendered, /dispatcher/, 'and the service it lacks');
   await ctx.fiber.dispose();
 });
 
-test("un arbre dont tout est satisfait passe l'audit sans un mot", async () => {
+test('a tree where everything is satisfied passes the audit without a word', async () => {
   const ctx = await loaderContext();
   await ctx.loader.create({ id: 'provides-dispatcher', name: './fixtures/provides-dispatcher.js' });
   await ctx.loader.create({ id: 'needs-dispatcher', name: './fixtures/needs-dispatcher.js' });
@@ -50,7 +50,7 @@ test("un arbre dont tout est satisfait passe l'audit sans un mot", async () => {
   let called = false;
   const failures = await auditActivation(ctx, { timeoutMs: 1_000, onFailure: () => { called = true; } });
   assert.deepEqual(failures, []);
-  assert.equal(called, false, 'aucun échec ne doit être signalé');
+  assert.equal(called, false, 'no failure must be reported');
   await ctx.fiber.dispose();
 });
 

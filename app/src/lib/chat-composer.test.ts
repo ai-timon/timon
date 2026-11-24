@@ -22,7 +22,7 @@ function paint(): string {
   return renderToStaticMarkup(React.createElement(SlotSingle, { name: CHAT_COMPOSER_SLOT }));
 }
 
-test('le chat déclare la saisie en slot single, et ses actions en liste', () => {
+test('the chat declares the input as a single slot, and its actions as a list', () => {
   resetSlotsForTests();
   const unmount = mountComposerSlot();
   assert.equal(slotKind(CHAT_COMPOSER_SLOT), 'single');
@@ -31,17 +31,17 @@ test('le chat déclare la saisie en slot single, et ses actions en liste', () =>
   assert.equal(slotKind(CHAT_COMPOSER_SLOT), null, 'quitter le chat rend ses slots');
 });
 
-test('le composer du produit occupe le slot par défaut, sans le fermer', () => {
+test('the product composer occupies the slot by default, without closing it', () => {
   resetSlotsForTests();
   const unmount = mountComposerSlot();
   const fallback = slotEntries(CHAT_COMPOSER_SLOT);
   assert.equal(fallback.length, 1);
-  assert.equal(fallback[0]?.fallback, true, 'le produit cède la place, il ne la garde pas');
+  assert.equal(fallback[0]?.fallback, true, 'the product gives way, it does not keep the place');
   assert.equal(fallback[0]?.pluginId, '@timon/missions');
   unmount();
 });
 
-test('un plugin qui déclare chat.composer remplace la saisie, et la rend en partant', () => {
+test('a plugin that declares chat.composer replaces the input, and gives it back when it leaves', () => {
   resetSlotsForTests();
   const unmount = mountComposerSlot();
   const context = clientContext('acme-composer', [CHAT_COMPOSER_SLOT]);
@@ -49,13 +49,13 @@ test('un plugin qui déclare chat.composer remplace la saisie, et la rend en par
 
   assert.match(paint(), /composer du plugin/);
   dispose();
-  // Hors du chat, le composer du produit ne peint rien (pas de contexte) : ce
-  // que la reprise prouve est qu'il est REDEVENU l'occupant, pas son dessin.
+  // Outside the chat, the product composer paints nothing (no context): what
+  // the takeover proves is that it BECAME the occupant again, not its drawing.
   assert.equal(slotEntries(CHAT_COMPOSER_SLOT)[0]?.pluginId, '@timon/missions');
   unmount();
 });
 
-test('un widget ne prend pas la saisie : le slot n’est pas de nature widget', () => {
+test('a widget does not take the input: the slot is not of widget kind', () => {
   resetSlotsForTests();
   const unmount = mountComposerSlot();
   const widget = clientContext('widget-only', ['cockpit.widget']);
@@ -66,25 +66,25 @@ test('un widget ne prend pas la saisie : le slot n’est pas de nature widget', 
   unmount();
 });
 
-test('deux chats côte à côte partagent une inscription, et le dernier parti la rend', () => {
+test('two chats side by side share a registration, and the last one to leave gives it back', () => {
   resetSlotsForTests();
   const first = mountComposerSlot();
   const second = mountComposerSlot();
-  assert.equal(slotEntries(CHAT_COMPOSER_SLOT).length, 1, 'une description, pas une par cellule');
+  assert.equal(slotEntries(CHAT_COMPOSER_SLOT).length, 1, 'one description, not one per cell');
 
   first();
-  assert.equal(slotKind(CHAT_COMPOSER_SLOT), 'single', 'fermer une cellule ne prive pas les autres');
+  assert.equal(slotKind(CHAT_COMPOSER_SLOT), 'single', 'closing a cell does not deprive the others');
   assert.equal(slotEntries(CHAT_COMPOSER_SLOT).length, 1);
 
   second();
   assert.equal(slotKind(CHAT_COMPOSER_SLOT), null);
 });
 
-test('le chat monté dans un layout qui déclare déjà les slots ne les redéclare pas', () => {
+test('the chat mounted in a layout that already declares the slots does not redeclare them', () => {
   resetSlotsForTests();
   register({ slot: 'root', pluginId: '@timon/ui-layout', children: { [CHAT_COMPOSER_ACTION_SLOT]: 'list' } }, Plugin);
   const unmount = mountComposerSlot();
   assert.equal(slotKind(CHAT_COMPOSER_ACTION_SLOT), 'list');
   unmount();
-  assert.equal(slotKind(CHAT_COMPOSER_ACTION_SLOT), 'list', 'le chat ne rend pas un slot qu’il n’a pas déclaré');
+  assert.equal(slotKind(CHAT_COMPOSER_ACTION_SLOT), 'list', 'the chat does not give back a slot it did not declare');
 });

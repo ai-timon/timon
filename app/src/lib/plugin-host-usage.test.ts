@@ -15,7 +15,7 @@ function withFetch<T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> {
   return run().finally(() => { globalThis.fetch = previous; });
 }
 
-test('usage.list interroge le segment plateforme du plugin', async () => {
+test('usage.list queries the platform segment of the plugin', async () => {
   const calls: string[] = [];
   const entries = [{ backend: 'claude', label: 'Claude', vendor: 'Anthropic', brand: 'anthropic', available: true, usage: { windows: {}, extra: null } }];
   const ctx = clientContext('quota-monitor', ['cockpit.widget']);
@@ -46,13 +46,13 @@ test('a ↻ asks the daemon to skip the probes\' cache; polling never does (TODO
   ]);
 });
 
-test('un refus de permission remonte en erreur, pas en liste vide', async () => {
-  const ctx = clientContext('sans-permission', ['cockpit.widget']);
+test('a permission refusal comes up as an error, not as an empty list', async () => {
+  const ctx = clientContext('no-permission', ['cockpit.widget']);
   await withFetch((async () => new Response('{"error":"nope"}', { status: 403 })) as unknown as typeof fetch,
     () => assert.rejects(() => ctx.usage.list(), /403/));
 });
 
-test('une session absente transite telle quelle, sans être une liste vide', async () => {
+test('a missing session passes through as is, without being an empty list', async () => {
   const entries = [{
     backend: 'claude', label: 'Claude', vendor: 'Anthropic', brand: 'anthropic',
     available: false, usage: null, connected: false, reason: 'not_signed_in',

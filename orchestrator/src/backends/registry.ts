@@ -1128,17 +1128,22 @@ export function authStatusNow(id: string, env: Readonly<Record<string, string>> 
 }
 
 /**
- * The plugin that brought backend `id` (an account instance included): the
- * owner of its profile, else of the dialect it runs on. Null for a backend
- * no plugin registered. The fence grants a mission that plugin's scratch and
- * cache folders, never another's.
+ * The plugin that runs backend `id` (an account instance included): the owner
+ * of the dialect its profile speaks, else of the profile itself. Null for a
+ * backend no plugin registered. The fence grants a mission that plugin's
+ * scratch and cache folders, never another's.
+ *
+ * The dialect comes first because its `buildSpawn` is what opens the scratch
+ * folder, under its own plugin id. A profile a user's file or a provider pack
+ * adds is data on another plugin's dialect: its owner (`local-file`, the pack)
+ * never opens a folder, and naming it left the mission fenced out of the one
+ * the CLI was told to read.
  */
 export function backendOwnerPlugin(id: string): string | null {
   const base = baseBackendId(id);
-  const profileOwner = profileOwners.get(base);
-  if (profileOwner) return profileOwner;
-  const dialect = activeProfiles().find((entry) => entry.profile.id === base)?.profile.dialect;
-  return dialect === undefined ? null : dialectOwners.get(dialect) ?? null;
+  const dialect = profiles.find((profile) => profile.id === base)?.dialect;
+  const dialectOwner = dialect === undefined ? undefined : dialectOwners.get(dialect);
+  return dialectOwner ?? profileOwners.get(base) ?? null;
 }
 
 /** What a plugin brought, for the gallery and the tests. */

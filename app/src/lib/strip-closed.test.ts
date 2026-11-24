@@ -109,7 +109,7 @@ test('a closed tab stays gone in both strips, when the feed switches missions, a
     }) as unknown as typeof fetch;
     const { createRoot } = await import('react-dom/client');
     const { WorkingAgentsWidget } = await import('@/plugins-client/working-agents/working-agents-widget');
-    const strip = () => React.createElement(WorkingAgentsWidget, { orientation: 'horizontal', compact: true, poignee: null });
+    const strip = () => React.createElement(WorkingAgentsWidget, { orientation: 'horizontal', compact: true, handle: null });
     const host = document.getElementById('root')!;
     // Two mounts of the widget (a second window's, a zone remounting) must agree.
     const mount = async () => {

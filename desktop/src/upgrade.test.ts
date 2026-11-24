@@ -23,8 +23,16 @@ import {
   runnerFailureReason,
   upgradeNeedsFallback,
   upgradePackagedService,
+  windowsSessionIntent,
+  declineWindowsRewrite,
+  windowsRewriteDeclined,
+  windowsTaskRepair,
+  DESKTOP_SESSION_INTENT_ENV,
+  UPGRADE_SESSION_FALLBACK_LINE,
+  sessionFallbackMessage,
 } from './upgrade.js';
-import { WINDOWS_SERVICE_REVISION, hasDesktopService, windowsLauncher, windowsLegacyLauncher, windowsServiceRefusedFile, windowsServiceRevisionFile } from './service.js';
+import { windowsTaskShape } from './windows-task-shape.js';
+import { WINDOWS_SERVICE_REVISION, hasDesktopService, windowsBatchLauncher, windowsLauncher, windowsLegacyLauncher, windowsRewriteDeclinedFile, windowsServiceRefusedFile, windowsServiceRevisionFile } from './service.js';
 
 const cfg: DesktopConfig = {
   home: '/Users/sam/.timon', packagedDefaults: false,
@@ -32,7 +40,7 @@ const cfg: DesktopConfig = {
   app: { enabled: true, listen: { host: '127.0.0.1', port: 3110 } },
 };
 
-test('un service legacy ou d’une autre version est migré au lancement suivant', () => {
+test('a legacy service or one from another version is migrated on the next launch', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-'));
   try {
     const facts = { platform: 'darwin' as NodeJS.Platform, packaged: true, serviceInstalled: true };
@@ -46,7 +54,7 @@ test('un service legacy ou d’une autre version est migré au lancement suivant
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
-test('une version plus ancienne réinstallée reprend aussi le service (retour arrière)', () => {
+test('an older version reinstalled takes over the service too (rollback)', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-downgrade-'));
   try {
     mkdirSync(join(home, 'desktop-runtime'), { recursive: true });
@@ -62,7 +70,7 @@ test('une version plus ancienne réinstallée reprend aussi le service (retour a
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
-test("l'upgrade exécute uniquement le runner livré par la nouvelle app", async () => {
+test('the upgrade runs only the runner shipped by the new app', async () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-upgrade-runner-'));
   try {
     const resourcesPath = join(root, 'Resources');
@@ -85,12 +93,12 @@ test("l'upgrade exécute uniquement le runner livré par la nouvelle app", async
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test('macOS et Linux migrent une release packagée ; le mode portable et le dev jamais', () => {
+test('macOS and Linux migrate a packaged release; the portable mode and dev never do', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-matrix-'));
   try {
     for (const platform of ['darwin', 'linux', 'win32'] as NodeJS.Platform[]) {
       // Windows runs INSTDIR, not a staged copy: guarded by the onboarding test
-      // "windows packagé : le service lance le dossier d'installation…". Its
+      // "packaged windows: the service launches the install folder…". Its
       // task revision is covered by the next test.
       const staged = platform !== 'win32';
       for (const packaged of [true, false]) {
@@ -115,7 +123,7 @@ test('macOS et Linux migrent une release packagée ; le mode portable et le dev 
  * task of revision 1 died at logoff and recorded no revision; it is rewritten
  * once, and never is a task installed where there was none.
  */
-test('windows : la tâche est réécrite tant que sa révision n’est pas la courante', () => {
+test('windows: the task is rewritten as long as its revision is not the current one', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-windows-'));
   try {
     const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, serviceInstalled: false };
@@ -131,9 +139,32 @@ test('windows : la tâche est réécrite tant que sa révision n’est pas la co
     writeFileSync(windowsServiceRevisionFile(home), '3\n');
     assert.equal(serviceUpgradeNeeded(home, '0.2.0', facts), true, 'revision 3: the task has no SID yet (TODO #564)');
     assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, packaged: false }), false, 'revision 3, dev and portable: never');
+    // Revision 5 ran a batch through cmd.exe or a hidden PowerShell, which Avast and AVG quarantine.
+    writeFileSync(windowsServiceRevisionFile(home), '5\n');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', facts), true, 'revision 5: the task still runs the batch');
+    assert.notEqual(WINDOWS_SERVICE_REVISION, '5');
     writeFileSync(windowsServiceRevisionFile(home), 'restored\n');
     assert.equal(serviceUpgradeNeeded(home, '0.2.0', facts), true, 'a rollback put an older task back: try again');
     assert.equal(hasDesktopService(home, 'win32'), true, 'and that task is still there');
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+/**
+ * #116, PC A: Task Scheduler has the task, but no revision was recorded (the
+ * install verdict removed it, then the task was changed by hand to run), so it
+ * was never rewritten and looped on the embedded daemon's home.
+ */
+test('windows #116: a task that exists without a revision is rewritten, and none is installed where there is none', () => {
+  const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-norevision-'));
+  try {
+    const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, serviceInstalled: false };
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskExists: true }), true, 'a task, no revision: rewrite it');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskExists: false }), false, 'no task, no revision: never install');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', facts), false, 'task state unknown: nothing assumed');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskExists: true, packaged: false }), false, 'dev and portable: never');
+    mkdirSync(join(home, 'run'), { recursive: true });
+    writeFileSync(windowsServiceRevisionFile(home), `${WINDOWS_SERVICE_REVISION}\n`);
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskExists: true }), false, 'the current revision recorded: nothing to do');
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
@@ -142,26 +173,33 @@ test('windows : la tâche est réécrite tant que sa révision n’est pas la co
  * revision 3 with a launcher that does not mark its daemon as packaged. The
  * revision alone never had it rewritten.
  */
-test('windows : une tâche à jour dont le lanceur n’est pas marqué packagé est réécrite', () => {
+test('windows: an up-to-date task whose launcher is not marked packaged is rewritten', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-unmarked-'));
   const launcher = (marked: boolean) => ['@echo off', 'chcp 65001 >nul', 'set "TIMON_HOME=C:\\Users\\sam\\.timon"',
     ...(marked ? ['set "TIMON_DESKTOP_SERVICE=1"', 'set "TIMON_DESKTOP_EMBEDDED=0"'] : []), 'set "PORT=3010"', ''].join('\r\n');
   try {
     const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, serviceInstalled: true };
     mkdirSync(join(home, 'run'), { recursive: true });
-    writeFileSync(windowsLauncher(home), launcher(false));
+    writeFileSync(windowsBatchLauncher(home), launcher(false));
     assert.equal(serviceUpgradeNeeded(home, '0.1.5', facts), false, 'a launcher without a task: never install one');
     writeFileSync(windowsServiceRevisionFile(home), `${WINDOWS_SERVICE_REVISION}\n`);
     assert.equal(serviceUpgradeNeeded(home, '0.1.5', facts), true, 'current revision, unmarked launcher');
     assert.equal(serviceUpgradeNeeded(home, '0.1.5', { ...facts, packaged: false }), false, 'dev and portable: never');
-    writeFileSync(windowsLauncher(home), launcher(true));
+    writeFileSync(windowsBatchLauncher(home), launcher(true));
     assert.equal(serviceUpgradeNeeded(home, '0.1.5', facts), false, 'current revision, marked launcher (CRLF)');
+    // The configuration of revision 6 is read first, as the host adapter does.
+    const config = (env: Record<string, string>) => `${JSON.stringify({ format: 1, node: 'C:\\T\\resources\\node\\node.exe', env }, null, 2)}\n`;
+    writeFileSync(windowsLauncher(home), config({ TIMON_HOME: 'C:\\Users\\sam\\.timon' }));
+    assert.equal(serviceUpgradeNeeded(home, '0.1.5', facts), true, 'an unmarked configuration, whatever the batch says');
+    writeFileSync(windowsLauncher(home), config({ TIMON_DESKTOP_SERVICE: '1', TIMON_DESKTOP_EMBEDDED: '0' }));
+    assert.equal(serviceUpgradeNeeded(home, '0.1.5', facts), false, 'a marked configuration');
     rmSync(windowsLauncher(home));
+    rmSync(windowsBatchLauncher(home));
     assert.equal(serviceUpgradeNeeded(home, '0.1.5', facts), false, 'current revision, no launcher to judge');
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
-test("un échec de migration dit ce qui tourne encore et que les données sont intactes", () => {
+test('a migration failure says what still runs and that the data is intact', () => {
   const failure = Object.assign(new Error('Command failed: Timon runner.js'), {
     code: 1,
     stderr: 'the new release of the service did not answer. The previous service was restored.\n',
@@ -181,8 +219,8 @@ test("un échec de migration dit ce qui tourne encore et que les données sont i
   });
   assert.equal(upgradeNeedsFallback(orphan), true);
   assert.match(upgradeFailureMessage(orphan, '0.2.0', '/h', 'en').detail, /built-in daemon for this session.*were not modified/s);
-  assert.match(upgradeFailureMessage(orphan, '0.2.0', '/h', 'fr').detail, /daemon intégré pour cette session.*n’ont pas été modifiés\.\n\nThere was no previous/s);
-  assert.equal(upgradeFailureMessage(orphan, '0.2.0', '/h', 'fr').message, 'Le service d’arrière-plan n’a pas pu passer à la version 0.2.0.');
+  assert.match(upgradeFailureMessage(orphan, '0.2.0', '/h', 'fr').detail, /daemon intégré pour cette session.*n’ont pas été modifiés\.\n\nThere was no previous/s); // french-ok: the French locale under test
+  assert.equal(upgradeFailureMessage(orphan, '0.2.0', '/h', 'fr').message, 'Le service d’arrière-plan n’a pas pu passer à la version 0.2.0.'); // french-ok: the French locale under test
   assert.equal(upgradeNeedsFallback(new Error('spawn ENOENT')), false);
   assert.equal(upgradeNeedsFallback(Object.assign(new Error('x'), { code: 'ETIMEDOUT' })), false);
 });
@@ -206,7 +244,7 @@ test('an uncaught runner error shows its message, not the minified source line',
   assert.equal(runnerFailureReason('the new release of the service did not answer.\n'), 'the new release of the service did not answer.');
 });
 
-test('Windows : une install configurée dont la tâche a disparu propose de la réinstaller', () => {
+test('Windows: a configured install whose task disappeared offers to reinstall it', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-repair-'));
   try {
     const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, configured: true, taskExists: false };
@@ -220,7 +258,7 @@ test('Windows : une install configurée dont la tâche a disparu propose de la r
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
-test('« Plus tard » ne redemande pas pour cette version, la suivante redemande', () => {
+test('"Not now" does not ask again for this version, the next one asks again', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-repair-'));
   try {
     const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, configured: true, taskExists: false };
@@ -232,11 +270,11 @@ test('« Plus tard » ne redemande pas pour cette version, la suivante redemande
 });
 
 /**
- * TODO #342 : Windows n'a jamais lancé la tâche pour ce compte (poste joint à
- * Entra ID). Le constat est durable : plus d'offre de réinstallation, et le
- * message honnête n'est dit qu'une fois par version.
+ * TODO #342: Windows never launched the task for this account (machine joined to
+ * Entra ID). The finding is lasting: no more reinstall offer, and the
+ * honest message is said only once per version.
  */
-test('Windows : une tâche jamais lancée n’est plus reproposée, son message est dit une fois par version', () => {
+test('Windows: a task that never ran is no longer offered again, its message is said once per version', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-refused-'));
   try {
     const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, configured: true, taskExists: false };
@@ -256,12 +294,12 @@ test('Windows : une tâche jamais lancée n’est plus reproposée, son message 
     assert.match(en.detail, /built-in daemon/);
     assert.match(en.detail, /timon service uninstall/);
     assert.doesNotMatch(en.message, /does not answer/);
-    assert.match(serviceRefusedMessage('fr-FR').message, /Windows ne lance pas/);
+    assert.match(serviceRefusedMessage('fr-FR').message, /Windows ne lance pas/); // french-ok: the French locale under test
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
-/** TODO #342 suite : une tâche qui finit par tourner lève le constat, sinon le setup reste en mode portable. */
-test('Windows : une tâche qui démarre efface le marqueur de refus', () => {
+/** TODO #342 continued: a task that ends up running lifts the finding, otherwise the setup stays in portable mode. */
+test('Windows: a task that starts clears the refusal marker', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-refused-'));
   try {
     clearServiceRefused(home);
@@ -272,7 +310,7 @@ test('Windows : une tâche qui démarre efface le marqueur de refus', () => {
     assert.equal(serviceRepairWanted(home, '0.1.5', facts), true, 'the repair offer speaks again');
   } finally { rmSync(home, { recursive: true, force: true }); }
 
-  // Le démarrage l'efface sur 'started', et seulement là : 'never-ran' l'écrit.
+  // The start clears it on 'started', and only there: 'never-ran' writes it.
   const main = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
   const neverRan = main.indexOf("service === 'never-ran'");
   const cleared = main.indexOf('clearServiceRefused(cfg.home)');
@@ -281,8 +319,8 @@ test('Windows : une tâche qui démarre efface le marqueur de refus', () => {
   assert.equal(main.indexOf('clearServiceRefused(cfg.home)', cleared + 1), -1);
 });
 
-test('offre de réparation et échec : textes localisés, raison du runner sans pile', () => {
-  assert.deepEqual(serviceRepairPrompt('fr-FR').buttons, ['Réinstaller le service', 'Plus tard']);
+test('repair offer and failure: localised texts, runner reason without a stack', () => {
+  assert.deepEqual(serviceRepairPrompt('fr-FR').buttons, ['Réinstaller le service', 'Plus tard']); // french-ok: the French locale under test
   assert.deepEqual(serviceRepairPrompt('en-US').buttons, ['Reinstall the service', 'Not now']);
   const error = Object.assign(new Error('Command failed'), {
     stderr: 'Error: elevation refused\n    at run (file:///x.js:1:1)\nNode.js v24.19.0',
@@ -306,4 +344,124 @@ test('TIM-0108: the repair verdict says why the offer stays silent', t => {
   assert.equal(serviceRepairVerdict(home, '0.1.5', facts), 'declined');
   recordServiceRefused(home);
   assert.equal(serviceRepairVerdict(home, '0.1.5', facts), 'refused');
+});
+
+/** The shapes of #116: S4U written by Timon, then switched by hand to the interactive token. */
+const taskXml = (logon: string, command: string, trigger: 'Boot' | 'Logon') => `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers><${trigger}Trigger><Enabled>true</Enabled></${trigger}Trigger><TimeTrigger><Repetition><Interval>PT5M</Interval></Repetition></TimeTrigger></Triggers>
+  <Principals><Principal id="Author"><UserId>S-1-5-21-1</UserId><LogonType>${logon}</LogonType></Principal></Principals>
+  <Actions Context="Author"><Exec><Command>${command}</Command></Exec></Actions>
+</Task>`;
+
+test('windows #116: a task that opens a console is rewritten whatever its revision says', () => {
+  const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-console-'));
+  try {
+    mkdirSync(join(home, 'run'), { recursive: true });
+    writeFileSync(windowsServiceRevisionFile(home), `${WINDOWS_SERVICE_REVISION}\n`);
+    const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, serviceInstalled: true, taskExists: true };
+    const pcB = windowsTaskShape(taskXml('InteractiveToken', 'C:\\Windows\\System32\\cmd.exe', 'Boot'));
+    assert.equal(pcB?.consoleVisible, true);
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskShape: pcB }), true, 'interactive + cmd.exe, current revision');
+    const node = windowsTaskShape(taskXml('InteractiveToken', 'C:\\Timon\\resources\\node\\node.exe', 'Boot'));
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskShape: node }), true, 'interactive + node.exe, revision 6 changed by hand');
+    const s4u = windowsTaskShape(taskXml('S4U', 'C:\\Timon\\resources\\node\\node.exe', 'Boot'));
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskShape: s4u }), false, 'S4U + node.exe: what Timon writes');
+    const session = windowsTaskShape(taskXml('InteractiveToken', 'C:\\Timon\\Timon.exe', 'Logon'));
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskShape: session }), false, 'the session task opens no console');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, taskShape: null }), false, 'unreadable: the revision decides');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...facts, packaged: false, taskShape: pcB }), false, 'dev and portable: never');
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+/**
+ * A repair declined at launch used to ask for elevation again at every launch,
+ * as tiresome as the console it fixes. Remembered for the version: the next
+ * one asks again, an explicit install removes the file (host adapter).
+ */
+test('windows #116: a declined repair is not asked again in the same version, and is at the next one', () => {
+  const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-declined-'));
+  try {
+    const pcA = { platform: 'win32' as NodeJS.Platform, packaged: true, serviceInstalled: false, taskExists: true };
+    assert.equal(windowsTaskRepair(home, pcA), true, 'a task without a revision: a repair');
+    assert.equal(windowsRewriteDeclined(home, '0.2.0'), false);
+    declineWindowsRewrite(home, '0.2.0');
+    assert.equal(readFileSync(windowsRewriteDeclinedFile(home), 'utf8'), '0.2.0\n');
+    assert.equal(windowsRewriteDeclinedFile(home), join(home, 'run', 'service-rewrite-declined'));
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', pcA), false, 'declined for this version: not asked again');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.1', pcA), true, 'the next version asks again');
+
+    // PC B: a console task, whatever its revision, is a repair too.
+    writeFileSync(windowsServiceRevisionFile(home), '5\n');
+    const pcB = { ...pcA, serviceInstalled: true, taskShape: windowsTaskShape(taskXml('InteractiveToken', 'cmd.exe', 'Boot')) };
+    assert.equal(windowsTaskRepair(home, pcB), true);
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', pcB), false);
+    assert.equal(serviceUpgradeNeeded(home, '0.2.1', pcB), true);
+    // A revision upgrade of a task that opens no console is no repair: the marker is not read.
+    assert.equal(windowsTaskRepair(home, { ...pcA, taskShape: windowsTaskShape(taskXml('S4U', 'node.exe', 'Boot')) }), false);
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', { ...pcA, serviceInstalled: true }), true, 'revision 5: still moved to 6');
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+/**
+ * The revision-1 logon task records no revision either, but its launcher
+ * marks it: moving it is a migration, which an approved update cannot skip
+ * (a failure still fails the update, as before #116).
+ */
+test('windows #116: the revision-1 migration is no repair', () => {
+  const home = mkdtempSync(join(tmpdir(), 'timon-upgrade-legacy-'));
+  try {
+    mkdirSync(join(home, 'run'), { recursive: true });
+    writeFileSync(windowsLegacyLauncher(home), 'x');
+    const facts = { platform: 'win32' as NodeJS.Platform, packaged: true, serviceInstalled: false, taskExists: true };
+    assert.equal(windowsTaskRepair(home, facts), false);
+    declineWindowsRewrite(home, '0.2.0');
+    assert.equal(serviceUpgradeNeeded(home, '0.2.0', facts), true, 'never silenced by a declined repair');
+    assert.equal(windowsTaskRepair(home, { taskExists: false }), false);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test('windows #116: the boot trigger of a console task says it was meant to run logged out', () => {
+  assert.equal(windowsSessionIntent(windowsTaskShape(taskXml('InteractiveToken', 'cmd.exe', 'Boot'))), 'always');
+  assert.equal(windowsSessionIntent(windowsTaskShape(taskXml('InteractiveToken', 'cmd.exe', 'Logon'))), 'session');
+  assert.equal(windowsSessionIntent(windowsTaskShape(taskXml('S4U', 'cmd.exe', 'Boot'))), undefined, 'no console: the runner reads the task');
+  assert.equal(windowsSessionIntent(windowsTaskShape(taskXml('InteractiveToken', 'Timon.exe', 'Logon'))), undefined);
+  assert.equal(windowsSessionIntent(null), undefined);
+});
+
+test('windows #116: the intent reaches the runner under the name the host adapter reads', async () => {
+  const source = readFileSync(new URL('../../orchestrator/src/host/packaged-upgrade.ts', import.meta.url), 'utf8');
+  assert.equal(/export const DESKTOP_SESSION_INTENT_ENV = '([^']+)'/.exec(source)?.[1], DESKTOP_SESSION_INTENT_ENV);
+  const root = mkdtempSync(join(tmpdir(), 'timon-upgrade-intent-'));
+  try {
+    const resourcesPath = join(root, 'resources');
+    mkdirSync(join(resourcesPath, 'orchestrator', 'dist', 'host'), { recursive: true });
+    writeFileSync(join(resourcesPath, 'orchestrator', 'dist', 'host', 'packaged-upgrade-runner.js'), '');
+    const envs: NodeJS.ProcessEnv[] = [];
+    const record = async (_command: string, _args: string[], options: { env: NodeJS.ProcessEnv }) => { envs.push(options.env); return { stdout: '', stderr: '' }; };
+    const input = { execPath: 'C:\\Timon\\Timon.exe', resourcesPath, version: '0.2.0' };
+    await upgradePackagedService(cfg, { ...input, sessionIntent: 'always' }, record);
+    await upgradePackagedService(cfg, input, record);
+    assert.equal(envs[0]?.[DESKTOP_SESSION_INTENT_ENV], 'always');
+    assert.equal(envs[1]?.[DESKTOP_SESSION_INTENT_ENV], undefined, 'no intent: nothing handed over');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('windows #116: a rewrite kept for the session only is read from the runner\'s line, and said in the user\'s language', async () => {
+  const source = readFileSync(new URL('../../orchestrator/src/host/packaged-upgrade.ts', import.meta.url), 'utf8');
+  assert.equal(/export const UPGRADE_SESSION_FALLBACK_LINE = '([^']+)'/.exec(source)?.[1], UPGRADE_SESSION_FALLBACK_LINE);
+  const root = mkdtempSync(join(tmpdir(), 'timon-upgrade-fallback-'));
+  try {
+    const resourcesPath = join(root, 'resources');
+    mkdirSync(join(resourcesPath, 'orchestrator', 'dist', 'host'), { recursive: true });
+    writeFileSync(join(resourcesPath, 'orchestrator', 'dist', 'host', 'packaged-upgrade-runner.js'), '');
+    const input = { execPath: 'C:\\Timon\\Timon.exe', resourcesPath, version: '0.2.0' };
+    const answering = (stdout: string) => async () => ({ stdout, stderr: '' });
+    assert.deepEqual(await upgradePackagedService(cfg, input, answering(`it stops at logout\r\n${UPGRADE_SESSION_FALLBACK_LINE}\r\n`)), { sessionFallback: true });
+    assert.deepEqual(await upgradePackagedService(cfg, input, answering('installed\n')), { sessionFallback: false });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  const en = sessionFallbackMessage('en');
+  assert.match(en.message, /signed in/);
+  assert.match(en.detail, /sign out/);
+  assert.notEqual(sessionFallbackMessage('fr').message, en.message, 'French has its own words');
 });

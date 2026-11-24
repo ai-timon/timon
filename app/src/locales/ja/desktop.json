@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "新しいウィンドウ",
+      "view": "表示",
+      "zoomReset": "実際のサイズ",
+      "zoomIn": "拡大",
+      "zoomOut": "縮小",
       "open": "{appName} を開く",
       "daemon": "デーモン: {state, select, running {実行中} other {接続できません}} ({origin})",
       "quit": "終了"
@@ -102,8 +106,8 @@
       "stopFailedDetail": "Timon は開いたままで、サービスも実行を続けます。",
       "startFailed": "バックグラウンドサービスは停止しており、再起動できませんでした。",
       "startFailedDetail": "「終了してバックグラウンドサービスを停止」で停止しました。Timon を再度開いて確認を許可するか、timon service start を実行してください。{home} のデータは無事です。",
-      "handoverKept": "Timon のバックグラウンドサービスが応答しませんでした。",
-      "handoverKeptDetail": "セットアップは、このウィンドウで実行中の Timon で続行します。セットアップが終わったら Timon を終了して再度開いてください: サービスを再度試します。データは {home} に残っています。",
+      "handoverKept": "Timon のバックグラウンドサービスの起動に時間がかかっています。",
+      "handoverKeptDetail": "セットアップは、このウィンドウで実行中の Timon で続行します。サービスの準備ができ次第、または次回の起動時に、Timon が自動でサービスに引き継ぎます。操作は不要です。データは {home} に残っています。",
       "refused": "Windows はこのアカウントで Timon のバックグラウンドサービスを起動しません。",
       "refusedDetail": "スケジュールされたタスク TimonOrchestrator は登録されていますが、Windows が一度も実行していません。これは Microsoft Entra ID に参加した PC の職場または学校のアカウントで起こります。Timon は代わりに組み込みのデーモンで実行します: アプリとともに起動し、アプリを閉じるかサインアウトすると停止します。使われていないタスクを削除するには: timon service uninstall (Windows が許可を求めます)。",
       "repair": "Timon のバックグラウンドサービスはインストールされていません。",

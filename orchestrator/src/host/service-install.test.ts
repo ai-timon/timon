@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { ExecResult } from './types.js';
@@ -28,14 +28,26 @@ import {
   TASK_NEVER_RAN_KEPT,
   TASK_NEVER_RAN_REMOVED,
   TASK_VERIFY_SECONDS,
+  TASK_SESSION_FALLBACK,
+  TASK_LOGON_UNREADABLE,
+  TASK_LOGON_FALLBACK_FAILED,
+  WINDOWS_SESSION_FALLBACK_NOTICE,
+  logonCheckStep,
+  sessionTaskXmlPath,
   verifyTaskStartedStep,
+  windowsConsoleTaskTrap,
   WINDOWS_TASK_NEVER_RAN,
   WINDOWS_TASK_REFUSED_REASON,
   windowsTaskUserId,
-  windowsTaskCommand,
+  windowsTaskAction,
   windowsLauncherPath,
   windowsServiceFiles,
-  renderWindowsLauncher,
+  renderWindowsLauncherConfig,
+  windowsScriptedTaskArguments,
+  launcherProcessFilter,
+  retireBatchLauncher,
+  windowsLauncherMarked,
+  WINDOWS_SERVICE_FLAG,
   stopLauncherStep,
   stopPortOwnerStep,
   stopInstallationProcessesStep,
@@ -62,16 +74,16 @@ import {
   windowsServiceNotes,
   applySessionMode,
   sessionModeNeedsReinstall,
-  windowsSessionTaskArguments,
   windowsTaskOffSession,
   type ServiceOpts,
 } from './service-install.js';
-import { readServiceSessionMode, writeServiceSessionMode } from './service-session-mode.js';
+import { readServiceSessionMode, serviceS4uRefusedPath, writeServiceSessionMode } from './service-session-mode.js';
+import { windowsTaskShape } from './windows-task-shape.js';
 
 /**
- * Ce que le batch élevé laisse derrière lui : une ligne par étape exécutée.
- * Une étape absente de l'objet n'a pas tourné — c'est ainsi qu'un garde se
- * prouve ici, plutôt que par un appel que le test aurait vu passer.
+ * What the elevated batch leaves behind: one line per step run.
+ * A step missing from the object did not run: that is how a guard is
+ * proved here, rather than by a call the test would have seen go by.
  */
 function transcript(codes: Record<string, number>): string {
   return Object.entries(codes).map(([label, code]) => `TIMON-STEP ${label}=${code}\r\n`).join('');
@@ -95,6 +107,9 @@ const backslashNamesAtStart = new Set(backslashNames(process.cwd()));
  */
 const SYSTEMD_IDENTITY = process.platform === 'win32'
   && 'the systemd unit identity is read as POSIX paths, which a Windows temporary directory is not';
+
+/** The Node a Windows package ships, the runtime of its service since revision 5. */
+const PACKAGED_NODE = 'C:\\Program Files\\Timon\\resources\\node\\node.exe';
 
 function fixture(platform: NodeJS.Platform, exec?: (n: string, a: string[]) => ExecResult): ServiceOpts {
   const homeDir = mkdtempSync(join(tmpdir(), 'timon-service-test-'));
@@ -434,15 +449,15 @@ test('macos: first install and a bootstrap refusal do not wait on a nonexistent 
 });
 
 /**
- * Windows (step 5.7.2) — l'installation du service y est obligatoire comme
- * ailleurs. Amendement au plan §5.3, qui la déclarait "non supportée en v1".
+ * Windows (step 5.7.2): installing the service is mandatory there as
+ * elsewhere. Amendment to plan §5.3, which declared it "not supported in v1".
  *
- * Rien de tout cela ne peut être exécuté ici : la seule vérification possible
- * est l'argv exact, et c'est précisément là que ça casse en silence (un chemin
- * `C:\Program Files\…` non quoté produit une tâche qui échoue au premier
- * logon, sans message).
+ * None of this can be run here: the only possible check
+ * is the exact argv, and that is precisely where it breaks silently (an unquoted
+ * `C:\Program Files\…` path produces a task that fails at the first
+ * logon, without a message).
  */
-test('windows: la tâche planifiée est créée depuis un XML, au boot, en S4U', () => {
+test('windows: the scheduled task is created from an XML, at boot, in S4U', () => {
   const calls: string[][] = [];
   const opts = fixture('win32', (n, a) => {
     calls.push([n, ...a]);
@@ -451,7 +466,7 @@ test('windows: la tâche planifiée est créée depuis un XML, au boot, en S4U',
   const res = installService({
     ...opts,
     sessionMode: 'always',
-    nodePath: 'C:\\Program Files\\Timon\\Timon.exe',
+    nodePath: PACKAGED_NODE,
     readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }),
   });
   assert.equal(res.ok, true);
@@ -459,10 +474,7 @@ test('windows: la tâche planifiée est créée depuis un XML, au boot, en S4U',
   assert.match(res.lines.join('\n'), /starts at boot and keeps running after logoff/);
 
   const files = windowsServiceFiles(opts.timonHome, join);
-  assert.equal(readFileSync(files.launcher, 'utf8'), renderWindowsLauncher({
-    ...opts,
-    nodePath: 'C:\\Program Files\\Timon\\Timon.exe',
-  }));
+  assert.equal(readFileSync(files.launcher, 'utf8'), renderWindowsLauncherConfig({ ...opts, nodePath: PACKAGED_NODE }));
   // The revision is what tells the desktop this task needs no migration.
   assert.equal(readFileSync(files.revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION);
   if (process.platform !== 'win32') {
@@ -485,30 +497,31 @@ test('windows: la tâche planifiée est créée depuis un XML, au boot, en S4U',
   const command = calls[2]!.at(-1)!;
   assert.match(command, /Start-Process/);
   assert.match(command, /-Verb RunAs/);
-  assert.ok(command.includes(elevatedScriptPath()), 'le script élevé est celui qui vient d\'être écrit');
+  assert.ok(command.includes(elevatedScriptPath()), 'the elevated script is the one just written');
 
   const batch = readFileSync(elevatedScriptPath(), 'utf8');
-  // `/Run` : la tâche créée ne démarrerait qu'au prochain boot, et l'écran de
-  // premier lancement attend une réponse du service. Et entre les deux, le
-  // daemon qu'une réinstallation remplace : IgnoreNew ignorerait `/Run`.
+  // `/Run`: the created task would only start at the next boot, and the
+  // first launch screen waits for an answer from the service. And in between, the
+  // daemon a reinstall replaces: IgnoreNew would ignore `/Run`.
   // Onboarding: the embedded daemon on the port serves the wizard, never ended.
   assert.doesNotMatch(batch, /Get-NetTCPConnection/);
   const order = ['schtasks /Create /TN TimonOrchestrator /XML', 'taskkill.exe /F /T', 'schtasks /Run /TN TimonOrchestrator']
     .map((needle) => batch.indexOf(needle));
   assert.ok(order.every((at) => at >= 0), batch);
   assert.deepEqual([...order].sort((x, y) => x - y), order);
-  // La sortie de schtasks est lue telle quelle : sans cette page de code, un
-  // "Accès refusé" arrive dans l'UI en "Acc?s refus?".
+  // The schtasks output is read as is: without this code page, an
+  // "Access denied" reaches the UI garbled.
   assert.match(batch, /chcp 65001/);
 
-  const xml = renderTaskXml({ ...opts, nodePath: 'C:\\Program Files\\Timon\\Timon.exe' });
-  // Au boot, sans session : une tâche InteractiveToken mourait à la déconnexion.
+  const xml = readFileSync(taskXmlPath(), 'utf16le');
+  assert.equal(xml.replace(/^\ufeff/, ''), renderTaskXml({ ...opts, nodePath: PACKAGED_NODE, offSession: true }));
+  // At boot, without a session: an InteractiveToken task died on logout.
   assert.match(xml, /<BootTrigger><Enabled>true<\/Enabled><\/BootTrigger>/);
   assert.match(xml, /<LogonType>S4U<\/LogonType>/);
   assert.doesNotMatch(xml, /LogonTrigger|InteractiveToken|<Password>/);
-  // Le superviseur : une répétition sans fin que IgnoreNew écarte tant que le
-  // lanceur tient un daemon vivant, et qui le relance sinon — RestartOnFailure
-  // ne relance qu'un lancement raté, jamais un daemon qui tombe.
+  // The supervisor: an endless repetition that IgnoreNew sets aside as long as the
+  // launcher holds a live daemon, and that restarts it otherwise; RestartOnFailure
+  // only restarts a failed launch, never a daemon that falls.
   assert.match(xml, /<TimeTrigger>[\s\S]*<Interval>PT5M<\/Interval>[\s\S]*<StopAtDurationEnd>false<\/StopAtDurationEnd>[\s\S]*<\/TimeTrigger>/);
   assert.doesNotMatch(xml, /<Duration>/);
   assert.match(xml, /<MultipleInstancesPolicy>IgnoreNew<\/MultipleInstancesPolicy>/);
@@ -516,7 +529,7 @@ test('windows: la tâche planifiée est créée depuis un XML, au boot, en S4U',
   assert.match(xml, /<DisallowStartIfOnBatteries>false<\/DisallowStartIfOnBatteries>/);
   assert.match(xml, /<StopIfGoingOnBatteries>false<\/StopIfGoingOnBatteries>/);
   assert.match(xml, /<RestartOnFailure>/);
-  // Jamais de droits admin : c'est ce qui distingue une tâche d'un vrai service.
+  // Never admin rights: that is what tells a task from a real service.
   assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/);
   assert.doesNotMatch(xml, /HighestAvailable/);
 });
@@ -526,9 +539,9 @@ test('windows: la tâche planifiée est créée depuis un XML, au boot, en S4U',
  * with the user's interactive token, which Windows ends at logoff
  * (SERVICE-HORS-SESSION W3) — never the boot task under S4U.
  */
-test('windows: "session" registers a logon task under the interactive token, its console hidden', () => {
+test('windows: "session" registers a logon task under the interactive token, with no console', () => {
   const calls: string[][] = [];
-  const opts = fixture('win32', (n, a) => { calls.push([n, ...a]); return { code: 0, stdout: '', stderr: '' }; });
+  const opts = { ...fixture('win32', (n, a) => { calls.push([n, ...a]); return { code: 0, stdout: '', stderr: '' }; }), nodePath: PACKAGED_NODE };
   const res = installService({ ...opts, sessionMode: 'session', readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
   assert.equal(res.ok, true, res.lines.join('\n'));
   assert.match(res.lines.join('\n'), /starts at logon and stops when you log off/);
@@ -541,27 +554,52 @@ test('windows: "session" registers a logon task under the interactive token, its
   assert.match(xml, /<TimeTrigger>[\s\S]*<Interval>PT5M<\/Interval>/);
   assert.match(xml, /<MultipleInstancesPolicy>IgnoreNew<\/MultipleInstancesPolicy>/);
   assert.match(xml, /<RunLevel>LeastPrivilege<\/RunLevel>/);
-  // In the user's session cmd would open a console window: PowerShell hides
-  // itself and starts the same launcher with none.
-  assert.match(xml, /<Command>powershell\.exe<\/Command>/);
-  const args = windowsSessionTaskArguments(opts);
+  // In the user's session a console program would open a window, and closing
+  // it would kill Timon: the package's own GUI program starts the launcher.
+  assert.match(xml, /<Command>C:\\Program Files\\Timon\\Timon\.exe<\/Command>/);
+  assert.ok(xml.includes(`<Arguments>${WINDOWS_SERVICE_FLAG} &quot;${windowsLauncherPath(opts.timonHome)}&quot;</Arguments>`), xml);
+  // The configuration stopLauncherStep looks for, as the launcher reads it.
+  assert.equal(readFileSync(windowsServiceFiles(opts.timonHome, join).launcher, 'utf8'), renderWindowsLauncherConfig(opts));
+});
+
+/**
+ * Avast and AVG quarantined `C:\Windows\System32\Tasks\TimonOrchestrator`
+ * (`CMD:Heur.BZC.WBO.Boxter`): a batch or a hidden PowerShell started at boot
+ * or logon. The heuristic reads the whole file, so the whole XML is checked.
+ */
+test('windows: the packaged task holds no batch, no PowerShell and no Hidden, in either mode', () => {
+  for (const offSession of [true, false]) {
+    const xml = renderTaskXml({ userName: 'robin', ...WINDOWS_PATHS, offSession });
+    assert.doesNotMatch(xml, /<Hidden>/, `offSession=${offSession}`);
+    assert.doesNotMatch(xml, /cmd\.exe|\.cmd\b|powershell|-WindowStyle|-Command|ComSpec|wscript|\.vbs\b/i, xml);
+    const command = /<Command>([^<]*)<\/Command>/.exec(xml)?.[1];
+    assert.equal(command, offSession ? PACKAGED_NODE : 'C:\\Program Files\\Timon\\Timon.exe');
+  }
+});
+
+test('windows: a source checkout, which has no Timon.exe, hides the launcher through PowerShell in the session only', () => {
+  const checkout = { timonHome: "C:\\Users\\o'neil\\.timon", installDir: 'C:\\src\\timon\\orchestrator', nodePath: 'C:\\Program Files\\nodejs\\node.exe' };
+  // Off session, session 0: its Node is started directly, as in a package.
+  assert.deepEqual(windowsTaskAction(checkout, true), {
+    command: 'C:\\Program Files\\nodejs\\node.exe',
+    args: `"C:\\src\\timon\\orchestrator\\dist\\host\\windows-service-launcher.js" "C:\\Users\\o'neil\\.timon\\run\\timon-service.json"`,
+  });
+  const session = windowsTaskAction(checkout, false);
+  assert.equal(session.command, 'powershell.exe');
+  const args = windowsScriptedTaskArguments(checkout);
+  assert.equal(session.args, args);
   assert.ok(args.startsWith('-NoProfile -NonInteractive -WindowStyle Hidden -Command "'), args);
   assert.match(args, /CreateNoWindow = \$true/);
   assert.match(args, /WaitForExit\(\)/);
-  assert.doesNotMatch(args, /Start-Process|-EncodedCommand|wscript|\.vbs/i);
-  assert.ok(args.includes(`'${windowsLauncherPath(opts.timonHome)}'`), 'the launcher stopLauncherStep looks for');
-  // Only the two quotes that open and close the -Command value: a path between
-  // double quotes would go through Windows' argument splitting.
+  assert.doesNotMatch(args, /Start-Process|-EncodedCommand|wscript|\.vbs|ELECTRON_RUN_AS_NODE/i);
+  // A quote in the home stays inside the PowerShell literal.
+  assert.ok(args.includes("'C:\\Users\\o''neil\\.timon\\run\\timon-service.json'"), args);
+  // Only the two quotes that open and close the -Command value.
   assert.equal(args.split('"').length - 1, 2, args);
-  assert.ok(xml.includes(args.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'))
-    || xml.includes(args.replace(/&/g, '&amp;')), 'the arguments are the action\'s, escaped for XML');
-  // The same launcher file, so stop, restart and uninstall find its cmd.exe.
-  assert.equal(readFileSync(windowsServiceFiles(opts.timonHome, join).launcher, 'utf8'), renderWindowsLauncher(opts));
-});
-
-test('windows: a quote in the home stays inside the PowerShell literal', () => {
-  const args = windowsSessionTaskArguments({ timonHome: "C:\\Users\\o'neil\\.timon" });
-  assert.ok(args.includes("'C:\\Users\\o''neil\\.timon\\run\\timon-service.cmd'"), args);
+  // Electron run as Node needs its flag, which an action cannot set: PowerShell sets it on the launcher.
+  const electron = { ...checkout, nodePath: 'C:\\src\\timon\\desktop\\node_modules\\electron\\dist\\electron.exe' };
+  assert.equal(windowsTaskAction(electron, true).command, 'powershell.exe');
+  assert.match(windowsScriptedTaskArguments(electron), /EnvironmentVariables\['ELECTRON_RUN_AS_NODE'\] = '1'/);
 });
 
 test('windows: with no answer, the task in place is kept as found; a first install stops with the session', () => {
@@ -590,6 +628,25 @@ test('windows: with no answer, the task in place is kept as found; a first insta
   }
 });
 
+test('#116: with no answer, a task switched by hand to the session is reinstalled off session if it kept its boot trigger', () => {
+  const task = (command: string, triggers: string) => (n: string, a: string[]): ExecResult => (n === 'schtasks' && a[0] === '/Query'
+    ? { code: 0, stdout: `<Task><Triggers>${triggers}</Triggers><Principals><Principal><LogonType>InteractiveToken</LogonType></Principal></Principals><Actions><Exec><Command>${command}</Command></Exec></Actions></Task>`, stderr: '' }
+    : { code: 0, stdout: '', stderr: '' });
+  const boot = '<BootTrigger /><TimeTrigger />';
+  const logon = '<LogonTrigger /><TimeTrigger />';
+  for (const [exec, sessionMode, expected, label] of [
+    [task('cmd.exe', boot), null, 'S4U', 'console task, boot trigger kept'],
+    [task('cmd.exe', logon), null, 'InteractiveToken', 'console task, logon trigger only'],
+    [task('cmd.exe', boot), 'session', 'InteractiveToken', 'the recorded answer wins over the trigger'],
+    [task('C:\\Timon\\Timon.exe', boot), null, 'InteractiveToken', 'session task with no console: kept as found'],
+  ] as const) {
+    const opts = fixture('win32', exec);
+    const res = installService({ ...opts, sessionMode, readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
+    assert.equal(res.ok, true, res.lines.join('\n'));
+    assert.match(readFileSync(taskXmlPath(), 'utf16le'), new RegExp(`<LogonType>${expected}</LogonType>`), label);
+  }
+});
+
 test('windows: status reads what the registered task does at logoff from its logon type', () => {
   const read = (stdout: string, code = 0) => windowsTaskOffSession({ exec: () => ({ code, stdout, stderr: '' }) });
   assert.equal(read('<LogonType>S4U</LogonType>'), true);
@@ -609,7 +666,52 @@ test('windows: status reads what the registered task does at logoff from its log
   assert.match(status.lines.join('\n'), /logged out: stops when you log out/);
 });
 
-test('windows: sans témoin de session scellé, rien n\'est élevé ni enregistré', () => {
+test('#116: status names the logon and the program of the task, and warns of a console in the session', () => {
+  const status = (xml: string) => statusService(fixture('win32', (n, a) => {
+    if (n === 'schtasks' && a.includes('LIST')) return { code: 0, stdout: 'Status: Running\r\n', stderr: '' };
+    if (n === 'schtasks' && a.includes('/XML')) return { code: 0, stdout: xml, stderr: '' };
+    return { code: 0, stdout: '', stderr: '' };
+  }));
+  const task = (logon: string, command: string) => `<Task><Principals><Principal><LogonType>${logon}</LogonType></Principal></Principals><Actions><Exec><Command>${command}</Command></Exec></Actions></Task>`;
+  const visible = status(task('InteractiveToken', 'cmd.exe'));
+  const text = visible.lines.join('\n');
+  assert.match(text, /logon {5}: InteractiveToken/);
+  assert.match(text, /action {4}: cmd\.exe/);
+  assert.match(text, /console {3}: visible - TimonOrchestrator starts cmd\.exe in your session.*timon service install/);
+  assert.equal(visible.taskShape?.consoleVisible, true);
+  assert.equal(visible.offSession, false, 'read from the same definition');
+
+  const boot = status(task('S4U', 'C:\\Timon\\resources\\node\\node.exe'));
+  assert.match(boot.lines.join('\n'), /action {4}: node\.exe/);
+  assert.doesNotMatch(boot.lines.join('\n'), /console/);
+  assert.equal(boot.offSession, true);
+
+  const unreadable = status('ERROR: Access is denied.');
+  assert.equal(unreadable.taskShape, undefined);
+  assert.doesNotMatch(unreadable.lines.join('\n'), /logon {5}:|action {4}:/);
+});
+
+test('#116: status and the diagnostic share one rule for a console worth reinstalling over', () => {
+  const shape = (program: string, consoleVisible = true) => ({ logon: 'InteractiveToken' as const, program, triggers: ['Logon' as const], consoleVisible });
+  assert.equal(windowsConsoleTaskTrap(shape('cmd.exe'), false), true);
+  assert.equal(windowsConsoleTaskTrap(shape('cmd.exe'), true), true);
+  assert.equal(windowsConsoleTaskTrap(shape('timon.exe', false), true), false);
+  // A source checkout's session task is a hidden PowerShell by design; a package never starts one.
+  assert.equal(windowsConsoleTaskTrap(shape('powershell.exe'), false), false);
+  assert.equal(windowsConsoleTaskTrap(shape('powershell.exe'), true), true);
+
+  // The test runner is a source checkout: status no longer tells it to reinstall its PowerShell task.
+  const task = `<Task><Principals><Principal><LogonType>InteractiveToken</LogonType></Principal></Principals><Actions><Exec><Command>powershell.exe</Command></Exec></Actions></Task>`;
+  const res = statusService(fixture('win32', (n, a) => {
+    if (n === 'schtasks' && a.includes('LIST')) return { code: 0, stdout: 'Status: Running\r\n', stderr: '' };
+    if (n === 'schtasks' && a.includes('/XML')) return { code: 0, stdout: task, stderr: '' };
+    return { code: 0, stdout: '', stderr: '' };
+  }));
+  assert.match(res.lines.join('\n'), /action {4}: powershell\.exe/);
+  assert.doesNotMatch(res.lines.join('\n'), /console {3}: visible/);
+});
+
+test('windows: without a sealed session witness, nothing is elevated or registered', () => {
   const calls: string[][] = [];
   const res = installService(fixture('win32', (n, a) => {
     calls.push([n, ...a]);
@@ -626,75 +728,58 @@ const WINDOWS_PATHS = {
   installDir: 'C:\\Program Files\\Timon\\resources\\orchestrator',
   heapMb: 4096,
   port: 3010,
-  nodePath: 'C:\\Program Files\\Timon\\Timon.exe',
+  nodePath: 'C:\\Program Files\\Timon\\resources\\node\\node.exe',
 };
 
 /**
- * La tâche lance un batch qui TIENT le daemon. Le lanceur `wscript` de la
- * révision 1 rendait la main aussitôt : la tâche ne suivait plus son daemon,
- * et rien ne pouvait relancer un daemon tombé. La fenêtre console qui avait
- * écarté `cmd` n'existe pas ici : une tâche S4U tourne en session 0.
+ * The task starts the launcher, which HOLDS the daemon. The `wscript` launcher
+ * of revision 1 returned at once: the task no longer followed its daemon, and
+ * nothing could restart a fallen daemon. Off session, the launcher runs on the
+ * package's Node directly: an S4U task runs in session 0, which nobody sees.
  */
-test('windows: la tâche lance un batch qui tient le daemon', () => {
-  assert.equal(windowsLauncherPath(WINDOWS_PATHS.timonHome),
-    'C:\\Users\\robin\\.timon\\run\\timon-service.cmd');
-  const args = windowsTaskCommand(WINDOWS_PATHS);
-  // `/s` + guillemets doublés : cmd retire la paire extérieure et garde le
-  // chemin quoté, quels que soient ses caractères.
-  assert.equal(args, '/d /s /c ""C:\\Users\\robin\\.timon\\run\\timon-service.cmd""');
-  const xml = renderTaskXml({ ...WINDOWS_PATHS, userName: 'rom' });
-  assert.match(xml, /<Command>cmd\.exe<\/Command>/);
-  assert.doesNotMatch(xml, /wscript/);
+test('windows: the boot task starts the launcher on the package\'s Node, no shell in between', () => {
+  assert.equal(windowsLauncherPath(WINDOWS_PATHS.timonHome), 'C:\\Users\\robin\\.timon\\run\\timon-service.json');
+  assert.deepEqual(windowsTaskAction(WINDOWS_PATHS, true), {
+    command: 'C:\\Program Files\\Timon\\resources\\node\\node.exe',
+    args: '"C:\\Program Files\\Timon\\resources\\orchestrator\\dist\\host\\windows-service-launcher.js" "C:\\Users\\robin\\.timon\\run\\timon-service.json"',
+  });
+  assert.deepEqual(windowsTaskAction(WINDOWS_PATHS, false), {
+    command: 'C:\\Program Files\\Timon\\Timon.exe',
+    args: '--timon-service "C:\\Users\\robin\\.timon\\run\\timon-service.json"',
+  });
+  assert.throws(() => windowsTaskAction({ ...WINDOWS_PATHS, timonHome: 'C:\\a"b' }, true), /Invalid service value/);
 });
 
-test('windows: le lanceur attend le témoin DPAPI, puis démarre le daemon sur son log', () => {
-  const bat = renderWindowsLauncher(WINDOWS_PATHS);
-  const lines = bat.split('\r\n');
-  assert.equal(lines[0], '@echo off');
-  // Everything before the code page switch is ASCII; what follows is UTF-8.
-  const chcp = lines.indexOf('chcp 65001 >nul');
-  assert.ok(chcp > 0);
-  assert.ok(lines.slice(0, chcp).every((line) => /^[\x20-\x7e]*$/.test(line)));
-  // L'environnement du PROCESSUS, posé par le batch.
-  assert.ok(lines.includes('set "ELECTRON_RUN_AS_NODE=1"'));
-  assert.ok(lines.includes('set "TIMON_HOME=C:\\Users\\robin\\.timon"'));
-  assert.ok(lines.includes('set "PORT=3010"'));
-  assert.ok(lines.includes('set "TIMON_SERVICE_LOG=C:\\Users\\robin\\.timon\\tmp\\daemon.log"'));
-  assert.ok(lines.includes('set "TIMON_SESSION_WITNESS=C:\\Users\\robin\\.timon\\run\\session-witness.dpapi"'));
-  // Le daemon, chaque chemin quoté, sortie et erreurs dans daemon.log — et il
-  // ne part qu'APRÈS le témoin : en S4U sans ouverture de session depuis le
-  // boot, un claude efface les identifiants Windows de l'utilisateur.
-  const daemon = lines.findIndex((line) => line.startsWith('"C:\\Program Files\\Timon\\Timon.exe" '));
-  assert.ok(daemon > 0, bat);
-  assert.equal(lines[daemon],
-    '"C:\\Program Files\\Timon\\Timon.exe" --max-old-space-size=4096 "C:\\Program Files\\Timon\\resources\\orchestrator\\dist\\boot.js" >>"%TIMON_SERVICE_LOG%" 2>&1');
-  const witness = lines.findIndex((line) => line.includes('$env:TIMON_SESSION_WITNESS'));
-  assert.ok(witness > 0 && witness < daemon);
-  assert.match(lines[witness]!, /ConvertTo-SecureString/);
-  assert.ok(lines.includes('  goto wait'), 'the launcher loops until the witness opens');
-  assert.ok(lines.includes('  exit /b 2'), 'a missing witness is refused, never skipped');
-  assert.doesNotMatch(lines[witness]!, /"[^"]*"[^"]*"/, 'no quote inside the -Command string');
-  // Taille bornée : le log est déplacé à 10 Mio, au démarrage.
-  const rotate = lines.findIndex((line) => line.includes('move /y'));
-  assert.ok(rotate > witness && rotate < daemon);
-  assert.match(lines[rotate]!, /GEQ 10485760/);
-  assert.match(lines[rotate]!, /^if exist "%TIMON_SERVICE_LOG%" /, 'an absent log would make the size test a syntax error');
-});
-
-test('windows: le lanceur double les % et refuse un guillemet', () => {
-  const bat = renderWindowsLauncher({ ...WINDOWS_PATHS, timonHome: 'C:\\Users\\100%\\.timon' });
-  assert.ok(bat.includes('set "TIMON_HOME=C:\\Users\\100%%\\.timon"'));
-  assert.throws(() => renderWindowsLauncher({ ...WINDOWS_PATHS, nodePath: 'C:\\a"b.exe' }), /Invalid service value/);
-  assert.throws(() => renderWindowsLauncher({ ...WINDOWS_PATHS, environment: { 'A B': '1' } }), /Invalid service environment/);
+test('windows: the launcher configuration carries what the batch set, for the daemon only', () => {
+  const config = JSON.parse(renderWindowsLauncherConfig(WINDOWS_PATHS)) as {
+    format: number; node: string; args: string[]; cwd: string; env: Record<string, string>; log: string; rotateBytes: number; witness: { file: string; args: string[] };
+  };
+  assert.equal(config.node, WINDOWS_PATHS.nodePath);
+  assert.deepEqual(config.args, ['--max-old-space-size=4096', 'C:\\Program Files\\Timon\\resources\\orchestrator\\dist\\boot.js']);
+  assert.equal(config.cwd, WINDOWS_PATHS.installDir);
+  assert.equal(config.env.TIMON_HOME, 'C:\\Users\\robin\\.timon');
+  assert.equal(config.env.PORT, '3010');
+  // The Node the package ships ignores the flag and would pass it on to every child.
+  assert.equal(config.env.ELECTRON_RUN_AS_NODE, undefined);
+  // `>>daemon.log 2>&1`, rotated at 10 MiB.
+  assert.equal(config.log, 'C:\\Users\\robin\\.timon\\tmp\\daemon.log');
+  assert.equal(config.rotateBytes, 10485760);
+  // The witness is judged by the command `timon service repair` uses.
+  assert.equal(config.witness.file, 'C:\\Users\\robin\\.timon\\run\\session-witness.dpapi');
+  assert.deepEqual(config.witness.args, readSessionWitnessCommand(config.witness.file));
+  // No batch escaping any more: a % is a %.
+  assert.equal((JSON.parse(renderWindowsLauncherConfig({ ...WINDOWS_PATHS, timonHome: 'C:\\Users\\100%\\.timon' })) as typeof config).env.TIMON_HOME, 'C:\\Users\\100%\\.timon');
+  assert.throws(() => renderWindowsLauncherConfig({ ...WINDOWS_PATHS, nodePath: 'C:\\a"b.exe' }), /Invalid service value/);
+  assert.throws(() => renderWindowsLauncherConfig({ ...WINDOWS_PATHS, environment: { 'A B': '1' } }), /Invalid service environment/);
 });
 
 /**
- * TODO #342 : `userInfo().username` seul (`guilldu`) nommait un compte que
- * Windows connaît sous `EUROPE\guilldu` sur un poste joint à Entra ID. Le
- * principal est le SID lu par `whoami` dans la session de l'utilisateur ; à
- * défaut `DOMAINE\user`, puis le nom nu.
+ * TODO #342: `userInfo().username` alone (`guilldu`) named an account that
+ * Windows knows as `EUROPE\guilldu` on a machine joined to Entra ID. The
+ * principal is the SID read by `whoami` in the user's session; failing
+ * that `DOMAIN\user`, then the bare name.
  */
-test('windows: le principal de la tâche est le SID du compte, sinon DOMAINE\\user', () => {
+test('windows: the task principal is the account SID, otherwise DOMAIN\\user', () => {
   const sid = 'S-1-12-1-1234567890-123456789-1234567890-123456789';
   const whoami = (stdout: string, code = 0) => (n: string): ExecResult =>
     (n === 'whoami' ? { code, stdout, stderr: '' } : { code: 0, stdout: '', stderr: '' });
@@ -716,32 +801,203 @@ test('windows: le principal de la tâche est le SID du compte, sinon DOMAINE\\us
 });
 
 /**
- * TODO #342 : `/Run` répond "SUCCESS: Attempted" même quand Windows refuse
- * ensuite la session S4U (poste joint à Entra ID) ; la tâche reste Ready,
- * `LastTaskResult` 0x41303, `LastRunTime` en 1999. Le batch élevé vérifie
- * donc qu'elle a VRAIMENT démarré, et la supprime sinon — même invite UAC.
+ * TODO #342: `/Run` answers "SUCCESS: Attempted" even when Windows then
+ * refuses the S4U session (machine joined to Entra ID); the task stays Ready,
+ * `LastTaskResult` 0x41303, `LastRunTime` in 1999. The elevated batch therefore
+ * checks that it REALLY started, and removes it otherwise, same UAC prompt.
  */
-test('windows: après /Run, le batch élevé vérifie que la tâche a tourné, et la supprime sinon', () => {
+test('windows: after /Run, the elevated batch checks the task ran, and removes it otherwise', () => {
   const opts = fixture('win32', () => ({ code: 0, stdout: '', stderr: '' }));
   installService({ ...opts, readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
   const batch = readFileSync(elevatedScriptPath(), 'utf8');
   const run = batch.indexOf('schtasks /Run /TN TimonOrchestrator');
   const verify = batch.indexOf('Get-ScheduledTaskInfo');
   assert.ok(run >= 0 && verify > run, batch);
-  // `/Run` refusé : rien à vérifier, la tâche n'a pas été lancée par nous.
+  // `/Run` refused: nothing to check, the task was not launched by us.
   assert.match(batch.slice(run), /^[^\r\n]*\r\nset RC=%ERRORLEVEL%\r\necho TIMON-STEP run=%RC% [^\r\n]*\r\nif not "%RC%"=="0" goto :done/);
   const step = verifyTaskStartedStep().args.at(-1)!;
-  // Les DEUX signaux du "jamais exécutée", et un état illisible passe.
+  // BOTH signals of "never run", and an unreadable state passes.
   assert.ok(step.includes(`-ne ${WINDOWS_TASK_NEVER_RAN}`), step);
   assert.match(step, /LastRunTime\.Year -ge 2000/);
-  assert.match(step, /if \(-not \$i\) \{ exit 0 \}/);
+  assert.match(step, /if \(-not \$i -or /);
+  assert.match(step, /if \(\$ran\) \{ exit 0 \}/);
+  assert.doesNotMatch(step, /\/XML/, 'no session task staged: nothing to fall back to');
   assert.ok(step.includes(`AddSeconds(${TASK_VERIFY_SECONDS})`));
   assert.match(step, /schtasks\.exe \/Delete \/TN 'TimonOrchestrator' \/F/);
-  // Ni `"` ni `%` : la commande traverse cmd entre guillemets.
+  // Neither `"` nor `%`: the command crosses cmd between quotes.
   assert.doesNotMatch(step, /["%]/);
 });
 
-test('windows: une tâche jamais lancée est un refus honnête, sans révision, avec un marqueur', () => {
+/**
+ * Issue #116: a task stored for the session starts its console program on the
+ * user's desktop. An off-session install reads the stored logon back before
+ * `/Run`, and falls back to the session task within the same elevation.
+ */
+test('windows: an off-session install stages the session task and reads the logon back before /Run', () => {
+  const opts = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const res = installService({ ...opts, sessionMode: 'always', readFile: () => transcript({ create: 0, logon: 0, stop: 0, run: 0, verify: 0 }) });
+  assert.equal(res.ok, true, res.lines.join('\n'));
+  assert.equal(res.sessionFallback, undefined);
+  assert.match(res.lines.join('\n'), /starts at boot and keeps running after logoff/);
+  assert.match(readFileSync(taskXmlPath(), 'utf16le'), /<LogonType>S4U<\/LogonType>/);
+  const session = readFileSync(sessionTaskXmlPath(), 'utf16le');
+  assert.match(session, /<LogonType>InteractiveToken<\/LogonType>/);
+  assert.match(session, /<Command>C:\\Program Files\\Timon\\Timon\.exe<\/Command>/);
+  const batch = readFileSync(elevatedScriptPath(), 'utf8');
+  const create = batch.indexOf('schtasks /Create');
+  const logon = batch.indexOf('TIMON-STEP logon=');
+  const run = batch.indexOf('schtasks /Run');
+  assert.ok(create >= 0 && create < logon && logon < run, batch);
+  assert.ok(batch.includes(sessionTaskXmlPath()), 'the verify step falls back to the staged session task');
+
+  // Asked for the session: nothing to read back, nothing to fall back to.
+  installService({ ...opts, sessionMode: 'session', readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
+  const sessionBatch = readFileSync(elevatedScriptPath(), 'utf8');
+  assert.doesNotMatch(sessionBatch, /TIMON-STEP logon=/);
+  assert.ok(!sessionBatch.includes(sessionTaskXmlPath()));
+});
+
+test('windows: S4U kept, downgraded to the session, unreadable: what the install reports', () => {
+  const install = (codes: Record<string, number>) => {
+    const opts = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+    return { opts, res: installService({ ...opts, sessionMode: 'always', readFile: () => transcript(codes) }) };
+  };
+  const kept = install({ create: 0, logon: 0, stop: 0, run: 0, verify: 0 });
+  assert.equal(kept.res.ok, true);
+  assert.doesNotMatch(kept.res.lines.join('\n'), /stops at logout|could not read back/);
+
+  const downgraded = install({ create: 0, logon: TASK_SESSION_FALLBACK, stop: 0, run: 0, verify: 0 });
+  assert.equal(downgraded.res.ok, true, downgraded.res.lines.join('\n'));
+  assert.equal(downgraded.res.sessionFallback, true);
+  assert.ok(downgraded.res.lines.includes(WINDOWS_SESSION_FALLBACK_NOTICE));
+  assert.match(downgraded.res.lines.join('\n'), /starts at logon and stops when you log off/);
+  const files = windowsServiceFiles(downgraded.opts.timonHome, join);
+  assert.equal(readFileSync(files.revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION);
+  assert.equal(existsSync(files.refused), false, 'a session task that runs is a service, not a refusal');
+
+  const unreadable = install({ create: 0, logon: TASK_LOGON_UNREADABLE, stop: 0, run: 0, verify: 0 });
+  assert.equal(unreadable.res.ok, true);
+  assert.equal(unreadable.res.sessionFallback, undefined);
+  assert.match(unreadable.res.lines.join('\n'), /could not read back the logon type .* kept as registered/);
+  assert.match(unreadable.res.lines.join('\n'), /starts at boot/);
+
+  // The session task could not replace the downgraded one, which was removed:
+  // its `/Run` fails, and nothing is left for the desktop to wait on.
+  const failed = install({ create: 0, logon: TASK_LOGON_FALLBACK_FAILED, stop: 0, run: 1 });
+  assert.equal(failed.res.ok, false);
+  assert.match(failed.res.reason!, /session only/);
+  assert.equal(existsSync(windowsServiceFiles(failed.opts.timonHome, join).revision), false);
+});
+
+test('windows: the logon check falls back only from a session logon, and deletes nothing it cannot read', () => {
+  const step = logonCheckStep('C:\\Temp\\TimonOrchestrator-session.xml');
+  assert.equal(step.label, 'logon');
+  const command = step.args.at(-1)!;
+  assert.match(command, /schtasks\.exe \/Query \/TN 'TimonOrchestrator' \/XML ONE/);
+  assert.match(command, /if \(\$l -eq 'S4U' -or \$l -eq 'Password'\) \{ exit 0 \}/);
+  const unreadable = command.indexOf(`exit ${TASK_LOGON_UNREADABLE}`);
+  const create = command.indexOf("/Create /TN 'TimonOrchestrator' /XML 'C:\\Temp\\TimonOrchestrator-session.xml' /F");
+  const remove = command.indexOf('/Delete');
+  assert.ok(unreadable >= 0 && unreadable < create && create < remove, command);
+  assert.match(command, /if \(\$l -ne 'InteractiveToken'\) \{ exit 7 \}/);
+  assert.ok(command.indexOf(`exit ${TASK_SESSION_FALLBACK}`) < remove, 'a registered session task is never deleted');
+  assert.doesNotMatch(command, /["%]/, 'the command crosses cmd between quotes');
+});
+
+test('windows: a boot task that never started is replaced by the session task, in the same elevation', () => {
+  const step = verifyTaskStartedStep('C:\\Temp\\TimonOrchestrator-session.xml').args.at(-1)!;
+  const fallback = step.indexOf("/Create /TN 'TimonOrchestrator' /XML 'C:\\Temp\\TimonOrchestrator-session.xml' /F");
+  const remove = step.indexOf('/Delete');
+  assert.ok(step.indexOf('if ($ran) { exit 0 }') < fallback && fallback < remove, step);
+  // Only a task still off session is replaced, and the replacement must start too.
+  assert.ok(step.indexOf("if ($l -eq 'S4U' -or $l -eq 'Password')") < fallback);
+  assert.ok(step.indexOf(`if ($ran) { exit ${TASK_SESSION_FALLBACK} }`) > fallback);
+  assert.doesNotMatch(step, /["%]/);
+
+  const opts = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const files = windowsServiceFiles(opts.timonHome, join);
+  const res = installService({ ...opts, sessionMode: 'always', readFile: () => transcript({ create: 0, logon: 0, stop: 0, run: 0, verify: TASK_SESSION_FALLBACK }) });
+  assert.equal(res.ok, true, res.lines.join('\n'));
+  assert.equal(res.sessionFallback, true);
+  assert.notEqual(res.refused, true);
+  assert.equal(existsSync(files.refused), false);
+  assert.equal(readFileSync(files.revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION);
+});
+
+/**
+ * #116 on an Entra account: every rewrite asked for S4U again, waited, fell
+ * back to the session task again. The first fallback is remembered; only the
+ * user's explicit "always" tries S4U again.
+ */
+test('windows: a session fallback is remembered, and only an explicit "always" tries S4U again', () => {
+  const opts = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const marker = serviceS4uRefusedPath(opts.timonHome);
+  assert.equal(marker, join(opts.timonHome, 'run', 'service-s4u-refused'));
+  writeServiceSessionMode(opts.timonHome, 'always');
+
+  // Kept off session: nothing to remember.
+  installService({ ...opts, readFile: () => transcript({ create: 0, logon: 0, stop: 0, run: 0, verify: 0 }) });
+  assert.equal(existsSync(marker), false);
+
+  // Stored for the session only: the fallback writes the marker, at the logon check or at the verify step.
+  for (const codes of [{ create: 0, logon: TASK_SESSION_FALLBACK, stop: 0, run: 0, verify: 0 }, { create: 0, logon: 0, stop: 0, run: 0, verify: TASK_SESSION_FALLBACK }]) {
+    rmSync(marker, { force: true });
+    const res = installService({ ...opts, readFile: () => transcript(codes) });
+    assert.equal(res.sessionFallback, true, res.lines.join('\n'));
+    assert.match(readFileSync(marker, 'utf8'), /^\d{4}-\d{2}-\d{2}T/);
+  }
+
+  // The next rewrite, with no explicit choice (recorded "always", or the desktop's
+  // boot-trigger intent passed by the upgrade runner): the session task directly.
+  for (const sessionMode of [undefined, 'always' as const]) {
+    const res = installService({ ...opts, ...(sessionMode ? { sessionMode } : {}), readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
+    assert.equal(res.ok, true, res.lines.join('\n'));
+    assert.equal(res.sessionFallback, undefined, 'nothing fell back: the session task was asked for');
+    assert.match(readFileSync(taskXmlPath(), 'utf16le'), /<LogonType>InteractiveToken<\/LogonType>/);
+    assert.doesNotMatch(readFileSync(elevatedScriptPath(), 'utf8'), /TIMON-STEP logon=/);
+    const text = res.lines.join('\n');
+    assert.match(text, /for the session only on this account before \(recorded \d{4}-.*registering the session task directly.*timon service session-mode always/);
+    assert.match(text, /starts at logon and stops when you log off/);
+  }
+
+  // The explicit gesture (`timon service session-mode always`) forgets it, and the reinstall tries S4U.
+  assert.equal(applySessionMode(opts, 'always').ok, true);
+  assert.equal(existsSync(marker), false);
+  const retried = installService({ ...opts, readFile: () => transcript({ create: 0, logon: 0, stop: 0, run: 0, verify: 0 }) });
+  assert.match(readFileSync(taskXmlPath(), 'utf16le'), /<LogonType>S4U<\/LogonType>/);
+  assert.doesNotMatch(retried.lines.join('\n'), /registering the session task directly/);
+
+  // "session" is no request to try S4U: the refusal stays known.
+  writeFileSync(marker, 'x\n');
+  writeServiceSessionMode(opts.timonHome, 'session');
+  assert.equal(existsSync(marker), true);
+});
+
+test('#116: an install that succeeds forgets a declined repair, one that is refused keeps it', () => {
+  const opts = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const files = windowsServiceFiles(opts.timonHome, join);
+  assert.equal(files.rewriteDeclined, join(opts.timonHome, 'run', 'service-rewrite-declined'));
+  mkdirSync(dirname(files.rewriteDeclined), { recursive: true });
+  writeFileSync(files.rewriteDeclined, '0.1.9\n');
+  const refused = installService({ ...opts, sessionMode: 'session', readFile: () => transcript({ create: 1 }) });
+  assert.equal(refused.ok, false);
+  assert.equal(existsSync(files.rewriteDeclined), true, 'still declined: nothing was rewritten');
+  const done = installService({ ...opts, sessionMode: 'session', readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
+  assert.equal(done.ok, true, done.lines.join('\n'));
+  assert.equal(existsSync(files.rewriteDeclined), false);
+});
+
+test('windows: a restored S4U task that falls back to the session task is remembered too', () => {
+  const win = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const previous = previousTask('S4U', PACKAGED_NODE);
+  restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, logon: 0, stop: 0, run: 0 }) }, previous);
+  assert.equal(existsSync(serviceS4uRefusedPath(win.timonHome)), false);
+  const res = restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, logon: TASK_SESSION_FALLBACK, stop: 0, run: 0 }) }, previous);
+  assert.equal(res.sessionFallback, true);
+  assert.equal(existsSync(serviceS4uRefusedPath(win.timonHome)), true);
+});
+
+test('windows: a task never launched is an honest refusal, without a revision, with a marker', () => {
   const opts = fixture('win32', () => ({ code: 0, stdout: '', stderr: '' }));
   const files = windowsServiceFiles(opts.timonHome, join);
   const res = installService({ ...opts, readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: TASK_NEVER_RAN_REMOVED }) });
@@ -752,7 +1008,7 @@ test('windows: une tâche jamais lancée est un refus honnête, sans révision, 
   assert.equal(existsSync(files.revision), false, 'no revision: the desktop must not wait on a removed task');
   assert.equal(existsSync(files.refused), true);
 
-  // Pas supprimable : la tâche reste, sa révision aussi (le desktop la voit et repart en intégré).
+  // Not removable: the task stays, its revision too (the desktop sees it and falls back to embedded).
   const kept = fixture('win32', () => ({ code: 0, stdout: '', stderr: '' }));
   const keptFiles = windowsServiceFiles(kept.timonHome, join);
   const res2 = installService({ ...kept, readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: TASK_NEVER_RAN_KEPT }) });
@@ -760,18 +1016,18 @@ test('windows: une tâche jamais lancée est un refus honnête, sans révision, 
   assert.equal(readFileSync(keptFiles.revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION);
   assert.equal(existsSync(keptFiles.refused), true);
 
-  // Une installation dont la tâche tourne efface le constat.
+  // An install whose task runs clears the finding.
   const ok = installService({ ...kept, readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
   assert.equal(ok.ok, true);
   assert.equal(existsSync(keptFiles.refused), false);
 });
 
 /**
- * Le chemin refusé dure invite UAC + 15 s de vérification : au plafond de 30 s
- * du bouton, le PowerShell extérieur était tué pendant que le batch élevé
- * continuait — et supprimait la tâche qu'on venait d'annoncer installée.
+ * The refused path lasts a UAC prompt + 15 s of checking: at the 30 s cap
+ * of the button, the outer PowerShell was killed while the elevated batch
+ * went on, and removed the task just announced as installed.
  */
-test('windows: l\'appel élevé a son propre budget, un batch coupé avant sa vérification n\'est pas une réussite', () => {
+test('windows: the elevated call has its own budget, a batch cut before its check is not a success', () => {
   const timeouts: (number | undefined)[] = [];
   const opts = fixture('win32', () => ({ code: 0, stdout: '', stderr: '' }));
   const files = windowsServiceFiles(opts.timonHome, join);
@@ -789,26 +1045,34 @@ test('windows: l\'appel élevé a son propre budget, un batch coupé avant sa v�
   assert.equal(existsSync(files.refused), false);
 });
 
-test('windows: le XML échappe ce qui casserait le document', () => {
+test('windows: the XML escapes what would break the document', () => {
   const xml = renderTaskXml({
     userName: 'a & b',
     timonHome: 'C:\\home',
-    installDir: 'C:\\dir',
+    installDir: 'C:\\R & D\\resources\\orchestrator',
+    nodePath: 'C:\\R & D\\resources\\node\\node.exe',
   });
   assert.match(xml, /<UserId>a &amp; b<\/UserId>/);
-  assert.match(xml, /\/d \/s \/c &quot;&quot;C:\\home\\run\\timon-service\.cmd&quot;&quot;/);
+  assert.match(xml, /<Command>C:\\R &amp; D\\resources\\node\\node\.exe<\/Command>/);
+  assert.match(xml, /&quot;C:\\home\\run\\timon-service\.json&quot;<\/Arguments>/);
 });
 
 /**
- * `schtasks /End` tue le `cmd.exe` du lanceur et laisse le daemon orphelin
- * (vérifié sous Windows 11, 23/09/2026). L'arrêt vise donc l'arbre du lanceur
- * de CETTE instance, retrouvé par sa ligne de commande.
+ * `schtasks /End` kills the launcher's `cmd.exe` and leaves the daemon orphaned
+ * (checked on Windows 11, 23/09/2026). Stopping therefore targets the launcher tree
+ * of THIS instance, found by its command line.
  */
-test('windows: arrêter la tâche arrête l\'arbre du lanceur de cette instance', () => {
+test('windows: stopping the task stops the launcher tree of this instance', () => {
   const step = stopLauncherStep(WINDOWS_PATHS.timonHome);
   assert.equal(step.program, 'powershell');
   const script = step.args.at(-1)!;
-  assert.ok(script.includes("'c:\\users\\robin\\.timon\\run\\timon-service.cmd'"));
+  // Both forms: the batch of revision 5 still runs while the upgrade replaces its task.
+  assert.ok(script.includes("'c:\\users\\robin\\.timon\\run\\timon-service.json'"), script);
+  assert.ok(script.includes("'c:\\users\\robin\\.timon\\run\\timon-service.cmd'"), script);
+  assert.ok(script.includes(launcherProcessFilter(WINDOWS_PATHS.timonHome)));
+  for (const program of ['cmd.exe', 'node.exe', 'timon.exe', 'powershell.exe']) assert.ok(script.includes(`'${program}'`), program);
+  // Its own command line names the launcher too.
+  assert.match(script, /\$_\.ProcessId -ne \$PID/);
   assert.match(script, /taskkill\.exe \/F \/T \/PID/);
   assert.match(script, /exit 0$/, 'nothing to stop is not a failure');
   const batch = renderElevatedScript([stopLauncherStep('C:\\Users\\100%\\.timon')], elevatedLogPath());
@@ -841,9 +1105,9 @@ test('windows: install ends the daemon of this installation that holds the port'
 });
 
 /**
- * Le daemon S4U tourne en session 0 : un processus non élevé ne peut pas le
- * tuer, et un `/Run` sur un daemon vivant est ignoré (IgnoreNew). Le
- * redémarrage demandé par le desktop passe donc par UN lot élevé.
+ * The S4U daemon runs in session 0: a non-elevated process cannot
+ * kill it, and a `/Run` on a live daemon is ignored (IgnoreNew). The
+ * restart requested by the desktop therefore goes through ONE elevated batch.
  */
 test('windows: restart ends the launcher tree then runs the task, under one elevation', () => {
   const calls: string[][] = [];
@@ -946,7 +1210,7 @@ test('windows: restart reports a refused elevation and a task that would not sta
   assert.equal(restartWindowsService(fixture('linux')).ok, false);
 });
 
-test('windows: uninstall supprime la tâche, arrête son daemon, et laisse TIMON_HOME', () => {
+test('windows: uninstall removes the task, stops its daemon, and leaves TIMON_HOME', () => {
   const calls: string[][] = [];
   const opts = fixture('win32', (n, a) => {
     calls.push([n, ...a]);
@@ -954,22 +1218,22 @@ test('windows: uninstall supprime la tâche, arrête son daemon, et laisse TIMON
   });
   const files = windowsServiceFiles(opts.timonHome, join);
   mkdirSync(dirname(files.launcher), { recursive: true });
-  for (const file of [files.launcher, files.legacyLauncher, files.sessionWitness, files.revision, files.repairDeclined, files.refused]) writeFileSync(file, 'x');
+  for (const file of [files.launcher, files.batchLauncher, files.legacyLauncher, files.sessionWitness, files.revision, files.repairDeclined, files.rewriteDeclined, files.refused]) writeFileSync(file, 'x');
   writeFileSync(join(opts.timonHome, 'timon.db'), 'data', 'utf8');
   const res = uninstallService({ ...opts, readFile: () => transcript({ end: 0, delete: 0, stop: 0 }) });
   assert.equal(res.ok, true);
   assert.equal(calls.length, 1);
   assert.equal(calls[0]![0], 'powershell');
-  // Supprimée AVANT l'arrêt de son daemon : sinon la répétition pourrait le
-  // relancer entre les deux. Et `/End` ne garde rien : une tâche à l'arrêt
-  // fait échouer `/End` et doit partir quand même.
+  // Removed BEFORE stopping its daemon: otherwise the repetition could
+  // restart it in between. And `/End` keeps nothing: a stopped task
+  // makes `/End` fail and must go anyway.
   const batch = readFileSync(elevatedScriptPath(), 'utf8');
   assert.ok(batch.indexOf('/Delete /TN TimonOrchestrator /F') < batch.indexOf('taskkill.exe'));
   assert.match(batch, /schtasks \/End \/TN TimonOrchestrator/);
   assert.doesNotMatch(batch, /goto :done/);
-  // Les fichiers de la tâche partent avec elle, le constat de refus aussi
-  // (TODO #342 : sinon le setup n'offrirait plus que le mode portable) ; les données restent.
-  for (const file of [files.launcher, files.legacyLauncher, files.sessionWitness, files.revision, files.repairDeclined, files.refused]) {
+  // The task files go with it, the refusal finding too
+  // (TODO #342: otherwise the setup would only offer portable mode); the data stays.
+  for (const file of [files.launcher, files.batchLauncher, files.legacyLauncher, files.sessionWitness, files.revision, files.repairDeclined, files.rewriteDeclined, files.refused]) {
     assert.equal(existsSync(file), false, file);
   }
   assert.equal(readFileSync(join(opts.timonHome, 'timon.db'), 'utf8'), 'data');
@@ -991,7 +1255,7 @@ test('windows: every service gesture writes under the home, nothing in the worki
   process.chdir(scratch);
   try {
     assert.equal(installService(elevated).ok, true);
-    assert.equal(readFileSync(files.launcher, 'utf8'), renderWindowsLauncher(opts));
+    assert.equal(readFileSync(files.launcher, 'utf8'), renderWindowsLauncherConfig(opts));
     repairSessionWitness(elevated);
     stopService(elevated);
     startService(elevated);
@@ -1008,7 +1272,43 @@ test('windows: every service gesture writes under the home, nothing in the worki
   }
 });
 
-test('windows: une tâche qui n\'a pas pu être supprimée garde son lanceur', () => {
+test('windows: an install retires the batch of revision 5, unless an upgrade still needs it', () => {
+  for (const keep of [false, true]) {
+    const opts = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+    const files = windowsServiceFiles(opts.timonHome, join);
+    mkdirSync(dirname(files.batchLauncher), { recursive: true });
+    writeFileSync(files.batchLauncher, '@echo off\r\n');
+    const res = installService({ ...opts, keepBatchLauncher: keep, readFile: () => transcript({ create: 0, stop: 0, run: 0, verify: 0 }) });
+    assert.equal(res.ok, true, res.lines.join('\n'));
+    assert.equal(existsSync(files.batchLauncher), keep, `keepBatchLauncher=${keep}`);
+    if (keep) {
+      retireBatchLauncher(opts);
+      assert.equal(existsSync(files.batchLauncher), false);
+    }
+  }
+  // A failed install leaves it: the task in place may still run it.
+  const opts = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const files = windowsServiceFiles(opts.timonHome, join);
+  mkdirSync(dirname(files.batchLauncher), { recursive: true });
+  writeFileSync(files.batchLauncher, '@echo off\r\n');
+  assert.equal(installService({ ...opts, readFile: () => transcript({ create: 1 }) }).ok, false);
+  assert.equal(existsSync(files.batchLauncher), true);
+});
+
+test('windows: the packaged marker is read from the configuration, or from the batch before it', () => {
+  const opts = fixture('win32', () => ({ code: 0, stdout: '', stderr: '' }));
+  const files = windowsServiceFiles(opts.timonHome, join);
+  assert.equal(windowsLauncherMarked(opts.timonHome), null);
+  mkdirSync(dirname(files.batchLauncher), { recursive: true });
+  writeFileSync(files.batchLauncher, '@echo off\r\nset "TIMON_DESKTOP_SERVICE=1"\r\n');
+  assert.equal(windowsLauncherMarked(opts.timonHome), true);
+  writeFileSync(files.launcher, renderWindowsLauncherConfig({ ...opts, nodePath: PACKAGED_NODE }));
+  assert.equal(windowsLauncherMarked(opts.timonHome), false, 'the configuration wins: TIM-0087 unmarked');
+  writeFileSync(files.launcher, renderWindowsLauncherConfig({ ...opts, nodePath: PACKAGED_NODE, environment: { TIMON_DESKTOP_SERVICE: '1' } }));
+  assert.equal(windowsLauncherMarked(opts.timonHome), true);
+});
+
+test('windows: a task that could not be removed keeps its launcher', () => {
   const opts = fixture('win32', () => ({ code: 0, stdout: '', stderr: '' }));
   const files = windowsServiceFiles(opts.timonHome, join);
   mkdirSync(dirname(files.launcher), { recursive: true });
@@ -1019,7 +1319,7 @@ test('windows: une tâche qui n\'a pas pu être supprimée garde son lanceur', (
   assert.equal(existsSync(files.refused), true, 'the task is still there: so is the verdict on it');
 });
 
-test('windows: status lit la tâche, et une tâche absente n\'est pas « running »', () => {
+test('windows: status reads the task, and a missing task is not "running"', () => {
   const running = statusService(fixture('win32', () => ({
     code: 0, stdout: 'TaskName: \\TimonOrchestrator\nStatus: Running\n', stderr: '',
   })));
@@ -1056,13 +1356,13 @@ test('windows: a task that cannot be started is not a successful installation', 
   const text = res.lines.join(' ');
   assert.match(text, /could not be started/);
   assert.match(text, /cannot find the path specified/);
-  // Et surtout : jamais le message de succès.
+  // And above all: never the success message.
   assert.doesNotMatch(text, /installed and started/);
 });
 
-test("windows: la tâche n'est pas démarrée si sa création a échoué", () => {
-  // Le garde vit dans le batch élevé : une création qui échoue saute la suite,
-  // et l'absence de ligne `run=` est ce qui le prouve.
+test('windows: the task is not started if its creation failed', () => {
+  // The guard lives in the elevated batch: a failing creation skips the rest,
+  // and the absence of a `run=` line is what proves it.
   const res = installService({
     ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })),
     readFile: () => `Access is denied.\n${transcript({ create: 1 })}`,
@@ -1080,10 +1380,10 @@ test("windows: la tâche n'est pas démarrée si sa création a échoué", () =>
 });
 
 /**
- * Refuser l'invite UAC n'est pas la même chose qu'un schtasks qui échoue :
- * l'utilisateur doit lire qu'il a refusé, pas un code d'erreur Windows.
+ * Refusing the UAC prompt is not the same as a failing schtasks:
+ * the user must read that they refused, not a Windows error code.
  */
-test('windows: une élévation refusée le dit, et ne prétend pas avoir installé', () => {
+test('windows: a refused elevation says so, and does not claim to have installed', () => {
   const res = installService({
     // The witness is sealed without elevation; only the elevation is refused.
     ...fixture('win32', (_n, a) => ({ code: a.some((arg) => arg.includes('RunAs')) ? 1223 : 0, stdout: '', stderr: '' })),
@@ -1094,7 +1394,7 @@ test('windows: une élévation refusée le dit, et ne prétend pas avoir install
   assert.doesNotMatch(res.lines.join(' '), /installed and started/);
 });
 
-test('windows: un schtasks qui refuse remonte le refus, pas un succès', () => {
+test('windows: a schtasks that refuses reports the refusal, not a success', () => {
   const res = installService({
     ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })),
     readFile: () => `Access is denied.\n${transcript({ create: 1 })}`,
@@ -1146,18 +1446,18 @@ test('dry-run writes nothing and calls nothing', () => {
 });
 
 /**
- * Le port du service doit être celui que la config demande (étape 5.7.6).
+ * The service port must be the one the config asks for (step 5.7.6).
  *
- * Le gabarit figeait `PORT=3000`. Un paquet démarre sur 3010 pour ne heurter
- * ni la v1 ni le home de dev : le service aurait écouté ailleurs que là où le
- * client de bureau va chercher son daemon — fenêtre blanche, sans message.
+ * The template froze `PORT=3000`. A package starts on 3010 so as to hit
+ * neither v1 nor the dev home: the service would have listened elsewhere than where the
+ * desktop client looks for its daemon: a white window, without a message.
  */
-test('linux: l\'unit porte le port et le heap de la config, pas des constantes', () => {
+test('linux: the unit carries the port and heap of the config, not constants', () => {
   const opts = fixture('linux');
   const unit = renderUnit({ ...opts, port: 3010, heapMb: 2048 });
   assert.match(unit, /Environment=PORT=3010/);
   assert.match(unit, /--max-old-space-size=2048/);
-  assert.doesNotMatch(unit, /@PORT@|@HEAP@/, 'aucun gabarit laissé en place');
+  assert.doesNotMatch(unit, /@PORT@|@HEAP@/, 'no template left in place');
   assert.doesNotMatch(unit, /Environment=PORT=3000/);
 });
 
@@ -1176,10 +1476,10 @@ test('linux: the unit PATH starts with the agent CLI directories the shell found
   assert.equal(renderUnit({ ...opts }).match(/^Environment=PATH=.*$/m)?.[0], 'Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin');
 });
 
-test('status: « enregistré » et « tourne » sont deux réponses distinctes', { skip: SYSTEMD_IDENTITY }, () => {
-  // Unit écrite, mais systemd la dit inactive : installée, pas démarrée. C'est
-  // l'état exact d'un premier lancement empaqueté, où le daemon embarqué tient
-  // encore le port.
+test('status: "registered" and "running" are two distinct answers', { skip: SYSTEMD_IDENTITY }, () => {
+  // Unit written, but systemd says it is inactive: installed, not started. That is
+  // the exact state of a first packaged launch, where the embedded daemon still
+  // holds the port.
   const opts = fixture('linux', () => ({ code: 0, stdout: '', stderr: '' }));
   installService(opts);
   const stopped = statusService({ ...opts, exec: () => ({ code: 0, stdout: `LoadState=loaded\nNeedDaemonReload=no\nActiveState=inactive\nWorkingDirectory=${opts.installDir}\nEnvironment=TIMON_HOME=${opts.timonHome}`, stderr: '' }) });
@@ -1351,9 +1651,9 @@ test('a failed upgrade puts the previous definition back and restarts it', () =>
   const winCalls: string[][] = [];
   const win = fixture('win32', (n, a) => {
     winCalls.push([n, ...a]);
-    return { code: 0, stdout: '<?xml version="1.0"?><Task>é</Task>', stderr: '' };
+    return { code: 0, stdout: '<?xml version="1.0"?><Task>é</Task>', stderr: '' }; // french-ok: a non-ASCII byte the UTF-8 read keeps
   });
-  assert.equal(readServiceDefinition(win), '<?xml version="1.0"?><Task>é</Task>');
+  assert.equal(readServiceDefinition(win), '<?xml version="1.0"?><Task>é</Task>'); // french-ok: a non-ASCII byte the UTF-8 read keeps
   assert.match(winCalls[0]!.at(-1)!, /OutputEncoding = \[Text\.Encoding\]::UTF8; Export-ScheduledTask -TaskName 'TimonOrchestrator'/);
   assert.equal(readServiceDefinition(fixture('win32', () => ({ code: 1, stdout: '', stderr: 'not found' }))), null);
 
@@ -1366,8 +1666,9 @@ test('a failed upgrade puts the previous definition back and restarts it', () =>
   assert.equal(readFileSync(taskXmlPath(), 'utf16le').replace(/^\ufeff/, ''), legacy);
   const batch = readFileSync(elevatedScriptPath(), 'utf8');
   assert.ok(batch.indexOf('/Create') < batch.indexOf('taskkill.exe') && batch.indexOf('taskkill.exe') < batch.indexOf('/Run'));
-  // Back on revision 1: the desktop must try the migration again next launch.
-  assert.equal(existsSync(files.revision), false);
+  // Back on revision 1: the desktop must try the migration again next launch,
+  // and still sees a task (no revision file reads as none).
+  assert.equal(readFileSync(files.revision, 'utf8').trim(), 'restored');
   const refused = restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 1 }) }, legacy);
   assert.equal(refused.ok, false);
 
@@ -1379,6 +1680,98 @@ test('a failed upgrade puts the previous definition back and restarts it', () =>
   assert.equal(readFileSync(files.revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION, 'not put back: the new definition is still there');
   assert.equal(restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, stop: 0, run: 0 }) }, sameLauncher).ok, true);
   assert.notEqual(readFileSync(files.revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION);
+});
+
+/** A previous task as `Export-ScheduledTask` gives it back to a rollback. */
+function previousTask(logon: string, command: string): string {
+  return '<?xml version="1.0" encoding="UTF-16"?>\n<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">'
+    + '<Triggers><BootTrigger><Enabled>true</Enabled></BootTrigger></Triggers>'
+    + `<Principals><Principal id="Author"><UserId>S-1-5-21-1-2-3-1001</UserId><LogonType>${logon}</LogonType></Principal></Principals>`
+    + `<Actions Context="Author"><Exec><Command>${command}</Command><Arguments>/d /s /c x</Arguments></Exec></Actions></Task>`;
+}
+
+test('#116: a rollback never puts back a task that opens a console in the session', () => {
+  const win = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const ok = () => transcript({ create: 0, stop: 0, run: 0 });
+  const registered = () => readFileSync(taskXmlPath(), 'utf16le').replace(/^\ufeff/, '');
+
+  const res = restoreServiceDefinition({ ...win, readFile: ok }, previousTask('InteractiveToken', 'cmd.exe'));
+  assert.equal(res.ok, true, res.lines.join('\n'));
+  assert.match(res.lines.join('\n'), /started cmd\.exe in the session, which opens a console window/);
+  assert.match(registered(), /<LogonType>InteractiveToken<\/LogonType>/);
+  assert.match(registered(), /<Command>C:\\Program Files\\Timon\\Timon\.exe<\/Command>/);
+  assert.doesNotMatch(readFileSync(elevatedScriptPath(), 'utf8'), /TIMON-STEP logon=/, 'nothing off session to read back');
+
+  // node.exe of revision 6, switched to the session: the same window.
+  const node = previousTask('InteractiveToken', 'C:\\Program Files\\Timon\\resources\\node\\node.exe');
+  restoreServiceDefinition({ ...win, readFile: ok }, node);
+  assert.match(registered(), /Timon\.exe/);
+
+  // A session task with no console is put back as it was.
+  const gui = previousTask('InteractiveToken', 'C:\\Program Files\\Timon\\Timon.exe');
+  assert.equal(restoreServiceDefinition({ ...win, readFile: ok }, gui).ok, true);
+  assert.equal(registered(), gui);
+});
+
+test('#116: a rollback judges the console with the shared rule: a source checkout keeps its hidden PowerShell', () => {
+  const ok = () => transcript({ create: 0, stop: 0, run: 0 });
+  const registered = () => readFileSync(taskXmlPath(), 'utf16le').replace(/^\ufeff/, '');
+
+  // A source checkout has no Timon.exe: its session task is a hidden
+  // PowerShell by design, and replacing it would register the same one.
+  const source = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: 'C:\\Users\\tester\\node\\node.exe' };
+  const hidden = renderTaskXml({ ...source, userId: 'S-1-5-21-1-2-3-1001', offSession: false });
+  assert.equal(windowsTaskShape(hidden)?.program, 'powershell.exe');
+  assert.equal(windowsTaskShape(hidden)?.consoleVisible, true, 'the raw shape alone would call it a console');
+  const kept = restoreServiceDefinition({ ...source, readFile: ok }, hidden);
+  assert.equal(kept.ok, true, kept.lines.join('\n'));
+  assert.doesNotMatch(kept.lines.join('\n'), /opens a console window/);
+  assert.equal(registered(), hidden);
+
+  // A package: a session task that starts cmd.exe is the trap, replaced by the session task.
+  const packaged = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const replaced = restoreServiceDefinition({ ...packaged, readFile: ok }, previousTask('InteractiveToken', 'cmd.exe'));
+  assert.equal(replaced.ok, true, replaced.lines.join('\n'));
+  assert.match(replaced.lines.join('\n'), /started cmd\.exe in the session, which opens a console window/);
+  assert.match(registered(), /<LogonType>InteractiveToken<\/LogonType>/);
+  assert.match(registered(), /<Command>C:\\Program Files\\Timon\\Timon\.exe<\/Command>/);
+});
+
+test('#116: a restored S4U task is read back, falls back to the session task, and an unreadable one deletes nothing', () => {
+  const win = { ...fixture('win32', () => ({ code: 0, stdout: '', stderr: '' })), nodePath: PACKAGED_NODE };
+  const files = windowsServiceFiles(win.timonHome, join);
+  const s4u = previousTask('S4U', 'cmd.exe');
+  const registered = () => readFileSync(taskXmlPath(), 'utf16le').replace(/^\ufeff/, '');
+
+  const kept = restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, logon: 0, stop: 0, run: 0 }) }, s4u);
+  assert.equal(kept.ok, true, kept.lines.join('\n'));
+  assert.equal(kept.sessionFallback, undefined);
+  assert.equal(registered(), s4u);
+  const batch = readFileSync(elevatedScriptPath(), 'utf8');
+  assert.ok(batch.indexOf('TIMON-STEP create=') < batch.indexOf('TIMON-STEP logon=') && batch.indexOf('TIMON-STEP logon=') < batch.indexOf('/Run'), batch);
+  assert.match(readFileSync(sessionTaskXmlPath(), 'utf16le'), /<Command>C:\\Program Files\\Timon\\Timon\.exe<\/Command>/);
+
+  const downgraded = restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, logon: TASK_SESSION_FALLBACK, stop: 0, run: 0 }) }, s4u);
+  assert.equal(downgraded.ok, true);
+  assert.equal(downgraded.sessionFallback, true);
+  assert.ok(downgraded.lines.includes(WINDOWS_SESSION_FALLBACK_NOTICE));
+  assert.equal(readFileSync(files.revision, 'utf8').trim(), 'restored');
+
+  const unreadableLogon = restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, logon: TASK_LOGON_UNREADABLE, stop: 0, run: 0 }) }, s4u);
+  assert.equal(unreadableLogon.ok, true);
+  assert.match(unreadableLogon.lines.join('\n'), /could not read back the logon type/);
+
+  const failed = restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, logon: TASK_LOGON_FALLBACK_FAILED, stop: 0, run: 1 }) }, s4u);
+  assert.equal(failed.ok, false);
+  assert.equal(existsSync(files.revision), false, 'the task is gone: no revision for the desktop to wait on');
+
+  // A definition whose logon cannot be read goes back verbatim, unchecked.
+  const odd = '<Task><Actions><Exec><Command>wscript.exe</Command></Exec></Actions></Task>';
+  const verbatim = restoreServiceDefinition({ ...win, readFile: () => transcript({ create: 0, stop: 0, run: 0 }) }, odd);
+  assert.equal(verbatim.ok, true);
+  assert.equal(registered(), odd);
+  assert.match(verbatim.lines.join('\n'), /could not read the logon of the previous TimonOrchestrator task: it is put back as it was/);
+  assert.doesNotMatch(readFileSync(elevatedScriptPath(), 'utf8'), /TIMON-STEP logon=|\/Delete/);
 });
 
 test('a definition written with nothing to restore is stopped and removed', () => {
@@ -1453,35 +1846,21 @@ test('TIM-0107: `timon service repair` seals the witness again only when it cann
 test('TIM-0107: the read command and the launcher judge the witness the same way', () => {
   const file = 'C:\\Users\\robin\\.timon\\run\\session-witness.dpapi';
   const command = readSessionWitnessCommand(file).at(-1)!;
-  const launcher = renderWindowsLauncher({ timonHome: 'C:\\Users\\robin\\.timon', installDir: 'C:\\T', heapMb: 4096, port: 3010, nodePath: 'C:\\T\\Timon.exe' });
-  const shared = command.slice(command.indexOf('if (-not (Test-Path'), command.lastIndexOf('; [Console]::Error.WriteLine($why)'));
-  assert.ok(launcher.includes(shared), 'same decrypt-and-compare statements');
+  const launcher = JSON.parse(renderWindowsLauncherConfig({ timonHome: 'C:\\Users\\robin\\.timon', installDir: 'C:\\T', heapMb: 4096, port: 3010, nodePath: 'C:\\T\\resources\\node\\node.exe' })) as { witness: { args: string[] } };
+  assert.deepEqual(launcher.witness.args, readSessionWitnessCommand(file), 'the very command repair runs');
   assert.ok(command.startsWith(`$f = '${file}'`));
 });
 
-test('TODO #550: an unreadable witness leaves its cause in the service log, once, and never its content', () => {
-  const launcher = renderWindowsLauncher(WINDOWS_PATHS);
-  const witness = launcher.split('\r\n').find((line) => line.includes('$env:TIMON_SESSION_WITNESS'))!;
-  const payload = /-Command "([^"]*)"$/.exec(witness)?.[1];
-  assert.ok(payload, witness);
-  // Raw inside a batch: cmd would expand a `%` and end the string on a quote.
-  assert.doesNotMatch(payload, /[%"]/);
+test('TODO #550: an unreadable witness leaves its cause on stderr, never its content', () => {
+  const payload = readSessionWitnessCommand('C:\\w.dpapi').at(-1)!;
   // The catch keeps the cause instead of swallowing it, from the exception alone.
   const handler = /catch \{ (\$why = [^}]*) \}/.exec(payload)?.[1];
   assert.ok(handler, 'the decrypt failure is recorded, not swallowed');
   assert.match(handler, /\$_\.Exception\.Message/);
   assert.doesNotMatch(handler, /\$s\b|\$b\b|Get-Content|PtrToStringBSTR/, 'neither the blob nor what it decrypted to');
   assert.doesNotMatch(payload, /catch \{\s*\}/, 'no catch left empty');
-  // Written to the service log on the first pass only, before the 10-second loop.
-  const write = payload.split('; ').find((statement) => statement.includes('$env:TIMON_SERVICE_LOG'));
-  assert.ok(write, payload);
-  assert.match(write, /^if \(-not \$env:TIMON_SERVICE_WAITING\) \{/);
-  assert.match(write, /AppendAllText\(\$env:TIMON_SERVICE_LOG, .*\$why/);
-  assert.ok(payload.indexOf(write) < payload.indexOf('Start-Sleep'));
-  const lines = launcher.split('\r\n');
-  assert.ok(lines.indexOf(witness) < lines.findIndex((line) => line.includes('set "TIMON_SERVICE_WAITING=1"')));
-  // The CLI's read command reports it on stderr, where status and repair read it.
-  assert.match(readSessionWitnessCommand('C:\\w.dpapi').at(-1)!, /\[Console\]::Error\.WriteLine\(\$why\); exit 1$/);
+  // On stderr, where the launcher (once, `windows-service-launcher.test.ts`), status and repair read it.
+  assert.match(payload, /\[Console\]::Error\.WriteLine\(\$why\); exit 1$/);
 });
 
 test('TODO #550: status and repair show why the witness cannot be opened', () => {

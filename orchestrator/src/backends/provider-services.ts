@@ -80,6 +80,21 @@ export type ProviderScratch = {
    * a probe has no mission to keep a folder for, and nothing is created for it.
    */
   mission(spawn: BuildSpawnOpts): Promise<ProviderScratchDir>;
+  /**
+   * API 18. The private folder (0700) of one profile this plugin launches, kept across its
+   * missions: where a CLI that keeps its sessions and settings in one folder per sign-in
+   * (`CLAUDE_CONFIG_DIR`) finds them again when a new mission resumes another's session.
+   * Created at the call; never removed by the daemon (no retention purge, no cache trim, no
+   * backend switch). Only the missions of that profile reach it through the fence. Only for
+   * a profile whose dialect this plugin launches: the profile of another plugin (a pack, a
+   * user's file, an API-key profile) that runs on this plugin's dialect is one of them.
+   * Refused for a launch on an account: its state goes in `account.of(profile).configDir`.
+   *
+   * Outlives every mission, so it holds no secret of one: `writeFile` refuses a text that
+   * carries a reference of `mcp()` or `env()` (write those in `mission()`), and `link` takes
+   * no source.
+   */
+  profile(profile: ProfileRuntime): ProviderScratchDir;
 };
 
 /** S5 — masks, in what a provider emits, the values only the daemon knows. */
@@ -248,7 +263,48 @@ export type ProviderAccount = {
    * registered.
    */
   of(profile: ProfileRuntime): ProviderAccountContext | undefined;
+  /**
+   * API 18 — the OS credential-store entry (macOS keychain) the CLI keeps for the account
+   * this profile runs on, for the launch of `missionId` being built, or undefined when it runs
+   * on no account. `service` is a name the manifest declared in `provider.osCredentials`,
+   * followed by `-` and the first 8 hex of sha256 of the account's folder (`configDir`, NFC),
+   * the name Claude Code gives it. The daemon computes that suffix itself: any other name is
+   * refused, the declared name alone (the host's own sign-in) and another account's included.
+   * Meant for a CLI the mission's fence keeps from updating the keychain: copy the entry into
+   * `configDir`, then remove it, so the folder is the only place the CLI keeps that sign-in.
+   */
+  osCredential(profile: ProfileRuntime, service: string, missionId: string): ProviderAccountOsCredential | undefined;
 };
+
+/**
+ * One account's entry in the OS credential store. Off macOS, `read` answers null and `remove`
+ * `removed`. Deleting it is only safe while nothing can write it: the daemon says when that is
+ * (`held`), and checks it again in the very run of the delete.
+ */
+export type ProviderAccountOsCredential = {
+  /** Why the entry must stay where it is right now (`ProviderAccountOsCredentialHold`), or null when it may move. */
+  held(): ProviderAccountOsCredentialHold | null;
+  /** The secret, or null (absent, locked, refused). Asked now, never cached, never logged. */
+  read(): Promise<string | null>;
+  /**
+   * Deletes the entry if it still holds `expected` (what `read` gave and was copied) and
+   * nothing holds it: `removed` once none is left, `changed` when it holds another value now,
+   * a hold when one appeared meanwhile (both left as they are), `refused` when the store said
+   * no (locked keychain).
+   */
+  remove(expected: string): Promise<ProviderAccountOsCredentialRemoval>;
+};
+
+/**
+ * `signing-in`: a sign-in flow runs on the account, its CLI may rewrite the entry.
+ * `unfenced`: the launch runs outside the fence (or none is being prepared): its CLI updates the
+ * keychain itself, there is nothing to move. `in-use`: another process Timon launched runs on the
+ * account outside the fence, or inside one that lets it write the keychain, and may rewrite the
+ * entry at any moment.
+ */
+export type ProviderAccountOsCredentialHold = 'signing-in' | 'unfenced' | 'in-use';
+
+export type ProviderAccountOsCredentialRemoval = 'removed' | 'changed' | 'refused' | ProviderAccountOsCredentialHold;
 
 /** A release-owned opaque credential. Values never enter an HTTP response. */
 export type ProviderCredentialStore = {

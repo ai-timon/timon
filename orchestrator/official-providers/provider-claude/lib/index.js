@@ -7,7 +7,7 @@ export const name = 'provider-claude';
 export function apply(ctx) {
   const token = createClaudeToken(ctx.provider);
   const usage = createClaudeUsage(ctx.provider, token);
-  ctx.provider.registerProvider(createClaudeProvider(ctx.provider, token, usage));
+  ctx.provider.registerProvider(createClaudeProvider(ctx.provider, token, usage, { log: ctx.log }));
   ctx.provider.registerProductProfile(CLAUDE_PROFILE);
   registerClaudeTokenRoutes(ctx, token, usage);
   token.syncClaudeTokenMarker();

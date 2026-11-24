@@ -34,7 +34,7 @@ test('native browser proxy forwards only the authenticated session cookie', asyn
       const body = JSON.parse(String(init?.body)); downloads.push(body);
       assert.equal(body.action, 'downloadRead'); assert.equal(body.downloadId, 'report'); assert.equal(body.clientId, 'viewer');
       const data = body.offset === 0 ? 'part1' : 'part2';
-      return Response.json({ result: { data: Buffer.from(data).toString('base64'), offset: body.offset, size: 10, name: 'résumé.txt', mimeType: 'text/plain', eof: body.offset !== 0 } });
+      return Response.json({ result: { data: Buffer.from(data).toString('base64'), offset: body.offset, size: 10, name: 'résumé.txt', mimeType: 'text/plain', eof: body.offset !== 0 } }); // french-ok: an accented file name, kept as is
     };
     const download = await run('session-one', () => GET(new Request('http://localhost/api/ui/native-browser/id/downloads/report?clientId=viewer'), { params: { path: ['id', 'downloads', 'report'] } }));
     assert.equal(await download.text(), 'part1part2');

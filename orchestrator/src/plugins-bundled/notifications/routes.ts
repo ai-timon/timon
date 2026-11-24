@@ -12,7 +12,7 @@ import { dbApi, NOTIFICATION_DISMISS_ON, type NotificationDismissOn, type Notifi
 import { closePushFor, createNotification, dismissNotificationRow } from '../../notifications.js';
 import { viewerFromRequest } from '../../users/identity.js';
 import { scopedDb } from '../../users/scoped-db.js';
-import { apiError } from '../../api-error.js';
+import { apiError, type ApiErrorBody } from '../../api-error.js';
 import { backendBinaryPresentation, checkBackendBinaries } from '../../backends/binary-check.js';
 
 /**
@@ -39,21 +39,22 @@ export function notifyLifecycle(
   type: NotificationType,
   link: { taskId: string | null; missionId: string | null },
   now = Date.now(),
-): Lifecycle | { error: string } {
+): Lifecycle | { error: ApiErrorBody } {
   const raw = (body ?? {}) as Record<string, unknown>;
   const parsed = LifecycleBody.safeParse({ dismiss_on: raw.dismiss_on, ttl_minutes: raw.ttl_minutes });
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    return { error: `${issue?.path.join('.') || 'body'}: ${issue?.message ?? 'invalid'}` };
+    const detail = `${issue?.path.join('.') || 'body'}: ${issue?.message ?? 'invalid'}`;
+    return { error: apiError('invalid_detail', detail, { detail }) };
   }
   const { dismiss_on: asked, ttl_minutes: ttl } = parsed.data;
   if (type !== 'action_required') {
     return asked != null || ttl != null
-      ? { error: 'dismiss_on and ttl_minutes apply to action_required only' }
+      ? { error: apiError('notification_lifecycle_action_only', 'dismiss_on and ttl_minutes apply to action_required only') }
       : { dismissOn: null, expiresAt: null };
   }
-  if (asked?.includes('reply') && !link.missionId) return { error: 'dismiss_on reply needs a mission' };
-  if (asked?.includes('task_done') && !link.taskId) return { error: 'dismiss_on task_done needs a task_id' };
+  if (asked?.includes('reply') && !link.missionId) return { error: apiError('notification_reply_needs_mission', 'dismiss_on reply needs a mission') };
+  if (asked?.includes('task_done') && !link.taskId) return { error: apiError('notification_task_done_needs_task', 'dismiss_on task_done needs a task_id') };
   const dismissOn = asked ?? [
     ...(link.missionId ? ['reply' as const] : []),
     ...(link.taskId ? ['task_done' as const] : []),
@@ -85,9 +86,9 @@ export function registerRoutes(app: Router): void {
 
   app.post('/api/notifications', (req, res) => {
     const { type, urgent, title, body, task_id, mission_id, anchor } = req.body ?? {};
-    if (!type || !title) { res.status(400).json({ error: 'type and title required' }); return; }
+    if (!type || !title) { res.status(400).json(apiError('notification_fields_required', 'type and title required')); return; }
     if (!['action_required', 'alert', 'report'].includes(type)) {
-      res.status(400).json({ error: 'invalid type' });
+      res.status(400).json(apiError('notification_type_invalid', 'invalid type'));
       return;
     }
     // SECU-USERS U-7: the owner is inherited from the linked task / mission,
@@ -95,7 +96,7 @@ export function registerRoutes(app: Router): void {
     // lands in someone else's centre. Unknown and foreign answer the same 404.
     const scope = scopedDb(viewerFromRequest(req));
     if (typeof task_id === 'string' && task_id && !scope.getTask(task_id)) {
-      res.status(404).json({ error: 'task not found' });
+      res.status(404).json(apiError('task_not_found', 'task not found'));
       return;
     }
     if (typeof mission_id === 'string' && mission_id && !scope.getMission(mission_id)) {
@@ -106,7 +107,7 @@ export function registerRoutes(app: Router): void {
       taskId: typeof task_id === 'string' && task_id ? task_id : null,
       missionId: typeof mission_id === 'string' && mission_id ? mission_id : null,
     });
-    if ('error' in lifecycle) { res.status(400).json({ error: lifecycle.error }); return; }
+    if ('error' in lifecycle) { res.status(400).json(lifecycle.error); return; }
     const n = createNotification({
       type, urgent: Boolean(urgent), title, body, taskId: task_id, missionId: mission_id, anchor,
       ownerUserId: task_id || mission_id ? undefined : viewerFromRequest(req)?.id ?? null,
@@ -115,14 +116,14 @@ export function registerRoutes(app: Router): void {
     // `null` = centre off. Impossible from THIS route (it is only mounted
     // by the module), but the type requires it and the 503 stays the honest
     // answer if the mounting order ever changed.
-    if (!n) { res.status(503).json({ error: 'notifications module disabled' }); return; }
+    if (!n) { res.status(503).json(apiError('notifications_disabled', 'notifications module disabled')); return; }
     res.status(201).json({ notification: n });
   });
 
   app.post('/api/notifications/dismiss-all', (req, res) => {
     const type = req.body?.type as string | undefined;
     if (type && !['action_required', 'alert', 'report'].includes(type)) {
-      res.status(400).json({ error: 'invalid type' });
+      res.status(400).json(apiError('notification_type_invalid', 'invalid type'));
       return;
     }
     const t = type as NotificationType | undefined;

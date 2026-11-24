@@ -30,6 +30,11 @@ const FEATURE_ROUTES = {
   'DELETE /api/mcp/:id': 'mcp_server.remove',
   'POST /api/secrets': 'secret.create',
   'POST /api/memory/rules': 'memory_rule.create',
+  // No core route answers `POST /api/users`, `/api/invitations` or
+  // `/api/groups` any more: the account provider plugin serves them under its
+  // own paths. The keys stay because `feature` is a closed list of the event
+  // contract, which past events and the dashboards are keyed on; the account
+  // limit is reported from the provider's refusal (bus `account_limit_reached`).
   'POST /api/users': 'account.create',
   'POST /api/invitations': 'account.invite',
   'POST /api/teams': 'team.create',
@@ -146,9 +151,6 @@ export function causeOf(status: number, errorCode: string | null, errorText: str
   }
   return { cause: 'server_error' };
 }
-
-/** Codes that mean a licence stopped the person from adding an account. */
-export const ACCOUNT_LIMIT_CODES: readonly FailureCode[] = ['user_limit', 'single_superadmin_required'];
 
 /**
  * Sections of the app: the first segment of a page path. A page a plugin adds

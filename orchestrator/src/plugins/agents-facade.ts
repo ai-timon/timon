@@ -42,6 +42,7 @@ import { isSkillId, setAgentSkills } from '../skill-attachments.js';
 import { declaresAllowedTools } from '../users/skills-mcp-guard.js';
 import { agentAvatarSchema, applyAgentAvatar } from '../agent-avatar.js';
 import { catalogKeeping, mascotPartCatalog, parseAgentAvatar, parseAgentLook, type AgentAvatarMode, type AgentLook } from '../agent-look.js';
+import { checkReportsTo } from '../reports-to.js';
 import { mainSeatRemovalRefusal, renameAgentKeepingSeat } from '../main-agent.js';
 import { agentConfigRefusal, RESTRICTED } from '../users/privileged-overrides.js';
 import { withWriteOrigin } from '../write-origin.js';
@@ -108,6 +109,7 @@ const FieldsSchema = z.object({
   skills: z.array(z.string().min(1).max(100)).max(200).optional(),
   mcpServers: z.array(z.string().min(1).max(200)).max(64).optional(),
   team: z.string().min(1).max(200).nullable().optional(),
+  reportsTo: z.string().min(1).max(100).nullable().optional(),
   // Checked by `parseAgentLook`, whose refusal names the accepted values.
   look: z.unknown().optional(),
   // Same for `parseAgentAvatar`.
@@ -172,7 +174,7 @@ const teamView = (t: { id: string; name: string; color: string | null; created_a
 export function agentsFor(scope: AgentCallerScope): ScopedAgents {
   const origin = pluginAgentOrigin(scope.pluginId);
 
-  const view = (a: { name: string; backend: string; model: string | null; project: string | null; role: string | null; has_system_prompt: boolean; created_by: string | null; look: AgentLook | null; avatar: AgentAvatarMode | null }): PluginAgent => ({
+  const view = (a: { name: string; backend: string; model: string | null; project: string | null; role: string | null; has_system_prompt: boolean; created_by: string | null; look: AgentLook | null; avatar: AgentAvatarMode | null; reports_to?: string | null }): PluginAgent => ({
     name: a.name,
     backend: a.backend,
     model: a.model,
@@ -183,10 +185,11 @@ export function agentsFor(scope: AgentCallerScope): ScopedAgents {
     mine: a.created_by === origin,
     look: a.look,
     avatar: a.avatar,
+    reportsTo: a.reports_to ?? null,
   });
 
   /** Config fields of an input, checked; `current` is the agent being edited. */
-  const configOf = (fields: z.infer<typeof PatchSchema>, current: AgentConfig | null): Partial<AgentConfig> => {
+  const configOf = (fields: z.infer<typeof PatchSchema>, current: AgentConfig | null, selfName: string): Partial<AgentConfig> => {
     const cfg: Record<string, unknown> = {};
     if (fields.role !== undefined) {
       if (!getRole(fields.role)) throw new PluginAgentError('invalid', `unknown role: ${fields.role}`);
@@ -242,7 +245,25 @@ export function agentsFor(scope: AgentCallerScope): ScopedAgents {
       }
       cfg.team = fields.team;
     }
+    if (fields.reportsTo !== undefined) cfg.reports_to = reportsToOf(fields.reportsTo, selfName);
     return cfg as Partial<AgentConfig>;
+  };
+
+  /** The manager, canonical, or `null` for the derived default. The same check
+   *  as the agents routes (existing agent, not itself, no cycle). A job sees
+   *  only its own agents, so it may name only those: another's answers like a
+   *  missing one, and a plugin cannot hand its agent a manager it cannot see. */
+  const reportsToOf = (value: string | null, self: string): string | null => {
+    let manager: string | null;
+    try {
+      manager = checkReportsTo(self, value);
+    } catch (err) {
+      throw new PluginAgentError('invalid', (err as Error).message);
+    }
+    if (manager && scope.job && loadConfig(manager).created_by !== origin) {
+      throw new PluginAgentError('invalid', `reports_to: unknown agent "${value}"`);
+    }
+    return manager;
   };
 
   /** A request: the account's teams. A job acts for no account: only the
@@ -297,7 +318,7 @@ export function agentsFor(scope: AgentCallerScope): ScopedAgents {
         throw new PluginAgentError('conflict', `agent already exists: ${fields.name}`);
       }
       if (fields.skills) checkSkills(fields.skills);
-      const cfg = configOf(fields, null) as AgentConfig;
+      const cfg = configOf(fields, null, fields.name) as AgentConfig;
       const { getAgent, upsertAgent } = await import('../agent.js');
       const { defaultExcludedMcpIds } = await import('../mcp.js');
       // Same default as `POST /api/agents`: external MCP connectors start off,
@@ -314,7 +335,7 @@ export function agentsFor(scope: AgentCallerScope): ScopedAgents {
       const fields = parse(PatchSchema, patch);
       const { name: target, config: current } = resolveOwnAgent(scope, name);
       if (fields.skills) checkSkills(fields.skills);
-      const cfg = configOf(fields, current);
+      const cfg = configOf(fields, current, target);
       const { getAgent, killRunningForAgent, patchAgentConfig, upsertAgent } = await import('../agent.js');
       if (fields.systemPrompt !== undefined) {
         upsertAgent({ name: target, system_prompt: fields.systemPrompt, config: { ...current, ...cfg } });

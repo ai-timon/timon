@@ -29,6 +29,7 @@ import { getHost } from './host/index.js';
 import { killProcessTree } from './host/kill-tree.js';
 import { stderrExcerpt } from './agent.js';
 import { redactText } from './secrets/redact.js';
+import { recordOneShotProcess } from './mission-fence-state.js';
 
 /** How long a stopped agent gets to exit on SIGTERM before SIGKILL. */
 const STOP_GRACE_MS = 2_000;
@@ -102,6 +103,8 @@ export async function runSessionOneShot(args: SessionOneShotArgs): Promise<strin
     args.release();
     throw err;
   }
+  // Never fenced: on an account, it may rewrite the account's keychain entry, which no move may then delete.
+  recordOneShotProcess(spawnOpts.missionId, backend.name, proc);
   // Again once the streams are closed: an agent stopped mid-write may still have
   // been writing in its folder when the first release removed it.
   proc.once('close', () => args.release());

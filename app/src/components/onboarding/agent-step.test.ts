@@ -1,8 +1,8 @@
 /**
  * The agent step, rendered (jsdom) against a fake daemon: the view follows the
- * profile and the switcher changes it, « Create » writes the main agent
+ * profile and the switcher changes it, "Create" writes the main agent
  * (name, then one config PATCH) and opens the chat step, a refused name stays
- * on the step, « Customise » opens and closes, and a profile that could not
+ * on the step, "Customise" opens and closes, and a profile that could not
  * be read says so and can be read again.
  */
 import assert from 'node:assert/strict';
@@ -153,7 +153,7 @@ async function renderStep(profile: string | null, run: (r: Rendered) => Promise<
     const nav = {
       step: 'agent' as const, direction: 1 as const,
       next: () => { nexts += 1; }, back: () => undefined, goTo: () => undefined,
-      setLanguage: async (tag: string) => tag, setBackHandler: () => undefined,
+      setLanguage: async (tag: string) => tag, setBackHandler: () => undefined, skip: () => undefined, setOutcome: () => undefined,
     };
     const host = document.getElementById('root');
     assert.ok(host);
@@ -197,7 +197,7 @@ test('each profile opens its view, starred; the switcher opens the others', asyn
   });
 });
 
-test('templates: « Create » waits for a profile, then writes the agent and opens the chat', async () => {
+test('templates: "Create" waits for a profile, then writes the agent and opens the chat', async () => {
   await renderStep('beginner', async (r) => {
     assert.ok((q<HTMLInputElement>(r.host, '[data-agent-name]').value).length > 0, 'a name is drawn');
     assert.equal(q<HTMLButtonElement>(r.host, '[data-create]').disabled, true);
@@ -414,7 +414,7 @@ test('sheet: a picked folder brings its project\'s skills, debounced, and only t
   }, answer);
 });
 
-test('« Customise » opens the panel; a pick is kept and sent; Escape closes it', async () => {
+test('"Customise" opens the panel; a pick is kept and sent; Escape closes it', async () => {
   await renderStep('developer', async (r) => {
     assert.equal(q(r.host, '[data-look-styler]').getAttribute('data-look-styler'), 'closed');
     await click(r, '[data-customise]');
@@ -433,7 +433,7 @@ test('« Customise » opens the panel; a pick is kept and sent; Escape closes it
   });
 });
 
-test('interview: five questions, answered ones reopen, then « Create » writes the autonomy', async () => {
+test('interview: five questions, answered ones reopen, then "Create" writes the autonomy', async () => {
   await renderStep('automation', async (r) => {
     assert.equal(q<HTMLButtonElement>(r.host, '[data-create]').disabled, true);
     await click(r, '[data-mission="mail"]');
@@ -456,7 +456,7 @@ test('interview: five questions, answered ones reopen, then « Create » writes 
   });
 });
 
-test('a profile that could not be read says so, and « Retry » reads it again', async () => {
+test('a profile that could not be read says so, and "Retry" reads it again', async () => {
   let up = false;
   await renderStep(null, async (r) => {
     assert.equal(q(r.host, '[data-onboarding-step="agent"]').getAttribute('data-agent-view'), 'templates');
@@ -471,7 +471,7 @@ test('a profile that could not be read says so, and « Retry » reads it again',
     : undefined));
 });
 
-test('« Customise » opens the shared configurator: a plugin that takes `agent.lookstyler` paints inside the panel', async () => {
+test('"Customise" opens the shared configurator: a plugin that takes `agent.lookstyler` paints inside the panel', async () => {
   const { register, resetSlotsForTests, AGENT_LOOK_STYLER_SLOT } = await import('@/lib/plugin-host/slots');
   const { useLookStyler } = await import('@/components/mascot/look-styler/look-styler-context');
   const React = await import('react');
@@ -492,7 +492,7 @@ test('« Customise » opens the shared configurator: a plugin that takes `agent.
       const name = q<HTMLInputElement>(r.host, '[data-agent-name]').value;
       assert.equal(q(r.host, '[data-plugin-styler]').getAttribute('data-plugin-styler'), name, 'the plugin reads the agent\'s name');
       assert.ok(!document.querySelector('[data-look-styler-content]'), 'the product\'s grids stepped aside');
-      assert.ok(q(r.host, '[data-style-done]'), 'the panel and its « Done » stay the step\'s');
+      assert.ok(q(r.host, '[data-style-done]'), 'the panel and its "Done" stay the step\'s');
       await click(r, '[data-plugin-styler]');
       await click(r, '[data-style-done]');
       await click(r, '[data-create]');

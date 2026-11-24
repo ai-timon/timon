@@ -17,6 +17,9 @@ import { cn } from '@/lib/utils';
 import { ProgressBadge, UrgencyBadge, todoAuthorLabel } from './project-todo-tag-chips';
 import { safeHref } from './project-todo-links';
 import { TODO_BADGE_SLOT, TodoBadgeSlot } from './todo-badge-slot';
+import { TodoLandingSlot, useTodoLandingReplaced } from './todo-landing-slot';
+import { linkIssue, todoHasOrigin, TodoOriginChips } from './todo-issue-chips';
+import { TodoProposalChip, useTodoProposals } from './todo-proposal-chip';
 import type { KanbanTodoCardValue } from './kanban-card-context';
 import type { ProjectTodo } from './project-todo-types';
 
@@ -39,16 +42,24 @@ export function todoAuthor(item: ProjectTodo): string | null {
  */
 export function useTodoHasBadges(item: ProjectTodo): boolean {
   const plugins = useSlotEntries(TODO_BADGE_SLOT).length > 0;
-  return !!item.urgency || effectiveProgress(item.progress) !== 'todo' || plugins;
+  const landing = useTodoLandingReplaced() || !!item.landing;
+  const waiting = useTodoProposals(item).length > 0;
+  return !!item.urgency || effectiveProgress(item.progress) !== 'todo' || plugins || landing || todoHasOrigin(item) || waiting;
 }
 
-/** Urgency, progress (when it moved) and the plugins' badges. */
+/** Urgency, progress (when it moved), its issues and whether its text came
+ *  from outside, a publication on GitHub waiting for the person, where its
+ *  branch stands, and the plugins' badges. */
 export function TodoBadges({ item }: { item: ProjectTodo }): ReactElement {
   const progress = effectiveProgress(item.progress);
+  const proposals = useTodoProposals(item);
   return (
     <>
       {item.urgency && <UrgencyBadge value={item.urgency} />}
       {progress !== 'todo' && <ProgressBadge value={progress} />}
+      <TodoOriginChips item={item} />
+      <TodoProposalChip proposals={proposals} />
+      <TodoLandingSlot item={item} />
       <TodoBadgeSlot item={item} />
     </>
   );
@@ -69,11 +80,12 @@ export function TodoAttachmentCount({ item }: { item: ProjectTodo }): ReactEleme
 
 /**
  * The quiet line of the card: when the idea last moved, its files, and where it lives
- * outside Timon. A link is an `href` only when it is http(s), the rule of the
+ * outside Timon (its issues apart, which are badges). A link is an `href` only when it is http(s), the rule of the
  * popup's rail.
  */
 export function TodoMeta({ item }: { item: ProjectTodo }): ReactElement {
-  const links = item.links ?? [];
+  // An issue is already a chip among the badges.
+  const links = (item.links ?? []).filter((link) => !linkIssue(link));
   const moved = item.status === 'done' && item.done_at ? item.done_at : item.updated_at;
   return (
     <>

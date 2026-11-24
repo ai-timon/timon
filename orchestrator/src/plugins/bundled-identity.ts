@@ -181,7 +181,7 @@ export const BUNDLED_IDENTITY: Readonly<Record<string, BundledIdentity>> = Objec
   // `kind`, and `cockpit.widget` among its sockets.
   '@timon/kanban': identity(['page', 'widget'], {
     route: '/kanban',
-    slots: ['nav.item', 'kanban.column', 'cockpit.widget', 'task.form', 'kanban.card', 'todo.form'],
+    slots: ['nav.item', 'kanban.column', 'cockpit.widget', 'task.form', 'kanban.card', 'todo.form', 'kanban.todo.landing', 'kanban.job.dialog', 'forge.publish.dialog', 'project.settings'],
   }),
   // Occupies the TO DO detail of the Kanban with the outcome block, nothing else.
   '@timon/todo-outcomes': identity('behavior', { slots: ['kanban.todo.detail'] }),

@@ -426,6 +426,9 @@ test('the gauge reaches the probe through the registry, for Antigravity only', {
   assert.equal(typeof getDialect('antigravity')?.accountUsage, 'function');
   assert.equal(getDialect('opencode')?.accountUsage, undefined);
   assert.equal(getDialect('hermes')?.accountUsage, undefined);
+  // Off by default (Google's terms): no backend, so no probe and no `agy` started.
+  assert.throws(() => getBackend('antigravity'), /disabled in settings/);
+  (await import('../backends/overlays.js')).saveBackendOverlay('antigravity', { disabled: false });
   const run = scenario('ok');
   const usage = await getBackend('antigravity').accountUsage!();
   assert.deepEqual(usage, { windows: EXPECTED, extra: null });

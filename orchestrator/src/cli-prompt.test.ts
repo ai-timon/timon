@@ -51,7 +51,7 @@ test('Enter hands back what was typed, and the terminal is left as it was found'
 
 test('Backspace erases, and characters beyond ASCII are part of the value', async () => {
   assert.equal(await answerTo('sk-abX\u007fc\bd\n'), 'sk-abd');
-  assert.equal(await answerTo('clé-日本\r'), 'clé-日本');
+  assert.equal(await answerTo('clé-日本\r'), 'clé-日本'); // french-ok: a multi-byte answer
 });
 
 test('Ctrl-C cancels at any point, with what was typed thrown away', async () => {

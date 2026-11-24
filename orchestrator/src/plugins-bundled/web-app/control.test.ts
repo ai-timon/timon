@@ -1,18 +1,18 @@
 /**
- * `timon app status|restart` — le diagnostic de l'app Next servie par le daemon.
+ * `timon app status|restart`: the diagnosis of the Next app served by the daemon.
  *
- * Ce que ces tests protègent, dans l'ordre du risque :
- *   1. `status` ne LÈVE JAMAIS. `app.enabled` vaut `false` par défaut : si un
- *      état "pas en marche" remontait en exception, la commande la plus
- *      banale du chantier planterait sur une installation neuve.
- *   2. Un pidfile PÉRIMÉ ne se fait pas passer pour un child vivant. Le pid
- *      d'un process mort est réattribué par le noyau : le croire sur parole,
- *      c'est envoyer un SIGTERM à un inconnu.
- *   3. `restart` ne signale que quand il y a quelque chose à signaler, et ne
- *      lance jamais l'app lui-même (elle appartient au superviseur du daemon).
+ * What these tests protect, in the order of risk:
+ *   1. `status` NEVER THROWS. `app.enabled` is `false` by default: if a
+ *      "not running" state surfaced as an exception, the most
+ *      ordinary command of the work would crash on a fresh install.
+ *   2. A STALE pidfile does not pass for a live child. The pid
+ *      of a dead process is reassigned by the kernel: taking it at its word
+ *      means sending a SIGTERM to a stranger.
+ *   3. `restart` only signals when there is something to signal, and never
+ *      launches the app itself (it belongs to the daemon's supervisor).
  *
- * Aucun process n'est tué : le seul pid vivant utilisé est celui du process de
- * test, et le signal est intercepté par un `process.kill` factice.
+ * No process is killed: the only live pid used is the test process's own, and
+ * the signal is caught by a fake `process.kill`.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,8 +26,8 @@ process.env.TIMON_HOME = HOME;
 const { appStatus, restartApp, readAppPid, APP_PID_FILE } = await import('./control.js');
 const { TimonConfigSchema } = await import('../../config/schema.js');
 
-/** Dossier d'installation factice : `<installDir>/../app` est ce que le
- *  statut inspecte, on le fabrique buildé ou non selon le test. */
+/** A fake install folder: `<installDir>/../app` is what the
+ *  status inspects, built or not depending on the test. */
 function installDir(built: boolean): string {
   const root = mkdtempSync(join(tmpdir(), 'timon-app-tree-'));
   mkdirSync(join(root, 'app'), { recursive: true });
@@ -53,14 +53,14 @@ test('le pidfile vit sous TIMON_HOME, en zone cache', () => {
   assert.equal(APP_PID_FILE, join(HOME, 'run', 'web-app.pid'));
 });
 
-test('app.enabled = false → disabled, sans throw ni pid', () => {
+test('app.enabled = false → disabled, without a throw or a pid', () => {
   const st = appStatus(cfg(), join(HOME, 'absent.pid'));
   assert.equal(st.state, 'disabled');
   assert.equal(st.pid, null);
   assert.match(st.message, /app\.enabled/);
 });
 
-test('module @timon/web-app désactivé → disabled, même avec app.enabled = true', () => {
+test('module @timon/web-app disabled → disabled, even with app.enabled = true', () => {
   const st = appStatus(
     cfg({ app: { enabled: true }, modules: { '@timon/web-app': false } }),
     join(HOME, 'absent.pid'),
@@ -69,7 +69,7 @@ test('module @timon/web-app désactivé → disabled, même avec app.enabled = t
   assert.match(st.message, /module @timon\/web-app disabled/);
 });
 
-test('app non buildée → message actionnable, pas une exception', () => {
+test('app not built → actionable message, not an exception', () => {
   const st = appStatus(
     TimonConfigSchema.parse({ app: { enabled: true }, daemon: { installDir: installDir(false) } }),
     join(HOME, 'absent.pid'),
@@ -78,7 +78,7 @@ test('app non buildée → message actionnable, pas une exception', () => {
   assert.match(st.message, /npm run build/);
 });
 
-test('.next sans prerender-manifest → not-built (build incomplet)', () => {
+test('.next without prerender-manifest → not-built (incomplete build)', () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-app-incomplete-'));
   mkdirSync(join(root, 'app', '.next'), { recursive: true });
   const st = appStatus(
@@ -92,7 +92,7 @@ test('.next sans prerender-manifest → not-built (build incomplet)', () => {
   assert.match(st.message, /prerender-manifest/);
 });
 
-test('pas de pidfile → stopped, et restart ne signale rien', () => {
+test('no pidfile → stopped, and restart signals nothing', () => {
   const c = cfg({ app: { enabled: true } });
   const file = join(HOME, 'jamais-ecrit.pid');
   assert.equal(appStatus(c, file).state, 'stopped');
@@ -102,8 +102,8 @@ test('pas de pidfile → stopped, et restart ne signale rien', () => {
   assert.equal(r.pid, null);
 });
 
-test('un pid mort ou illisible ne passe pas pour un child vivant', () => {
-  // 2^31-1 : au-delà de tout `pid_max` réaliste, donc jamais attribué.
+test('a dead or unreadable pid does not pass for a live child', () => {
+  // 2^31-1: beyond any realistic `pid_max`, hence never assigned.
   assert.equal(readAppPid(pidFile('2147483647\n')), null);
   assert.equal(readAppPid(pidFile('nawak')), null);
   assert.equal(readAppPid(pidFile('')), null);
@@ -111,10 +111,10 @@ test('un pid mort ou illisible ne passe pas pour un child vivant', () => {
   assert.equal(readAppPid(pidFile('-1')), null);
 });
 
-test('pidfile vivant → running, et restart signale CE pid', () => {
+test('live pidfile → running, and restart signals THAT pid', () => {
   const c = cfg({ app: { enabled: true } });
-  // Le process de test lui-même : un pid vivant dont on est sûr, et qui ne
-  // recevra rien puisque `process.kill` est intercepté ci-dessous.
+  // The test process itself: a live pid we are sure of, and which will
+  // receive nothing since `process.kill` is intercepted below.
   const file = pidFile(`${process.pid}\n`);
 
   const st = appStatus(c, file);
@@ -123,8 +123,8 @@ test('pidfile vivant → running, et restart signale CE pid', () => {
 
   const sent: { pid: number; signal: string | number }[] = [];
   const real = process.kill;
-  // `pidAlive` utilise le signal 0 : on le laisse passer, on n'intercepte que
-  // le SIGTERM du restart.
+  // `pidAlive` uses signal 0: we let it through, and only intercept
+  // the SIGTERM of the restart.
   process.kill = ((pid: number, signal?: string | number) => {
     if (signal === 0) return real.call(process, pid, 0);
     sent.push({ pid, signal: signal ?? 'SIGTERM' });

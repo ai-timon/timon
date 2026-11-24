@@ -1,5 +1,5 @@
 /**
- * Declared backend capabilities (point d'extension 5) — the product respects
+ * Declared backend capabilities (extension point 5): the product respects
  * what a backend says it cannot do, instead of discovering it by failing:
  *   - a `code` task on a backend without `worktree` is BLOCKED with a reason,
  *     before any worktree is created;

@@ -15,6 +15,7 @@ import { test } from 'node:test';
 import ts from 'typescript';
 
 import { DEFAULT_PATHS, lookup, readLocaleDictionary } from '../../scripts/build-locales.mjs';
+import { daemonMessageReaderParams } from './api-error';
 import { parseMessage } from '../../scripts/check-locales.mjs';
 
 const ORCHESTRATOR_SRC = join(process.cwd(), '..', 'orchestrator', 'src');
@@ -101,7 +102,8 @@ test('every message reads exactly the params the daemon sends', () => {
     const messages = messagesOf(use.code);
     if (!messages || use.params === null) continue;
     const args = [...new Set(messages.flatMap((message) => [...parseMessage(message, 'en').args]))].sort();
-    const params = [...use.params].sort();
+    // The webview adds its own (`{settingsPath}`) when it reads the row.
+    const params = [...use.params, ...daemonMessageReaderParams(use.code)].sort();
     if (args.join() !== params.join()) wrong.push(`${use.where} sends {${params.join(', ')}}, daemonMessages.${use.code} reads {${args.join(', ')}}`);
   }
   assert.deepEqual(wrong, []);

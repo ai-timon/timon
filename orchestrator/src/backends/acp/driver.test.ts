@@ -588,8 +588,8 @@ test('an agent that wants a sign-in fails start with what to do, and lets go', a
 test('a sign-in refusal names the login step the agent\'s provider declared, and nothing when it declared none', async () => {
   const opencode = launch({ env: { FAKE_ACP_AUTH: '1' }, profileId: 'opencode', signIn: { fallback: 'run `opencode auth login` in a terminal on this machine, then retry' } });
   await assert.rejects(() => opencode.driver.start(), /sign in first \(Log in\) — run `opencode auth login`/);
-  const hermes = launch({ env: { FAKE_ACP_AUTH: '1' }, profileId: 'hermes', signIn: { fallback: 'run `hermes --setup` in a terminal on this machine, then retry' } });
-  await assert.rejects(() => hermes.driver.start(), /run `hermes --setup`/);
+  const hermes = launch({ env: { FAKE_ACP_AUTH: '1' }, profileId: 'hermes', signIn: { fallback: 'run `hermes setup` in a terminal on this machine, then retry' } });
+  await assert.rejects(() => hermes.driver.start(), /run `hermes setup`/);
   const unknown = launch({ env: { FAKE_ACP_AUTH: '1' }, profileId: 'unknown' });
   await assert.rejects(() => unknown.driver.start(), (err: Error) => /sign in first \(Log in\)$/.test(err.message));
 });

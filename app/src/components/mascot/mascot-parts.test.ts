@@ -12,7 +12,7 @@ import { MASCOT_PARTS_SLOT, register, resetSlotsForTests } from '@/lib/plugin-ho
 import { recordMascotDeclarations, resetMascotDeclarationsForTests } from '@/lib/mascot/parts-declarations';
 import { DEFAULT_LOOK, defaultLookFor, lookFurHex, normalizeAgentLook } from './agent-look';
 import { exprPoints, headLayout, EYE_POINTS } from './mascot-geometry';
-import { mascotPacks, mascotPartOf } from './mascot-parts';
+import { mascotHeadOf, mascotPacks, mascotPartOf } from './mascot-parts';
 import { lookChoices, randomLook } from './random-look';
 import { AgentMascot } from './agent-mascot';
 
@@ -148,4 +148,36 @@ test('an agent row keeps its pack part before the pack loads; the head draws the
   register({ slot: MASCOT_PARTS_SLOT, pluginId: 'acme-pack', key: 'cap', mascotPart: CAP });
   const after = renderToStaticMarkup(React.createElement(AgentAvatar, { identity, size: 'xl' }));
   assert.match(after, /data-acc="acme-pack:cap"/, 'the pack\'s cap once it registered');
+});
+
+test('a head a pack draws itself is a shape like any other: drawn at random, kept in a look, classic geometry', (t) => {
+  setup(t);
+  const Head = (): null => null;
+  register({ slot: MASCOT_PARTS_SLOT, pluginId: 'acme-pack', key: 'blob', mascotPart: { type: 'shape', label: 'Blob', head: Head } });
+  assert.equal(mascotHeadOf('acme-pack:blob')?.Head, Head);
+  assert.equal(mascotHeadOf('acme-pack:blob')?.pluginId, 'acme-pack');
+  assert.equal(mascotHeadOf('squircle'), null, 'a product skull');
+  assert.equal(mascotHeadOf('acme-pack:cap'), null, 'not registered');
+  assert.ok(lookChoices().shapes.includes('acme-pack:blob'));
+  assert.equal(randomLook(() => 0.999).shape, 'acme-pack:blob', 'a random draw reaches the heads too');
+  const look = { shape: 'acme-pack:blob', color: '#d4a373', eyes: 'happy', acc: 'none' };
+  assert.deepEqual(normalizeAgentLook(look), look);
+  // What reads a skull (the avalanche's collisions, the screen of the eyes cell) gets the classic one.
+  assert.deepEqual(headLayout('acme-pack:blob'), headLayout('squircle'));
+});
+
+test('a skull pack and a head pack sit side by side; a head pack leaving takes only its heads', (t) => {
+  setup(t);
+  recordMascotDeclarations([
+    { id: 'acme-pack', label: 'Acme pack', mascot: { shape: ['blob'] } },
+    { id: 'fire-pack', label: 'Fire', mascot: { shape: ['blob'] } },
+  ]);
+  register({ slot: MASCOT_PARTS_SLOT, pluginId: 'acme-pack', key: 'blob', mascotPart: { type: 'shape', label: 'Blob', skull: { top: 70, bottom: 90, height: 70, radius: 34 } } });
+  const fire = register({ slot: MASCOT_PARTS_SLOT, pluginId: 'fire-pack', key: 'blob', mascotPart: { type: 'shape', label: 'Flame', head: () => null } });
+  assert.equal(mascotHeadOf('acme-pack:blob'), null, 'four numbers: Timon draws it');
+  assert.ok(mascotHeadOf('fire-pack:blob'));
+  fire();
+  assert.equal(mascotHeadOf('fire-pack:blob'), null);
+  assert.deepEqual(normalizeAgentLook({ shape: 'fire-pack:blob' }, defaultLookFor('code')).shape, defaultLookFor('code').shape, 'the role\'s default skull');
+  assert.ok(mascotPartOf('shape', 'acme-pack:blob'));
 });

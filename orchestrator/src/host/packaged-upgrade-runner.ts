@@ -13,13 +13,15 @@ import {
   pruneInactiveReleases,
   stagePackagedRuntime,
 } from './packaged-service.js';
-import { upgradeDesktopService } from './packaged-upgrade.js';
+import { DESKTOP_SESSION_INTENT_ENV, UPGRADE_SESSION_FALLBACK_LINE, upgradeDesktopService, upgradeSessionMode } from './packaged-upgrade.js';
+import { readServiceSessionMode } from './service-session-mode.js';
 import { serviceOfAnotherHome } from './service-ownership.js';
 import {
   installService,
   readServiceDefinition,
   removeServiceDefinition,
   restoreServiceDefinition,
+  retireBatchLauncher,
 } from './service-install.js';
 
 /** Cold boot of a packaged daemon, migrations and a restore included, stays well below this. */
@@ -79,7 +81,14 @@ const result = await upgradeDesktopService({
   options: () => {
     const host = createGenericHost(cfg);
     // A revision-1 task left its detached daemon on the port (0.1.1-rc.7).
-    return { ...serviceOptsFromEnvironment(cfg, () => host), replacePortOwner: true };
+    // The batch of revision 5 stays until the new task answers: a rollback runs it.
+    const sessionMode = process.platform === 'win32'
+      ? upgradeSessionMode(process.env[DESKTOP_SESSION_INTENT_ENV], readServiceSessionMode(TIMON_HOME))
+      : undefined;
+    return {
+      ...serviceOptsFromEnvironment(cfg, () => host), replacePortOwner: true, keepBatchLauncher: true,
+      ...(sessionMode ? { sessionMode } : {}),
+    };
   },
   foreign: serviceOfAnotherHome,
   install: installService,
@@ -97,6 +106,7 @@ const result = await upgradeDesktopService({
     }
   },
   prune: () => pruneInactiveReleases(TIMON_HOME, undefined, previousRelease ? [previousRelease] : []),
+  retire: (opts) => retireBatchLauncher(opts),
 });
 if (!result.ok) {
   console.error(result.reason ?? 'service upgrade failed');
@@ -104,4 +114,5 @@ if (!result.ok) {
   process.exitCode = result.fallback ? 2 : 1;
 } else {
   console.log(result.lines.join('\n'));
+  if (result.sessionFallback) console.log(UPGRADE_SESSION_FALLBACK_LINE);
 }

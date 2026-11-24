@@ -148,7 +148,7 @@ test('a name+scope duplicate is a 409 that names the conflicting secret', async 
 
   const dup = await call('POST', '/api/secrets', { name: 'DUP_ROUTE', value: VALUE, grants: ['global'] });
   assert.equal(dup.status, 409);
-  assert.equal(JSON.parse(dup.text).code, 'duplicate');
+  assert.equal(JSON.parse(dup.text).code, 'secret_duplicate');
   assert.match(dup.text, /DUP_ROUTE/);
   assert.match(dup.text, new RegExp(dupId));
   assertNoValue(dup.text, 'POST duplicate');

@@ -17,6 +17,11 @@
  * What sits between backticks is a quote of code or of a value the code
  * matches (`à tester Win/Mac`, the portability line of rule 9): it is left out
  * of both checks.
+ *
+ * The comments of the web client (`app/src`) and of the plugin templates
+ * (`examples/`) follow the same two rules, with the same threshold and the
+ * same backtick quotes left out: `english-tree.test.ts` reads them, and a
+ * French comment kept on purpose there carries `french-ok: <reason>`.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,6 +30,7 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
+// french-ok-file: the French samples and patterns this guard tests
 const SRC = dirname(fileURLToPath(import.meta.url));
 const BIN = join(SRC, '..', 'bin');
 
@@ -146,7 +152,7 @@ test('no comment of the daemon or its CLI is a French sentence without accents',
 test('every comment exception still matches a comment', () => {
   for (const e of COMMENT_EXCEPTIONS) {
     const file = e.file.split('/').join(sep);
-    assert.ok(comments(file).some(({ text }) => text.includes(e.fragment)), `${e.file}: « ${e.fragment} » no longer exists, drop the exception`);
+    assert.ok(comments(file).some(({ text }) => text.includes(e.fragment)), `${e.file}: "${e.fragment}" no longer exists, drop the exception`);
   }
 });
 

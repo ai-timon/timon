@@ -66,7 +66,8 @@ test('Zip-Slip: any entry escaping the archive refuses it whole', { skip }, asyn
 });
 
 test('a zip from the Windows Explorer: backslashes, OEM names, DOS folders', { skip }, async () => {
-  // "Café" in code page 850 (é = 0x82), no UTF-8 flag, host MS-DOS.
+  // french-ok-file: the accented names test the zip name decoding
+  // "Café" in code page 850 (é = 0x82), no UTF-8 flag, host MS-DOS. french-ok: a quoted name
   const cafe = new Uint8Array([...Buffer.from('skills\\Caf'), 0x82, ...Buffer.from('\\SKILL.md')]);
   const out = await read([
     { name: 'skills\\', utf8Flag: false, dosAttr: 0x10, method: 0 },

@@ -58,7 +58,7 @@ test('a badge in a TO DO widget line reads the idea of its line', async () => {
     const { ProjectTodoTile } = await import('../plugins-client/kanban/project-todo-tile');
     await React.act(async () => {
       root.render(React.createElement(ProjectTodoTile, {
-        scope: { kind: 'all' }, titre: 'Kanban TO DO', poignee: null, realtime, editing: false,
+        scope: { kind: 'all' }, titre: 'Kanban TO DO', handle: null, realtime, editing: false,
       } as never));
     });
     await React.act(settle);

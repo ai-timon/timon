@@ -26,10 +26,8 @@
     "working": "Wird ausgeführt…",
     "failed": "Anmeldung fehlgeschlagen",
     "setupFailed": "Einrichtung abgelehnt",
-    "freeUnavailable": "Die Free-Registrierung ist für diese Version noch nicht geöffnet. Versuche es später erneut oder nutze einen vorhandenen Lizenzschlüssel.",
     "clientUpgradeRequired": "Aktualisiere Timon auf eine unterstützte Version und versuche es dann erneut.",
     "transferPending": "Das Token des vorherigen Rechners ist noch nicht abgelaufen. Warte, bevor du diesen Rechner aktivierst.",
-    "freeIncompatible": "Free kann mit den aktuellen Konten oder Plugins nicht aktiviert werden. Deine Daten wurden behalten.",
-    "freeAccountRestricted": "Free erlaubt nur den ersten aktiven Superadmin. Dein Konto und deine Daten bleiben erhalten. Bitte diesen Administrator, eine Lizenz zu aktivieren, um den Zugriff wiederherzustellen."
+    "freeIncompatible": "Diese Lizenz kann mit den aktuellen Konten oder Plugins nicht angewendet werden. Deine Daten wurden behalten."
   }
 }

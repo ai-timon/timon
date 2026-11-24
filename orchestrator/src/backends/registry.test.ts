@@ -1,12 +1,12 @@
 /**
- * Registre vivant des backends (§10.15) — ce qu'un plugin fournisseur peut
- * ajouter, et ce qui disparaît quand il s'en va.
+ * Live registry of backends (§10.15): what a provider plugin can
+ * add, and what disappears when it leaves.
  *
- * L'invariant qui compte n'est pas "on peut ajouter un backend" mais son
- * symétrique : un plugin déchargé ne doit plus rien laisser de dispatchable.
- * Un backend fantôme accepté par `isBackendName` enverrait des tasks vers un
- * dialecte démonté — elles échoueraient au spawn, loin de la désinstallation
- * qui les a causées.
+ * The invariant that matters is not "one can add a backend" but its
+ * symmetric: an unloaded plugin must leave nothing dispatchable behind.
+ * A ghost backend accepted by `isBackendName` would send tasks to an
+ * unmounted dialect; they would fail at spawn, far from the uninstall
+ * that caused them.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,15 +21,15 @@ const TMP_HOME = mkdtempSync(join(tmpdir(), 'timon-registry-'));
 process.env.TIMON_HOME = TMP_HOME;
 removeHomeOnExit(TMP_HOME);
 
-const { registerDialect, registerProfile, registeredBackendOwners } = await import('./registry.js');
+const { backendOwnerPlugin, registerDialect, registerFileProfile, registerPackProfile, registerProfile, registeredBackendOwners } = await import('./registry.js');
 const { backendNames, getBackend, isBackendName, backendCatalog } = await import('./index.js');
 type Dialect = import('./types.js').Dialect;
 type NormalizedEvent = import('./types.js').NormalizedEvent;
 type SessionInfo = import('./types.js').SessionInfo;
 
 /**
- * Dialecte minimal, à la forme exacte du contrat : un CLI one-shot qui parle
- * JSON par ligne. Le même que le gabarit `examples/plugin-provider`.
+ * A minimal dialect, in the exact shape of the contract: a one-shot CLI speaking
+ * JSON per line. The same as the `examples/plugin-provider` template.
  */
 const echoDialect: Dialect = {
   defaultCmd: 'echo',
@@ -45,7 +45,7 @@ const echoDialect: Dialect = {
     if (opts.resumeSession) args.push('--resume', opts.resumeSession);
     return { cmd: profile.cmd, args, env: profile.env, cwd: opts.cfg.cwd, initialStdin: null };
   },
-  writeUserInput() { /* one-shot: chaque tour est un process */ },
+  writeUserInput() { /* one-shot: each turn is a process */ },
   parseLine(line: string): NormalizedEvent[] {
     let row: { type?: string; session?: string; text?: string } | null = null;
     try { row = JSON.parse(line) as typeof row; } catch { return []; }
@@ -73,22 +73,22 @@ const profile = {
   env: { ACME_API_KEY: 'resolved-by-the-plugin' },
 };
 
-test('un plugin ajoute son fournisseur, et le retire en partant', async () => {
-  assert.equal(isBackendName('acme-llm'), false, 'rien avant enregistrement');
+test('a plugin adds its provider, and removes it when leaving', async () => {
+  assert.equal(isBackendName('acme-llm'), false, 'nothing before registration');
 
   const removeDialect = registerDialect('acme-plugin', 'acme-echo', echoDialect);
   const removeProfile = registerProfile('acme-plugin', profile);
 
-  assert.ok(backendNames().includes('acme-llm'), 'le backend est dispatchable');
+  assert.ok(backendNames().includes('acme-llm'), 'the backend is dispatchable');
   assert.equal(isBackendName('acme-llm'), true);
-  assert.ok(backendCatalog().some((b) => b.id === 'acme-llm'), 'et visible au catalogue');
+  assert.ok(backendCatalog().some((b) => b.id === 'acme-llm'), 'and visible in the catalogue');
   assert.deepEqual(registeredBackendOwners(), {
     profiles: { 'acme-llm': 'acme-plugin' },
     dialects: { 'acme-echo': 'acme-plugin' },
   });
 
-  // Le daemon a bien lié profil et dialecte : le spawn part avec l'env que le
-  // plugin a résolu lui-même, et l'init s'annonce sous le nom du PROFIL.
+  // The daemon did bind profile and dialect: the spawn leaves with the env the
+  // plugin resolved itself, and the init announces itself under the PROFILE name.
   const backend = getBackend('acme-llm');
   const spawned = await backend.buildSpawn({
     agentName: 'timon.test', systemPrompt: 'sys', message: 'msg',
@@ -101,16 +101,42 @@ test('un plugin ajoute son fournisseur, et le retire en partant', async () => {
   assert.equal((init?.payload as { backend?: string }).backend, 'acme-llm');
   assert.equal(backend.extractSessionId(init!), 's-1');
 
-  // Déchargement : plus rien de dispatchable, dans le registre comme au
-  // catalogue. C'est `isBackendName` qui refuse une task visant ce backend.
+  // Unloading: nothing dispatchable any more, in the registry as in the
+  // catalogue. `isBackendName` is what refuses a task aimed at this backend.
   removeProfile();
   removeDialect();
-  assert.equal(isBackendName('acme-llm'), false, 'un plugin déchargé ne laisse pas de backend fantôme');
+  assert.equal(isBackendName('acme-llm'), false, 'an unloaded plugin leaves no ghost backend');
   assert.equal(backendCatalog().some((b) => b.id === 'acme-llm'), false);
   assert.deepEqual(registeredBackendOwners(), { profiles: {}, dialects: {} });
 });
 
-test('les collisions sont refusées en nommant qui occupe la place', () => {
+test('the fence names the plugin whose dialect opens the scratch folder, not the one that added the profile', () => {
+  const removeDialect = registerDialect('acme-dialect-plugin', 'acme-echo', echoDialect);
+  const data = { id: 'user-llm', dialect: 'acme-echo', label: 'User LLM', vendor: 'User', custom: true,
+    defaultModel: 'u-1', models: [{ slug: 'u-1', label: 'u-1' }] };
+  const removeFile = registerFileProfile('local-file', data);
+  const removePack = registerPackProfile('acme-pack', { ...data, id: 'pack-llm' });
+  const removeOwn = registerProfile('acme-dialect-plugin', { ...data, id: 'own-llm' });
+  const removeOrphan = registerFileProfile('local-file', { ...data, id: 'orphan-llm', dialect: 'not-installed' });
+  try {
+    // A user's file and a provider pack bring data only: the dialect's plugin runs `buildSpawn`.
+    assert.equal(backendOwnerPlugin('user-llm'), 'acme-dialect-plugin');
+    assert.equal(backendOwnerPlugin('user-llm@abcdef12'), 'acme-dialect-plugin', 'an account instance too');
+    assert.equal(backendOwnerPlugin('pack-llm'), 'acme-dialect-plugin');
+    assert.equal(backendOwnerPlugin('own-llm'), 'acme-dialect-plugin');
+    // No plugin answers for the dialect: the profile's owner is all there is.
+    assert.equal(backendOwnerPlugin('orphan-llm'), 'local-file');
+    assert.equal(backendOwnerPlugin('no-such-backend'), null);
+  } finally {
+    removeOrphan();
+    removeOwn();
+    removePack();
+    removeFile();
+    removeDialect();
+  }
+});
+
+test('collisions are refused, naming who holds the place', () => {
   const remove = registerDialect('first-plugin', 'shared-echo', echoDialect);
   assert.throws(() => registerDialect('second-plugin', 'shared-echo', echoDialect), /first-plugin/);
   // An id alone confers no product trust: an unoccupied dialect name may be registered.
@@ -121,28 +147,28 @@ test('les collisions sont refusées en nommant qui occupe la place', () => {
   remove();
 });
 
-test('un profil sans dialecte est refusé au lieu de disparaître en silence', () => {
-  // Enregistré tel quel, il serait simplement absent d'`activeProfiles` : le
-  // plugin croirait son fournisseur installé et ne verrait jamais d'erreur.
+test('a profile without a dialect is refused instead of disappearing silently', () => {
+  // Registered as is, it would simply be missing from `activeProfiles`: the
+  // plugin would think its provider installed and would never see an error.
   assert.throws(() => registerProfile('acme-plugin', { ...profile, dialect: 'inconnu' }), /inconnu/);
 });
 
-test('un dialecte incomplet est refusé avant qu\'une mission ne parte dessus', () => {
+test('an incomplete dialect is refused before a mission leaves on it', () => {
   const partial = { ...echoDialect } as Partial<Dialect>;
   delete partial.parseLine;
   assert.throws(() => registerDialect('acme-plugin', 'broken-echo', partial as Dialect), /parseLine/);
 });
 
-/* ── Pilote de session bidirectionnel ─────────────────────────────────────
-   Un dialecte de test, avec un faux agent scripté au bout de deux PassThrough :
-   ni vrai agent, ni transport de production. Ce que ça prouve, c'est la
-   PLOMBERIE du contrat : le registre accepte le dialecte, le Backend lié
-   expose `openSession` avec l'id du profil, une requête de l'agent traverse
-   `host.requestPermission` et sa réponse revient, et la fin de tour est
-   émise avant que `prompt` ne résolve. */
+/* ── Two-way session driver ─────────────────────────────────────
+   A test dialect, with a fake scripted agent at the end of two PassThrough:
+   neither a real agent nor a production transport. What it proves is the
+   PLUMBING of the contract: the registry accepts the dialect, the bound Backend
+   exposes `openSession` with the profile id, a request from the agent goes through
+   `host.requestPermission` and its answer comes back, and the end of turn is
+   emitted before `prompt` resolves. */
 
-/** Agent scripté : répond à la poignée de main, puis à un prompt en posant une
- *  requête de permission qui BLOQUE tant qu'on n'a pas répondu. */
+/** Scripted agent: answers the handshake, then a prompt by making a
+ *  permission request that BLOCKS until it is answered. */
 function scriptedAgent(io: { stdin: PassThrough; stdout: PassThrough }, seen: { permissionAnswer?: boolean }): void {
   void (async () => {
     const lines = createInterface({ input: io.stdin });
@@ -205,7 +231,7 @@ const sessionDialect: Dialect = {
   },
 };
 
-test('un dialecte à pilote de session : Backend lié, requête de permission, fin de tour', async () => {
+test('a session driver dialect: bound Backend, permission request, end of turn', async () => {
   const removeDialect = registerDialect('acp-like-plugin', 'acp-like', sessionDialect);
   const removeProfile = registerProfile('acp-like-plugin', { ...profile, id: 'acp-llm', dialect: 'acp-like' });
   try {
@@ -221,8 +247,8 @@ test('un dialecte à pilote de session : Backend lié, requête de permission, f
     const events: NormalizedEvent[] = [];
     const asked: unknown[] = [];
     const driver = backend.openSession!({
-      // Le pilote lit stdout et écrit stdin, comme avec un ChildProcess : le
-      // faux agent tient l'autre bout des deux tuyaux.
+      // The driver reads stdout and writes stdin, as with a ChildProcess: the
+      // fake agent holds the other end of both pipes.
       io: { stdin: io.stdin, stdout: io.stdout },
       spawn: {
         agentName: 'timon.test', systemPrompt: 'sys', message: 'msg', resumeSession: null,
@@ -234,17 +260,17 @@ test('un dialecte à pilote de session : Backend lié, requête de permission, f
       },
     });
 
-    assert.equal(driver.info, null, 'rien n\'est connu avant la poignée de main');
+    assert.equal(driver.info, null, 'nothing is known before the handshake');
     const info = await driver.start();
-    assert.equal(info.sessionId, 'acp-llm:sess-1', 'l\'id du profil est lié par le registre');
+    assert.equal(info.sessionId, 'acp-llm:sess-1', 'the profile id is bound by the registry');
     assert.deepEqual(driver.info, info);
     assert.deepEqual(info.capabilities, { loadSession: true, resume: false, mcp: true, image: false });
 
     const outcome = await driver.prompt('go');
     assert.deepEqual(outcome, { stopReason: 'end_turn' });
     assert.deepEqual(asked, [{ toolCallId: null, tool: 'write_file', title: null, input: { path: '/etc/passwd' } }]);
-    assert.equal(seen.permissionAnswer, false, 'la décision du host revient à l\'agent');
-    assert.deepEqual(events.map((e) => e.type), ['assistant', 'result'], 'la fin de tour est émise avant que prompt ne résolve');
+    assert.equal(seen.permissionAnswer, false, 'the host decision goes back to the agent');
+    assert.deepEqual(events.map((e) => e.type), ['assistant', 'result'], 'the end of turn is emitted before prompt resolves');
     driver.close();
   } finally {
     removeProfile();
@@ -253,7 +279,7 @@ test('un dialecte à pilote de session : Backend lié, requête de permission, f
   assert.equal(isBackendName('acp-llm'), false);
 });
 
-test('un dialecte à pilote sur un process one-shot, ou un openSession qui n\'en est pas un, est refusé', () => {
+test('a driver dialect on a one-shot process, or an openSession that is not one, is refused', () => {
   assert.throws(
     () => registerDialect('acp-like-plugin', 'oneshot-session', { ...sessionDialect, persistentProcess: false }),
     /persistentProcess/,

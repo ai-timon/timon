@@ -95,7 +95,6 @@ test('an installed test keyring is copied: editing the caller\'s array changes n
 test('outside the runner, a state the verifier did not issue is refused; taking rights away never is', () => {
   assert.equal(unverifiedGrant(forged(), false), true);
   assert.equal(unverifiedGrant(unlicensed('missing'), false), false);
-  assert.equal(unverifiedGrant({ ...forged(), planId: 'free' }, false), false, 'a valid Free state is turned into local Free anyway');
   assert.equal(unverifiedGrant(forged(), true), false, 'tests install paid states by hand');
 });
 
@@ -112,18 +111,11 @@ test('a state verified against the active keyring passes, with the copies the da
   assert.equal(unverifiedGrant({ ...state, expiresAt: new Date(Date.now() + 86_400_000).toISOString() }, false), true);
 });
 
-test('keys the caller brings, or a check that skipped the expiry, grant nothing outside the runner', () => {
+test('keys the caller brings grant nothing outside the runner', () => {
   const ownKeys = verifyLicenseToken(token(), { keys });
   assert.equal(ownKeys.status, 'valid');
   assert.equal(isVerifiedLicense(ownKeys), false);
   assert.equal(unverifiedGrant(ownKeys, false), true);
-
-  overrideKeyringForTests(keys);
-  try {
-    const restricted = verifyLicenseToken(token({ exp: now - 3600 }), { restrictionOnly: true });
-    assert.equal(restricted.status, 'valid');
-    assert.equal(isVerifiedLicense(restricted), false);
-  } finally { overrideKeyringForTests(null); }
 });
 
 test('a licence that goes off cannot be brought back from a copy', () => {

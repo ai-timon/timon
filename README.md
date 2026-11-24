@@ -60,33 +60,43 @@ merges. Every agent has a role, its own skills and a memory that follows it from
 mission. You follow everything from one cockpit and step in whenever you want. They ask before
 they push, publish or delete anything.
 
+<p align="center">
+  <img alt="The Timon cockpit: missions running, the Kanban board and an agent asking for approval" src=".github/assets/screen-cockpit.jpg" width="100%">
+</p>
+
 The team every project starts with:
 
 <table>
   <tr>
     <td width="33%" valign="top">
+      <a href="https://docs.timon-ai.com/usage/agents?utm_source=github&amp;utm_medium=readme"><img alt="Orchestrator" src=".github/assets/agents/orchestrator.jpg"></a><br />
       <strong>Orchestrator</strong><br />
       <sub>Plans the job, dispatches the tasks, keeps track of what is blocked</sub>
     </td>
     <td width="33%" valign="top">
+      <a href="https://docs.timon-ai.com/usage/kanban?utm_source=github&amp;utm_medium=readme"><img alt="Coder" src=".github/assets/agents/coder.jpg"></a><br />
       <strong>Coder</strong><br />
       <sub>Works in its own git worktree, runs the checks, commits step by step</sub>
     </td>
     <td width="33%" valign="top">
+      <a href="https://docs.timon-ai.com/usage/kanban?utm_source=github&amp;utm_medium=readme"><img alt="Reviewer" src=".github/assets/agents/reviewer.jpg"></a><br />
       <strong>Reviewer</strong><br />
       <sub>Reads the diff with another model and sends it back when it is not right</sub>
     </td>
   </tr>
   <tr>
     <td width="33%" valign="top">
+      <a href="https://docs.timon-ai.com/usage/kanban?utm_source=github&amp;utm_medium=readme"><img alt="Merger" src=".github/assets/agents/merger.jpg"></a><br />
       <strong>Merger</strong><br />
       <sub>Runs the full test suite once, then lands the branch</sub>
     </td>
     <td width="33%" valign="top">
+      <a href="https://docs.timon-ai.com/usage/agents?utm_source=github&amp;utm_medium=readme"><img alt="Researcher" src=".github/assets/agents/researcher.jpg"></a><br />
       <strong>Researcher</strong><br />
       <sub>Digs through the code and the web, and turns an idea into a brief</sub>
     </td>
     <td width="33%" valign="top">
+      <a href="https://docs.timon-ai.com/usage/agents?utm_source=github&amp;utm_medium=readme"><img alt="Ops" src=".github/assets/agents/ops.jpg"></a><br />
       <strong>Ops</strong><br />
       <sub>Handles the chores: dependencies, clean-ups, release notes</sub>
     </td>
@@ -97,6 +107,10 @@ The team every project starts with:
 
 ## ✨ Features
 
+<p align="center">
+  <img alt="The orchestrator turning a request into a plan, where you pick the models, then into Kanban tasks" src=".github/assets/features/orchestrator.gif" width="100%">
+</p>
+
 **🧭 The orchestrator runs your team.** Describe the job, out loud if you like. It breaks it down,
 lets you pick the models for each part on one screen, then dispatches and follows the work until
 it lands.
@@ -104,20 +118,24 @@ it lands.
 <table>
   <tr>
     <td width="50%" valign="top">
+      <img alt="A task moving from code to review to merge on the Kanban board" src=".github/assets/features/kanban.gif"><br />
       <strong>🔀 Code, review, merge</strong><br />
       <sub>Every task in its own worktree, reviewed by a second model before it lands</sub>
     </td>
     <td width="50%" valign="top">
+      <img alt="An agent asking a question with buttons, then a permission card" src=".github/assets/features/approvals.gif"><br />
       <strong>✋ You stay in charge</strong><br />
       <sub>Questions with buttons, permission cards, secrets the agent never sees</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
+      <img alt="A nightly routine and tasks spread across the night on the Kanban board" src=".github/assets/features/night.gif"><br />
       <strong>🌙 Work while you sleep</strong><br />
       <sub>Routines, cron and webhook triggers, overnight series paced to your quotas</sub>
     </td>
     <td width="50%" valign="top">
+      <img alt="A widget added to the cockpit, a switch to the light theme, then the plugins installed on the machine" src=".github/assets/features/plugins.gif"><br />
       <strong>🧩 Make it yours</strong><br />
       <sub>Widgets, pages, themes, layouts: signed plugins installed without a restart</sub>
     </td>

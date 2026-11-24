@@ -1,3 +1,4 @@
+// french-ok-file: accented model names and the French locale of the prompts under test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';

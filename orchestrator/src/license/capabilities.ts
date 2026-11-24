@@ -17,14 +17,12 @@ export const WHITE_LABEL_FEATURE = 'whitelabel';
 
 /**
  * May a plugin replace the whole interface (slot `root`)? Only a valid paid
- * licence whose signed `features` names the right exactly. Free never has it,
- * even when a Free token carried the string: the schema accepts any
- * `features` on Free, so the refusal has to live here. Nor does a beta-locked
- * install (`features: []`). No plan id grants it by name: the server decides,
- * through the claim, which plans include it.
+ * licence whose signed `features` names the right exactly. No licence never
+ * has it, nor does a beta-locked install (`features: []`). No plan id grants it
+ * by name: the server decides, through the claim, which plans include it.
  */
 export function whiteLabelAllowed(state: LicenseState): boolean {
-  return state.status === 'valid' && state.localFree !== true && state.planId !== 'free'
+  return state.status === 'valid' && state.localFree !== true
     && state.features?.includes(WHITE_LABEL_FEATURE) === true;
 }
 

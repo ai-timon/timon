@@ -21,8 +21,13 @@
 import { config } from './config/load.js';
 import { getHost } from './host/index.js';
 import { systemctl } from './host/systemd.js';
+import { ownLinuxUnit } from './host/packaged-service.js';
+import { TIMON_HOME } from './paths.js';
 
-const SERVICE = 'timon-orchestrator.service';
+/** A package runs under its own unit, `timon-desktop-<id>`: the rail would read an absent one. */
+function ownService(): string {
+  return `${ownLinuxUnit('timon-orchestrator', TIMON_HOME)}.service`;
+}
 /** Folder of the daemon to rebuild. It used to live here hard-coded (the checkout of
  *  the development workstation): the only thing in all of TIMON that required that
  *  exact path on that exact machine. It now comes from
@@ -68,7 +73,7 @@ export function getOrchestratorStatus(): OrchestratorStatus {
   const props = new Map<string, string>();
   if (host.capabilities().includes('systemd')) {
     // The one door to `systemctl` (`host/systemd.ts`); off Linux the capability is absent.
-    const show = systemctl(['show', SERVICE, '-p', 'SubState', '-p', 'MemoryCurrent'], { timeoutMs: 5000 });
+    const show = systemctl(['show', ownService(), '-p', 'SubState', '-p', 'MemoryCurrent'], { timeoutMs: 5000 });
     for (const line of show.out.split('\n')) {
       const i = line.indexOf('=');
       if (i > 0) props.set(line.slice(0, i), line.slice(i + 1));

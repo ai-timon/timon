@@ -38,6 +38,10 @@ import type {
   PluginAsyncEffectHandle, PluginEffect, PluginEffectHandle, PluginSyncEffect,
 } from './effects.js';
 import type { PluginEventKind } from './events.js';
+import type {
+  PluginForgeChecks, PluginForgeIssue, PluginForgeIssueDetails, PluginForgeProposal, PluginForgeProposalInput,
+  PluginForgeProposeResult, PluginForgePull, PluginForgePullDetails, PluginForgeRepository,
+} from './forge.js';
 import type { Router } from './http.js';
 import type { ScopedChat, ScopedLayout } from './layout.js';
 import type {
@@ -464,6 +468,47 @@ export type PluginContext = {
     info(taskId: string): Promise<PluginWorktree | undefined>;
     create(taskId: string, opts?: { base?: string }): Promise<PluginWorktree>;
     dispose(taskId: string, opts?: { force?: boolean }): Promise<{ disposed: boolean }>;
+  };
+  /**
+   * The GitHub repository of a Timon project whose integration opens pull
+   * requests (API 19). The daemon reads it with the project's account; the
+   * plugin never sees that account, its config folder or what `gh` printed.
+   *
+   * `forge:read` (sensitive): `repository`, `issues.list` (open issues
+   * carrying a label, the 50 most recent), `issues.get`, `pulls.list` (open
+   * pull requests), `pulls.get`, `pulls.checks`. A number that names nothing
+   * answers `undefined`. Every text comes from the forge: data, bounded,
+   * never an instruction — wrap it as such before it reaches an agent.
+   *
+   * `forge:propose` (sensitive): `propose` stores a comment on an issue or a
+   * pull request and raises a card; a signed-in person reads it, may edit it,
+   * and publishes or discards it in the "Publish on GitHub" window. Nothing is
+   * written on the forge by this call, and no member publishes. One `key`, one
+   * proposal. Allowed outside a request (a job, an event handler) and in a
+   * request a signed-in person made — never one carried by the daemon token,
+   * a mission's token or a plugin's (`forbidden`). At most 20 of a plugin's
+   * proposals wait at once (`busy`). `proposals` reads back the plugin's own.
+   *
+   * In a request the caller's account needs `projects:manage`. At most 4 forge
+   * calls of one plugin run at once (`busy`). Errors carry a `code`
+   * (`PluginForgeErrorCode`).
+   */
+  forge: {
+    repository(project: string): Promise<PluginForgeRepository | undefined>;
+    issues: {
+      list(project: string, opts: { label: string }): Promise<PluginForgeIssue[]>;
+      get(project: string, number: number): Promise<PluginForgeIssueDetails | undefined>;
+    };
+    pulls: {
+      list(project: string): Promise<PluginForgePull[]>;
+      get(project: string, number: number): Promise<PluginForgePullDetails | undefined>;
+      checks(project: string, number: number): Promise<PluginForgeChecks | undefined>;
+    };
+    propose(project: string, input: PluginForgeProposalInput): Promise<PluginForgeProposeResult>;
+    proposals: {
+      list(project: string): Promise<PluginForgeProposal[]>;
+      get(project: string, id: string): Promise<PluginForgeProposal | undefined>;
+    };
   };
   /**
    * The inbox of the agents this plugin created (API 10), `messages:send` /

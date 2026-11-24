@@ -2,22 +2,22 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { KANBAN_NATIVE_COLUMNS, kanbanGridClass } from './kanban-grid';
 
-test('sans plugin, le Kanban garde ses quatre colonnes de statuts', () => {
+test('without a plugin, the Kanban keeps its four status columns', () => {
   assert.equal(KANBAN_NATIVE_COLUMNS, 4);
   assert.equal(kanbanGridClass(0), 'md:grid-cols-4');
 });
 
-test('une colonne de plugin élargit la grille au lieu de déborder', () => {
+test('a plugin column widens the grid instead of overflowing', () => {
   assert.equal(kanbanGridClass(1), 'md:grid-cols-5');
   assert.equal(kanbanGridClass(3), 'md:grid-cols-7');
 });
 
-test('la grille cesse de s\'élargir au-delà de huit colonnes', () => {
-  // Un plugin de trop ne doit pas faire disparaître une colonne : elles
-  // rétrécissent toutes ensemble.
+test('the grid stops widening beyond eight columns', () => {
+  // One plugin too many must not make a column disappear: they
+  // all shrink together.
   assert.equal(kanbanGridClass(12), 'md:grid-cols-8');
 });
 
-test('une valeur négative retombe sur la grille native', () => {
+test('a negative value falls back to the native grid', () => {
   assert.equal(kanbanGridClass(-1), 'md:grid-cols-4');
 });

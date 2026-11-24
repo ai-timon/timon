@@ -1,7 +1,7 @@
 /**
- * `plugins` et `plugins-data` doivent voyager avec un export/import : c'est
- * l'installation elle-même (les plugins tiers) et leurs données, pas du
- * cache reconstructible. Cf. paths.ts §ZONES et docs/PLAN §10.10.
+ * `plugins` and `plugins-data` must travel with an export/import: they are
+ * the install itself (the third-party plugins) and their data, not
+ * rebuildable cache. See paths.ts §ZONES and docs/PLAN §10.10.
  */
 import { existsSync, lstatSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -18,12 +18,12 @@ const { exportTimon, importTimon, removeOrMoveAside } = await import('./export.j
 const { ZONES } = await import('./paths.js');
 const { timonVersion, updateNeedsApproval } = await import('./data-version.js');
 
-test('plugins et plugins-data sont déclarés dans ZONES.config', () => {
+test('plugins and plugins-data are declared in ZONES.config', () => {
   assert.ok((ZONES.config as readonly string[]).includes('plugins'));
   assert.ok((ZONES.config as readonly string[]).includes('plugins-data'));
 });
 
-test('un export emporte les plugins installés et leurs données, et un import les restaure', () => {
+test('an export takes the installed plugins and their data, and an import restores them', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-export-plugins-'));
   mkdirSync(join(home, 'plugins', 'timon-example-plugin'), { recursive: true });
   writeFileSync(
@@ -42,11 +42,11 @@ test('un export emporte les plugins installés et leurs données, et un import l
   const listing = execFileSync('tar', ['-tzf', out], { encoding: 'utf8' });
   assert.ok(
     listing.includes('plugins/timon-example-plugin/package.json'),
-    'le plugin installé doit être dans l\'archive',
+    'the installed plugin must be in the archive',
   );
   assert.ok(
     listing.includes('plugins-data/timon-example-plugin/state.json'),
-    'les données du plugin doivent être dans l\'archive',
+    "the plugin's data must be in the archive",
   );
 
   const to = mkdtempSync(join(tmpdir(), 'timon-import-plugins-'));
@@ -58,7 +58,7 @@ test('un export emporte les plugins installés et leurs données, et un import l
   assert.equal(state, '{"compteur":42}\n');
 });
 
-test('TIM-0039 : les avatars (uploads/avatars) font l\'aller-retour export → import', () => {
+test('TIM-0039: the avatars (uploads/avatars) make the export → import round trip', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-export-avatar-'));
   mkdirSync(join(home, 'uploads', 'avatars'), { recursive: true });
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe, 0x00]);
@@ -70,7 +70,7 @@ test('TIM-0039 : les avatars (uploads/avatars) font l\'aller-retour export → i
   assert.deepEqual(readFileSync(join(to, 'uploads', 'avatars', 'a.png')), png);
 });
 
-test('TIM-0040 : un import remplace agents/ au lieu de le fusionner (le _main neuf disparaît)', () => {
+test('TIM-0040: an import replaces agents/ instead of merging it (the fresh _main disappears)', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-export-main-'));
   mkdirSync(join(home, 'agents', 'Alice'), { recursive: true });
   writeFileSync(join(home, 'agents', 'Alice', 'config.json'), '{"role":"orchestrator"}\n');
@@ -86,7 +86,7 @@ test('TIM-0040 : un import remplace agents/ au lieu de le fusionner (le _main ne
   assert.equal(existsSync(join(to, 'agents', '_main')), false);
 });
 
-test('TIM-0041 : un import --force remplace timon.db et purge son -wal/-shm périmé', () => {
+test('TIM-0041: an import --force replaces timon.db and purges its stale -wal/-shm', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-export-db-'));
   const out = join(mkdtempSync(join(tmpdir(), 'timon-export-db-out-')), 'export.tar.gz');
   writeFileSync(join(home, 'timon.db'), 'new');
@@ -103,7 +103,7 @@ test('TIM-0041 : un import --force remplace timon.db et purge son -wal/-shm pér
   assert.equal(existsSync(join(to, 'timon.db-shm')), false);
 });
 
-test('TODO #547 : integrations.db (connexions, reçus) fait l\'aller-retour, même ouverte en WAL', () => {
+test('TODO #547: integrations.db (connections, receipts) makes the round trip, even open in WAL', () => {
   const Database = createRequireFn(import.meta.url)('better-sqlite3');
   assert.ok((ZONES.state as readonly string[]).includes('integrations.db'));
   const home = mkdtempSync(join(tmpdir(), 'timon-export-integrations-'));
@@ -140,7 +140,7 @@ function errnoError(code: string, message: string): NodeJS.ErrnoException {
   return Object.assign(new Error(message), { code });
 }
 
-test('TIM-0110 : un refus EPERM/EACCES garde les codes d\'origine et ne parle pas de verrou', () => {
+test('TIM-0110: an EPERM/EACCES refusal keeps the original codes and does not talk about a lock', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-replace-'));
   const file = join(dir, 'timon.db');
   writeFileSync(file, 'old');
@@ -165,7 +165,7 @@ test('TIM-0110 : un refus EPERM/EACCES garde les codes d\'origine et ne parle pa
   );
 });
 
-test('TIM-0110 : un vrai EBUSY est annoncé comme un verrou, avec une commande qui existe', () => {
+test('TIM-0110: a real EBUSY is announced as a lock, with a command that exists', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-replace-'));
   const file = join(dir, 'timon.db');
   writeFileSync(file, 'old');
@@ -189,7 +189,7 @@ test('TIM-0110 : un vrai EBUSY est annoncé comme un verrou, avec une commande q
   );
 });
 
-test('TIM-0110 : une suppression refusée se rabat sur le déplacement, une autre erreur remonte telle quelle', () => {
+test('TIM-0110: a refused deletion falls back on moving, another error goes up as is', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-replace-'));
   const file = join(dir, 'timon.db');
   writeFileSync(file, 'old');
@@ -237,7 +237,7 @@ function projectArchive(): string {
   return out;
 }
 
-test('TIM-0056 : un import rapporte les projets dont le dossier est introuvable', () => {
+test('TIM-0056: an import reports the projects whose folder cannot be found', () => {
   const to = mkdtempSync(join(tmpdir(), 'timon-import-proj-'));
   const result = importTimon({ file: projectArchive(), to });
   assert.deepEqual(result.missingProjects.map((p) => p.slug), ['alpha']);
@@ -245,7 +245,7 @@ test('TIM-0056 : un import rapporte les projets dont le dossier est introuvable'
   assert.ok(existsSync(join(to, 'projects', 'alpha', 'roles.json')));
 });
 
-test('TIM-0056 : skipProjects ne restaure ni projects/ ni la table projets', () => {
+test('TIM-0056: skipProjects restores neither projects/ nor the projects table', () => {
   const to = mkdtempSync(join(tmpdir(), 'timon-import-noproj-'));
   mkdirSync(join(to, 'projects', 'old'), { recursive: true });
   const result = importTimon({ file: projectArchive(), to, force: true, skipProjects: true });
@@ -258,13 +258,13 @@ test('TIM-0056 : skipProjects ne restaure ni projects/ ni la table projets', () 
   db.close();
 });
 
-test('SUG-0063 : un plugin installé depuis un dossier (lien) voyage dans l\'export et l\'import', () => {
+test('SUG-0063: a plugin installed from a folder (link) travels in the export and the import', () => {
   const home = mkdtempSync(join(tmpdir(), 'timon-export-link-'));
   const external = mkdtempSync(join(tmpdir(), 'timon-export-link-src-'));
   writeFileSync(join(external, 'index.js'), 'export {};\n');
   mkdirSync(join(home, 'plugins', 'node_modules', '@acme'), { recursive: true });
   symlinkSync(external, join(home, 'plugins', 'node_modules', '@acme', 'local'), 'junction');
-  // Journal d'agent : écarté sans --with-archive, quel que soit le séparateur du chemin.
+  // Agent log: left out without --with-archive, whatever the path separator.
   mkdirSync(join(home, 'agents', 'a', 'memory'), { recursive: true });
   writeFileSync(join(home, 'agents', 'a', 'memory', 'log.jsonl'), '{}\n');
   writeFileSync(join(home, 'agents', 'a', 'memory', 'learnings.jsonl'), '{}\n');
@@ -272,7 +272,7 @@ test('SUG-0063 : un plugin installé depuis un dossier (lien) voyage dans l\'exp
   const out = join(mkdtempSync(join(tmpdir(), 'timon-export-link-archive-')), 'export.tar.gz');
   exportTimon({ out, home, vacuumInto: () => {} });
   const listing = execFileSync('tar', ['-tzf', out], { encoding: 'utf8' });
-  assert.ok(listing.includes('plugins/node_modules/@acme/local'), 'le lien est dans l\'archive');
+  assert.ok(listing.includes('plugins/node_modules/@acme/local'), 'the link is in the archive');
   assert.ok(!listing.includes('memory/log.jsonl'));
   assert.ok(listing.includes('memory/learnings.jsonl'));
 

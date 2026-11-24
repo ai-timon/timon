@@ -9,7 +9,7 @@ import { installMacNodeUserLocal, nodeArchiveFromChecksums } from './macos-node-
 const ARM = `${'a'.repeat(64)}  node-v22.23.2-darwin-arm64.tar.gz`;
 const X64 = `${'b'.repeat(64)}  node-v22.23.2-darwin-x64.tar.gz`;
 
-test("l'installeur macOS choisit l'archive correspondant au processeur", () => {
+test('the macOS installer picks the archive matching the processor', () => {
   assert.deepEqual(nodeArchiveFromChecksums(`${ARM}\n${X64}\n`, 'arm64'), {
     sha256: 'a'.repeat(64), filename: 'node-v22.23.2-darwin-arm64.tar.gz',
   });
@@ -19,7 +19,7 @@ test("l'installeur macOS choisit l'archive correspondant au processeur", () => {
   assert.throws(() => nodeArchiveFromChecksums(ARM, 'ia32'), /unsupported/);
 });
 
-test("l'installation lie Node et npm dans ~/.local/bin sans gestionnaire système", async () => {
+test('the install links Node and npm into ~/.local/bin without a system manager', async () => {
   const home = await mkdtemp(join(tmpdir(), 'timon-node-home-'));
   const bytes = Buffer.from('verified archive fixture');
   const checksum = createHash('sha256').update(bytes).digest('hex');

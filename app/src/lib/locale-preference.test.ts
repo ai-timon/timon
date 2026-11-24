@@ -11,7 +11,7 @@ function info(tag: string, name: string, coverage = 1): LocaleInfo {
 }
 
 /** The product's languages plus a Brazilian Portuguese barely started. */
-const CATALOG: LocaleInfo[] = [info('fr', 'Français'), info('pt-BR', 'Português (Brasil)', 0.1), info('en', 'English'), info('de', 'Deutsch')];
+const CATALOG: LocaleInfo[] = [info('fr', 'Français'), info('pt-BR', 'Português (Brasil)', 0.1), info('en', 'English'), info('de', 'Deutsch')]; // french-ok: language names, the catalogue under test
 
 test('Accept-Language: the first language present wins, by weight then order', () => {
   assert.equal(negotiateLocale('fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7', CATALOG), 'fr');

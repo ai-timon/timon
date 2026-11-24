@@ -3,7 +3,7 @@ import { waitUntil } from './test-wait';
 import test from 'node:test';
 
 /**
- * « Your widget here » (`add-widget.ts`), mounted in the real host: alone in
+ * "Your widget here" (`add-widget.ts`), mounted in the real host: alone in
  * its column it keeps its own height at the foot of the column; beside other
  * cards it takes its share; its + opens the widget window, which never lists
  * the placeholder itself.
@@ -74,7 +74,7 @@ async function mount(stored: unknown[]) {
 const ADD = 'plugin:@timon/ui-layout:add-widget';
 const ADD_2 = 'plugin:@timon/ui-layout:add-widget-2';
 
-test('alone in its column, « Your widget here » keeps its height at the foot; beside a card it takes its share', async () => {
+test('alone in its column, "Your widget here" keeps its height at the foot; beside a card it takes its share', async () => {
   const { cleanup } = await mount([
     { id: ADD, rail: 'gauche', rang: 0, hauteur: 160 },
     { id: 'plugin:fixture:card', rail: 'droite', rang: 0, hauteur: 300, heightMode: 'fill', fillPercent: 66 },

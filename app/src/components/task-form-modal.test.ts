@@ -1,7 +1,7 @@
 /**
  * The task form's model field (`task-form-modal.tsx`) mounted in jsdom against
  * a stubbed daemon: one ModelPicker writes `backend_override` and
- * `model_override` together, « inherit » clears both, a slug typed by hand
+ * `model_override` together, "inherit" clears both, a slug typed by hand
  * goes to the opened provider, and a half-pair saved by an older form is sent
  * back untouched when the user does not pick.
  */
@@ -106,7 +106,7 @@ async function mount(task: TaskFormSource, onDelete?: () => Promise<boolean>) {
     });
   };
   const chip = () => $<HTMLButtonElement>('button[data-model-chip]');
-  /** Opens « Advanced » when the task has no override, then the picker. */
+  /** Opens "Advanced" when the task has no override, then the picker. */
   const openPicker = async () => {
     if (!chip()) await click(Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes('Advanced')));
     await until(() => !!chip(), 'the model chip');
@@ -150,7 +150,7 @@ test('a pick sets the backend and the model together', async () => {
   });
 });
 
-test('« inherit » clears both halves', async () => {
+test('"inherit" clears both halves', async () => {
   await withForm({ ...TASK, backend_override: 'codex', model_override: 'gpt-5.5' }, async (m) => {
     await m.openPicker();
     await m.click(m.row('Project role'));

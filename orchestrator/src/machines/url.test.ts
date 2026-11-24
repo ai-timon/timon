@@ -78,7 +78,7 @@ test('at connect time: the loopback only for a URL that named it, blocked ranges
   assert.equal(isBlockedAddress('not-an-ip'), true);
 });
 
-test('the address « Make this machine reachable » publishes is accepted, port included', () => {
+test('the address "Make this machine reachable" publishes is accepted, port included', () => {
   const parsed = parseMachineUrl('https://my-laptop.tail0000.ts.net:10000');
   assert.deepEqual(parsed, { ok: true, value: { url: 'https://my-laptop.tail0000.ts.net:10000', loopback: false } });
 });

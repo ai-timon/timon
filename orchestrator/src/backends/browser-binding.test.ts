@@ -32,7 +32,7 @@ for (const backend of ['claude', 'codex', 'grok']) {
         const config = readFileSync(raw, 'utf8');
         const entry = JSON.parse(config).mcpServers['timon-browser'];
         assert.equal(entry.command, process.execPath);
-        assert.ok(entry.args[0].endsWith('/bin/browser-mcp.mjs'));
+        assert.match(entry.args[0], /[\\/]bin[\\/]browser-mcp\.mjs$/);
         assert.ok(entry.env.TIMON_ORCH_URL);
         assert.ok(config.includes('unsafe-local-chrome'), 'the user\'s own chrome-devtools stays');
       } else {
@@ -40,7 +40,8 @@ for (const backend of ['claude', 'codex', 'grok']) {
         assert.ok(root);
         const config = readFileSync(join(root, 'config.toml'), 'utf8');
         assert.equal(config.match(/^\[mcp_servers.timon-browser\]$/gm)?.length, 1);
-        assert.match(config, /\/bin\/browser-mcp\.mjs/);
+        // TOML escapes a Windows separator: `bin\\browser-mcp.mjs` in the file.
+        assert.match(config, /bin(?:\/|\\\\)browser-mcp\.mjs/);
         assert.ok(config.includes('unsafe-local-chrome'), 'the user\'s own chrome-devtools stays');
         const environment = config.split(/^\[/m).find((chunk) => chunk.startsWith('mcp_servers.timon-browser.env]'))!;
         assert.ok(environment.includes(`TIMON_MISSION_ID = "${missionId}"`));

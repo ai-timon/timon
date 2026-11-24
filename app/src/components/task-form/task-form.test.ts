@@ -346,7 +346,7 @@ test('clearing the date of an edited task asks the daemon to clear it', async ()
   }
 });
 
-test('the agent picker lists every agent with its role and searches them; the model chip names what « inherit » runs on', async () => {
+test('the agent picker lists every agent with its role and searches them; the model chip names what "inherit" runs on', async () => {
   const m = await mount({ task: TASK });
   try {
     assert.equal(m.tab('Execution'), undefined, 'no Execution tab: its controls sit in the right column');

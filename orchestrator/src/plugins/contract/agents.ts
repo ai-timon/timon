@@ -86,6 +86,8 @@ export type PluginAgent = {
   look: PluginAgentLook | null;
   /** The head it shows, `null` when none was picked (picture, project logo, emoji, initial, in that order). */
   avatar: PluginAgentAvatarMode | null;
+  /** The agent it reports to, as written; `null` when none is set (the app then derives one: project lead, pole lead, main agent). */
+  reportsTo: string | null;
 };
 
 /**
@@ -122,13 +124,21 @@ export type PluginAgentInput = {
   mcpServers?: string[];
   /** Team id (`ctx.agents.teams`); `null` takes the agent out of any team. */
   team?: string | null;
+  /**
+   * The existing agent it reports to (the orchestrator of its project, or any
+   * agent): its place in the hierarchy, and the manager it may always message.
+   * An unknown agent, the agent itself, or a manager that already reports to
+   * it is `invalid`; a job may only name agents its plugin created. `null`
+   * clears it, back to the derived default.
+   */
+  reportsTo?: string | null;
   /** Its mascot look (API 15); `null` clears it. Same lists as the Agents page. */
   look?: PluginAgentLookInput | null;
   /** The head it shows (API 15); `null` clears the choice. Never erases the picture, emoji or look. */
   avatar?: PluginAgentAvatarMode | null;
 };
 
-/** Fields of `PluginAgentInput` to change; `null` clears `project` / `directives` / `team` / `look` / `avatar`. */
+/** Fields of `PluginAgentInput` to change; `null` clears `project` / `directives` / `team` / `reportsTo` / `look` / `avatar`. */
 export type PluginAgentPatch = Partial<Omit<PluginAgentInput, 'name'>>;
 
 /**

@@ -3,6 +3,14 @@
 import { useEffect, useState } from 'react';
 import { sharedGet } from '@/lib/shared-read';
 
+const CHANGED = 'timon:projects-changed';
+
+/** Tells every mounted reader that a project's name, colour or logo changed
+ *  (the project's window, opened from a chat, renames the pill it came from). */
+export function announceProjectsChanged(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(CHANGED));
+}
+
 export type ProjectMeta = {
   color: string | null;
   icon: string | null;
@@ -16,6 +24,13 @@ export type ProjectMeta = {
  */
 export function useProjectMeta(): Map<string, ProjectMeta> {
   const [map, setMap] = useState<Map<string, ProjectMeta>>(() => new Map());
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const again = () => setRound((n) => n + 1);
+    window.addEventListener(CHANGED, again);
+    return () => window.removeEventListener(CHANGED, again);
+  }, []);
   useEffect(() => {
     let off = false;
     sharedGet('/api/ui/projects')
@@ -36,6 +51,6 @@ export function useProjectMeta(): Map<string, ProjectMeta> {
       })
       .catch(() => {});
     return () => { off = true; };
-  }, []);
+  }, [round]);
   return map;
 }

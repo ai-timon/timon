@@ -17,6 +17,7 @@
  * them would stall the mission for nothing. Same rule as `question`
  * (`userQuestionRefusal`), same referent.
  */
+import { daemonMessage } from '../../daemon-message.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { isAutonomousMission } from '../../agent.js';
@@ -251,6 +252,7 @@ export function raiseSecretRequest(missionId: string, rawBody: unknown, now = Da
     type: 'action_required',
     urgent: true,
     title: `Secret requested: ${row.agent}`,
+    message: daemonMessage('secret_requested', { agent: row.agent }),
     body: `${row.mission_title}${row.project ? ` (${row.project})` : ''} — ${row.name}. ${row.reason}`,
     missionId: mission.id,
     taskId: mission.task_id,

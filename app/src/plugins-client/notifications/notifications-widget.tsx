@@ -7,7 +7,7 @@ import { ActionOnlyToggle, MarkAllReadButton, NotificationFeed, SeeAllLink, useN
 
 /** The bell's dropdown, as a card: same list, same actions, placed wherever the
  *  user drops it (cockpit, the nav rail's widget zone, the chat columns). */
-export function NotificationsWidget({ poignee, className }: WidgetProps) {
+export function NotificationsWidget({ handle, className }: WidgetProps) {
   const feed = useNotificationFeed();
   return (
     <Tile
@@ -17,7 +17,7 @@ export function NotificationsWidget({ poignee, className }: WidgetProps) {
       bodyClassName="p-0"
       actions={<>
         <MarkAllReadButton onClick={feed.markAllRead} disabled={feed.total === 0} />
-        {poignee}
+        {handle}
       </>}
     >
       <div className="shrink-0 px-2 pb-1 pt-1.5">

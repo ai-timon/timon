@@ -1,13 +1,13 @@
 /**
- * Le noyau — quatre fichiers de glue au-dessus de Cordis.
+ * The kernel: four glue files on top of Cordis.
  *
- * Ce que ces tests protègent : le pont d'événements (les modules doivent voir
- * le bus historique et se désinscrire tout seuls), la réversibilité des routes
- * (un module déchargé ne doit plus répondre), le filtrage par capacités hôte,
- * et surtout l'audit d'activation — sans lui, un `inject` non satisfait laisse
- * un module muet et personne ne s'en aperçoit.
+ * What these tests protect: the event bridge (modules must see
+ * the historical bus and unsubscribe on their own), the reversibility of routes
+ * (an unloaded module must no longer answer), filtering by host capabilities,
+ * and above all the activation audit: without it, an unsatisfied `inject` leaves
+ * a module mute and nobody notices.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
@@ -24,7 +24,7 @@ const { collectActivationFailures, formatActivationFailures } = await import('./
 const { loadConfig } = await import('../config/load.js');
 const { CATALOG } = await import('./catalog.js');
 
-/** Config par défaut : aucun fichier, donc l'installation actuelle. */
+/** Default config: no file, hence the current install. */
 const baseConfig = () => loadConfig('/nulle/part/timon.config.json');
 
 test('the real browser module is available on macOS without Docker or Traefik', async () => {
@@ -38,7 +38,7 @@ test('the real browser module is available on macOS without Docker or Traefik', 
   assert.equal(unlicensed?.disabled, false, 'the browser is included without a paid licence');
 });
 
-test('le pont republie les events du bus sur le contexte, et se retire avec son fiber', async () => {
+test('the bridge republishes the bus events on the context, and goes away with its fiber', async () => {
   const root = new Context();
   const seen: string[] = [];
   const fiber = await root.plugin({ name: 'bridge', apply: applyBusBridge });
@@ -47,11 +47,11 @@ test('le pont republie les events du bus sur le contexte, et se retire avec son 
   bus.publish({ kind: 'mission_complete', missionId: 'm1', status: 'completed', exitCode: 0 });
   assert.deepEqual(seen, ['m1']);
 
-  // Décharger le pont doit couper la republication : sinon chaque rechargement
-  // à chaud empilerait un listener de plus sur un bus qui n'en perd jamais.
+  // Unloading the bridge must cut the republishing: otherwise each hot
+  // reload would stack one more listener on a bus that never loses any.
   await fiber.dispose();
   bus.publish({ kind: 'mission_complete', missionId: 'm2', status: 'completed', exitCode: 0 });
-  assert.deepEqual(seen, ['m1'], 'le pont déchargé ne doit plus republier');
+  assert.deepEqual(seen, ['m1'], 'the unloaded bridge must no longer republish');
   await root.fiber.dispose();
 });
 
@@ -111,7 +111,7 @@ test('the isolated bridge keeps Cordis semantics: order, the dispatch notice, an
   }
 });
 
-test('une route posée par un module disparaît quand le module est déchargé', async () => {
+test('a route set by a module disappears when the module is unloaded', async () => {
   const app = express();
   const root = new Context();
   await root.plugin(createHttpPlugin(app));
@@ -131,13 +131,13 @@ test('une route posée par un module disparaît quand le module est déchargé',
 
   assert.equal((await fetch(url)).status, 200);
   await mod.dispose();
-  assert.equal((await fetch(url)).status, 404, 'la route doit tomber avec son module');
+  assert.equal((await fetch(url)).status, 404, 'the route must fall with its module');
 
   server.close();
   await root.fiber.dispose();
 });
 
-test('le registre désactive ce que la machine ne peut pas faire, et jamais le noyau', () => {
+test('the registry disables what the machine cannot do, and never the kernel', () => {
   const cfg = baseConfig();
   cfg.modules['@timon/video-factory'] = false;
   cfg.modules['@timon/browser-embedded'] = { enabled: true, port: 4444 };
@@ -155,11 +155,11 @@ test('le registre désactive ce que la machine ne peut pas faire, et jamais le n
   const byId = Object.fromEntries(decisions.map((d) => [d.id, d]));
 
   assert.equal(byId['@timon/db'].disabled, false);
-  assert.equal(byId['@timon/grepai'].disabled, false, 'toutes ses capacités sont là');
+  assert.equal(byId['@timon/grepai'].disabled, false, 'all its capabilities are there');
   assert.match(byId['@timon/docker-supervision'].reason ?? '', /containers/);
   assert.equal(byId['@timon/video-factory'].reason, 'disabled in timon.config.json');
-  // Forcé à `true` : il tourne malgré les capacités absentes, mais le manque
-  // reste visible — c'est un choix de l'utilisateur, pas un oubli du système.
+  // Forced to `true`: it runs despite the missing capabilities, but the gap
+  // stays visible: it is a user choice, not an oversight of the system.
   assert.equal(byId['@timon/browser-embedded'].disabled, false);
   assert.deepEqual(byId['@timon/browser-embedded'].missing, ['containers', 'traefik']);
   assert.deepEqual(byId['@timon/browser-embedded'].config, { port: 4444 });
@@ -176,10 +176,10 @@ test('le registre désactive ce que la machine ne peut pas faire, et jamais le n
   assert.equal(report.modules.find((m) => m.id === '@timon/docker-supervision')?.active, false);
 });
 
-test('les options d\'un module remontent dans le rapport de capacités', () => {
-  // Ce qu'elles portent : une option qui décide d'une SURFACE n'est lisible ni
-  // dans le tier ni dans `ui.hidden`. Sans ce passe-plat, le front devrait une
-  // route par module pour lire une clé que la config a déjà.
+test('the options of a module go up into the capability report', () => {
+  // What they carry: an option that decides a SURFACE is readable neither
+  // in the tier nor in `ui.hidden`. Without this pass-through, the front end would need a
+  // route per module to read a key the config already has.
   const cfg = baseConfig();
   cfg.modules['@timon/vault'] = { enabled: true, surfaces: ['widget'] };
   const decisions = planEntries(
@@ -187,17 +187,17 @@ test('les options d\'un module remontent dans le rapport de capacités', () => {
     { config: cfg, capabilities: [] },
   );
   const report = capabilitiesReport(decisions, { config: cfg, capabilities: [] });
-  // `enabled` reste au noyau : il décide du montage, pas de la surface.
+  // `enabled` stays with the kernel: it decides the mount, not the surface.
   assert.deepEqual(report.modules[0]?.options, { surfaces: ['widget'] });
 
   const nu = capabilitiesReport(
     planEntries([{ id: 'kanban', name: './x.js', tier: 'std' }], { config: cfg, capabilities: [] }),
     { config: cfg, capabilities: [] },
   );
-  assert.deepEqual(nu.modules[0]?.options, {}, 'un module sans options en rend un objet vide');
+  assert.deepEqual(nu.modules[0]?.options, {}, 'a module without options returns an empty object');
 });
 
-test('une licence restrictive l\'emporte sur un module vendu forcé dans la config', () => {
+test('a restrictive licence wins over a sold module forced in the config', () => {
   const cfg = baseConfig();
   cfg.modules['@timon/dreams'] = true;
   const [decision] = planEntries(
@@ -207,10 +207,10 @@ test('une licence restrictive l\'emporte sur un module vendu forcé dans la conf
   assert.equal(decision.reason, 'not included in this licence');
 });
 
-test('la licence ne touche pas les modules libres', () => {
-  // §10.7 : seuls les modules marqués `licensed` sont vendus. Si la liste
-  // blanche gouvernait tout le catalogue, une licence Lite — ou l'absence de
-  // licence — éteindrait le produit au lieu de le brider.
+test('the licence does not touch the free modules', () => {
+  // §10.7: only the modules marked `licensed` are sold. If the
+  // allowlist governed the whole catalogue, a Lite licence (or no
+  // licence) would turn the product off instead of restricting it.
   const cfg = baseConfig();
   const [decision] = planEntries(
     [{ id: '@timon/grepai', name: './x.js', tier: 'dev' }],
@@ -220,28 +220,28 @@ test('la licence ne touche pas les modules libres', () => {
   assert.equal(decision.disabled, false);
 });
 
-test('les modules vendus du §10.7 sont marqués dans le catalogue', () => {
-  // Le marquage vit dans deux fichiers (le manifeste du module et le
-  // catalogue) ; ce test est ce qui les empêche de diverger en silence.
+test('the sold modules of §10.7 are marked in the catalogue', () => {
+  // The marking lives in two files (the module manifest and the
+  // catalogue); this test is what keeps them from drifting apart silently.
   const vendus = CATALOG.filter((m) => m.licensed).map((m) => m.id).sort();
   assert.deepEqual(vendus, ['@timon/dreams', '@timon/kanban-code', '@timon/machines']);
 });
 
 /**
- * Les deux tables du renommage (§10.14) : le catalogue dit ce qui existe, les
- * alias disent comment on appelait un module avant. Un alias qui ne désigne
- * plus rien traduirait une config valide en clé morte, sans un mot.
+ * The two tables of the rename (§10.14): the catalogue says what exists, the
+ * aliases say what a module used to be called. An alias that no longer designates
+ * anything would turn a valid config into a dead key, without a word.
  */
-test('tout module du catalogue porte le scope @timon, et les alias y pointent', async () => {
+test('every catalogue module carries the @timon scope, and the aliases point into it', async () => {
   const { LEGACY_IDS } = await import('./legacy-ids.js');
   const ids = new Set(CATALOG.map((m) => m.id));
 
-  for (const id of ids) assert.match(id, /^@timon\//, `${id} doit porter le scope @timon`);
-  assert.equal(ids.size, CATALOG.length, 'un id ne paraît qu\'une fois');
+  for (const id of ids) assert.match(id, /^@timon\//, `${id} must carry the @timon scope`);
+  assert.equal(ids.size, CATALOG.length, 'an id appears only once');
 
   for (const [legacy, current] of Object.entries(LEGACY_IDS)) {
-    assert.ok(ids.has(current), `l'alias ${legacy} pointe sur ${current}, absent du catalogue`);
-    assert.equal(ids.has(legacy), false, `${legacy} est un ancien id, il ne doit plus être au catalogue`);
+    assert.ok(ids.has(current), `the alias ${legacy} points at ${current}, missing from the catalogue`);
+    assert.equal(ids.has(legacy), false, `${legacy} is an old id, it must no longer be in the catalogue`);
   }
 });
 
@@ -250,21 +250,21 @@ test('tout module du catalogue porte le scope @timon, et les alias y pointent', 
  * catalogue and has no alias: the notebook merged into `@timon/kanban`, which
  * an alias translation would switch off by mistake.
  */
-test('un id retiré ne s\'alias vers rien et ne casse pas une config existante', async () => {
+test('a removed id aliases to nothing and does not break an existing config', async () => {
   const { LEGACY_IDS, RETIRED_IDS, canonicalModuleId, isRetiredModuleId } =
     await import('./legacy-ids.js');
   const ids = new Set(CATALOG.map((m) => m.id));
 
   for (const retire of RETIRED_IDS) {
-    assert.equal(ids.has(retire), false, `${retire} est retiré, il ne doit plus être au catalogue`);
-    assert.equal(LEGACY_IDS[retire], undefined, `${retire} ne doit pas être aliasé vers un successeur`);
-    assert.equal(canonicalModuleId(retire), retire, 'un id retiré est rendu tel quel');
+    assert.equal(ids.has(retire), false, `${retire} is removed, it must no longer be in the catalogue`);
+    assert.equal(LEGACY_IDS[retire], undefined, `${retire} must not be aliased to a successor`);
+    assert.equal(canonicalModuleId(retire), retire, 'a removed id is returned as is');
     assert.equal(isRetiredModuleId(retire), true);
   }
-  assert.equal(isRetiredModuleId('@timon/dreams'), false, 'un module vivant n\'est pas retiré');
+  assert.equal(isRetiredModuleId('@timon/dreams'), false, 'a living module is not removed');
 
-  // Une `timon.config.json` écrite avant le retrait continue de charger : la
-  // clé ne désigne plus rien, et le plan se contente de l'ignorer.
+  // A `timon.config.json` written before the removal keeps loading: the
+  // key no longer designates anything, and the plan simply ignores it.
   const cfg = baseConfig();
   cfg.modules['@timon/backlog'] = false;
   const decisions = planEntries([{ id: '@timon/kanban', name: './kanban.js', tier: 'std' }], {
@@ -303,14 +303,14 @@ test('a config that still turns the removed agenda modules on loads, and the pla
   assert.deepEqual(plan(cfg), plan(baseConfig()), 'the retired keys switch nothing on or off');
 });
 
-test('l\'audit nomme le service manquant d\'un module resté PENDING', async () => {
+test('the audit names the missing service of a module left PENDING', async () => {
   const root = new Context();
-  // Reproduit le piège en dur, sans loader : un `inject` que personne ne fournit.
-  const fiber = await root.plugin({ name: 'orphelin', inject: ['dispatcher'], apply() { /* jamais appelé */ } });
-  assert.notEqual(fiber.state, 2 /* ACTIVE */, 'un inject non satisfait ne doit pas activer le module');
+  // Reproduces the trap directly, without a loader: an `inject` nobody provides.
+  const fiber = await root.plugin({ name: 'orphelin', inject: ['dispatcher'], apply() { /* never called */ } });
+  assert.notEqual(fiber.state, 2 /* ACTIVE */, 'an unsatisfied inject must not activate the module');
 
-  // Sans loader monté, l'audit n'a rien à inspecter : c'est le cas du legacy,
-  // qui doit rester silencieux plutôt que d'échouer.
+  // Without a mounted loader, the audit has nothing to inspect: that is the legacy case,
+  // which must stay silent rather than fail.
   assert.deepEqual(await collectActivationFailures(root), []);
 
   const rendered = formatActivationFailures([
@@ -321,11 +321,11 @@ test('l\'audit nomme le service manquant d\'un module resté PENDING', async () 
   await root.fiber.dispose();
 });
 
-test('un module éteint éteint ceux qui en dépendent, en cascade', () => {
-  // Le cas réel : `@timon/dreams` injecte le service `memory`. Sans cascade,
-  // éteindre `@timon/memory` laisse le fiber de `@timon/dreams` PENDING, et
-  // `auditActivation` sort en code 2 — le daemon refuse de démarrer pour un module OPTIONNEL éteint
-  // volontairement. La cascade transforme ce crash en décision lisible.
+test('a module turned off turns off those that depend on it, in cascade', () => {
+  // The real case: `@timon/dreams` injects the `memory` service. Without a cascade,
+  // turning `@timon/memory` off leaves the `@timon/dreams` fiber PENDING, and
+  // `auditActivation` exits with code 2: the daemon refuses to start for an OPTIONAL module turned off
+  // on purpose. The cascade turns that crash into a readable decision.
   const cfg = baseConfig();
   cfg.modules['@timon/memory'] = false;
 
@@ -343,11 +343,11 @@ test('un module éteint éteint ceux qui en dépendent, en cascade', () => {
 
   assert.equal(byId['@timon/memory'].reason, 'disabled in timon.config.json');
   assert.equal(byId['@timon/dreams'].reason, 'depends on @timon/memory, which is disabled');
-  // Point fixe : la chaîne s'éteint entièrement, quel que soit l'ordre du
-  // catalogue (`aval` est listé après `dreams`, mais aussi après `memory`).
+  // Fixed point: the chain switches off entirely, whatever the order of the
+  // catalogue (`aval` is listed after `dreams`, but also after `memory`).
   assert.equal(byId['aval'].reason, 'depends on @timon/dreams, which is disabled');
-  assert.equal(byId['@timon/kanban'].disabled, false, 'un module sans lien ne bouge pas');
-  // Le noyau ne cascade jamais : une dépendance fausse dans le catalogue ne
-  // doit pas pouvoir éteindre la base.
+  assert.equal(byId['@timon/kanban'].disabled, false, 'an unrelated module does not move');
+  // The kernel never cascades: a wrong dependency in the catalogue must
+  // not be able to turn the database off.
   assert.equal(byId['@timon/db'].disabled, false);
 });

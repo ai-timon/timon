@@ -17,7 +17,7 @@
  * the whole catalogue to watch one route disappear would mount thirty modules
  * and their timers (same reasoning as `kernel/bundled-reload.test.ts`).
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
@@ -41,7 +41,7 @@ const { missionEnv } = await import('../agent.js');
 const { injectedSecretsFor, journalInjectedSecrets } = await import('./env.js');
 const { SECRETS_MODULE_ID } = await import('./availability.js');
 
-/** Le noyau minimal, et la cobaye. */
+/** The minimal kernel, and the guinea pig. */
 const CATALOG: readonly ModuleDescriptor[] = [
   { id: 'core-db', name: './plugins-bundled/db/index.js', tier: 'core' },
   { id: SECRETS_MODULE_ID, name: './plugins-bundled/secrets-vault/index.js', tier: 'opt' },
@@ -51,13 +51,13 @@ const NAME = 'VAULT_OFF_WITNESS';
 const VALUE = 'value-that-must-not-reach-a-mission';
 
 const secret = dbApi.createSecret({
-  // Pas scellé : une ligne héritée en clair (§10) suit exactement le même
-  // chemin d'injection, sans exiger de clé maîtresse dans ce test.
+  // Not sealed: an inherited plain-text line (§10) follows exactly the same
+  // injection path, without requiring a master key in this test.
   name: NAME, value_enc: VALUE, mode: 'inject',
 });
 dbApi.addSecretGrant(secret.id, 'global');
 
-/** Monte l'arbre avec le coffre voulu ou non, et rend l'URL du témoin HTTP. */
+/** Mounts the tree with or without the vault, and returns the URL of the HTTP witness. */
 async function kernel(vaultWanted: boolean): Promise<{ base: string; close: () => Promise<void> }> {
   writeFileSync(CONFIG_FILE, `${JSON.stringify({ modules: { [SECRETS_MODULE_ID]: vaultWanted } })}\n`);
   resetConfig();
@@ -65,8 +65,8 @@ async function kernel(vaultWanted: boolean): Promise<{ base: string; close: () =
   const app = express();
   app.use(express.json());
   const ctx = new Context();
-  // Les noms d'entrée sont relatifs à `src/`, comme ils le sont à `dist/`
-  // depuis `boot.js`. Sous `tsx`, `./x/index.js` résout `index.ts`.
+  // Entry names are relative to `src/`, as they are to `dist/`
+  // from `boot.js`. Under `tsx`, `./x/index.js` resolves `index.ts`.
   ctx.baseUrl = new URL('../', import.meta.url).href;
   await ctx.plugin(Timer);
   await ctx.plugin(createHttpPlugin(app));
@@ -79,28 +79,28 @@ async function kernel(vaultWanted: boolean): Promise<{ base: string; close: () =
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const { port } = server.address() as AddressInfo;
-  assert.notEqual(port, 3000, 'le témoin ne prend jamais le port de production');
+  assert.notEqual(port, 3000, 'the witness never takes the production port');
   return {
     base: `http://127.0.0.1:${port}`,
     close: async () => { server.close(); await ctx.fiber.dispose(); },
   };
 }
 
-test('coffre éteint : pas de route, pas de secret dans l’environnement d’une mission', async () => {
+test('vault off: no route, no secret in the environment of a mission', async () => {
   const k = await kernel(false);
   try {
-    assert.equal((await fetch(`${k.base}/api/secrets`)).status, 404, 'aucune route secrets sans le module');
+    assert.equal((await fetch(`${k.base}/api/secrets`)).status, 404, 'no secrets route without the module');
 
-    // Le chemin de lancement, sans base de secrets lue et sans exception.
+    // The launch path, without a secrets database read and without an exception.
     const env = missionEnv({ missionId: 'm-vault-off', agentName: 'witness', project: 'p' });
-    assert.equal(env[NAME], undefined, 'un secret accordé ne doit pas entrer dans une mission sans coffre');
+    assert.equal(env[NAME], undefined, 'a granted secret must not enter a mission without a vault');
     // Windows keeps the spelling it read (`Path`): look the key up as the product does.
-    assert.ok(env[pathKeyOf(env, process.platform)] !== undefined, 'la liste blanche système reste, elle');
+    assert.ok(env[pathKeyOf(env, process.platform)] !== undefined, 'the system allowlist stays, for its part');
 
     const slice = injectedSecretsFor({ agent: 'witness', project: 'p' });
     assert.deepEqual(slice, { env: {}, injected: [] });
-    // Rien à journaliser, et surtout aucune écriture : le journal d'accès est
-    // une route du module, qui n'existe plus.
+    // Nothing to log, and above all no write: the access journal is
+    // a route of the module, which no longer exists.
     journalInjectedSecrets({ missionId: 'm-vault-off', agent: 'witness', injected: slice.injected });
     assert.equal(dbApi.listSecretAccess(secret.id).length, 0);
   } finally {
@@ -108,12 +108,12 @@ test('coffre éteint : pas de route, pas de secret dans l’environnement d’un
   }
 });
 
-test('coffre allumé : le même secret, la même mission, et il est bien injecté', async () => {
+test('vault on: the same secret, the same mission, and it is indeed injected', async () => {
   const k = await kernel(true);
   try {
-    assert.notEqual((await fetch(`${k.base}/api/secrets`)).status, 404, 'le module rallumé reprend ses routes');
+    assert.notEqual((await fetch(`${k.base}/api/secrets`)).status, 404, 'the module turned back on takes its routes back');
     const env = missionEnv({ missionId: 'm-vault-on', agentName: 'witness', project: 'p' });
-    assert.equal(env[NAME], VALUE, 'sans cette moitié, le test précédent ne prouverait rien');
+    assert.equal(env[NAME], VALUE, 'without this half, the previous test would prove nothing');
   } finally {
     await k.close();
   }

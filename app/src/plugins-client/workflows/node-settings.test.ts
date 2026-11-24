@@ -1,6 +1,6 @@
 /**
  * The agent node's model, picked through the ModelPicker (ModelPicker 6/6):
- * a pick writes both halves, « inherit » clears them, and the thinking setting
+ * a pick writes both halves, "inherit" clears them, and the thinking setting
  * follows the model. The stored half-pairs of the old two selects read as what
  * they run (`taskModelPick`).
  */

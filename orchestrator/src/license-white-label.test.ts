@@ -57,10 +57,10 @@ test('a paid licence with every plugin but without the string has no right', () 
   assert.equal(whiteLabelAllowed(paid(['WhiteLabel', 'white-label', 'whitelabel:trial'])), false);
 });
 
-test('a Free token carrying the string never grants the right', () => {
+test('a retired Free token carrying the string never grants the right', () => {
   const free = verifyLicenseToken(token({ ...claimsOf('free'), features: [WHITE_LABEL_FEATURE] }));
-  assert.equal(free.status, 'valid', 'Free accepts any features: the guard is not in the schema');
-  assert.equal(free.planId, 'free');
+  assert.equal(free.status, 'unlicensed', 'a Free token reads as no licence');
+  assert.equal(free.reason, 'missing');
   assert.equal(whiteLabelAllowed(free), false);
   setLicenseState(free);
   assert.equal(licenseState().localFree, true);

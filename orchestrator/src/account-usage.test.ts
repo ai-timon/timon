@@ -89,6 +89,20 @@ const bobInstance = accounts.accountInstance(bobAccount);
 const idleInstance = accounts.accountInstance(idleAccount);
 const flakyInstance = accounts.accountInstance(flakyAccount);
 
+/**
+ * The product leaves a Claude account unmeasured on macOS (its CLI keeps the
+ * session in the keychain): the tests that measure one run as on Linux there.
+ */
+async function measurable(run: () => Promise<void>): Promise<void> {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  Object.defineProperty(process, 'platform', { value: 'linux' });
+  try {
+    await run();
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+  }
+}
+
 test('claude: an account is measured on its own sign-in, never the host\'s', { concurrency: false }, async () => {
   resetClaudeUsageCache();
   const ada = await getClaudeAccountUsage(accounts.accountConfigDir(adaAccount.id), { force: true });
@@ -166,7 +180,7 @@ test('codex: an account reads its own auth.json and nothing else', async () => {
   assert.equal(usage.windows.five_hour?.utilization, 22);
 });
 
-test('collectUsage lists the accounts the viewer may use, signed-in ones only', { concurrency: false }, async () => {
+test('collectUsage lists the accounts the viewer may use, signed-in ones only', { concurrency: false }, () => measurable(async () => {
   resetClaudeUsageCache();
   const ids = async (viewer: Parameters<typeof collectUsage>[0]) => (await collectUsage(viewer)).map((entry) => entry.backend);
 
@@ -186,7 +200,7 @@ test('collectUsage lists the accounts the viewer may use, signed-in ones only', 
   accounts.grantBackendAccount(bobAccount.id, ada.id, null);
   assert.ok((await ids(adaViewer)).includes(bobInstance), 'a granted account is measured for its grantee');
   accounts.revokeBackendAccountGrant(bobAccount.id, ada.id);
-});
+}));
 
 test('collectUsage leaves out an account it cannot measure here (a Claude account on macOS)', { concurrency: false }, async () => {
   const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
@@ -200,7 +214,7 @@ test('collectUsage leaves out an account it cannot measure here (a Claude accoun
   }
 });
 
-test('collectUsage keeps an account whose probe fails, so the gauge can show its last reading', { concurrency: false }, async () => {
+test('collectUsage keeps an account whose probe fails, so the gauge can show its last reading', { concurrency: false }, () => measurable(async () => {
   resetClaudeUsageCache();
   signIn(accounts.accountConfigDir(idleAccount.id), 'idle-token', Date.now() - 60_000, null);
   try {
@@ -211,7 +225,7 @@ test('collectUsage keeps an account whose probe fails, so the gauge can show its
   } finally {
     rmSync(join(accounts.accountConfigDir(idleAccount.id), '.credentials.json'), { force: true });
   }
-});
+}));
 
 test('collectBackendUsage answers null for an account the viewer may not use', async () => {
   assert.equal(await collectBackendUsage(bobInstance, adaViewer), null);
@@ -248,7 +262,7 @@ async function withAdaSession(run: (base: string, cookie: string) => Promise<voi
   }
 }
 
-test('GET /api/usage: an account is measured for whoever may use it, and 404 for anyone else', { concurrency: false }, async () => {
+test('GET /api/usage: an account is measured for whoever may use it, and 404 for anyone else', { concurrency: false }, () => measurable(async () => {
   await withAdaSession(async (base, cookie) => {
     const usage = (backend: string, headers: Record<string, string> = {}) =>
       realFetch(`${base}/api/usage?backend=${encodeURIComponent(backend)}`, { headers });
@@ -261,9 +275,9 @@ test('GET /api/usage: an account is measured for whoever may use it, and 404 for
     assert.equal(other.status, 404, 'another user\'s account does not exist for her');
     assert.ok(!JSON.stringify(await other.json()).includes('Work'));
   });
-});
+}));
 
-test('GET /api/usage?refresh=1: a ↻ after a cached failure asks the provider again (TODO #632)', { concurrency: false }, async () => {
+test('GET /api/usage?refresh=1: a ↻ after a cached failure asks the provider again (TODO #632)', { concurrency: false }, () => measurable(async () => {
   resetForcedUsageProbes();
   await withAdaSession(async (base, cookie) => {
     const usage = (backend: string, query = '', headers: Record<string, string> = { cookie }) =>
@@ -302,4 +316,4 @@ test('GET /api/usage?refresh=1: a ↻ after a cached failure asks the provider a
     assert.equal(probes.filter((token) => token === 'bob-token').length, bobCalls, 'the refused ↻ reached no probe');
   });
   resetForcedUsageProbes();
-});
+}));

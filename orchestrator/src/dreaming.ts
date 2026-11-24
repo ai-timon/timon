@@ -1,3 +1,4 @@
+import { daemonMessage } from './daemon-message.js';
 import { configuredVaultRoot } from './vault-root.js';
 /**
  * Dreaming — an agent "dreams" at night and proposes leads to VALIDATE (never to
@@ -324,6 +325,7 @@ export async function runDreamPass(): Promise<{ improve: number; opportunity: nu
       title: `Dreaming: ${total} track(s) to review`,
       body: `${improve} improvement(s) + ${opportunity} opportunity(ies). To approve, reject or snooze.`,
       anchor: DREAMS_ANCHOR,
+      message: daemonMessage('dreams_to_review', { total, improve, opportunity }),
     });
   }
   console.log(`[dream] pass ${runId} finished: ${improve} improve + ${opportunity} opportunity`);

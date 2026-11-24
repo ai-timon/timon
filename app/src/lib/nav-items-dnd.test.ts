@@ -4,7 +4,7 @@ import test from 'node:test';
 import type { LucideIcon } from 'lucide-react';
 
 /**
- * « Customize the menu » reorders the side menu by drag and drop (it had
+ * "Customize the menu" reorders the side menu by drag and drop (it had
  * up/down arrows, which crushed the labels). The keyboard keeps what the
  * arrows gave: Space on a page's grip picks it up, the arrow keys move it,
  * Space drops it — and Enter on the eye beside it still only hides the page.

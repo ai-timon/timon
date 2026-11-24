@@ -33,14 +33,14 @@ function fakeStorage(initial: Record<string, string> = {}) {
   };
 }
 
-test('daemon vide et navigateur vide : layout nul, aucune écriture', async () => {
+test('empty daemon and empty browser: null layout, no write', async () => {
   const daemon = fakeDaemon();
   const out = await loadLayout({ fetchImpl: daemon.fetchImpl, storage: fakeStorage() });
   assert.deepEqual(out, { raw: null, ok: true, migrated: false, updatedAt: null });
   assert.equal(daemon.puts().length, 0);
 });
 
-test('daemon renseigné : sa valeur est rendue telle quelle', async () => {
+test('daemon filled in: its value is returned as is', async () => {
   const layout = [{ id: 'agenda', rail: 'droite' }];
   const daemon = fakeDaemon({ layout });
   const out = await loadLayout({ fetchImpl: daemon.fetchImpl, storage: fakeStorage() });
@@ -48,7 +48,7 @@ test('daemon renseigné : sa valeur est rendue telle quelle', async () => {
   assert.equal(out.ok, true);
 });
 
-test('migration : le layout du navigateur est poussé, puis la clé disparaît', async () => {
+test('migration: the browser layout is pushed, then the key goes away', async () => {
   const legacy = [{ id: 'agenda', rail: 'gauche', rang: 0, hauteur: 200 }];
   const daemon = fakeDaemon();
   const storage = fakeStorage({ [LEGACY_LAYOUT_KEY]: JSON.stringify(legacy) });
@@ -57,16 +57,16 @@ test('migration : le layout du navigateur est poussé, puis la clé disparaît',
   assert.equal(first.migrated, true);
   assert.deepEqual(first.raw, legacy);
   assert.deepEqual(daemon.read(), legacy);
-  assert.equal(storage.getItem(LEGACY_LAYOUT_KEY), null, 'la source consommée doit disparaître');
+  assert.equal(storage.getItem(LEGACY_LAYOUT_KEY), null, 'the consumed source must go away');
 
-  // Second chargement : le daemon répond déjà, plus rien à migrer.
+  // Second load: the daemon already answers, nothing left to migrate.
   const before = daemon.puts().length;
   const second = await loadLayout({ fetchImpl: daemon.fetchImpl, storage });
   assert.equal(second.migrated, false);
-  assert.equal(daemon.puts().length, before, 'la migration ne doit jouer qu\'une fois');
+  assert.equal(daemon.puts().length, before, 'the migration must run only once');
 });
 
-test('migration : un daemon qui refuse le PUT ne fait pas perdre la clé', async () => {
+test('migration: a daemon that refuses the PUT does not lose the key', async () => {
   const legacy = [{ id: 'agenda' }];
   const daemon = fakeDaemon({ putOk: false });
   const storage = fakeStorage({ [LEGACY_LAYOUT_KEY]: JSON.stringify(legacy) });
@@ -77,7 +77,7 @@ test('migration : un daemon qui refuse le PUT ne fait pas perdre la clé', async
   assert.equal(storage.getItem(LEGACY_LAYOUT_KEY), JSON.stringify(legacy));
 });
 
-test('daemon renseigné : le layout du navigateur ne l\'écrase pas', async () => {
+test('daemon filled in: the browser layout does not overwrite it', async () => {
   const server = [{ id: 'serveur' }];
   const daemon = fakeDaemon({ layout: server });
   const storage = fakeStorage({ [LEGACY_LAYOUT_KEY]: JSON.stringify([{ id: 'navigateur' }]) });
@@ -88,7 +88,7 @@ test('daemon renseigné : le layout du navigateur ne l\'écrase pas', async () =
   assert.equal(storage.getItem(LEGACY_LAYOUT_KEY), JSON.stringify([{ id: 'navigateur' }]));
 });
 
-test('daemon injoignable : ok=false, pour que l\'appelant s\'abstienne d\'écrire', async () => {
+test('daemon unreachable: ok=false, so that the caller refrains from writing', async () => {
   const out = await loadLayout({
     fetchImpl: async () => { throw new Error('offline'); },
     storage: fakeStorage(),
@@ -96,7 +96,7 @@ test('daemon injoignable : ok=false, pour que l\'appelant s\'abstienne d\'écrir
   assert.deepEqual(out, { raw: null, ok: false, migrated: false });
 });
 
-test('saveLayout envoie un PUT et rapporte l\'échec sans lever', async () => {
+test('saveLayout sends a PUT and reports the failure without throwing', async () => {
   const ok = fakeDaemon();
   assert.equal(await saveLayout([{ id: 'a' }], { fetchImpl: ok.fetchImpl }), true);
   assert.deepEqual(ok.read(), [{ id: 'a' }]);
@@ -119,19 +119,19 @@ function slowDaemon() {
     bodies,
     fetchImpl,
     inFlight: () => pending.length,
-    /** Rend la main à la n-ième requête encore ouverte (0 = la plus ancienne). */
+    /** Releases the n-th request still open (0 = the oldest). */
     answer: (n = 0) => {
       const release = pending.splice(n, 1)[0];
-      assert.ok(release, 'aucune requête ouverte à ce rang');
+      assert.ok(release, 'no open request at this rank');
       release();
     },
   };
 }
 
-/** Laisse les microtâches en attente s'exécuter avant de reprendre l'assertion. */
+/** Lets the pending microtasks run before the assertion resumes. */
 const tick = () => new Promise<void>((r) => { setTimeout(r, 0); });
 
-test('deux sauvegardes ne se doublent pas : une seule requête à la fois', async () => {
+test('two saves do not overtake each other: one request at a time', async () => {
   const daemon = slowDaemon();
   const io = { scope: 'serie', fetchImpl: daemon.fetchImpl };
 
@@ -139,7 +139,7 @@ test('deux sauvegardes ne se doublent pas : une seule requête à la fois', asyn
   const second = saveLayout([{ id: 'b' }], io);
   await tick();
 
-  assert.equal(daemon.inFlight(), 1, 'la seconde attend son tour, elle ne part pas en parallèle');
+  assert.equal(daemon.inFlight(), 1, 'the second waits its turn, it does not start in parallel');
   assert.deepEqual(daemon.bodies, [[{ id: 'a' }]]);
 
   daemon.answer();
@@ -150,10 +150,10 @@ test('deux sauvegardes ne se doublent pas : une seule requête à la fois', asyn
   assert.deepEqual(await Promise.all([first, second]), [true, true]);
 });
 
-test('réponses en ordre inverse : le dernier layout demandé reste le dernier écrit', async () => {
-  // Le daemon répond à la première requête APRÈS la seconde. Sans sérialisation
-  // les deux PUT partiraient ensemble, « a » arriverait en dernier, et c'est ce
-  // placement périmé que le rechargement suivant afficherait.
+test('answers in reverse order: the last layout asked for stays the last written', async () => {
+  // The daemon answers the first request AFTER the second. Without serialisation
+  // both PUTs would start together, "a" would arrive last, and that stale
+  // placement is what the next reload would show.
   const received: unknown[] = [];
   const delays = [30, 0];
   let index = 0;
@@ -169,12 +169,12 @@ test('réponses en ordre inverse : le dernier layout demandé reste le dernier �
   await Promise.all([first, second]);
 
   assert.deepEqual(received, [[{ id: 'a' }], [{ id: 'b' }]]);
-  assert.deepEqual(received.at(-1), [{ id: 'b' }], 'le dernier écrit est le dernier demandé');
+  assert.deepEqual(received.at(-1), [{ id: 'b' }], 'the last written is the last asked for');
 });
 
-test('un PUT en échec ne bloque pas les sauvegardes suivantes', async () => {
-  // Le drapeau « en vol » se relâche aussi sur erreur : sinon une coupure
-  // réseau passagère gèlerait définitivement la persistance du placement.
+test('a failed PUT does not block the next saves', async () => {
+  // The "in flight" flag is released on error too: otherwise a passing network
+  // outage would freeze the persistence of the placement for good.
   const received: unknown[] = [];
   let firstCall = true;
   const fetchImpl = async (_url: string, init?: RequestInit): Promise<Response> => {
@@ -191,7 +191,7 @@ test('un PUT en échec ne bloque pas les sauvegardes suivantes', async () => {
   assert.deepEqual(received, [[{ id: 'b' }]]);
 });
 
-test('les sauvegardes en attente sont fusionnées : seule la plus récente part', async () => {
+test('the pending saves are merged: only the most recent one leaves', async () => {
   const daemon = slowDaemon();
   const io = { scope: 'fusion', fetchImpl: daemon.fetchImpl };
 
@@ -207,17 +207,17 @@ test('les sauvegardes en attente sont fusionnées : seule la plus récente part'
   assert.deepEqual(
     daemon.bodies,
     [[{ id: 'a' }], [{ id: 'd' }]],
-    'les placements intermédiaires n\'atteignent jamais le réseau',
+    'the intermediate placements never reach the network',
   );
 });
 
-test('sauvegardes sérialisées par portée : deux portées n\'attendent pas l\'une l\'autre', async () => {
+test('saves serialised by scope: two scopes do not wait for each other', async () => {
   const daemon = slowDaemon();
   const a = saveLayout([{ id: 'a' }], { scope: 'gauche', fetchImpl: daemon.fetchImpl });
   const b = saveLayout([{ id: 'b' }], { scope: 'droite', fetchImpl: daemon.fetchImpl });
   await tick();
 
-  assert.equal(daemon.inFlight(), 2, 'chaque portée a sa propre file');
+  assert.equal(daemon.inFlight(), 2, 'each scope has its own queue');
   daemon.answer();
   daemon.answer();
   assert.deepEqual(await Promise.all([a, b]), [true, true]);

@@ -135,7 +135,7 @@ test('a stored placement survives a widget leaving and a widget joining the regi
   assert.equal(merged.find((w) => w.id === 'a')?.hauteur, 260);
 });
 
-// ── Généralisation : zones libres et admission ──────────────────────────────
+// ── Generalisation: free zones and admission ────────────────────────────────
 
 const COCKPIT_LEFT = { id: 'gauche', slot: 'cockpit.widget' };
 const SIDEBAR = { id: 'sidebar.left.widget', slot: 'sidebar.left.widget' };
@@ -227,7 +227,7 @@ test('a widget moved to a sidebar is still there after a reload', () => {
 });
 
 
-// ── Retirer de l'interface, puis remettre ───────────────────────────────────
+// ── Removing from the interface, then putting back ──────────────────────────
 
 /** A layout round-tripped through the daemon: what actually survives a reload. */
 function reload(layout: WidgetLayout[]): WidgetLayout[] {
@@ -335,9 +335,9 @@ test('a palette drop into a zone that refuses the widget places nothing', () => 
 });
 
 
-// ── Ce que la config retire n'est pas « rangé » ─────────────────────────────
+// ── What the config removes is not "put away" ────────────────────────────────
 
-/** Capacités minimales : seuls `ui.hidden` et l'état des modules comptent ici. */
+/** Minimal capabilities: only `ui.hidden` and the module state count here. */
 function caps(ui: string[], modules: { id: string; active: boolean }[] = []): Capabilities {
   return {
     edition: 'expert',
@@ -355,25 +355,25 @@ function displayable(layout: WidgetLayout[], c: Capabilities | null): WidgetLayo
   return widgetsAllowedByConfig(layout, (id) => isZoneVisible(c, `cockpit.${id}`));
 }
 
-// `dreams` est porté par le module `dreams` (`ZONE_MODULE`), `vault-graph` par
-// `vault` : deux widgets réels, pour exercer la vraie table et non des ids
-// inventés qui n'y figurent pas.
+// `dreams` is carried by the `dreams` module (`ZONE_MODULE`), `vault-graph` by
+// `vault`: two real widgets, to exercise the real table and not made-up ids
+// that are not in it.
 const REAL_CONSTRAINTS: WidgetConstraints[] = [
   { id: 'dreams', defaultHeight: 220, minHeight: 120, defaultZone: 'gauche', defaultRank: 0 },
   { id: 'vault-graph', defaultHeight: 300, minHeight: 140, defaultZone: 'gauche', defaultRank: 1 },
 ];
 
 test('a widget masked by ui.hidden shows up neither in its zone nor in the palette', () => {
-  // Retiré ET masqué : même dans ce cas, la palette ne le propose pas. Le
-  // ranger est une décision de l'utilisateur, le masquer une décision de
-  // config — et c'est la config qui filtre en premier.
+  // Removed AND hidden: even then, the palette does not offer it. Putting it
+  // away is the user's decision, hiding it a config
+  // decision — and the config filters first.
   const layout = removeWidget(mergeLayout(null, REAL_CONSTRAINTS), 'dreams');
   const visible = displayable(layout, caps(['cockpit.dreams']));
 
   assert.deepEqual(removedWidgets(visible), []);
   assert.deepEqual(widgetsOfZone(visible, 'gauche').map((w) => w.id), ['vault-graph']);
-  // Rien n'est perdu pour autant : le placement garde l'entrée, et retirer
-  // `cockpit.dreams` de la config la ramène telle qu'elle était.
+  // Nothing is lost for all that: the placement keeps the entry, and removing
+  // `cockpit.dreams` from the config brings it back as it was.
   assert.deepEqual(removedWidgets(displayable(layout, caps([]))).map((w) => w.id), ['dreams']);
 });
 
@@ -388,12 +388,12 @@ test('a widget whose module is off is not offered either', () => {
 });
 
 test('capabilities not loaded yet: everything shows, palette included', () => {
-  // Politique de repli du front — en cas de doute, on affiche.
+  // Fallback policy of the front end — when in doubt, show it.
   const layout = removeWidget(mergeLayout(null, REAL_CONSTRAINTS), 'dreams');
   assert.deepEqual(removedWidgets(displayable(layout, null)).map((w) => w.id), ['dreams']);
 });
 
-// ── Catalogue : natifs + entrées de slot, une seule source de placement ─────
+// ── Catalogue: natives + slot entries, a single placement source ────────────
 
 const NATIVE: CatalogEntry[] = CONSTRAINTS.map((c) => ({
   ...c,
@@ -424,15 +424,15 @@ test('a slot entry becomes a catalogue entry, placed after the native ones', () 
     registrationId: 'example-widget:1',
     defaultHeight: PLUGIN_DEFAULT_HEIGHT,
     minHeight: PLUGIN_MIN_HEIGHT,
-    // Les deux rails du cockpit partagent un slot : c'est la seule zone dont le
-    // nom ne se déduit pas du slot.
+    // The two cockpit rails share a slot: it is the only zone whose
+    // name is not derived from the slot.
     defaultZone: 'gauche',
     defaultRank: NATIVE.length,
   });
 });
 
 test('the palette can tell two homonymous widgets apart by their surface', () => {
-  // Les deux « Missions » du produit : même titre, même plugin, deux surfaces.
+  // The two "Missions" of the product: same title, same plugin, two surfaces.
   const [cockpit, chat] = buildWidgetCatalog([], [
     { ...registration('@timon/missions', 'cockpit.widget', 'recent'), options: { title: 'Missions' } },
     { ...registration('@timon/missions', 'chat.left.widget', 'Missions', 2), options: { title: 'Missions' } },
@@ -470,7 +470,7 @@ test('a widget slot other than the cockpit names its own zone', () => {
 
 test('the placement id is stable across reloads, and a key separates two widgets', () => {
   const first = buildWidgetCatalog([], [registration('acme', 'cockpit.widget', undefined, 1)]);
-  // Même plugin, autre session : le compteur d'inscription a changé, pas l'id.
+  // Same plugin, another session: the registration counter changed, not the id.
   const second = buildWidgetCatalog([], [registration('acme', 'cockpit.widget', undefined, 7)]);
   assert.equal(first[0]?.id, second[0]?.id);
 
@@ -498,9 +498,9 @@ test('a plugin widget is admitted into every widget zone, and refused elsewhere'
 });
 
 test('a registration declares its title, its heights and its first zone', () => {
-  // Sans ces quatre champs, toute carte de plugin s'appelle du nom de son
-  // plugin, fait 260 px et se pose dans le rail gauche : les tuiles du produit
-  // ne pourraient pas devenir des plugins sans y perdre leur mise en page.
+  // Without these four fields, every plugin card is called by the name of its
+  // plugin, is 260 px and lands in the left rail: the product tiles
+  // could not become plugins without losing their layout.
   const [entry] = buildWidgetCatalog([], [{
     ...registration('vault', 'cockpit.widget', 'vault-graph'),
     options: { title: 'Vault', zone: 'droite', height: 420, minHeight: 200 },
@@ -526,12 +526,12 @@ test('a plugin widget places, moves and is taken out like a native one', () => {
   assert.deepEqual(placement(removed), ['gauche:a', 'gauche:b', 'gauche:c', 'droite:d']);
 });
 
-// ── Orphelins : le catalogue est vivant, le placement ne doit pas s'effacer ──
+// ── Orphans: the catalogue is alive, the placement must not be erased ────────
 
 test('a stored placement waits for a plugin that has not registered yet', () => {
-  // Le cas réel : le layout revient du daemon avant que le loader de plugins
-  // ait fini. Sans orphelin, un simple glissement dans cet intervalle effacerait
-  // la place du plugin pour toujours.
+  // The real case: the layout comes back from the daemon before the plugin loader
+  // has finished. Without orphans, a simple drag in that interval would erase
+  // the plugin's place for good.
   const stored = [
     { id: 'a', rail: 'droite', rang: 0, hauteur: 200 },
     { id: 'plugin:acme', rail: 'droite', rang: 1, hauteur: 300 },
@@ -541,13 +541,13 @@ test('a stored placement waits for a plugin that has not registered yet', () => 
   assert.equal(mergeLayout(stored, withoutPlugin).some((w) => w.id === 'plugin:acme'), false);
   assert.deepEqual(orphanPlacements(stored, withoutPlugin).map((w) => w.id), ['plugin:acme']);
 
-  // Ce que l'hôte réécrit après un geste : le layout placé, plus les orphelins.
+  // What the host rewrites after a gesture: the placed layout, plus the orphans.
   const written = [
     ...removeWidget(mergeLayout(stored, withoutPlugin), 'a'),
     ...orphanPlacements(stored, withoutPlugin),
   ];
 
-  // Le plugin s'enregistre enfin : sa place et sa hauteur sont intactes.
+  // The plugin finally registers: its place and its height are intact.
   const withPlugin = buildWidgetCatalog(NATIVE, [registration('acme')], defaultZoneForSlot);
   const back = mergeLayout(written, withPlugin).find((w) => w.id === 'plugin:acme');
   assert.equal(back?.rail, 'droite');

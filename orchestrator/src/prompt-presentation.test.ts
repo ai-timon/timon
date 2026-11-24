@@ -3,6 +3,8 @@ import test from 'node:test';
 import { composePrompt } from './prompt-presentation.js';
 import { formatInboxDigest, presentInboxDigest } from './wake-digest.js';
 
+// french-ok-file: French sample comments and summaries the test feeds in
+
 test('prompt composition preserves every byte while merging adjacent display sections', () => {
   const parts = [{ kind: 'instruction' as const, text: 'TASK_ID: abc\n\n' },
     { kind: 'text' as const, text: 'Brief 🦊\n' }, { kind: 'instruction' as const, text: '\nPipeline' },

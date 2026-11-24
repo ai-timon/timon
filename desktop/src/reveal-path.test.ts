@@ -1,3 +1,4 @@
+// french-ok-file: accented folder names, the non-ASCII paths under test
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { revealEntry, type RevealPathDeps } from './reveal-path.js';

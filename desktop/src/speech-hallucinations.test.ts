@@ -1,3 +1,4 @@
+// french-ok-file: the French phrases speech engines hallucinate, and real sentences close to them
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanTranscript, collapseRepeats, normalizeTranscript } from './speech-hallucinations.js';

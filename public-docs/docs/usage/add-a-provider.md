@@ -239,6 +239,10 @@ real ones.
 
 A file that is refused, malformed, or named differently from its `id` is listed in **Settings → AI models → Providers** as **Blocked**; its page says why. So is a file whose `id` is already taken, or whose name is not a valid id (a space, a capital letter): it is listed under its file name, and nothing on its page changes the backend that owns the id. It never prevents Timon from starting.
 
+### Claude Code keeps a folder per backend
+
+An Anthropic backend other than Claude itself (Kimi, DeepSeek, one you added) runs Claude Code with a configuration folder of its own, kept by Timon across its missions: its sessions, logs and settings go there, never into your `~/.claude`, where your Claude subscription's sign-in lives. A mission on one of these backends therefore does not read your own Claude Code settings, hooks or global instructions from `~/.claude`. A conversation started on such a backend before this folder existed is resumed once from `~/.claude`: only that conversation's file is copied over.
+
 ## Through a LiteLLM proxy
 
 [LiteLLM](https://docs.litellm.ai/) is a proxy you host yourself: it puts many providers behind one address and one key. Timon reaches it like any other provider, in either protocol, so you can keep the CLI you prefer and let the proxy route each model to its provider.

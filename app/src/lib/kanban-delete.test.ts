@@ -19,7 +19,7 @@ test('shows a translated conflict reason instead of just the status', async (ctx
   try {
     const result = await deleteKanbanTask('task-id');
     assert.equal(result.ok, false);
-    assert.match(result.message, /dépendances/);
+    assert.match(result.message, /dépendances/); // french-ok: the French locale under test
   } finally { setLocale('en'); }
 });
 test('handles expired sessions, unreadable responses and network failures', async (ctx) => {

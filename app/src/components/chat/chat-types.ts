@@ -99,7 +99,7 @@ export type MissionSummary = {
   agent_role?: string | null;
 };
 
-/* ─── Arborescence de fichiers d'un agent ─── */
+/* ─── An agent's file tree ─── */
 /** `abs`: the entry's absolute path on the host, built by the daemon with the OS's own separators. */
 export type FileEntry = { name: string; kind: 'file' | 'dir' | 'symlink' | 'other'; size: number; modified: number; abs?: string };
 export type DirListing = { kind: 'dir'; path: string; abs?: string; entries: FileEntry[] };
@@ -159,7 +159,7 @@ export type RateLimitInfo = {
   /** Exact utilization as a percentage in [0, 100], populated from
    *  the OAuth usage endpoint (same source Claude Code's statusLine
    *  uses). Optional because the SSE rate_limit_event itself doesn't
-   *  carry it — we poll /api/ui/usage (backend courant) in parallel and merge. */
+   *  carry it — we poll /api/ui/usage (current backend) in parallel and merge. */
   utilization?: number;
 };
 

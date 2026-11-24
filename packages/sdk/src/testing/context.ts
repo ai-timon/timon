@@ -15,6 +15,7 @@ import type {
   AnyDialect, BackendProfile, BuildSpawnOpts, Dialect, NativeProviderDefinition, ProviderGeneratedMedia, ProviderMcpOptions, ProviderMcpPlan,
   ProviderConversation, ProviderMcpServer, ProviderPluginContext, ProviderProbeResult, ProviderSettingValue, RegisteredProfile, RemoteDialect,
 } from '../provider.js';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,6 +27,9 @@ import { providerRuntime } from './runtime.js';
 
 /** What the stand-in answers to `ctx.provider.mcp()`: a reference where the daemon would put one, never a token. */
 export const FAKE_TOKEN_REFERENCE = 'timon-seal-00000000000000000000000000000000';
+
+/** How every reference the daemon mints starts (`launch-seal.ts`, kept out of the published SDK), the stand-in's included. */
+const SEAL_REFERENCE_PREFIX = 'timon-seal-';
 
 export type ProviderContextOptions = {
   /** What `ctx.settings.get` answers: the plugin's own settings, secrets included. */
@@ -45,8 +49,23 @@ export type ProviderContextOptions = {
     /** A scripted answer to `ctx.provider.binary.converse`: a conversation over in-memory pipes. */
     readonly converse?: (args: readonly string[]) => ProviderConversation;
   }>>;
-  /** What `ctx.provider.osCredentials` holds, by `service` or `service|account`. A key that is not here reads as null. */
+  /**
+   * What `ctx.provider.osCredentials` holds, by `service` or `service|account`. A key that is not here reads as null.
+   * `ctx.provider.account.osCredential(profile, service).read()` reads the same keys, and `remove(expected)`
+   * deletes one while it still holds `expected`. `setOsCredential` changes them during a test.
+   */
   readonly osCredentials?: Readonly<Record<string, string>>;
+  /** Services whose `account.osCredential(...).remove()` the store refuses, as a locked keychain does. */
+  readonly lockedOsCredentials?: readonly string[];
+  /** Accounts (by id) a sign-in flow runs on: `account.osCredential(...).held()` and `remove` answer `signing-in`. */
+  readonly signingInAccounts?: readonly string[];
+  /**
+   * Launches (by mission id) that run outside the fence: `held()` and `remove` answer `unfenced`.
+   * Any other launch is taken as fenced, as a mission on macOS with isolation on.
+   */
+  readonly unfencedMissions?: readonly string[];
+  /** Accounts (by id) another process runs on outside the fence: `held()` and `remove` answer `in-use`. `setAccountInUse` changes it. */
+  readonly accountsInUse?: readonly string[];
   /** What `ctx.provider.media.adopt` returns for any directory. Default: nothing. */
   readonly generatedMedia?: readonly ProviderGeneratedMedia[];
   /** Values `ctx.provider.redact` masks (12 characters or more, like the daemon's). Default: none. */
@@ -81,7 +100,14 @@ export type TestProviderContext = ProviderPluginContext & {
   readonly logs: readonly LoggedLine[];
   /** The directories the plugin opened to `chat_show_media` (`media.allowShow`), by mission. */
   readonly shownFrom: ReadonlyMap<string, readonly string[]>;
-  /** Removes the temporary folders `scratch.mission` created. */
+  /**
+   * Stands in for a CLI that writes the keychain while the plugin works (a sign-in, a renewal
+   * outside any fence): sets the entry `key` (`service` or `service|account`), or deletes it on null.
+   */
+  setOsCredential(key: string, value: string | null): void;
+  /** Stands in for a process on the account starting (true) or ending (false) outside the fence. */
+  setAccountInUse(accountId: string, inUse: boolean): void;
+  /** Removes the temporary folders `scratch.mission` and `scratch.profile` created. */
   cleanup(): void;
 };
 
@@ -125,7 +151,10 @@ export function createProviderContext(options: ProviderContextOptions = {}): Tes
   const productProfiles: BackendProfile[] = [];
   const logs: LoggedLine[] = [];
   const scratches = new Map<string, ProviderScratchDir>();
+  const profileScratches = new Map<string, ProviderScratchDir>();
   const shownFrom = new Map<string, string[]>();
+  const osStore = new Map<string, string>(Object.entries(options.osCredentials ?? {}));
+  const accountsInUse = new Set<string>(options.accountsInUse ?? []);
   const temporaryRoots: string[] = [];
   const secrets = (options.secrets ?? []).filter((value) => value.length >= MASK_MIN_LENGTH);
   const maskText = (value: string): string => secrets.reduce((out, secret) => out.split(secret).join('***'), value);
@@ -188,6 +217,31 @@ export function createProviderContext(options: ProviderContextOptions = {}): Tes
           }
           return dir;
         },
+        // One temporary folder per profile, the same across missions, as the daemon's. The
+        // stand-in launches every profile it is handed: it has no registry to say who does.
+        profile(profile) {
+          if (apiVersion < 18) {
+            throw new Error(`plugin: ctx.provider.scratch.profile needs apiVersion 18 or later (the manifest declares ${apiVersion})`);
+          }
+          if (profile.id.includes('@')) {
+            throw new Error('scratch.profile: a launch on an account keeps its state in account.of(profile).configDir');
+          }
+          let dir = profileScratches.get(profile.id);
+          if (!dir) {
+            const root = mkdtempSync(join(tmpdir(), 'provider-profile-'));
+            temporaryRoots.push(root);
+            dir = createScratchDir({
+              root: join(root, profile.id),
+              // The daemon's folder outlives every mission: a launch's reference is refused there too.
+              swap: (content) => {
+                if (content.includes(SEAL_REFERENCE_PREFIX)) throw new Error('scratch.profile: this text carries a launch\'s reference, write it in scratch.mission() instead');
+                return content;
+              },
+            });
+            profileScratches.set(profile.id, dir);
+          }
+          return dir;
+        },
       },
       binary: {
         async resolve(name) { return options.binaries?.[name]?.path ?? null; },
@@ -213,6 +267,41 @@ export function createProviderContext(options: ProviderContextOptions = {}): Tes
           const account = (profile as { account?: { id: string; name: string; configDir: string } }).account;
           return account ? { id: account.id, name: account.name, configDir: account.configDir } : undefined;
         },
+        osCredential(profile, service, missionId) {
+          if (apiVersion < 18) {
+            throw new Error(`plugin: ctx.provider.account.osCredential needs apiVersion 18 or later (the manifest declares ${apiVersion})`);
+          }
+          const account = (profile as { account?: { id: string; configDir: string } }).account;
+          if (!account) return undefined;
+          // The daemon's rule: a name followed by THIS account's suffix, never the host's own entry nor another account's.
+          const suffix = `-${createHash('sha256').update(account.configDir.normalize('NFC')).digest('hex').slice(0, 8)}`;
+          if (!service.endsWith(suffix) || service.length === suffix.length) {
+            throw new Error(`plugin: \`${service}\` is not this account's entry (a declared service followed by the suffix of the account's folder)`);
+          }
+          if (typeof missionId !== 'string' || !missionId) {
+            throw new Error('plugin: `osCredential(profile, service, missionId)` takes the id of the launch being built');
+          }
+          // The daemon's order: a sign-in first, then this launch's fence, then the other processes on the account.
+          const held = () => {
+            if (options.signingInAccounts?.includes(account.id)) return 'signing-in' as const;
+            if (options.unfencedMissions?.includes(missionId)) return 'unfenced' as const;
+            return accountsInUse.has(account.id) ? 'in-use' as const : null;
+          };
+          return {
+            held,
+            async read() { return osStore.get(service) ?? null; },
+            async remove(expected) {
+              const hold = held();
+              if (hold) return hold;
+              const current = osStore.get(service);
+              if (current === undefined) return 'removed';
+              if (current !== expected) return 'changed';
+              if (options.lockedOsCredentials?.includes(service)) return 'refused';
+              osStore.delete(service);
+              return 'removed';
+            },
+          };
+        },
       },
       media: {
         async adopt() { return options.generatedMedia ?? []; },
@@ -222,7 +311,7 @@ export function createProviderContext(options: ProviderContextOptions = {}): Tes
       osCredentials: {
         invalidate() {},
         async read(service, account) {
-          return options.osCredentials?.[account ? `${service}|${account}` : service] ?? null;
+          return osStore.get(account ? `${service}|${account}` : service) ?? null;
         },
       },
       redact: { text: maskText, deep: maskDeep },
@@ -283,9 +372,18 @@ export function createProviderContext(options: ProviderContextOptions = {}): Tes
     },
     logs,
     shownFrom,
+    setOsCredential(key, value) {
+      if (value === null) osStore.delete(key);
+      else osStore.set(key, value);
+    },
+    setAccountInUse(accountId, inUse) {
+      if (inUse) accountsInUse.add(accountId);
+      else accountsInUse.delete(accountId);
+    },
     cleanup() {
       for (const root of temporaryRoots.splice(0)) rmSync(root, { recursive: true, force: true });
       scratches.clear();
+      profileScratches.clear();
     },
   };
 }

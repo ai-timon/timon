@@ -75,16 +75,18 @@ export function homeOfPlist(text: string): string | null {
 }
 
 /**
- * The home of the scheduled task: its launcher is `<home>\run\timon-service.cmd`,
- * between double quotes for cmd (`windowsTaskCommand`, the boot task) or in a
- * PowerShell literal, its quotes doubled (`windowsSessionTaskArguments`, the
- * logon task).
+ * The home of the scheduled task: what its action names is
+ * `<home>\run\timon-service.json`, the launcher configuration of revision 6
+ * (`windowsTaskAction`), or the batch `timon-service.cmd` of revisions 2 to 5
+ * — between double quotes (the packaged actions, the boot task of the batch)
+ * or in a PowerShell literal, its quotes doubled (a source checkout's logon
+ * task, the logon task of the batch).
  */
 export function homeOfTask(xml: string): string | null {
   const args = unescapeXml(xml);
-  const quoted = /"([^"]+?)[\\/]run[\\/]timon-service\.(?:cmd|vbs)"/i.exec(args);
+  const quoted = /"([^"]+?)[\\/]run[\\/]timon-service\.(?:json|cmd|vbs)"/i.exec(args);
   if (quoted) return quoted[1]!;
-  const literal = /'((?:[^']|'')+?)[\\/]run[\\/]timon-service\.cmd'/i.exec(args);
+  const literal = /'((?:[^']|'')+?)[\\/]run[\\/]timon-service\.(?:json|cmd)'/i.exec(args);
   return literal ? literal[1]!.replace(/''/g, "'") : null;
 }
 

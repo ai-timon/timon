@@ -26,7 +26,7 @@ const {
   MISSION_SLICE, parsePressureSomeAvg10, checkSlicePressure, resetPressureAlertForTest,
   setResourceAlertSink, PRESSURE_ALERT_PCT, PRESSURE_REARM_PCT,
 } = await import('./resources.js');
-const { diffScopeKills, formatKillNotice, missionPrefixOfScope, parseKernelOom, readScopeSnapshots } =
+const { diffScopeKills, formatKillNotice, killNoticeMessage, missionPrefixOfScope, parseKernelOom, readScopeSnapshots } =
   await import('./resources-oom.js');
 const { setHasSystemdForTest, setSystemctlForTest } = await import('./host/systemd.js');
 const { invalidateSettingsCache, resolve, retiredSettingsInUse, setSetting } = await import('./settings.js');
@@ -221,7 +221,7 @@ test('memory.pressure: some avg10 is parsed', () => {
 });
 
 test('high slice pressure alerts once per episode, before oomd acts', () => {
-  const alerts: { title: string; urgent: boolean }[] = [];
+  const alerts: { title: string; urgent: boolean; message?: { code: string; params: Readonly<Record<string, string | number>> } }[] = [];
   setResourceAlertSink((a) => alerts.push(a));
   resetPressureAlertForTest();
   const st = { memoryCurrent: 8 * 1024 ** 3, memoryMax: 16 * 1024 ** 3 };
@@ -233,6 +233,9 @@ test('high slice pressure alerts once per episode, before oomd acts', () => {
   checkSlicePressure(PRESSURE_REARM_PCT + 1, st); // still the same episode
   assert.equal(alerts.length, 1);
   assert.equal(alerts[0]?.urgent, true);
+  assert.deepEqual(alerts[0]?.message, {
+    code: 'resource_pressure_high', params: { pressure: String(PRESSURE_ALERT_PCT + 5), usage: '8.0 GB', max: '16.0 GB', limit: '40%' },
+  });
   checkSlicePressure(PRESSURE_REARM_PCT - 1, st); // re-armed
   checkSlicePressure(PRESSURE_ALERT_PCT, st);
   assert.equal(alerts.length, 2);
@@ -252,7 +255,8 @@ test('the retired MemoryHigh settings are gone from the registry but reported wh
   assert.deepEqual(retiredSettingsInUse(), []);
 });
 
-test('an OOM-killed process is named from the cgroup snapshots', () => {
+// The scope's processes are read from /proc, which only Linux has.
+test('an OOM-killed process is named from the cgroup snapshots', { skip: process.platform !== 'linux' && 'reads /proc' }, () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-cg-'));
   const slice = '/user.slice/timon-x-missions.slice';
   const scope = 'timon-x-mission-abcd1234-1.scope';
@@ -284,6 +288,9 @@ test('an OOM-killed process is named from the cgroup snapshots', () => {
   assert.equal(kills[0]?.ceilingBytes, 7 * 1024 ** 3);
 
   const notice = formatKillNotice(kills[0]!);
+  const coded = killNoticeMessage(kills[0]!, 'abcd1234');
+  assert.equal(coded.code, 'resource_mission_killed');
+  assert.equal(coded.params.mission, 'abcd1234');
   assert.match(notice, /kanban-series-graph\.test\.ts/);
   assert.match(notice, /more than 7\.0 GB/);
   assert.match(notice, /same command again will be killed/);

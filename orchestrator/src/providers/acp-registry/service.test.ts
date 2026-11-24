@@ -6,7 +6,7 @@ import '../../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildTarGzWithModes, buildZip } from './archive-fixtures.js';
@@ -431,4 +431,186 @@ test('sign-in: an agent that does not answer at install is still installed, with
     const view = await service.install('mute');
     assert.equal(view.installed?.state, 'ok');
   } finally { service.dispose(); }
+});
+
+/* ── the registry logo ─────────────────────────────────────────────────────── */
+
+const ICON_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/logo-agent.svg';
+const LOGO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M0 0h24v24H0z"/></svg>';
+
+/** A Windows zip build: installable on every runner, the program is never launched. */
+function iconAgent(id: string, icon: unknown, zip: Buffer, version = '1.0.0') {
+  return {
+    id, name: 'Logo Agent', version, ...(icon === undefined ? {} : { icon }),
+    distribution: { binary: { 'windows-x86_64': { archive: `https://downloads.example.com/${id}.zip`, cmd: 'agent.cmd', args: ['acp'], sha256: sha(zip) } } },
+  };
+}
+
+function iconSetup(id: string, icon: unknown, served: Served = new Map()) {
+  const zip = buildZip([{ path: 'agent.cmd', data: '@echo off' }]);
+  served.set(REGISTRY_URL, registryDoc([iconAgent(id, icon, zip)]));
+  served.set(`https://downloads.example.com/${id}.zip`, zip);
+  const seen: string[] = [];
+  const icons: Array<string | null> = [];
+  const home = mkdtempSync(join(tmpdir(), 'timon-acp-icon-'));
+  const make = (fetched: Served = served) => new AcpRegistryService({
+    home, fetchFn: fakeFetch(fetched, seen), platform: 'win32', arch: 'x64', inspect: async () => [],
+    register: (_agent, _command, svg) => { icons.push(svg); return () => {}; },
+  });
+  return { home, seen, icons, served, make, iconFile: join(home, 'providers', 'acp-registry', 'icons', `${id}.svg`) };
+}
+
+test('logo: a registry icon on its CDN is downloaded once, declared as the brand, and the catalogue serves it as a data URL', async () => {
+  const zip = buildZip([{ path: 'agent.cmd', data: '@echo off' }]);
+  const served: Served = new Map([
+    [REGISTRY_URL, registryDoc([iconAgent('logo-agent', ICON_URL, zip)])],
+    ['https://downloads.example.com/logo-agent.zip', zip],
+    [ICON_URL, Buffer.from(LOGO)],
+  ]);
+  const { service } = newService(served, { platform: 'win32', arch: 'x64' });
+  const { catalogBackend } = await import('../../backends/catalog.js');
+  try {
+    await service.install('logo-agent');
+    const entry = catalogBackend(profileIdOf('logo-agent'));
+    assert.equal(entry?.icon, `data:image/svg+xml;base64,${Buffer.from(LOGO).toString('base64')}`, 'served inline: the browser fetches no third-party address');
+  } finally { service.dispose(); }
+});
+
+test('logo: kept on disk, and a restore brings it back without a single network call', async () => {
+  const setup = iconSetup('kept-logo', ICON_URL);
+  setup.served.set(ICON_URL, Buffer.from(`<?xml version="1.0" standalone="no" ?>\n${LOGO}`));
+  const first = setup.make();
+  await first.install('kept-logo');
+  first.dispose();
+  assert.equal(setup.icons[0], LOGO, 'an XML prolog is not part of the picture');
+  assert.equal(setup.seen.filter((url) => url === ICON_URL).length, 1, 'downloaded once');
+  assert.equal(readFileSync(setup.iconFile, 'utf8'), LOGO);
+
+  setup.seen.length = 0;
+  const booted = setup.make(new Map());
+  await booted.restore();
+  booted.dispose();
+  assert.deepEqual(setup.seen, [], 'zero network calls at restore');
+  assert.equal(setup.icons[1], LOGO);
+
+  // A kept file edited by hand is checked again when read: dropped, never registered.
+  writeFileSync(setup.iconFile, '<svg onload="alert(1)"></svg>');
+  const edited = setup.make(new Map());
+  await edited.restore();
+  edited.dispose();
+  assert.equal(setup.icons[2], null);
+});
+
+test('logo: an unsafe or oversized SVG is refused and the agent still installs, without a logo', async () => {
+  const unsafe = [
+    '<svg><script>alert(1)</script></svg>',
+    '<svg onload="alert(1)"><path/></svg>',
+    '<svg><image href="https://tracker.example/p.png"/></svg>',
+    `<svg>${' '.repeat(17 * 1024)}</svg>`,
+    '<html><svg/></html>',
+  ];
+  for (const [index, body] of unsafe.entries()) {
+    const id = `unsafe-${index}`;
+    const setup = iconSetup(id, ICON_URL);
+    setup.served.set(ICON_URL, Buffer.from(body));
+    const service = setup.make();
+    const view = await service.install(id);
+    service.dispose();
+    assert.equal(view.installed?.state, 'ok', `installed despite icon #${index}`);
+    assert.deepEqual(setup.icons, [null], `icon #${index} refused`);
+    assert.equal(existsSync(setup.iconFile), false);
+  }
+});
+
+test('logo: an unreachable icon does not fail the install', async () => {
+  const setup = iconSetup('offline-logo', ICON_URL);
+  setup.served.set(ICON_URL, { status: 503 });
+  const service = setup.make();
+  const view = await service.install('offline-logo');
+  service.dispose();
+  assert.equal(view.installed?.state, 'ok');
+  assert.deepEqual(setup.icons, [null]);
+});
+
+test('logo: an icon off the registry CDN is ignored and never requested; no icon changes nothing', async () => {
+  for (const [id, icon] of [
+    ['off-host', 'https://evil.example/logo.svg'],
+    ['look-alike', 'https://cdn.agentclientprotocol.com.evil.example/logo.svg'],
+    ['plain-http', 'http://cdn.agentclientprotocol.com/registry/v1/latest/x.svg'],
+    ['not-a-string', 42],
+    ['no-icon', undefined],
+  ] as const) {
+    const setup = iconSetup(id, icon);
+    const service = setup.make();
+    const listed = await service.list();
+    assert.equal(listed.dropped, 0, `${id}: a bad icon never drops the entry`);
+    const view = await service.install(id);
+    service.dispose();
+    assert.equal(view.installed?.state, 'ok');
+    assert.deepEqual(setup.seen, [REGISTRY_URL, `https://downloads.example.com/${id}.zip`], `${id}: no icon request`);
+    assert.deepEqual(setup.icons, [null]);
+  }
+});
+
+test('logo: removing the agent removes its logo', async () => {
+  const setup = iconSetup('gone-logo', ICON_URL);
+  setup.served.set(ICON_URL, Buffer.from(LOGO));
+  const service = setup.make();
+  await service.install('gone-logo');
+  assert.equal(existsSync(setup.iconFile), true);
+  await service.remove('gone-logo');
+  assert.equal(existsSync(setup.iconFile), false);
+});
+
+/** Installs v1.0.0 with a valid logo, then publishes v2.0.0 as `next` says and installs it with a fresh service. */
+async function upgradeFrom(id: string, next: { icon: unknown; body?: Buffer | { status: number } }) {
+  const setup = iconSetup(id, ICON_URL);
+  setup.served.set(ICON_URL, Buffer.from(LOGO));
+  const first = setup.make();
+  await first.install(id);
+  first.dispose();
+  assert.equal(readFileSync(setup.iconFile, 'utf8'), LOGO, 'v1 logo kept');
+
+  const zip = buildZip([{ path: 'agent.cmd', data: '@echo off' }]);
+  setup.served.set(REGISTRY_URL, registryDoc([iconAgent(id, next.icon, zip, '2.0.0')]));
+  if (next.body) setup.served.set(ICON_URL, next.body);
+  else setup.served.delete(ICON_URL);
+  const second = setup.make();
+  const view = await second.install(id);
+  second.dispose();
+  assert.equal(view.installed?.version, '2.0.0');
+  assert.equal(view.installed?.state, 'ok');
+  return setup;
+}
+
+test('logo upgrade: a new release whose icon is unsafe drops the kept logo', async () => {
+  const setup = await upgradeFrom('upgrade-unsafe', { icon: ICON_URL, body: Buffer.from('<svg onload="alert(1)"><path/></svg>') });
+  assert.deepEqual(setup.icons, [LOGO, null], 'v2 registered without a logo');
+  assert.equal(existsSync(setup.iconFile), false, 'the old logo is not kept for an unsafe release');
+});
+
+test('logo upgrade: a new release whose icon is unreachable keeps the logo already kept', async () => {
+  const setup = await upgradeFrom('upgrade-offline', { icon: ICON_URL, body: { status: 503 } });
+  assert.deepEqual(setup.icons, [LOGO, LOGO], 'v2 registered with the kept logo');
+  assert.equal(readFileSync(setup.iconFile, 'utf8'), LOGO);
+});
+
+test('logo upgrade: a new release with no icon, or an off-host one, drops the kept logo', async () => {
+  for (const [id, icon] of [['upgrade-none', undefined], ['upgrade-off-host', 'https://evil.example/logo.svg']] as const) {
+    const setup = await upgradeFrom(id, { icon });
+    assert.deepEqual(setup.icons, [LOGO, null], id);
+    assert.equal(existsSync(setup.iconFile), false, id);
+  }
+});
+
+test('logo: a logo that cannot be kept on disk never fails the install', async () => {
+  const setup = iconSetup('unwritable-logo', ICON_URL);
+  setup.served.set(ICON_URL, Buffer.from(LOGO));
+  // A folder where the file should go: the write fails, the install must not.
+  mkdirSync(setup.iconFile, { recursive: true });
+  const service = setup.make();
+  const view = await service.install('unwritable-logo');
+  service.dispose();
+  assert.equal(view.installed?.state, 'ok');
+  assert.deepEqual(setup.icons, [LOGO]);
 });

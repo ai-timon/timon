@@ -108,7 +108,7 @@ test('a new version that fails to apply leaves nothing behind', () => {
 
 test('outside a swap, a duplicate registration is still refused', () => {
   const off = registerDialect('dup-plugin', 'dup-echo', dialect('v1'));
-  assert.throws(() => registerDialect('dup-plugin', 'dup-echo', dialect('v2')), /already|déjà/);
+  assert.throws(() => registerDialect('dup-plugin', 'dup-echo', dialect('v2')), /already|déjà/); // french-ok: the older French wording of the error
   off();
 });
 

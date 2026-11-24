@@ -24,6 +24,7 @@
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { daemonMessage, type DaemonMessage } from './daemon-message.js';
 
 export type ProcInfo = { pid: number; cmd: string; rssBytes: number | null };
 
@@ -195,6 +196,18 @@ export function formatKillNotice(kill: OomKill): string {
     + `${whose}.${rss} Running the same command again will be killed the same way. `
     + 'Find the cause first — an infinite loop, a leak, an unbounded dataset — '
     + 'and run a narrower target (`npm test -- <file>`) once it is fixed.';
+}
+
+/** The code of `formatKillNotice`, for the notification centre to translate (TODO #1063). */
+export function killNoticeMessage(kill: OomKill, mission: string): DaemonMessage {
+  return daemonMessage('resource_mission_killed', {
+    mission,
+    cmd: kill.cmd ?? 'none',
+    pid: kill.pid ? String(kill.pid) : 'none',
+    ceiling: kill.ceilingBytes !== null ? gb(kill.ceilingBytes) : 'none',
+    whose: kill.sliceWide ? 'slice' : 'mission',
+    rss: kill.rssBytes !== null ? gb(kill.rssBytes) : 'none',
+  });
 }
 
 /** 8-hex mission prefix carried by a scope name (`<prefix>-mission-<id8>-<seq>.scope`). */

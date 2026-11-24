@@ -5,7 +5,6 @@ import { ArrowRight, Lock } from 'lucide-react';
 import { t } from '@/lib/i18n';
 import { fetchMe, type AuthMe } from '@/lib/auth';
 import { forgetAllChatMissions } from '@/lib/chat-mission-cache';
-import { setupErrorMessage } from '@/lib/setup-license';
 import { BrandLogo } from '@/components/brand-logo';
 import { OnboardingBackdrop } from '@/components/onboarding-backdrop';
 import { PasswordReset } from '@/components/auth/password-reset';
@@ -89,7 +88,7 @@ export default function LoginPage() {
       });
       const payload = await response.json() as { error?: string; user?: { email: string } };
       if (!response.ok) {
-        throw new Error(payload.error === 'free_account_restricted' ? setupErrorMessage(payload.error, t) : apiErrorMessage(payload, t('loginPage.failed')));
+        throw new Error(apiErrorMessage(payload, t('loginPage.failed')));
       }
       const next = await fetchMe();
       setMe(next);

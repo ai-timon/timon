@@ -1,6 +1,6 @@
 /**
  * The agent step, pure: the look an agent wears before anyone styles it (its
- * job's, accessory included, kept once styled), when « Create » opens, and
+ * job's, accessory included, kept once styled), when "Create" opens, and
  * exactly what the creation sends to the daemon from each view.
  */
 import assert from 'node:assert/strict';
@@ -55,7 +55,7 @@ test('missions per view: the template\'s, the interview\'s, none for a role', ()
   assert.equal(templateLook('blank').eyes, 'sleepy');
 });
 
-test('« Create » opens on a template, after the fifth answer, at once in the sheet', () => {
+test('"Create" opens on a template, after the fifth answer, at once in the sheet', () => {
   assert.equal(readyToCreate('templates', draft()), false);
   assert.equal(readyToCreate('templates', draft({ template: 'blank' })), true);
   assert.equal(readyToCreate('interview', draft({ question: 5 })), false);

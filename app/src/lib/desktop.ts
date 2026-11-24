@@ -66,6 +66,29 @@ declare global {
        * Absent from an older desktop.
        */
       openWindow?: (request: { route: string; machineId?: string }) => Promise<unknown>;
+      /**
+       * The icon macOS shows in the Dock while Timon runs. `get` resolves to
+       * null where there is no Dock; a page of another machine is refused.
+       * Read through `lib/dock-icon`. Absent from an older desktop.
+       */
+      dockIcon?: {
+        get: () => Promise<{ icon: string } | null>;
+        set: (icon: string) => Promise<{ icon: string }>;
+      };
+      /**
+       * The size of the interface on this screen, every window alike. `set`
+       * snaps to one of `steps`; `onChange` hears every change, made here,
+       * in another window or with the keys. Read through `lib/ui-zoom`.
+       * Absent from an older desktop.
+       */
+      zoom?: {
+        /** The factor this page is laid out at now, read from Blink synchronously. Absent from an older desktop. */
+        current?: () => number;
+        get: () => Promise<{ factor: number; steps: number[] }>;
+        set: (factor: number) => Promise<{ factor: number }>;
+        step: (direction: 'in' | 'out' | 'reset') => Promise<{ factor: number }>;
+        onChange: (listener: (factor: number) => void) => () => void;
+      };
       browser?: {
         /** `conversation`, `locale` and `scheme` tell the desktop's annotation bubble where to send and how to look (TODO #481); an older desktop ignores them. */
         attach: (input: { profileId: string; viewToken: string; bounds: { x: number; y: number; width: number; height: number };

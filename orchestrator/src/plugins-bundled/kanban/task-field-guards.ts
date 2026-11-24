@@ -10,7 +10,7 @@
  * agent's default).
  */
 import { asBackendName, backendCatalog } from '../../backends/index.js';
-import { PIPELINES, dbApi } from '../../db.js';
+import { PIPELINES, TASK_LANDINGS, dbApi } from '../../db.js';
 import { parsePlanGroup } from '../../series-service.js';
 
 /** A group of volets is a label: non-empty, bounded, never interpreted. */
@@ -24,6 +24,21 @@ export function pipelineRefusal(pipeline: string | null | undefined): string | n
   if (pipeline != null && !(PIPELINES as readonly string[]).includes(pipeline)) {
     return `invalid pipeline "${pipeline}" (expected: ${PIPELINES.join(' | ')})`;
   }
+  return null;
+}
+
+/**
+ * `landing` names the task that ends a job on its branch: `pr` opens the
+ * pull request, `local` merges the branch into its local target. A `merge`
+ * task, the only kind with a worktree of its own on the job's branch.
+ * Elsewhere it would be read by nothing.
+ */
+export function landingRefusal(landing: string | null | undefined, type: string | undefined): string | null {
+  if (landing == null || landing === '') return null;
+  if (!(TASK_LANDINGS as readonly string[]).includes(landing)) {
+    return `invalid landing "${landing}" (expected: ${TASK_LANDINGS.join(' | ')})`;
+  }
+  if (type !== 'merge') return `landing "${landing}" is only for a merge task (type "merge")`;
   return null;
 }
 

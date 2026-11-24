@@ -79,7 +79,15 @@ test('a malformed lifecycle is a 400 and stores nothing', async () => {
   ]) {
     const r = await post(body);
     assert.equal(r.status, 400, JSON.stringify(body));
+    // The webview translates the code: every refusal carries one, beside its English.
+    assert.equal(typeof r.json.code, 'string', JSON.stringify(body));
+    assert.equal(typeof r.json.error, 'string', JSON.stringify(body));
   }
+  const schema = await post({ type: 'action_required', title: 'x', ttl_minutes: -1 });
+  assert.equal(schema.json.code, 'invalid_detail');
+  assert.deepEqual(schema.json.params, { detail: schema.json.error });
+  const noTask = await post({ type: 'action_required', title: 'x', dismiss_on: ['task_done'] });
+  assert.equal(noTask.json.code, 'notification_task_done_needs_task');
   assert.equal(dbApi.listActiveNotifications().length, before);
 });
 

@@ -1,5 +1,5 @@
 /**
- * « Install Tailscale » from the desktop app, against doubles: no installer,
+ * "Install Tailscale" from the desktop app, against doubles: no installer,
  * no msiexec, no `open` ever runs here.
  */
 import assert from 'node:assert/strict';

@@ -43,14 +43,14 @@ function seed(): string {
   return root;
 }
 
-test('export : les chemins sous le home deviennent ~, les autres ne bougent pas', () => {
+test('export: the paths under the home become ~, the others do not move', () => {
   const root = seed();
   const dry = rewriteAbsolutePaths(root, 'export');
-  assert.equal(dry.written.length, 0, 'dry-run : aucun fichier écrit');
+  assert.equal(dry.written.length, 0, 'dry-run: no file written');
   assert.equal(dry.changes.length, 5);
 
   const report = rewriteAbsolutePaths(root, 'export', { write: true });
-  assert.equal(report.written.length, 3, 'un agent hors home reste intact');
+  assert.equal(report.written.length, 3, 'an agent outside the home stays intact');
 
   const agent = JSON.parse(readFileSync(join(root, 'agents', 'projet.coder', 'config.json'), 'utf8'));
   assert.equal(agent.cwd, '~/webdev/projects/projet');
@@ -65,7 +65,7 @@ test('export : les chemins sous le home deviennent ~, les autres ne bougent pas'
   assert.equal(mcp.transport.env.MODE, 'ro');
 });
 
-test('export puis import redonnent les chemins d’origine', () => {
+test('export then import give back the original paths', () => {
   const root = seed();
   const before = readFileSync(join(root, 'mcp', 'notes.json'), 'utf8');
   rewriteAbsolutePaths(root, 'export', { write: true });
@@ -78,7 +78,7 @@ test('export puis import redonnent les chemins d’origine', () => {
   assert.equal(agent.cwd, join(homedir(), 'webdev/projects/projet'));
 });
 
-test('rejouer un export est un no-op', () => {
+test('replaying an export is a no-op', () => {
   const root = seed();
   rewriteAbsolutePaths(root, 'export', { write: true });
   const again = rewriteAbsolutePaths(root, 'export', { write: true });

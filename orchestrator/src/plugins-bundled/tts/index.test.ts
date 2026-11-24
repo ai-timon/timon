@@ -1,28 +1,28 @@
 /**
- * Le module `tts` — quelle URL, et quelle commande docker.
+ * The `tts` module: which URL, and which docker command.
  *
- * Dans l'ordre du risque :
- *   1. La préséance. `TIMON_TTS_URL` gagne toujours : démarrer un conteneur
- *      alors qu'un service externe est réglé, c'est ouvrir un second moteur de
- *      synthèse pour rien.
- *   2. La commande compose. Sans `-f` ni `-p` explicites, elle s'exécuterait
- *      contre le cwd du daemon — et un `-p` inventé créerait une SECONDE stack
- *      à côté de celle qui tourne.
- *   3. `TIMON_TTS_URL` doit être lu par `settingStr` : c'est une clé du registre
- *      `settings.ts`, donc réglable depuis l'UI.
- *   4. Docker installé NE SUFFIT PAS à conclure "conteneur" : il faut aussi
- *      que la stack Compose existe dans cette installation. Un paquet résout
- *      `installDir` sur `resources/orchestrator`, où aucun `docker-compose.yml`
- *      n'est embarqué — y lancer compose faisait échouer tout premier
- *      lancement packagé sur une machine qui a Docker, avec un conseil
- *      (`docker compose build`) qui n'a aucun sens pour un utilisateur final.
- *   5. Le démarrage passe par `host.spawn` et NON par `host.containers.cli`,
- *      qui est synchrone : figer l'event-loop dans `apply`, c'est figer le
- *      daemon entier — et `app.listen` avec lui — le temps que docker réponde.
+ * In the order of risk:
+ *   1. Precedence. `TIMON_TTS_URL` always wins: starting a container
+ *      while an external service is set means opening a second speech
+ *      engine for nothing.
+ *   2. The compose command. Without explicit `-f` and `-p`, it would run
+ *      against the daemon's cwd, and an invented `-p` would create a SECOND stack
+ *      next to the running one.
+ *   3. `TIMON_TTS_URL` must be read through `settingStr`: it is a key of the
+ *      `settings.ts` registry, hence settable from the UI.
+ *   4. Docker installed is NOT ENOUGH to conclude "container": the Compose
+ *      stack must also exist in this install. A package resolves
+ *      `installDir` to `resources/orchestrator`, where no `docker-compose.yml`
+ *      is shipped; launching compose there made every first packaged
+ *      launch fail on a machine with Docker, with an advice
+ *      (`docker compose build`) that makes no sense to an end user.
+ *   5. Startup goes through `host.spawn` and NOT through `host.containers.cli`,
+ *      which is synchronous: freezing the event loop in `apply` freezes the
+ *      whole daemon (and `app.listen` with it) until docker answers.
  *
- * Aucun test n'exécute docker : l'hôte est factice et enregistre les appels.
+ * No test runs docker: the host is fake and records the calls.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,7 +42,7 @@ const tts = await import('./index.js');
 
 type FakeChild = EventEmitter & { pid?: number; kill: () => boolean; killed: boolean };
 
-/** Hôte factice : enregistre l'argv, n'exécute jamais docker. */
+/** Fake host: records the argv, never runs docker. */
 function fakeHost(withContainers: boolean) {
   const calls: { name: string; args: string[] }[] = [];
   const children: FakeChild[] = [];
@@ -67,16 +67,16 @@ function fakeHost(withContainers: boolean) {
       self: () => ({ status: 'running' }), selfRestart: () => {},
     },
     ...(withContainers
-      // Présent pour que la capacité soit vue, mais le module ne doit JAMAIS
-      // l'appeler : `cli` est synchrone et bloquerait le boot.
-      ? { containers: { cli: () => { throw new Error('containers.cli est synchrone — interdit dans apply()'); } } }
+      // Present so the capability is seen, but the module must NEVER
+      // call it: `cli` is synchronous and would block the boot.
+      ? { containers: { cli: () => { throw new Error('containers.cli is synchronous: forbidden in apply()'); } } }
       : {}),
   };
   return { host, calls, children };
 }
 
-/** `withCompose: false` reproduit la forme d'un paquet : un `installDir` sous
- *  `resources/`, sans dépôt au-dessus, donc sans `docker-compose.yml`. */
+/** `withCompose: false` reproduces the shape of a package: an `installDir` under
+ *  `resources/`, with no repository above, hence no `docker-compose.yml`. */
 function configFor(withCompose = true): { root: string; cfg: ReturnType<typeof TimonConfigSchema.parse> } {
   const root = mkdtempSync(join(tmpdir(), 'timon-tts-'));
   mkdirSync(join(root, 'orchestrator'), { recursive: true });
@@ -92,32 +92,32 @@ async function applyWith(host: unknown) {
   return ctx.plugin({ name: tts.name, inject: tts.inject, apply: tts.apply });
 }
 
-test('TIMON_TTS_URL vide + docker + stack compose : l\'app pointe sur la loopback', () => {
+test('empty TIMON_TTS_URL + docker + compose stack: the app points at the loopback', () => {
   assert.deepEqual(tts.resolveTts(true, true), { source: 'container', url: 'http://127.0.0.1:5000' });
 });
 
-test('ni TIMON_TTS_URL ni docker : aucune URL, donc aucune voix annoncée à l\'app', () => {
+test('neither TIMON_TTS_URL nor docker: no URL, hence no voice announced to the app', () => {
   assert.deepEqual(tts.resolveTts(false, true), { source: 'none', url: null });
 });
 
-test('docker présent mais AUCUN docker-compose.yml : source `none`, pas `container`', () => {
-  // Le cas du client packagé sur une machine qui a Docker. Conclure
-  // "conteneur" ici lançait compose contre un fichier inexistant.
+test('docker present but NO docker-compose.yml: source `none`, not `container`', () => {
+  // The case of the packaged client on a machine with Docker. Concluding
+  // "container" here launched compose against a missing file.
   assert.deepEqual(tts.resolveTts(true, false), { source: 'none', url: null });
   assert.deepEqual(tts.resolveTts(false, false), { source: 'none', url: null });
 });
 
-test('la présence de la stack est lue sur le disque, hors de la fonction pure', () => {
+test('the presence of the stack is read on disk, outside the pure function', () => {
   const dev = configFor(true);
   assert.equal(tts.composeStackAvailable(dev.cfg), true);
   assert.equal(tts.composeFileOf(dev.root), resolve(dev.root, 'docker-compose.yml'));
-  // `installDir` = `resources/orchestrator` d'un paquet : rien au-dessus.
+  // `installDir` = `resources/orchestrator` of a package: nothing above.
   assert.equal(tts.composeStackAvailable(configFor(false).cfg), false);
 });
 
-test('TIMON_TTS_URL l\'emporte sur le conteneur, et se lit dans le registre de settings', () => {
-  // Réglée depuis l'UI, pas seulement par l'environnement : la lire dans
-  // `process.env` ignorerait silencieusement la valeur posée par l'utilisateur.
+test('TIMON_TTS_URL wins over the container, and is read from the settings registry', () => {
+  // Set from the UI, not only through the environment: reading it from
+  // `process.env` would silently ignore the value set by the user.
   setSetting('TIMON_TTS_URL', 'http://tts.exemple:5000');
   try {
     assert.deepEqual(tts.resolveTts(true, true), { source: 'external', url: 'http://tts.exemple:5000' });
@@ -128,12 +128,12 @@ test('TIMON_TTS_URL l\'emporte sur le conteneur, et se lit dans le registre de s
   assert.equal(tts.resolveTts(true, true).source, 'container');
 });
 
-test('la commande compose porte `-f`, `-p`, le profil docker et `--no-build`', () => {
+test('the compose command carries `-f`, `-p`, the docker profile and `--no-build`', () => {
   const { root, cfg } = configFor();
   assert.equal(tts.repoRootOf(cfg), root);
-  // `--no-build` : le service porte un `build:`, et sans image un `up -d`
-  // construirait — plusieurs minutes de docker build au démarrage du daemon,
-  // que personne n'a demandées.
+  // `--no-build`: the service carries a `build:`, and without an image an `up -d`
+  // would build: several minutes of docker build at daemon startup,
+  // that nobody asked for.
   assert.deepEqual(tts.composeArgs(root), [
     'compose',
     '-f', resolve(root, 'docker-compose.yml'),
@@ -143,16 +143,16 @@ test('la commande compose porte `-f`, `-p`, le profil docker et `--no-build`', (
   ]);
 });
 
-test('le nom de projet compose est DÉDUIT du dossier, comme le fait compose', () => {
-  // L'inventer créerait une seconde stack à côté de celle qui tourne déjà.
+test('the compose project name is DERIVED from the folder, as compose does', () => {
+  // Inventing it would create a second stack next to the one already running.
   assert.equal(tts.composeProjectOf('/home/user/webdev/projects/TIMONv2'), 'timonv2');
   assert.equal(tts.composeProjectOf('/home/user/webdev/projects/acme-site'), 'acme-site');
 });
 
-test('avec docker : `apply` lance UN docker compose, par `spawn` et non par `containers.cli`', async () => {
+test('with docker: `apply` launches ONE docker compose, through `spawn` and not `containers.cli`', async () => {
   configFor();
   const { host, calls } = fakeHost(true);
-  // Le faux `containers.cli` lève : si le module y touchait, ce test échouerait.
+  // The fake `containers.cli` throws: if the module touched it, this test would fail.
   await applyWith(host);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].name, 'docker');
@@ -161,7 +161,7 @@ test('avec docker : `apply` lance UN docker compose, par `spawn` et non par `con
   assert.deepEqual(calls[0].args.slice(-4), ['up', '-d', '--no-build', 'tts']);
 });
 
-test('avec TIMON_TTS_URL : aucun appel docker', async () => {
+test('with TIMON_TTS_URL: no docker call', async () => {
   configFor();
   setSetting('TIMON_TTS_URL', 'http://tts.exemple:5000');
   try {
@@ -173,14 +173,14 @@ test('avec TIMON_TTS_URL : aucun appel docker', async () => {
   }
 });
 
-test('sans docker : aucun appel, aucun throw', async () => {
+test('without docker: no call, no throw', async () => {
   configFor();
   const { host, calls } = fakeHost(false);
   await applyWith(host);
   assert.deepEqual(calls, []);
 });
 
-test('paquet + docker installé : `apply` ne lance RIEN et ne crie pas', async () => {
+test('package + docker installed: `apply` launches NOTHING and does not shout', async () => {
   configFor(false);
   const { host, calls } = fakeHost(true);
   const errors: string[] = [];
@@ -192,21 +192,21 @@ test('paquet + docker installé : `apply` ne lance RIEN et ne crie pas', async (
     console.error = realError;
   }
   assert.deepEqual(calls, [], 'aucun docker compose contre un fichier inexistant');
-  // Rien n'est cassé : l'absence de voix est un état, pas une panne.
+  // Nothing is broken: the absence of a voice is a state, not a failure.
   assert.deepEqual(errors, []);
 });
 
-test('un docker en échec est journalisé, pas propagé — et le boot n\'attend pas', () => {
+test('a failing docker is logged, not propagated, and the boot does not wait', () => {
   const { cfg } = configFor();
   const { host, children } = fakeHost(true);
   const errors: string[] = [];
   const realError = console.error;
   console.error = (...a: unknown[]) => { errors.push(a.join(' ')); };
   try {
-    // `startContainer` rend la main IMMÉDIATEMENT : le code de sortie de
-    // docker arrive plus tard, dans le listener.
+    // `startContainer` returns IMMEDIATELY: docker's exit code
+    // arrives later, in the listener.
     const stop = tts.startContainer(host as never, cfg);
-    assert.deepEqual(errors, [], 'rien n\'est encore connu à ce stade');
+    assert.deepEqual(errors, [], 'nothing is known yet at this stage');
     children[0].emit('exit', 1, null);
     stop();
   } finally {

@@ -128,8 +128,9 @@ test('REFUSAL: a plugin cannot reach claude or codex; one shipped in the release
     const official = pluginContext('acme-bin-d', ['claude'], {}, true);
     assert.equal(await official.provider.binary.version('claude'), '9.9.9');
     // Not even the release's own plugin gets a launcher, and none gets what it did not declare.
-    const launcher = pluginContext('acme-bin-e', ['sh'], {}, true);
-    await assert.rejects(launcher.provider.binary.probe('sh', ['-c', 'true']), PluginPolicyError);
+    // `node`, a launcher on the list that every machine running this test has (`sh` is not on Windows).
+    const launcher = pluginContext('acme-bin-e', ['node'], {}, true);
+    await assert.rejects(launcher.provider.binary.probe('node', ['-e', '0']), PluginPolicyError);
     await assert.rejects(official.provider.binary.probe('codex', []), ProviderBinaryError);
   } finally {
     restore();

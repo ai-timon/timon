@@ -232,7 +232,7 @@ function LivePreview({ preview, id }: { preview: DragPreview; id: string }) {
         <span className="text-xs font-semibold text-foreground">{entry.catalogTitle ?? entry.title}</span>
         {[0, 1, 2, 3].map((n) => <span key={n} className="h-2 rounded-full bg-muted-foreground/15" style={{ width: `${90 - n * 12}%` }} />)}
       </div>
-    ) : entry.render({ editing: false, poignee: null, className: 'h-full', orientation: 'vertical', compact: false })}
+    ) : entry.render({ editing: false, handle: null, className: 'h-full', orientation: 'vertical', compact: false })}
   </div>;
 }
 

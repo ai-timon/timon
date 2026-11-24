@@ -321,7 +321,7 @@ export function AgentsGridClient() {
     };
   }, [gitSlugsKey]);
 
-  /* ── Regroupement projet → agents ─────────────────────────────────────── */
+  /* ── Grouping: project → agents ───────────────────────────────────────── */
   const { groups, workspaces } = useMemo(() => {
     const bySlug = new Map<string, Project>();
     for (const p of projects) bySlug.set(p.slug.toLowerCase(), p);

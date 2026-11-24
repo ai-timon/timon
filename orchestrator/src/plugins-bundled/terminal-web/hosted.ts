@@ -236,6 +236,12 @@ export class HostedSessions implements SessionStore {
       link = await this.launchAndOpen();
       if (!link) { this.failedAt = this.now(); return null; }
     }
+    // Let go while connecting (a daemon stopping just after its boot): the
+    // link that arrives late is not kept open.
+    if (this.closed) {
+      link.close();
+      return null;
+    }
     this.failedAt = 0;
     this.reason = undefined;
     this.adopt(link);

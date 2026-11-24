@@ -1,5 +1,6 @@
 /**
- * MCP tools mirroring the CLI commands on projects (`project list|roles|set-role`),
+ * MCP tools mirroring the CLI commands on projects (`project list|roles|set-role|
+ * get-integration|set-integration`),
  * memory (`memory rule rm|search|overview|show`), notifications (`notify`) and
  * `msg reply`.
  */
@@ -33,6 +34,48 @@ export const tools = [
         permission_mode: { type: 'string', description: 'default, acceptEdits or bypassPermissions.' },
       },
       required: ['slug', 'role', 'agent'],
+    },
+  },
+  {
+    name: 'project_integration_get',
+    title: 'Read a project\'s integration',
+    description:
+      'Shows how a project\'s Kanban jobs land: merged locally (`local`, the default) or through a pull request (`pr`), ' +
+      'with the remote, target branch, forge, GitHub account, gh config folder and branch prefix ' +
+      '(CLI `timon project get-integration`). `check: true` also asks gh which account the configured folder signs in as ' +
+      '(one call to GitHub). Needs projects:manage.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Project slug.' },
+        check: { type: 'boolean', description: 'Also ask gh which account it signs in as.' },
+      },
+      required: ['slug'],
+    },
+  },
+  {
+    name: 'project_integration_set',
+    title: 'Change a project\'s integration',
+    description:
+      'Changes how a project\'s Kanban jobs land (CLI `timon project set-integration`): only the fields you pass change. ' +
+      '`pr` needs `account`. `gh_config_dir` is an absolute folder inside the user\'s home that no agent can write; ' +
+      '`remote_url` is the push URL the remote must have before a pull request is opened. ' +
+      '`null` clears it, `account` or `remote_url`. `reset: true` goes back to the local merge. Needs projects:manage.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        slug: { type: 'string', description: 'Project slug.' },
+        mode: { type: 'string', enum: ['local', 'pr'] },
+        remote: { type: 'string', description: 'Git remote, default origin.' },
+        target: { type: 'string', description: 'Branch of the remote the pull requests target, default main.' },
+        forge: { type: 'string', enum: ['github'] },
+        account: { type: ['string', 'null'], description: 'GitHub login gh must sign in as.' },
+        gh_config_dir: { type: ['string', 'null'], description: 'Absolute GH_CONFIG_DIR for this project.' },
+        branch_prefix: { type: 'string', description: 'Prefix of integration branches, like feat/ or sec/.' },
+        remote_url: { type: ['string', 'null'], description: 'Push URL the remote must have before `pr_open` pushes, like git@github.com:owner/repo.git.' },
+        reset: { type: 'boolean', description: 'Back to the local merge; no other field.' },
+      },
+      required: ['slug'],
     },
   },
   {
@@ -121,6 +164,20 @@ export const handlers = {
     const body = args.agent === '' ? {} : { agent: args.agent };
     for (const key of ['backend', 'model', 'permission_mode']) if (args[key] !== undefined) body[key] = args[key];
     return (await call('PATCH', `/api/projects/${enc(args.slug)}/roles/${enc(args.role)}`, body)).roles;
+  },
+  async project_integration_get(args, { call }) {
+    const path = `/api/projects/${enc(args.slug)}/integration`;
+    const read = await call('GET', path);
+    return args.check ? { ...read, check: await call('POST', `${path}/check`, {}) } : read;
+  },
+  async project_integration_set(args, { call }) {
+    const path = `/api/projects/${enc(args.slug)}/integration`;
+    if (args.reset) return await call('DELETE', path);
+    const body = {};
+    for (const key of ['mode', 'remote', 'target', 'forge', 'account', 'gh_config_dir', 'branch_prefix', 'remote_url']) {
+      if (args[key] !== undefined) body[key] = args[key];
+    }
+    return await call('PUT', path, body);
   },
   async memory_rule_rm(args, { call }) {
     const r = await call('DELETE', `/api/memory/rules/${enc(String(args.id))}`);

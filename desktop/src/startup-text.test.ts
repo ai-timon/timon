@@ -35,7 +35,7 @@ test('the dialogs speak the language asked for, the OS\'s included', () => {
   sources();
   const fr = startupText('fr-FR');
   assert.equal(fr('startup.crashing'), 'Le daemon plante sans cesse.');
-  assert.equal(fr('startup.silent', { app: 'Timon' }), 'Le daemon Timon ne répond pas.');
+  assert.equal(fr('startup.silent', { app: 'Timon' }), 'Le daemon Timon ne répond pas.'); // french-ok: the French locale under test
   assert.equal(startupText('xx')('startup.crashing'), 'The daemon keeps crashing.');
 });
 

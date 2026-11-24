@@ -1,18 +1,18 @@
 /**
- * Le module `web-app` — ce qui décide de lancer (ou non) l'app Next.
+ * The `web-app` module: what decides to launch (or not) the Next app.
  *
- * Ce que ces tests protègent, dans l'ordre du risque :
- *   1. `app.enabled` à `false` (le défaut) ne spawn RIEN. C'est ce qui empêche
- *      un restart du daemon de poser un second Next sur le :3100 déjà servi
- *      par le conteneur Compose.
- *   2. Une app non buildée produit un message actionnable et un no-op — jamais
- *      un throw, qui emporterait le daemon avec l'UI.
- *   3. Le child passe par `host.spawn` (pas `child_process`), et `dispose` le
- *      tue — lui, et seulement s'il a un pid.
+ * What these tests protect, in the order of risk:
+ *   1. `app.enabled` at `false` (the default) spawns NOTHING. That is what keeps
+ *      a daemon restart from putting a second Next on the :3100 already served
+ *      by the Compose container.
+ *   2. An app that is not built produces an actionable message and a no-op, never
+ *      a throw, which would take the daemon down with the UI.
+ *   3. The child goes through `host.spawn` (not `child_process`), and `dispose`
+ *      kills it: it alone, and only if it has a pid.
  *
- * Aucun test n'ouvre de port : l'hôte est factice et rend un faux child.
+ * No test opens a port: the host is fake and returns a fake child.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,7 +40,7 @@ function fakeChild(pid: number | undefined): FakeChild {
   return child;
 }
 
-/** Hôte factice : n'exécute rien, enregistre les appels à `spawn`. */
+/** Fake host: runs nothing, records the calls to `spawn`. */
 function fakeHost(child: FakeChild) {
   const calls: { name: string; args: string[]; opts: Record<string, unknown> }[] = [];
   const host = {
@@ -62,8 +62,8 @@ function fakeHost(child: FakeChild) {
   return { host, calls };
 }
 
-/** Config par défaut du schéma, avec un `installDir` jetable : le module en
- *  dérive `<installDir>/../app`. */
+/** The default schema config, with a throwaway `installDir`: the module
+ *  derives `<installDir>/../app` from it. */
 function configFor(root: string, app: Record<string, unknown>) {
   mkdirSync(join(root, 'orchestrator'), { recursive: true });
   const cfg = TimonConfigSchema.parse({ daemon: { installDir: join(root, 'orchestrator') }, app });
@@ -82,9 +82,9 @@ async function applyWith(host: unknown) {
   return fork;
 }
 
-test('le défaut du schéma laisse `app.enabled` à false — aucun spawn au boot', async () => {
+test('the schema default leaves `app.enabled` false: no spawn at boot', async () => {
   const fresh = loadConfig(join(mkdtempSync(join(tmpdir(), 'timon-web-app-')), 'absent.json'));
-  assert.equal(fresh.app.enabled, false, 'un fichier de config absent ne doit rien changer au comportement actuel');
+  assert.equal(fresh.app.enabled, false, 'a missing config file must change nothing in the current behaviour');
 
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
   configFor(root, { enabled: false });
@@ -94,9 +94,9 @@ test('le défaut du schéma laisse `app.enabled` à false — aucun spawn au boo
   assert.deepEqual(calls, []);
 });
 
-test('app activée mais non buildée : message actionnable et no-op, pas de throw', async () => {
+test('app enabled but not built: actionable message and no-op, no throw', async () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
-  mkdirSync(join(root, 'app'), { recursive: true }); // pas de `.next`
+  mkdirSync(join(root, 'app'), { recursive: true }); // no `.next`
   configFor(root, { enabled: true });
   const child = fakeChild(4242);
   const { host, calls } = fakeHost(child);
@@ -105,16 +105,16 @@ test('app activée mais non buildée : message actionnable et no-op, pas de thro
   const realError = console.error;
   console.error = (...a: unknown[]) => { errors.push(a.join(' ')); };
   try {
-    await applyWith(host); // ne doit pas rejeter
+    await applyWith(host); // must not reject
   } finally {
     console.error = realError;
   }
 
-  assert.deepEqual(calls, [], 'aucun child tant que `.next` est absent');
+  assert.deepEqual(calls, [], 'no child while `.next` is missing');
   assert.ok(errors.some((e) => e.includes('app not built: cd app && npm run build')), errors.join('\n'));
 });
 
-test('app activée mais .next incomplet (pas de prerender-manifest) : no-op, pas de crash-loop', async () => {
+test('app enabled but .next incomplete (no prerender-manifest): no-op, no crash loop', async () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
   mkdirSync(join(root, 'app', '.next'), { recursive: true });
   configFor(root, { enabled: true });
@@ -132,7 +132,7 @@ test('app activée mais .next incomplet (pas de prerender-manifest) : no-op, pas
   assert.ok(errors.some((e) => e.includes('prerender-manifest.json')), errors.join('\n'));
 });
 
-test('app activée et buildée : spawn via host, disposer tue le child', async () => {
+test('app enabled and built: spawn through the host, the disposer kills the child', async () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
   const appDir = join(root, 'app');
   mkdirSync(join(appDir, '.next'), { recursive: true });
@@ -144,7 +144,7 @@ test('app activée et buildée : spawn via host, disposer tue le child', async (
   const fork = await applyWith(host);
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].name, 'node', "le child passe par l'hôte, jamais par child_process");
+  assert.equal(calls[0].name, 'node', 'the child goes through the host, never through child_process');
   assert.deepEqual(calls[0].args, [join(appDir, 'node_modules', 'tsx', 'dist', 'cli.mjs'), 'src/server.ts']);
   assert.equal(calls[0].opts.cwd, appDir);
   const env = calls[0].opts.env as Record<string, string>;
@@ -160,7 +160,7 @@ test('app activée et buildée : spawn via host, disposer tue le child', async (
   assert.equal(child.killed, true);
 });
 
-test('app buildée avec son serveur compilé : node le lance sans tsx (paquet desktop)', async () => {
+test('app built with its compiled server: node launches it without tsx (desktop package)', async () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
   const appDir = join(root, 'app');
   mkdirSync(join(appDir, '.next', 'timon'), { recursive: true });
@@ -173,8 +173,8 @@ test('app buildée avec son serveur compilé : node le lance sans tsx (paquet de
   const fork = await applyWith(host);
 
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].args, [join(appDir, '.next', 'timon', 'server.cjs')], 'le JS compilé gagne : tsx est absent du paquet');
-  assert.equal(calls[0].opts.cwd, appDir, 'Next résout `.next` depuis le cwd, pas depuis le fichier lancé');
+  assert.deepEqual(calls[0].args, [join(appDir, '.next', 'timon', 'server.cjs')], 'the compiled JS wins: tsx is missing from the package');
+  assert.equal(calls[0].opts.cwd, appDir, 'Next resolves `.next` from the cwd, not from the launched file');
   await fork.dispose();
 });
 
@@ -192,12 +192,12 @@ function builtApp(withSources: boolean): string {
   return appDir;
 }
 
-test('checkout : la source TypeScript reste lancée par tsx, même après un build', () => {
+test('checkout: the TypeScript source stays launched by tsx, even after a build', () => {
   const appDir = builtApp(true);
   assert.deepEqual(webApp.appEntryArgs(appDir, 'server'), [join(appDir, 'node_modules', 'tsx', 'dist', 'cli.mjs'), 'src/server.ts']);
 });
 
-test('paquet : le JS compilé passe par tsx, seul à savoir require() un module ESM sous Node 20', () => {
+test('package: the compiled JS goes through tsx, the only one able to require() an ESM module under Node 20', () => {
   const appDir = builtApp(false);
   assert.deepEqual(webApp.appEntryArgs(appDir, 'server'), [
     join(appDir, 'node_modules', 'tsx', 'dist', 'cli.mjs'),
@@ -205,16 +205,16 @@ test('paquet : le JS compilé passe par tsx, seul à savoir require() un module 
   ]);
 });
 
-test("appEntryRunnable : ni JS compilé ni tsx, rien ne peut démarrer", () => {
+test('appEntryRunnable: neither compiled JS nor tsx, nothing can start', () => {
   const appDir = join(mkdtempSync(join(tmpdir(), 'timon-web-app-')), 'app');
   mkdirSync(appDir, { recursive: true });
   assert.equal(webApp.appEntryRunnable(appDir, 'server'), false);
   mkdirSync(join(appDir, 'node_modules', 'tsx', 'dist'), { recursive: true });
   writeFileSync(join(appDir, 'node_modules', 'tsx', 'dist', 'cli.mjs'), '');
-  assert.equal(webApp.appEntryRunnable(appDir, 'server'), true, 'mode source : tsx suffit');
+  assert.equal(webApp.appEntryRunnable(appDir, 'server'), true, 'source mode: tsx is enough');
 });
 
-test('envOf pose TIMON_DAEMON_TOKEN = jeton du daemon, jamais une valeur héritée', async () => {
+test('envOf sets TIMON_DAEMON_TOKEN = the daemon token, never an inherited value', async () => {
   const { ensureDaemonToken } = await import('../http/auth.js');
   const token = ensureDaemonToken();
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
@@ -269,7 +269,7 @@ test('a copied .env.example gets the product, not the development instance (TODO
   assert.doesNotMatch(example, /^\s*TIMON_INSTANCE=/m, 'a fresh Docker install must not be titled "Timon DEV"');
 });
 
-test('un child sans pid n\'est pas tué — `kill` sur un pid absent signale tout le groupe', async () => {
+test('a child without a pid is not killed: `kill` on a missing pid signals the whole group', async () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
   mkdirSync(join(root, 'app', '.next'), { recursive: true });
   writeFileSync(join(root, 'app', '.next', 'prerender-manifest.json'), '{"version":4}\n');
@@ -282,7 +282,7 @@ test('un child sans pid n\'est pas tué — `kill` sur un pid absent signale tou
   assert.equal(child.killed, false);
 });
 
-test('relances : backoff 2 s → 30 s, puis abandon et alerte à la 6ᵉ chute rapide', async (t) => {
+test('restarts: backoff 2 s → 30 s, then give up and alert at the 6th quick fall', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
   mkdirSync(join(root, 'app', '.next'), { recursive: true });
@@ -308,20 +308,20 @@ test('relances : backoff 2 s → 30 s, puis abandon et alerte à la 6ᵉ chute r
     const dispose = webApp.superviseApp(host as never, cfg, join(root, 'app'));
     assert.equal(children.length, 1);
 
-    // Cinq relances : 2 s, 4 s, 8 s, 16 s, 30 s (plafond).
+    // Five restarts: 2 s, 4 s, 8 s, 16 s, 30 s (cap).
     for (const [i, delay] of [2_000, 4_000, 8_000, 16_000, 30_000].entries()) {
       children[i].emit('exit', 1, null);
       t.mock.timers.tick(delay - 1);
-      assert.equal(children.length, i + 1, `relance n°${i + 1} trop tôt`);
+      assert.equal(children.length, i + 1, `restart #${i + 1} too early`);
       t.mock.timers.tick(1);
-      assert.equal(children.length, i + 2, `relance n°${i + 1} absente après ${delay} ms`);
+      assert.equal(children.length, i + 2, `restart #${i + 1} missing after ${delay} ms`);
     }
 
-    // 6ᵉ chute sans que l'app ait jamais tenu une minute : plus de relance,
-    // une alerte à la place.
+    // 6th fall without the app ever holding for a minute: no more restarts,
+    // an alert instead.
     children[5].emit('exit', 1, null);
     t.mock.timers.tick(120_000);
-    assert.equal(children.length, 6, 'au-delà du plafond, on renonce');
+    assert.equal(children.length, 6, 'beyond the cap, we give up');
 
     dispose();
   } finally {
@@ -332,7 +332,7 @@ test('relances : backoff 2 s → 30 s, puis abandon et alerte à la 6ᵉ chute r
 
   const { dbApi } = await import('../../db.js');
   const alert = dbApi.listNotifications({ limit: 10 }).find((n) => n.title.includes('The web app'));
-  assert.ok(alert, 'une alerte doit être créée quand on renonce');
+  assert.ok(alert, 'an alert must be created when giving up');
   assert.equal(alert.type, 'alert');
   assert.ok(alert.body?.includes('code 1'));
   assert.ok(!alert.body?.includes('npm run build'));
@@ -344,11 +344,11 @@ test('relances : backoff 2 s → 30 s, puis abandon et alerte à la 6ᵉ chute r
  * daemon's would put both on the same port. `envOf` is spread AFTER
  * `process.env` in `superviseApp` for that reason — this test holds the order.
  */
-test("le PORT du daemon ne contamine pas l'app Next", () => {
+test("the daemon's PORT does not contaminate the Next app", () => {
   const root = mkdtempSync(join(tmpdir(), 'timon-web-app-'));
   const cfg = configFor(root, { enabled: true, listen: { host: '127.0.0.1', port: 3110 } });
   const childEnv = { ...process.env, PORT: '3010', ...webApp.envOf(cfg) };
-  assert.equal(childEnv['PORT'], '3110', "l'app écoute sur son port, pas celui du daemon");
+  assert.equal(childEnv['PORT'], '3110', 'the app listens on its own port, not the daemon one');
   assert.equal(childEnv['ORCHESTRATOR_URL'], 'http://127.0.0.1:3000');
 });
 
@@ -359,7 +359,7 @@ test("le PORT du daemon ne contamine pas l'app Next", () => {
  * no `node`, the host adapter refuses the spawn and the UI simply never comes
  * up. The binary it is already running on is the one to hand down.
  */
-test('sans node sur la machine, le daemon empaqueté prête le sien', () => {
+test('without node on the machine, the packaged daemon lends its own', () => {
   const cfg = TimonConfigSchema.parse({});
   const packaged = webApp.nodeRuntime(cfg, { execPath: '/opt/Timon/timon', electron: '33.4.11' });
   assert.equal(packaged.command, '/opt/Timon/timon');
@@ -371,7 +371,7 @@ test('sans node sur la machine, le daemon empaqueté prête le sien', () => {
   assert.deepEqual(hosted.env, {});
 });
 
-test('host.binaries.node tranche, y compris dans un paquet', () => {
+test('host.binaries.node settles it, even in a package', () => {
   // A GUI process inherits a minimal PATH; naming the binary is the operator's
   // way out, and it must win over the runtime we guessed.
   const cfg = TimonConfigSchema.parse({ host: { binaries: { node: '/usr/local/bin/node' } } });

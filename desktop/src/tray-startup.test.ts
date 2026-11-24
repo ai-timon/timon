@@ -107,15 +107,21 @@ test('macOS dock icon failure cannot abort startup before tray construction', ()
   const dock = main.body.statements.find((node) => ts.isIfStatement(node)
     && node.expression.getText(parsed) === "process.platform === 'darwin'");
   assert.ok(dock);
-  const code = ts.transpileModule(dock.getText(parsed), {
+  assert.match(dock.getText(parsed), /applyDockIcon\(readDockIcon\(desktopHome\)\)/);
+  const apply = parsed.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'applyDockIcon');
+  assert.ok(apply);
+  const code = ts.transpileModule(`${apply.getText(parsed)}\n${dock.getText(parsed)}`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText;
   for (const state of ['empty', 'readable', 'throws'] as const) {
     let setIcons = 0;
     let continued = false;
+    const paths: string[] = [];
     runInNewContext(`${code}\ncontinueStartup();`, {
-      process: { platform: 'darwin' }, APP_ICON_PATH: 'app.png',
-      nativeImage: { createFromPath: () => ({ isEmpty: () => state === 'empty' }) },
+      process: { platform: 'darwin' }, APP_ICON_PATH: 'app.png', desktopHome: 'home',
+      readDockIcon: () => 'dark',
+      dockIconPath: (classic: string, icon: string) => `${classic}:${icon}`,
+      nativeImage: { createFromPath: (path: string) => { paths.push(path); return { isEmpty: () => state === 'empty' }; } },
       app: { dock: { setIcon: () => {
         if (state === 'throws') throw new Error('Invalid dock icon');
         setIcons++;
@@ -124,6 +130,7 @@ test('macOS dock icon failure cannot abort startup before tray construction', ()
       continueStartup: () => { continued = true; },
     });
     assert.equal(continued, true);
+    assert.deepEqual(paths, ['app.png:dark'], 'the chosen icon is the one loaded');
     assert.equal(setIcons, state === 'readable' ? 1 : 0);
   }
 });

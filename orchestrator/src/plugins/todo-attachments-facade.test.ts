@@ -5,7 +5,7 @@
  * bytes read back are the bytes written.
  */
 import { createTestAccount, grantTestPermissions } from '../../tests/helpers/accounts.js';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -103,6 +103,20 @@ test('a refused file says why, and nothing is written', async () => {
   const odd = await refusal(asAda(() => files.add(todo, { name: 'a.png', data: 42 } as unknown as { name: string; data: string })));
   assert.equal(odd.reason, 'attachment_invalid');
   assert.equal(listTodoAttachments(todo).length, 0);
+});
+
+test('a file added after another lists after it, even when the clock has not moved past the first', async () => {
+  // Windows dates a file with a clock that moves in ticks of up to 16 ms: two
+  // files added together got the same date, and the list their random order.
+  // A first file dated ahead stands for that tie on every system.
+  const todo = idea(ada.id);
+  const files = (await pluginWith(['todos:read', 'todos:write'])).kanban.todos.attachments;
+  await asAda(() => files.add(todo, { name: 'first.png', data: PNG }));
+  const ahead = new Date(Date.now() + 60_000);
+  utimesSync(listTodoAttachments(todo)[0]!.path, ahead, ahead);
+  await asAda(() => files.add(todo, { name: 'second.py', data: Buffer.from('print(2)\n').toString('base64') }));
+  await asAda(() => files.add(todo, { name: 'third.py', data: Buffer.from('print(3)\n').toString('base64') }));
+  assert.deepEqual((await asAda(() => files.list(todo))).map((f) => f.name), ['first.png', 'second.py', 'third.py']);
 });
 
 test('add, list, read and remove: bytes or base64, the same bytes come back', async () => {

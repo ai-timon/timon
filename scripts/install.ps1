@@ -12,6 +12,8 @@
 #   3. runs the regular installer and waits for it. Not silently by default:
 #      under /S the installer skips Node.js and Git, and does not pause a
 #      running Timon before replacing it (desktop/build/installer.nsh).
+#      From a PowerShell run as administrator, File Explorer opens it, as a
+#      double-click would: Timon installs for the desktop user, unelevated.
 #
 # The whole script is one function called on its last line: a download cut
 # halfway runs nothing. Works on Windows PowerShell 5.1 and PowerShell 7.
@@ -71,6 +73,10 @@ Options:
   -Silent         run the installer without its window (skips Node.js and Git: install them first)
   -Help           this help
 
+Works from a normal PowerShell window and from one run as administrator:
+there, File Explorer opens the installer, as a double-click would, so that
+Timon installs for you and not as administrator.
+
 Documentation: https://docs.timon-ai.com/installation/windows
 '@
     return
@@ -86,6 +92,54 @@ Documentation: https://docs.timon-ai.com/installation/windows
       $releaseP256PublicKey = $env:TIMON_INSTALL_P256_KEY
       $releaseP256KeyId = $env:TIMON_INSTALL_P256_KEY_ID
     }
+  }
+
+  # The Windows installer installs for the current user. Started from an
+  # elevated PowerShell it failed with 0xC0000005 for a tester (TIM-0160),
+  # while a double-click on the same file worked. Tests decide with
+  # TIMON_INSTALL_ELEVATED: a CI runner is often an administrator.
+  function Test-Elevated {
+    if ($testing) { return $env:TIMON_INSTALL_ELEVATED -eq '1' }
+    try {
+      $principal = New-Object Security.Principal.WindowsPrincipal ([Security.Principal.WindowsIdentity]::GetCurrent())
+      return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } catch {
+      return $false
+    }
+  }
+
+  # Whether File Explorer can open the installer unelevated for this
+  # PowerShell: UAC on (with it off, Explorer runs as administrator too), and
+  # an Explorer of this same account in this session. An administrator who
+  # elevated with another account's password has no such Explorer: the
+  # package sits in that account's temporary folder, out of the desktop
+  # user's reach. Tests decide with TIMON_INSTALL_SHELL.
+  function Test-DesktopShell {
+    if ($testing) { return $env:TIMON_INSTALL_SHELL -ne '0' }
+    try {
+      $lua = (Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -ErrorAction Stop).EnableLUA
+      if ($lua -eq 0) { return $false }
+      $session = (Get-Process -Id $PID).SessionId
+      $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+      # -IncludeUserName needs an elevated PowerShell, which this one is.
+      $shells = Get-Process -Name explorer -IncludeUserName -ErrorAction SilentlyContinue |
+        Where-Object { $_.SessionId -eq $session -and $_.UserName -eq $me }
+      return [bool]$shells
+    } catch {
+      return $false
+    }
+  }
+
+  # The installed Timon's version, from the uninstall entry the installer
+  # writes: per user (HKCU) or for all users (HKLM). $null when none.
+  function Get-InstalledVersion {
+    foreach ($root in 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall') {
+      foreach ($key in Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue) {
+        $entry = Get-ItemProperty -LiteralPath $key.PSPath -ErrorAction SilentlyContinue
+        if ($entry -and [string]$entry.DisplayName -match '^Timon( |$)' -and $entry.DisplayVersion) { return [string]$entry.DisplayVersion }
+      }
+    }
+    return $null
   }
 
   function Stop-Install([string]$message) {
@@ -168,6 +222,11 @@ Documentation: https://docs.timon-ai.com/installation/windows
   $arch = $env:PROCESSOR_ARCHITECTURE
   if (-not $testing -and $arch -ne 'AMD64' -and $arch -ne 'ARM64') { Stop-Install "unsupported processor: $arch" }
 
+  # /S cannot go through File Explorer, which passes no argument: a silent
+  # install starts the installer from this PowerShell, elevated or not.
+  $elevated = Test-Elevated
+  $throughShell = $elevated -and -not $Silent -and -not $DownloadOnly -and (Test-DesktopShell)
+
   # Windows PowerShell 5.1 may still offer TLS 1.0 first.
   if ($PSVersionTable.PSVersion.Major -lt 6) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -243,7 +302,13 @@ Documentation: https://docs.timon-ai.com/installation/windows
   Write-Output "  from:      $url"
   Write-Output "  sha256:    $sha"
   Write-Output "  signature: $signatureLine"
-  if ($Silent) { Write-Output '  install:   silent installer (/S)' } else { Write-Output '  install:   the Timon installer window' }
+  if ($Silent) {
+    Write-Output '  install:   silent installer (/S)'
+  } elseif ($throughShell) {
+    Write-Output '  install:   the Timon installer window, opened by File Explorer (this PowerShell runs as administrator)'
+  } else {
+    Write-Output '  install:   the Timon installer window'
+  }
 
   if ($DryRun) {
     Write-Output ''
@@ -282,17 +347,70 @@ Documentation: https://docs.timon-ai.com/installation/windows
       return
     }
 
-    Write-Output 'Running the Timon installer...'
     # WaitForExit, not Start-Process -Wait: -Wait also waits for the
     # descendants, and the installer's last page may launch Timon itself.
-    if ($Silent) {
-      $process = Start-Process -FilePath $package -ArgumentList '/S' -PassThru
+    if ($throughShell) {
+      Write-Output 'This PowerShell runs as administrator: File Explorer opens the Timon installer, so that Timon installs for you...'
+      $since = Get-Date
+      # explorer.exe hands the file to the Explorer already running on the
+      # desktop, unelevated, and exits: the double-click that works.
+      Start-Process -FilePath (Join-Path $env:SystemRoot 'explorer.exe') -ArgumentList "`"$package`""
+      # Found by name and start time, not by path: the temporary folder may
+      # be an 8.3 path (C:\Users\JOHNDO~1) that the process list spells out.
+      $process = $null
+      $seen = $false
+      for ($i = 0; $i -lt 120 -and -not $process; $i++) {
+        Start-Sleep -Milliseconds 500
+        $found = Get-CimInstance -ClassName Win32_Process -Filter "Name = '$name'" -ErrorAction SilentlyContinue |
+          Where-Object { $_.CreationDate -ge $since.AddSeconds(-2) } | Select-Object -First 1
+        if ($found) {
+          $seen = $true
+          try {
+            $process = Get-Process -Id $found.ProcessId -ErrorAction Stop
+            # Holding a handle now keeps the exit code readable once it ends.
+            $null = $process.Handle
+          } catch {
+            # Already gone: the installed version below tells the outcome.
+            break
+          }
+        }
+      }
+      if (-not $seen) {
+        $kept = $package
+        $work = $null
+        Stop-Install "File Explorer did not open the installer within a minute. The verified installer is kept at $kept`: open it from File Explorer, or run this command in a normal PowerShell window. See $docsUrl"
+      }
+      $exitCode = $null
+      if ($process) {
+        $process.WaitForExit()
+        try { $exitCode = $process.ExitCode } catch { $exitCode = $null }
+      }
+      if ($null -eq $exitCode) {
+        # The exit code could not be read: the uninstall entry tells.
+        $installed = Get-InstalledVersion
+        if ($installed -ne [string]$entry.version) {
+          Stop-Install "the installer has closed and Timon $($entry.version) is not installed (installed: $(if ($installed) { $installed } else { 'none' })). See $docsUrl"
+        }
+        $exitCode = 0
+      }
     } else {
-      $process = Start-Process -FilePath $package -PassThru
+      Write-Output 'Running the Timon installer...'
+      if ($Silent) {
+        $process = Start-Process -FilePath $package -ArgumentList '/S' -PassThru
+      } else {
+        $process = Start-Process -FilePath $package -PassThru
+      }
+      $process.WaitForExit()
+      $exitCode = $process.ExitCode
     }
-    $process.WaitForExit()
-    if ($process.ExitCode -ne 0) {
-      Stop-Install "the installer ended with code $($process.ExitCode): Timon was not installed, or only partly. See $docsUrl"
+    # 0xC0000005 as a signed exit code: the failure TIM-0160 saw from an
+    # administrator PowerShell, here when File Explorer could not be used.
+    if ($exitCode -eq -1073741819) {
+      $hint = if ($elevated) { ' It happens when the installer starts from an administrator session: run this command in a normal PowerShell window, or add -DownloadOnly and open the file it prints from File Explorer.' } else { '' }
+      Stop-Install "the installer ended with code -1073741819 (0xC0000005): Timon was not installed.$hint See $docsUrl"
+    }
+    if ($exitCode -ne 0) {
+      Stop-Install "the installer ended with code $exitCode`: Timon was not installed, or only partly. See $docsUrl"
     }
     Write-Output ''
     Write-Output "Timon $($entry.version) is installed. Open Timon from the Start menu to finish the setup."

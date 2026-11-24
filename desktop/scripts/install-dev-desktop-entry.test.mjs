@@ -10,7 +10,7 @@ test('the dev entry claims the class and the flag the shell uses (copies of src/
   assert.equal(/export const NEW_WINDOW_FLAG = '([^']+)'/.exec(source)?.[1], NEW_WINDOW_FLAG);
 });
 
-test('the dev entry starts this checkout like npm start, and offers « New Window »', () => {
+test('the dev entry starts this checkout like npm start, and offers "New Window"', () => {
   const entry = devDesktopEntry({
     electron: '/src/timon/desktop/node_modules/electron/dist/electron',
     main: '/src/timon/desktop/dist/main.js',
@@ -28,7 +28,7 @@ test('the dev entry starts this checkout like npm start, and offers « New Windo
   assert.ok(main.includes('Actions=new-window;'));
   assert.deepEqual(lines.slice(action + 1).filter(Boolean), [
     'Name=New Window',
-    'Name[fr]=Nouvelle fenêtre',
+    'Name[fr]=Nouvelle fenêtre', // french-ok: the French name of the action under test
     'Exec=/src/timon/desktop/node_modules/electron/dist/electron /src/timon/desktop/dist/main.js --new-window',
   ]);
 });

@@ -1,20 +1,20 @@
 /**
- * Non-régression du câblage MCP d'un agent codex. Deux conditions, toutes deux
- * nécessaires pour qu'un appel d'outil aboutisse — leur absence a rendu
- * `ask_user` et `kanban_add` inutilisables le 2026-08-12 :
+ * Non-regression of the MCP wiring of a codex agent. Two conditions, both
+ * needed for a tool call to succeed; their absence made
+ * `ask_user` and `kanban_add` unusable on 2026-08-12:
  *
- *  1. `default_tools_approval_mode` sur CHAQUE serveur. Sans lui, codex ≥ 0.147
- *     réclame une approbation par appel d'outil MCP — et `codex exec`, non
- *     interactif, n'a personne à qui la demander : l'appel revient en
- *     `user cancelled MCP tool call` en 0,0 s, en accusant un humain qui n'a
- *     rien fait.
- *  2. `TIMON_MISSION_ID` / `TIMON_AGENT` déclarés dans l'env des MCP internes.
- *     Codex ne laisse pas hériter son propre environnement aux serveurs stdio.
+ *  1. `default_tools_approval_mode` on EACH server. Without it, codex ≥ 0.147
+ *     asks for an approval per MCP tool call, and `codex exec`, non
+ *     interactive, has nobody to ask: the call comes back as
+ *     `user cancelled MCP tool call` in 0.0 s, blaming a human who did
+ *     nothing.
+ *  2. `TIMON_MISSION_ID` / `TIMON_AGENT` declared in the env of the internal MCPs.
+ *     Codex does not let the stdio servers inherit its own environment.
  *
- * Le test lit le config.toml RÉELLEMENT matérialisé par `buildSpawn`, pas une
- * chaîne intermédiaire : c'est ce fichier que le CLI charge, et le piège TOML
- * est justement une question de placement (une clé posée après un en-tête `.env`
- * appartient à la sous-table, pas au serveur).
+ * The test reads the config.toml REALLY materialised by `buildSpawn`, not an
+ * intermediate string: that file is what the CLI loads, and the TOML trap
+ * is precisely a matter of placement (a key set after a `.env` header
+ * belongs to the subtable, not to the server).
  */
 
 import { test } from 'node:test';
@@ -24,7 +24,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { removeHomeOnExit } from '../../tests/helpers/test-home.js';
 
-/* TIMON_HOME jetable, posé AVANT tout import : paths.js le lit au chargement. */
+/* Throwaway TIMON_HOME, set BEFORE any import: paths.js reads it on load. */
 const TMP_HOME = mkdtempSync(join(tmpdir(), 'timon-mcp-approval-'));
 process.env.TIMON_HOME = TMP_HOME;
 process.env.CODEX_AUTH_DIR = join(TMP_HOME, 'codex-auth');
@@ -41,15 +41,15 @@ type AgentConfig = import('../agent.js').AgentConfig;
 const MISSION_ID = 'mission-mcp-approval-0001';
 const AGENT_NAME = 'TIMON.approval';
 
-/** cwd d'agent avec un `.grepai` → le bloc grepai est injecté lui aussi. */
+/** Agent cwd with a `.grepai` → the grepai block is injected too. */
 function makeCwd(): string {
   const cwd = join(TMP_HOME, 'projet');
   mkdirSync(join(cwd, '.grepai'), { recursive: true });
   return cwd;
 }
 
-/** Deux MCP opt-in couvrant les deux transports que codex sait charger : un
- *  stdio AVEC env (le cas où le placement TOML est piégeux) et un http. */
+/** Two opt-in MCPs covering both transports codex can load: a
+ *  stdio one WITH env (the case where the TOML placement is tricky) and an http one. */
 function seedUserMcps(): string[] {
   const dir = join(TMP_HOME, 'mcp');
   mkdirSync(dir, { recursive: true });
@@ -87,9 +87,9 @@ async function buildConfigToml(): Promise<string> {
 }
 
 /**
- * Découpe le TOML en tables et rend, pour chaque `[mcp_servers.<name>]` (les
- * sous-tables `.env` exclues), les clés qui lui appartiennent VRAIMENT — donc
- * celles écrites avant l'en-tête suivant.
+ * Splits the TOML into tables and returns, for each `[mcp_servers.<name>]` (the
+ * `.env` subtables excluded), the keys that REALLY belong to it, hence
+ * those written before the next header.
  */
 function serverTables(toml: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
@@ -109,45 +109,45 @@ function serverTables(toml: string): Map<string, string[]> {
   return out;
 }
 
-test('chaque serveur MCP du config.toml codex porte le mode d\'approbation', async () => {
+test('each MCP server of the codex config.toml carries the approval mode', async () => {
   const toml = await buildConfigToml();
   const tables = serverTables(toml);
 
-  // Les trois MCP injectés d'office par TIMON + les deux opt-in de l'agent.
+  // The three MCPs TIMON injects by default + the two opt-in ones of the agent.
   for (const name of ['timon', 'timon_ask', 'grepai', 'probe_stdio', 'probe_http']) {
-    assert.ok(tables.has(name), `serveur ${name} absent du config.toml :\n${toml}`);
+    assert.ok(tables.has(name), `server ${name} missing from config.toml:\n${toml}`);
   }
   for (const [name, keys] of tables) {
     assert.ok(
       keys.includes(CODEX_MCP_APPROVAL_TOML),
-      `[mcp_servers.${name}] sans ${CODEX_MCP_APPROVAL_TOML} → tout appel d'outil `
-      + `de ce serveur reviendra en « user cancelled MCP tool call » sous codex exec.\n${toml}`,
+      `[mcp_servers.${name}] without ${CODEX_MCP_APPROVAL_TOML} → every tool call `
+      + `of this server will come back as "user cancelled MCP tool call" under codex exec.\n${toml}`,
     );
   }
 });
 
-test('le mode d\'approbation ne tombe pas dans la sous-table .env', async () => {
+test('the approval mode does not fall into the .env subtable', async () => {
   const toml = await buildConfigToml();
-  // WHY : la régression la plus probable est un déplacement d'une ligne après
-  // `[mcp_servers.<x>.env]`. Le TOML resterait valide, la clé serait lue comme
-  // une variable d'environnement, et le bug reviendrait sans rien casser.
+  // WHY: the most likely regression is a line moved after
+  // `[mcp_servers.<x>.env]`. The TOML would stay valid, the key would be read as
+  // an environment variable, and the bug would come back without breaking anything.
   const envTables = toml.split(/^\[/m)
     .filter((chunk) => /^mcp_servers\.[A-Za-z0-9_-]+\.env\]/.test(chunk));
-  assert.ok(envTables.length > 0, 'aucune sous-table .env dans le fixture — test devenu aveugle');
+  assert.ok(envTables.length > 0, 'no .env subtable in the fixture: the test went blind');
   for (const chunk of envTables) {
     assert.ok(
       !chunk.includes('default_tools_approval_mode'),
-      `default_tools_approval_mode écrit dans une sous-table .env :\n[${chunk}`,
+      `default_tools_approval_mode written in a .env subtable:\n[${chunk}`,
     );
   }
 });
 
-test('les MCP internes reçoivent l\'identité de la mission dans leur env', async () => {
+test('the internal MCPs receive the mission identity in their env', async () => {
   const toml = await buildConfigToml();
-  // WHY : codex ne laisse pas hériter son env aux MCP stdio (vérifié sur 0.147,
-  // seuls PATH et les clés déclarées passent). Si ces variables manquent,
-  // `ask_user` POSTe un mission_id vide → 400, et le MCP `timon` perd les
-  // en-têtes qui rattachent une task à sa mission d'origine.
+  // WHY: codex does not let the stdio MCPs inherit its env (checked on 0.147,
+  // only PATH and the declared keys go through). If these variables are missing,
+  // `ask_user` POSTs an empty mission_id → 400, and the `timon` MCP loses the
+  // headers that attach a task to its originating mission.
   for (const server of ['timon', 'timon_ask']) {
     const chunk = toml.split(/^\[/m)
       .find((c) => c.startsWith(`mcp_servers.${server}.env]`));
@@ -159,11 +159,11 @@ test('les MCP internes reçoivent l\'identité de la mission dans leur env', asy
   }
 });
 
-test('les MCP internes reçoivent le jeton de mission par env_vars, jamais sa valeur', async () => {
+test('the internal MCPs receive the mission token through env_vars, never its value', async () => {
   const toml = await buildConfigToml();
-  // WHY (TIM bêta, Windows, 0.1.0) : sans `env_vars`, le pont reçoit un token
-  // vide et `ask_user` POSTe anonymement → 401 sur toute instance à comptes,
-  // aucun formulaire ne s'affiche. Le navigateur avait déjà la ligne, pas eux.
+  // WHY (beta tester, Windows, 0.1.0): without `env_vars`, the bridge receives an empty
+  // token and `ask_user` POSTs anonymously → 401 on any instance with accounts,
+  // no form shows up. The browser already had the line, they did not.
   const tables = serverTables(toml);
   for (const server of ['timon', 'timon_ask']) {
     assert.ok(
@@ -171,15 +171,15 @@ test('les MCP internes reçoivent le jeton de mission par env_vars, jamais sa va
       `[mcp_servers.${server}] sans env_vars = ["TIMON_API_TOKEN"] :\n${toml}`,
     );
   }
-  // La VALEUR ne doit jamais atterrir dans config.toml (fichier en clair, par
-  // mission, sous ~/.timon/provider-runs/provider-codex/). Le jeton est celui
-  // que `buildUnderSeal` émet, pas un TIMON_API_TOKEN hérité : run-tests.mjs
-  // ne transmet plus celui de la mission (TODO #606).
-  assert.ok(!toml.includes(`test-token-${MISSION_ID}`), 'la valeur du jeton est écrite dans config.toml');
+  // The VALUE must never land in config.toml (a plain-text file, per
+  // mission, under ~/.timon/provider-runs/provider-codex/). The token is the one
+  // `buildUnderSeal` issues, not an inherited TIMON_API_TOKEN: run-tests.mjs
+  // no longer passes on the mission one (TODO #606).
+  assert.ok(!toml.includes(`test-token-${MISSION_ID}`), 'the token value is written in config.toml');
 });
 
-test('la valeur retenue est bien un variant accepté par codex', () => {
-  // `auto` | `prompt` | `writes` exigent tous une approbation dans au moins un
-  // cas — impossible à satisfaire en `exec`. Seul `approve` débloque.
+test('the value kept is indeed a variant codex accepts', () => {
+  // `auto` | `prompt` | `writes` all require an approval in at least one
+  // case, impossible to satisfy in `exec`. Only `approve` unblocks.
   assert.equal(CODEX_MCP_APPROVAL_TOML, 'default_tools_approval_mode = "approve"');
 });

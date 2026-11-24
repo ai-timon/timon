@@ -54,7 +54,7 @@ test('a bot pointing at an invisible team falls back to the team-less section', 
 });
 
 test('the search keeps the bots whose name or role answers it, accents and case ignored', () => {
-  assert.equal(botMatches(bot({ name: 'Élodie' }), 'elo'), true);
+  assert.equal(botMatches(bot({ name: 'Élodie' }), 'elo'), true); // french-ok: an accented name, the folding under test
   assert.equal(botMatches(bot({ name: 'lou', role: 'Research' }), 'search'), true);
   assert.equal(botMatches(bot({ name: 'lou' }), 'zz'), false);
   assert.equal(botMatches(bot({ name: 'lou' }), '   '), true);

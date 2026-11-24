@@ -1,5 +1,5 @@
 /**
- * The Linux launcher's « New Window » (01/11/2026). electron-builder 25 has no
+ * The Linux launcher's "New Window" (01/11/2026). electron-builder 25 has no
  * desktop actions: `electron-builder.yml` slips the action group into the
  * value of the last `desktop` key. These tests render the deb and AppImage
  * entries with electron-builder's own code, so a version that writes the
@@ -61,7 +61,7 @@ async function render(target: 'deb' | 'appImage'): Promise<Map<string, Map<strin
 }
 
 for (const target of ['deb', 'appImage'] as const) {
-  test(`${target}: the entry offers « New Window », which launches the same binary with ${NEW_WINDOW_FLAG}`, async () => {
+  test(`${target}: the entry offers "New Window", which launches the same binary with ${NEW_WINDOW_FLAG}`, async () => {
     const entry = await render(target);
     assert.deepEqual([...entry.keys()], ['Desktop Entry', 'Desktop Action new-window']);
     const main = entry.get('Desktop Entry')!;
@@ -71,7 +71,7 @@ for (const target of ['deb', 'appImage'] as const) {
     assert.equal(main.get('Comment'), pkg.description, 'Comment stays in the main group, with the package description');
     assert.equal(main.get('Type'), 'Application');
     assert.equal(action.get('Name'), 'New Window');
-    assert.equal(action.get('Name[fr]'), 'Nouvelle fenêtre');
+    assert.equal(action.get('Name[fr]'), 'Nouvelle fenêtre'); // french-ok: the French locale under test
     assert.deepEqual([...action.keys()].sort(), ['Exec', 'Name', 'Name[fr]'], 'nothing of the main group leaked into the action');
     const program = main.get('Exec')!.replace(/ %U$/, '');
     assert.equal(action.get('Exec'), `${program} ${NEW_WINDOW_FLAG}`);

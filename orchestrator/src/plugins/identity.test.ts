@@ -33,7 +33,7 @@ const { hashSessionToken, issueSessionToken, SESSION_COOKIE } = await import('..
 
 function manifestOf(id: string, permissions: string[], extra: Record<string, unknown> = {}) {
   const res = readManifest({ timon: { id, apiVersion: PLUGIN_API_VERSION, permissions, ...extra } });
-  assert.equal(res.ok, true, `manifeste de test invalide pour ${id}`);
+  assert.equal(res.ok, true, `invalid test manifest for ${id}`);
   if (!res.ok) throw new Error('unreachable');
   return res.manifest;
 }
@@ -215,7 +215,7 @@ test('plugin routes carry the caller and hide the API without plugin:<id>', asyn
 
   const bobCookie = sessionFor(bob.id);
   const bobRes = await fetch(url, { headers: { cookie: `${SESSION_COOKIE}=${bobCookie}` } });
-  assert.equal(bobRes.status, 404, 'sans plugin:<id> la route ne confirme pas l’existence');
+  assert.equal(bobRes.status, 404, 'without plugin:<id> the route does not confirm existence');
 
   const adminCookie = sessionFor(admin.id);
   const adminRes = await fetch(url, { headers: { cookie: `${SESSION_COOKIE}=${adminCookie}` } });

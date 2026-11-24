@@ -39,9 +39,9 @@ const pair = generateKeyPairSync('ed25519');
 const keys = [{ keyId: 'free-test', publicKey: pair.publicKey.export({ type: 'spki', format: 'pem' }).toString() }];
 overrideKeyringForTests(keys);
 const enc = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
-// The last fixed Free composition the issuer minted: such tokens stay valid,
-// and are applied as the open local Free like any other Free token.
-// `@timon/agenda` has since left the catalogue: a token that still names it stays valid.
+// The last fixed Free composition the issuer minted. Free tokens are retired:
+// one still on disk reads as no licence. `@timon/agenda` has since left the
+// catalogue: a paid token that still names it stays valid.
 const LEGACY_FREE_MODULES = ['@timon/db', '@timon/settings', '@timon/agenda'];
 const caps = { version: 1, plugins: 'fixed', accounts: 'single-superadmin' };
 const now = Math.floor(Date.now() / 1000);
@@ -55,7 +55,10 @@ function token(overrides: Record<string, unknown> = {}) {
 }
 const paidToken = () => token({ plan: 'internal', capabilities: undefined, modules: '*', plugins: '*', users: null });
 const paid = () => setLicenseState(verifyLicenseToken(paidToken()));
-const activateFree = () => setLicenseState(installLicenseToken(token()));
+// Free is having no licence: nothing to activate, nothing on disk.
+const activateFree = () => { rmSync(LICENSE_FILE, { force: true }); setLicenseState(unlicensed('missing')); };
+// A paid offer limited to one superadmin: what Free used to sign.
+const soloToken = () => token({ plan: 'solo', capabilities: { ...caps, plugins: 'extensible' }, modules: '*', plugins: '*', users: 1 });
 // A paid offer with a fixed composition: the lock Free no longer carries.
 const fixedToken = () => token({ plan: 'solo', capabilities: { version: 1, plugins: 'fixed', accounts: 'standard' }, modules: LEGACY_FREE_MODULES, users: null });
 const fixedPaid = () => setLicenseState(verifyLicenseToken(fixedToken()));
@@ -77,27 +80,31 @@ async function call(path: string, body: unknown, method = 'POST') {
 test.after(() => { server.close(); globalThis.fetch = actualFetch; overrideKeyringForTests(null); });
 
 test('Free signed policy and all local admission boundaries', async (t) => {
-  await t.test('legacy tokens remain valid; Free cannot omit or widen its signed limits', () => {
+  await t.test('a retired Free token reads as no licence, whatever it claims or whoever signed it', () => {
     assert.equal(verifyLicenseToken(paidToken()).status, 'valid');
     const fixture = JSON.parse(readFileSync(new URL('../fixtures/token-claims.json', import.meta.url), 'utf8')) as { version: number; examples: { name: string; claims: Record<string, unknown> }[] };
     assert.equal(fixture.version, 9);
     const proposal = fixture.examples.find((example) => example.name === 'free')!;
-    assert.equal(verifyLicenseToken(token({ ...proposal.claims, did: deviceId(), fph: fingerprintHash(fingerprint()), iat: now, nbf: now - 60, exp: now + 900, srv: now })).status, 'valid', 'the issuer handoff fixture is accepted by the real verifier');
-    assert.equal(verifyLicenseToken(token()).status, 'valid');
-    // Free names every module and plugin (the maintainer, 03/11/2026): the composition
-    // claims are free-form, only the account axis is signed and enforced.
-    for (const patch of [{ modules: '*' }, { plugins: '*' }, { modules: [] }, { edition: 'expert' }, { features: ['code-pipeline'] }, { capabilities: { ...caps, plugins: 'extensible' } }]) {
-      assert.equal(verifyLicenseToken(token(patch)).status, 'valid', JSON.stringify(patch));
+    const fromFixture = verifyLicenseToken(token({ ...proposal.claims, did: deviceId(), fph: fingerprintHash(fingerprint()), iat: now, nbf: now - 60, exp: now + 900, srv: now }));
+    assert.equal(fromFixture.status, 'unlicensed', 'the issuer handoff fixture grants nothing any more');
+    assert.equal(fromFixture.reason, 'missing');
+    assert.equal(fromFixture.localFree, true);
+    for (const patch of [{}, { modules: '*' }, { capabilities: undefined }, { users: null }, { status: 'past_due' }, { exp: now - 3600 }, { did: 'another-machine' }]) {
+      const state = verifyLicenseToken(token(patch));
+      assert.equal(state.status, 'unlicensed', JSON.stringify(patch));
+      assert.equal(state.reason, 'missing', JSON.stringify(patch));
     }
-    for (const patch of [{ capabilities: undefined }, { capabilities: { ...caps, accounts: 'standard' } }, { users: null }, { users: 2 }, { seats: 2 }, { fph: undefined }, { capabilities: { ...caps, version: 2 } }, { exp: now + 3600 }, { nbf: now - 3600 }, { status: 'past_due' }, { sub_exp: now + 86400 }]) {
-      assert.equal(verifyLicenseToken(token(patch)).status, 'unlicensed', JSON.stringify(patch));
-    }
-    // `past_due` gates Free only: on a paid licence it is a banner, never a lock.
+    const [header, claims] = token().split('.');
+    assert.equal(verifyLicenseToken(`${header}.${claims}.bad-signature`).reason, 'missing', 'no signature check for a token that grants nothing');
+    rmSync(LICENSE_FILE, { force: true });
+    assert.equal(installLicenseToken(token()).status, 'unlicensed');
+    assert.equal(existsSync(LICENSE_FILE), false, 'a Free token is never written');
+    // `past_due` on a paid licence is a banner, never a lock.
     const latePaid = verifyLicenseToken(token({ plan: 'internal', capabilities: undefined, modules: '*', plugins: '*', users: null, status: 'past_due', sub_exp: now + 86400, exp: now + 3600, nbf: now - 3600 }));
     assert.equal(latePaid.status, 'valid');
     assert.equal(latePaid.paymentStatus, 'past_due');
-    assert.equal(verifyLicenseToken(token(), { now: new Date((now + 1000) * 1000), graceUntil: now + 86400 }).reason, 'expired');
-    assert.equal(verifyLicenseToken(token(), { device: 'another-machine' }).reason, 'invalid:machine');
+    assert.equal(verifyLicenseToken(paidToken(), { now: new Date((now + 1000) * 1000) }).reason, 'expired');
+    assert.equal(verifyLicenseToken(paidToken(), { device: 'another-machine' }).reason, 'invalid:machine');
   });
   await t.test('offline setup creates the local owner without any licensing request', async () => {
     globalThis.fetch = async () => { throw new Error('Free must never contact the issuer'); };
@@ -240,7 +247,7 @@ test('Free signed policy and all local admission boundaries', async (t) => {
     let release!: () => void;
     const pending = withCompositionWrite(licenseState(), () => new Promise<void>((resolve) => { release = resolve; }));
     assert.throws(() => assertLicenseCompatible(verifyLicenseToken(fixedToken())), /ongoing plugin operation/);
-    assert.doesNotThrow(() => assertLicenseCompatible(verifyLicenseToken(token())), 'Free fixes no composition');
+    assert.doesNotThrow(() => assertLicenseCompatible(unlicensed('missing')), 'Free fixes no composition');
     release(); await pending;
     activateFree();
   });
@@ -275,13 +282,15 @@ test('Free signed policy and all local admission boundaries', async (t) => {
   });
   await t.test('historical Free credentials never renew, even expired, and are retained', async () => {
     const { writeLicenseKey, readLicenseKey, bootLicenseState } = await import('./license/refresh.js');
-    installLicenseToken(token()); writeLicenseKey('TMN-HISTORICAL-FREE');
+    writeFileSync(LICENSE_FILE, token() + '\n'); writeLicenseKey('TMN-HISTORICAL-FREE');
     const historical = readFileSync(LICENSE_FILE, 'utf8');
     setLicenseState(bootLicenseState({ keys, now: new Date((now + 2000) * 1000) }));
     let calls = 0;
-    const loop = startLicenseRefresh({ app: null, manual: true, client: { fetch: async () => { calls++; throw new Error('offline'); } } });
+    const alerts: string[] = [];
+    const loop = startLicenseRefresh({ app: null, manual: true, notify: (n) => { alerts.push(n.title); }, client: { fetch: async () => { calls++; throw new Error('offline'); } } });
     await loop.tick(); await loop.localTick();
     assert.equal(calls, 0);
+    assert.deepEqual(alerts, []);
     assert.equal(licenseState().localFree, true);
     assert.equal(licenseState().reason, 'missing');
     assert.equal(readLicenseKey(), 'TMN-HISTORICAL-FREE');
@@ -309,8 +318,8 @@ test('Free signed policy and all local admission boundaries', async (t) => {
       const response = await actualFetch(base + '/api/license', { headers });
       assert.equal(response.status, 403);
       const body = await response.json();
-      assert.equal(body.error, 'free_account_restricted');
-      assert.equal(typeof body.message, 'string');
+      assert.equal(body.code, 'free_account_restricted');
+      assert.match(body.error, /first superadmin/);
     }
     assert.deepEqual(dbApi.listUsers(), before);
     paid();
@@ -319,12 +328,14 @@ test('Free signed policy and all local admission boundaries', async (t) => {
     activateFree();
   });
   await t.test('expiry/revocation/removal keep Free restrictions and never grant an offline day', async () => {
-    const loop = startLicenseRefresh({ app: null, manual: true, now: () => (now + 1000) * 1000, verify: { keys } });
+    fixedPaid(); installLicenseToken(fixedToken());
+    const loop = startLicenseRefresh({ app: null, manual: true, notify: () => undefined, now: () => (now + 1000) * 1000, verify: { keys } });
     await loop.localTick();
     assert.equal(licenseState().status, 'unlicensed');
+    assert.equal(licenseState().localFree, true);
     assert.doesNotThrow(() => setModuleEnabled('@timon/vault', false));
     setModuleEnabled('@timon/vault', true);
-    paid(); activateFree();
+    paid(); installLicenseToken(paidToken());
     rmSync(LICENSE_FILE);
     await loop.localTick();
     assert.equal(licenseState().status, 'unlicensed');
@@ -336,12 +347,12 @@ test('Free signed policy and all local admission boundaries', async (t) => {
     paid(); installLicenseToken(paidToken());
     const extra = createTestAccount(dbApi, { email: 'paid@example.test', name: 'Paid user', passwordHash: 'hash' });
     const before = readFileSync(LICENSE_FILE, 'utf8');
-    const r = await call('/api/license', { token: token(), force: true }, 'PUT');
+    const r = await call('/api/license', { token: soloToken(), force: true }, 'PUT');
     assert.equal(r.status, 409); assert.equal(r.body.error, 'free_incompatible');
     assert.equal(readFileSync(LICENSE_FILE, 'utf8'), before);
     assert.ok(dbApi.getUserById(extra.id));
     dbApi.setUserStatus(extra.id, 'disabled');
-    assert.doesNotThrow(() => assertLicenseCompatible(verifyLicenseToken(token())));
+    assert.doesNotThrow(() => assertLicenseCompatible(verifyLicenseToken(soloToken())));
     activateFree();
     assert.throws(() => dbApi.setUserStatus(extra.id, 'active'), LicenseCapabilityError);
     assert.equal(dbApi.getUserById(extra.id)?.status, 'disabled');

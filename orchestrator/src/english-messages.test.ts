@@ -28,6 +28,8 @@ import ts from 'typescript';
 const SRC = dirname(fileURLToPath(import.meta.url));
 const BIN = join(SRC, '..', 'bin');
 
+// french-ok-file: the French samples and patterns this guard tests
+
 // `×` and `÷` share the Latin-1 range with accented letters: listed by hand.
 // `«` and `»` count: English text uses straight quotes.
 const FRENCH_LETTER = /[àâäçéèêëîïôöùûüÿœæÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸŒÆ«»]/;
@@ -189,7 +191,7 @@ test('the ratchet sees French sentences that carry no accent', () => {
 test('every literal exception still matches a literal', () => {
   for (const e of LITERAL_EXCEPTIONS) {
     const file = e.file.split('/').join(sep);
-    assert.ok(literals(file).some(({ text }) => text.includes(e.fragment)), `${e.file}: « ${e.fragment} » no longer exists, drop the exception`);
+    assert.ok(literals(file).some(({ text }) => text.includes(e.fragment)), `${e.file}: "${e.fragment}" no longer exists, drop the exception`);
   }
 });
 

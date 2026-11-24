@@ -3,7 +3,7 @@
  * on its own line (the MCP does the same through `httpCaller`): a 403 whose
  * reason sits inside raw JSON reads like a missing permission.
  *
- * Témoin HTTP sur `127.0.0.1:0`, jamais le daemon de la machine.
+ * HTTP witness on `127.0.0.1:0`, never the daemon of the machine.
  */
 import { mkdtempSync } from 'node:fs';
 import http from 'node:http';

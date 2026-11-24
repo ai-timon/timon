@@ -18,7 +18,7 @@
  */
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -476,7 +476,8 @@ function scan(tree: Tree, root: string): { offenders: Finding[]; modalMenus: num
       modalMenus += 1;
       seen.clear();
       const why = menuOpens(n);
-      if (why) offenders.push({ file: relative(root, path), menu: n.openingElement.tagName.getText(), why });
+      // Named with `/` on every OS, like the known menus listed above.
+      if (why) offenders.push({ file: relative(root, path).split(sep).join('/'), menu: n.openingElement.tagName.getText(), why });
     });
   }
   return { offenders, modalMenus, nonModalMenus };

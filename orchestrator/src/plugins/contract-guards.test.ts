@@ -51,6 +51,8 @@ const DERIVED_TWINS: Record<string, string> = {
   PluginTaskEventKind: 'plugins/task-events.ts',
   PluginTodoEventKind: 'plugins/todo-events.ts',
   PluginUiDocumentEventKind: 'plugins/ui-document-events.ts',
+  SeriesPlanBranch: 'series-plan.ts',
+  SeriesPlanFinish: 'series-plan.ts',
 };
 
 /** Every non-test TypeScript source of the daemon. */

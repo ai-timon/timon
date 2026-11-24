@@ -15,8 +15,8 @@ import { packagedServiceOptions } from './packaged-service.js';
 import { upgradeDesktopService, type UpgradeDeps } from './packaged-upgrade.js';
 import {
   LINUX_UNIT, MACOS_LABEL, WINDOWS_SERVICE_REVISION, WINDOWS_TASK, elevatedScriptPath, installService, launchDaemonPath, macosLauncherPath, plistPath,
-  readServiceDefinition, removeServiceDefinition, renderLaunchDaemonPlist, renderMacLauncher, renderPlist, renderTaskXml, renderUnit, renderWindowsLauncher,
-  restartService, restartWindowsService, restoreServiceDefinition, serviceStoppedMarker, startService, stopService, taskXmlPath, uninstallService, unitPath, windowsLauncherPath, windowsServiceFiles,
+  readServiceDefinition, removeServiceDefinition, renderLaunchDaemonPlist, renderMacLauncher, renderPlist, renderTaskXml, renderUnit, renderWindowsLauncherConfig,
+  restartService, restartWindowsService, restoreServiceDefinition, serviceStoppedMarker, startService, stopService, retireBatchLauncher, taskXmlPath, uninstallService, unitPath, windowsLauncherPath, windowsServiceFiles,
   type ServiceOpts, type ServiceResult,
 } from './service-install.js';
 import { actOnOwnService, foreignService, guardServiceGesture, readInstalledService, serviceOfAnotherHome, servicesSharingHome } from './service-ownership.js';
@@ -366,13 +366,24 @@ test('win32: the daemon it runs comes from the launcher of that home', () => {
   const realHome = 'C:\\Users\\Robin\\.timon';
   const realInstall = 'C:\\Program Files\\Timon\\resources\\orchestrator';
   h.task.xml = renderTaskXml({ ...h.o, timonHome: realHome, installDir: realInstall });
-  const launcher = renderWindowsLauncher({ ...h.o, timonHome: realHome, installDir: realInstall, nodePath: 'C:\\Program Files\\Timon\\Timon.exe' });
+  const node = 'C:\\Program Files\\Timon\\resources\\node\\node.exe';
+  const launcher = renderWindowsLauncherConfig({ ...h.o, timonHome: realHome, installDir: realInstall, nodePath: node });
+  const read: string[] = [];
   const service = readInstalledService({ ...h.o, readFile: (f) => {
-    assert.equal(f, windowsLauncherPath(realHome));
+    read.push(f);
+    if (!f.endsWith('timon-service.json')) throw new Error('ENOENT');
     return launcher;
   } })!;
-  assert.equal(service.executable, 'C:\\Program Files\\Timon\\Timon.exe');
+  assert.ok(read.every((f) => f.startsWith(realHome)), read.join(', '));
+  assert.equal(service.executable, node);
   assert.equal(service.installDir, realInstall);
+  // Revision 5, before the upgrade rewrote it: the batch names the daemon.
+  const batch = `@echo off\r\nset "TIMON_HOME=${realHome}"\r\n"C:\\Program Files\\Timon\\resources\\node\\node.exe" --max-old-space-size=4096 "${realInstall}\\dist\\boot.js" >>"%TIMON_SERVICE_LOG%" 2>&1\r\n`;
+  const older = readInstalledService({ ...h.o, readFile: (f) => {
+    if (!f.endsWith('timon-service.cmd')) throw new Error('ENOENT');
+    return batch;
+  } })!;
+  assert.equal(older.executable, node);
 });
 
 test('win32: the logon task of the first releases still names its home', () => {
@@ -588,6 +599,31 @@ test('win32: a rewrite that does not answer puts the task back and stays due', a
   assert.equal(readFileSync(revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION);
 });
 
+/**
+ * Revision 6 drops the batch Avast quarantined. A failed upgrade restores the
+ * task of revision 5, which runs that batch: it must still be there, and the
+ * next launch must try again.
+ */
+test('win32: the batch of revision 5 stays until the rewritten task answers, then goes', async () => {
+  const { o, revision } = revision3Task();
+  const batch = windowsServiceFiles(o.timonHome, join).batchLauncher;
+  writeFileSync(batch, '@echo off\r\n');
+  const deps = (healthy: boolean): UpgradeDeps => ({
+    ...upgradeDeps({ ...o, keepBatchLauncher: true }, healthy),
+    retire: (opts) => retireBatchLauncher(opts),
+  });
+  const failed = await upgradeDesktopService(deps(false));
+  assert.equal(failed.ok, false);
+  assert.equal(existsSync(batch), true, 'the restored task runs it');
+  assert.equal(readFileSync(revision, 'utf8').trim(), 'restored', 'due again, and still a task to the desktop');
+
+  const upgraded = await upgradeDesktopService(deps(true));
+  assert.equal(upgraded.ok, true, upgraded.reason ?? '');
+  assert.equal(existsSync(batch), false);
+  assert.equal(readFileSync(revision, 'utf8').trim(), WINDOWS_SERVICE_REVISION);
+  assert.ok(existsSync(windowsServiceFiles(o.timonHome, join).launcher), 'the configuration the new task names');
+});
+
 test('win32: a task of another home is not rewritten by the update, whatever its revision', async () => {
   const { h, o, revision } = revision3Task();
   register(h, { timonHome: join(o.homeDir, 'real-home'), installDir: o.installDir });
@@ -641,7 +677,7 @@ test('the CLI checks ownership before the temporary-home check, the preflight an
   const body = cli.slice(start, cli.indexOf('async function replacesRunningRelease', start));
   const guard = body.indexOf('guardServiceGesture(opts, sub');
   assert.ok(guard > 0);
-  for (const later of ['temporaryHomeNotice(', 'mod.installPreflight(opts)', 'installWithRuntime(opts', 'uninstallWithRuntime(opts', 'mod.stopService(opts)', 'mod.startService(opts)']) {
+  for (const later of ['temporaryHomeNotice(', 'mod.installPreflight(opts)', 'installWithRuntime(opts', 'uninstallWithRuntime(opts', 'withCooperativeStop(opts, mod.stopService', 'mod.startService(opts)']) {
     assert.ok(guard < body.indexOf(later), later);
   }
   assert.match(body, /let res = guard\.refusal;\n\s+if \(!res\) switch \(sub\)/);
@@ -1075,6 +1111,7 @@ test('the runners the desktop launches go through that check', () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const runner = readFileSync(join(here, 'desktop-service-runner.ts'), 'utf8');
   assert.match(runner, /const GESTURES = \{ stop: stopService, start: startService, restart: restartService \} as const;/);
-  assert.match(runner, /actOnOwnService\(opts, GESTURES\[action\]\)/);
-  assert.match(readFileSync(join(here, 'windows-restart-runner.ts'), 'utf8'), /actOnOwnService\(serviceOptsFromEnvironment\(cfg, \(\) => host\), restartWindowsService\)/);
+  // Ownership first; inside it, the Windows stop and restart ask the daemon before their kills.
+  assert.match(runner, /await actOnOwnService\(opts, async \(o\)[^]*?withCooperativeStop\(o, GESTURES\[action\], ask\)/);
+  assert.match(readFileSync(join(here, 'windows-restart-runner.ts'), 'utf8'), /await actOnOwnService\(opts, \(o\) => withCooperativeStop\(o, restartWindowsService, ask\)\)/);
 });

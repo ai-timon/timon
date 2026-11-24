@@ -16,8 +16,16 @@ export function runsOutsideGuiSession(env = process.env) { return env.TIMON_SERV
 export const MISSING_TOKEN_MESSAGE = 'Timon runs as a macOS background service, which cannot read the login keychain where `claude` keeps its sign-in. '
   + 'Run `claude setup-token`, then `timon auth claude-token set` (or Settings › AI models › Providers › Claude), '
   + 'or run `timon service install` to go back to a service that only runs while you are logged in.';
+/**
+ * An account's CLI: its own folder, none of the host's credentials. The keychain entry is pinned
+ * to the same folder: an inherited `CLAUDE_SECURESTORAGE_CONFIG_DIR` would otherwise name another
+ * entry (empty, the host's own sign-in) while the daemon moves this one (`account-keychain.js`).
+ */
 export function claudeAccountEnv(configDir) {
-  return { CLAUDE_CONFIG_DIR: configDir, [CLAUDE_TOKEN_ENV]: '', ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '' };
+  return {
+    CLAUDE_CONFIG_DIR: configDir, CLAUDE_SECURESTORAGE_CONFIG_DIR: configDir,
+    [CLAUDE_TOKEN_ENV]: '', ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '',
+  };
 }
 export function createClaudeToken(services) {
   const store = services.credentialStore({ store: CLAUDE_TOKEN_STORE, key: CLAUDE_TOKEN_KEY, marker: 'claude-token-configured' });

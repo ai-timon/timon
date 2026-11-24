@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowRight, Check, Users, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { t } from '@/lib/i18n';
+import { apiErrorMessage } from '@/lib/api-error';
 import { OnboardingBackdrop } from '@/components/onboarding-backdrop';
 
 type Preset = 'team' | 'scratch';
@@ -20,8 +21,6 @@ const OPTIONS = [
   { id: 'team', icon: Users, roles: ['assistant', 'researcher', 'writer', 'developer'] },
   { id: 'scratch', icon: Terminal, roles: [] },
 ] as const;
-
-const ERRORS = new Set(['backend_unavailable', 'workspace_unavailable', 'agent_conflict', 'preset_locked', 'instance_not_empty', 'team_unavailable']);
 
 export default function TeamSetupPage() {
   const [status, setStatus] = useState<TeamStatus | null>(null);
@@ -52,9 +51,9 @@ export default function TeamSetupPage() {
       const response = await fetch('/api/ui/setup/team', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ preset: selected }),
       });
-      const body = await response.json() as TeamStatus & { error?: string };
+      const body = await response.json() as TeamStatus & { error?: string; code?: string };
       if (!response.ok) {
-        setError(t(`teamSetup.${ERRORS.has(body.error ?? '') ? body.error : 'failed'}`));
+        setError(apiErrorMessage(body, t('teamSetup.failed')));
         // The server may have saved a plan before a filesystem failure. Read
         // back its locked choice so retries cannot silently switch teams.
         const fresh = await fetch('/api/ui/setup/team', { cache: 'no-store' });

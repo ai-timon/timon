@@ -1892,7 +1892,7 @@ export function AgentsClient() {
 
 
 
-      {/* Mobile-only : FAB + bottom-sheet liste/recherche des agents .main. */}
+      {/* Mobile only: FAB + bottom sheet to list and search the .main agents. */}
       <MobileAgentList />
 
       <OrgTree

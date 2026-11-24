@@ -8,6 +8,7 @@ import { configuredVaultRoot } from '../../vault-root.js';
 import type { Router } from 'express';
 import { getVaultDisc } from '../../vault-disc.js';
 import { getVaultGraph, getVaultNote } from '../../vault-graph.js';
+import { apiError } from '../../api-error.js';
 
 export function registerRoutes(app: Router): void {
   app.get('/api/vault/graph', (_req, res) => {
@@ -21,12 +22,12 @@ export function registerRoutes(app: Router): void {
   app.get('/api/vault/note', (req, res) => {
     const id = typeof req.query.id === 'string' ? req.query.id : '';
     if (!id) {
-      res.status(400).json({ error: 'id required' });
+      res.status(400).json(apiError('vault_note_id_required', 'id required'));
       return;
     }
     const note = getVaultNote(id);
     if (!note) {
-      res.status(404).json({ error: 'note not found' });
+      res.status(404).json(apiError('vault_note_not_found', 'note not found'));
       return;
     }
     res.json(note);

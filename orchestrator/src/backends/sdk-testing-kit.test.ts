@@ -117,7 +117,7 @@ test('replaying a transcript cut in single bytes still yields the same events (m
   const whole = await kit.replayTranscript(provider, lines, kit.spawnOptions(ctx, 'echo-1', null), 'whole');
   const bytes = await kit.replayTranscript(provider, lines, kit.spawnOptions(ctx, 'echo-1', null), 'bytes');
   assert.deepEqual(bytes.events, whole.events);
-  assert.ok(JSON.stringify(whole.events).includes('point d\'entrée'), 'the transcript carries a multi-byte character');
+  assert.ok(JSON.stringify(whole.events).includes('point d\'entrée'), 'the transcript carries a multi-byte character'); // french-ok: a multi-byte sample
 });
 
 test('the fake CLI is a real executable that prints its lines and exits with its code', async () => {

@@ -32,6 +32,7 @@ import { bus, type BusEvent } from './bus.js';
 import { dbApi } from './db.js';
 import { getTurnState, respawnWithResume, sendToAgent, isAutonomousMission } from './agent.js';
 import { notifyUser } from './notify.js';
+import { daemonMessage } from './daemon-message.js';
 import { closePushFor, createNotification } from './notifications.js';
 import { settingNum } from './settings.js';
 import {
@@ -39,11 +40,14 @@ import {
   validateSeriesPlanAnswer,
   seriesPlanCommands,
   planGroupNames,
+  planBranchChoice,
+  PIPELINE_BY_MODE,
   type SeriesPlanAnswer,
   type SeriesPlanRoleConfig,
   type SeriesPlanVolet,
 } from './series-plan.js';
 import { seriesPlanDefaults } from './series-plan-defaults.js';
+import { planBranchName, planLanding, planLandingForm } from './plan-landing.js';
 import type { ApprovalScope } from './backends/types.js';
 import { approvalMotif, findApproval, motifLabel, rememberApproval, rememberableScopes, shellCommandOfTool } from './approval-rules.js';
 import { loadConfig } from './agent-config.js';
@@ -653,10 +657,29 @@ function withSeriesPlanDefaults(input: RequestInput): unknown {
   if (!isRecord(form) || form.kind !== 'series_plan') return input.input;
   try {
     const defaults = seriesPlanDefaults(input.mission_id, input.agent);
-    return { ...(input.input as Record<string, unknown>), form: { ...form, defaults } };
+    return { ...(input.input as Record<string, unknown>), form: { ...form, defaults, ...formLanding(input, form) } };
   } catch (err) {
     console.error(`[permissions] series plan defaults unavailable: ${(err as Error).message}`);
     return input.input;
+  }
+}
+
+/**
+ * The branch field of the planner, for any project the job is for: the name a
+ * new branch would get, the prefix shown before it, the project's mode and
+ * target, whether the branch is already fixed, why the agent's proposal cannot
+ * be used, and the branches the job may start from instead. Nothing when the
+ * job has no project.
+ */
+function formLanding(input: RequestInput, form: Record<string, unknown>): { landing?: Record<string, unknown> } {
+  try {
+    const chantier = typeof form.chantier === 'string' ? form.chantier : '';
+    const proposed = typeof form.branch === 'string' ? form.branch : null;
+    const landing = planLandingForm(input.agent, chantier, proposed, input.mission_id);
+    return landing ? { landing } : {};
+  } catch (err) {
+    console.error(`[permissions] series plan branch unavailable: ${(err as Error).message}`);
+    return {};
   }
 }
 
@@ -810,7 +833,13 @@ export function requestPermission(input: RequestInput): Promise<PermissionDecisi
           + `mission: the agent was instructed to decide for itself while stating its `
           + `assumption, or to close out via \`timon task block\`. The decision it wanted to `
           + `submit to you is still pending.`,
-          { taskId: stuckTask?.id, fromMission: input.mission_id },
+          {
+            taskId: stuckTask?.id,
+            fromMission: input.mission_id,
+            message: daemonMessage('ask_user_form_looping', {
+              agent: input.agent, attempts, mission: input.mission_id.slice(0, 8), defect,
+            }),
+          },
         );
       }
       // Memorized like any other decision: a re-POST of the same tool_use_id
@@ -998,6 +1027,9 @@ export function requestPermission(input: RequestInput): Promise<PermissionDecisi
           // to promise a window we could not yet guarantee.
           ? ` Autonomous mission: with no answer within ${Math.round(timeoutMs / 60_000)} min, automatic refusal.`
           : ''),
+      message: daemonMessage('permission_required', {
+        tool: input.tool_name, agent: input.agent, minutes: timeoutMs > 0 ? Math.round(timeoutMs / 60_000) : 0,
+      }),
       missionId: input.mission_id,
       taskId: task?.id ?? null,
       anchor: id,
@@ -1238,9 +1270,72 @@ function withSeriesPlan(p: Omit<Pending, 'resolve'>, final: PermissionDecision):
     };
   }
   const plan = updated.plan as SeriesPlanAnswer;
+  // A project that lands through pull requests: every task on the job's
+  // integration branch, and a last task that opens the pull request (or none,
+  // `finish: 'keep'`). A project that merges locally gets the same branch only
+  // when the answer chose one, with its kind. Nothing added otherwise, so the
+  // answer stays what it was.
+  const chantier = typeof form.chantier === 'string' ? form.chantier : '';
+  // The branch chosen in the form, else the agent's proposal: checked again
+  // here, the form's own check being a convenience, not the guard.
+  const proposed = plan.branch ?? (typeof form.branch === 'string' ? form.branch : null);
+  // A sequential job lands the same way: its pilot asks for the branch, codes
+  // on it, and ends on the same last task.
+  const landing = planLanding(p.agent, chantier, {
+    branch: proposed, finish: plan.finish, seriesId: p.mission_id, sequential: !PIPELINE_BY_MODE[plan.mode],
+  });
+  const chosen = planBranchChoice(plan.branch);
+  const chosenName = chosen && landing
+    ? (chosen.kind === 'existing' ? chosen.name.trim() : planBranchName(chosen.name, landing.prefix))
+    : null;
+  const branchDefect = landing?.refusal
+    ?? (landing?.locked && chosenName && chosen!.name.trim() !== '' && chosenName !== landing.branch
+      ? `the job already starts from ${landing.branch}; its name no longer changes`
+      : null);
+  if (branchDefect) {
+    console.log(`[permissions] series plan branch refused (mission ${p.mission_id.slice(0, 8)}) — ${branchDefect}`);
+    return {
+      behavior: 'deny',
+      message:
+        `The branch chosen in the Kanban planner was refused (${branchDefect}). Nothing was applied: `
+        + `call \`kanban_plan\` again, with another \`branch\` or none.`,
+    };
+  }
+  const commands = seriesPlanCommands(plan, volets, landing);
+  // Read again by the pull request's `Fixes`/`Refs` (`issue-closing.ts`).
+  if (landing && landing.projectMode === 'pr' && typeof plan.resolves_issues === 'boolean') {
+    try { dbApi.setSeriesResolvesIssues(p.mission_id, plan.resolves_issues); } catch (err) {
+      console.error(`[permissions] series plan issue closing not recorded: ${(err as Error).message}`);
+    }
+  }
+  // What the dispatcher and `timon pr branch` read to cut or find the branch.
+  // A branch named with its kind, a project that merges locally, or a job kept
+  // on its branch; the earlier bare name keeps the earlier path.
+  if (landing && (landing.explicit || landing.projectMode === 'local' || landing.finish === 'keep')) {
+    try {
+      dbApi.setSeriesPlanLanding(p.mission_id, {
+        project: landing.project, repo: landing.repo, branch: landing.branch,
+        branch_kind: landing.explicit ? landing.kind : null, mode: landing.mode, base_ref: landing.baseRef,
+        finish: landing.finish,
+      });
+    } catch (err) {
+      console.error(`[permissions] series plan branch not recorded: ${(err as Error).message}`);
+    }
+  }
   return {
     behavior: 'allow',
-    updatedInput: { ...updated, plan, commands: seriesPlanCommands(plan, volets) },
+    updatedInput: landing
+      ? {
+        ...updated, plan, commands,
+        integration: {
+          mode: landing.projectMode === 'local' ? 'branch' : 'pr',
+          branch: landing.branch, base_ref: landing.baseRef, note: landing.note,
+          ...(landing.explicit || landing.finish === 'keep' || landing.projectMode === 'local'
+            ? { kind: landing.kind, finish: landing.finish, target: landing.target }
+            : {}),
+        },
+      }
+      : { ...updated, plan, commands },
   };
 }
 
@@ -1375,7 +1470,10 @@ export function formatAskAnswer(a: unknown): string {
 export function buildContinuation(p: Omit<Pending, 'resolve'>, final: PermissionDecision): string {
   if (p.tool_name === 'ask_user' && final.behavior === 'allow') {
     const updated = final.updatedInput as
-      | { answers?: Record<string, unknown>; note?: string; plan?: SeriesPlanAnswer; commands?: string[] }
+      | {
+        answers?: Record<string, unknown>; note?: string; plan?: SeriesPlanAnswer; commands?: string[];
+        integration?: { note?: string; mode?: string };
+      }
       | undefined;
     // Typed form: the plan has no "questions" to replay, it has a mode and
     // commands. Rendering them as-is is better than the empty Q/A list the
@@ -1400,6 +1498,9 @@ export function buildContinuation(p: Omit<Pending, 'resolve'>, final: Permission
         `[series plan] The user chose mode \`${updated.plan.mode}\`.\n`
         + `${roles || '- (no explicit setting: everything inherits)'}\n`
         + (note ? `Note: ${note}\n` : '')
+        + (updated.integration?.note
+          ? `${updated.integration.mode === 'branch' ? 'Branch' : 'Pull request'}: ${updated.integration.note}\n`
+          : '')
         + (cmds ? `Commands to run, in this order:\n${cmds}\n` : '')
         + `Apply this plan as-is, then resume the project.`
       );
@@ -1445,6 +1546,12 @@ async function nudgeIfOrphaned(p: Omit<Pending, 'resolve'>, final: PermissionDec
     `Late answer could not be replayed: ${p.tool_name}`,
     `You answered \`${p.tool_name}\` for mission ${p.mission_id.slice(0, 8)} but it could not be relaunched (process dead, no resumable session). ` +
       (task ? `Associated task: ${task.id} (${task.title}). Relaunch it if needed.` : `Relaunch the mission if the action is still needed.`),
-    { taskId: task?.id, fromMission: p.mission_id },
+    {
+      taskId: task?.id,
+      fromMission: p.mission_id,
+      message: daemonMessage('late_answer_not_replayed', {
+        tool: p.tool_name, mission: p.mission_id.slice(0, 8), taskId: task?.id ?? 'none', taskTitle: task?.title ?? '',
+      }),
+    },
   );
 }

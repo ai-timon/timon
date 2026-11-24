@@ -40,7 +40,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import type { Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { canonicalAgentName } from '../../agent-config.js';
+import { canonicalAgentName, loadConfig } from '../../agent-config.js';
 import { automationOriginOf, emitAutomationEvent } from '../../plugins/automation-events.js';
 import { dbApi, type LayoutProposalRow, type LayoutProposalStatus } from '../../db.js';
 import {
@@ -51,6 +51,8 @@ import { agentDir } from '../../paths.js';
 import { PLUGIN_OWNER_PREFIX } from '../../users/api-tokens.js';
 import { requestHasPermission, viewerFromRequest, forbidden } from '../../users/identity.js';
 import { auditRequest } from '../../users/audit-actor.js';
+import { rejectOverride, spawnWideningDenied } from '../../users/privileged-overrides.js';
+import { routineTaskExtras } from '../../routines.js';
 import { scopedDb } from '../../users/scoped-db.js';
 import { ACTION_UNAVAILABLE, actionProvider, grantsAllow } from '../../triggers/actions.js';
 import { nextScheduleAt } from '../../triggers/engine.js';
@@ -67,7 +69,7 @@ import {
   setScriptPins, setTriggerOutboundSecret, setTriggerSecret, updateTriggerRow, type ScriptPin, type TriggerRow,
 } from '../../triggers/store.js';
 import { unauthenticatedHooksPossible } from '../../triggers/webhook.js';
-import { apiError } from '../../api-error.js';
+import { apiError, type ApiErrorBody } from '../../api-error.js';
 
 export const TRIGGERS_PERMISSION = 'triggers:manage';
 
@@ -159,7 +161,7 @@ function zodMessage(error: z.ZodError): string {
   return error.issues.slice(0, 5).map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
 }
 
-type Refusal = { status: number; error: string };
+type Refusal = { status: number; body: ApiErrorBody };
 
 /**
  * A script runs arbitrary code on the host, unattended: never something an
@@ -205,7 +207,7 @@ function proposalReplyText(status: LayoutProposalStatus, detail: string | null):
  */
 function actingAgentOf(req: Request): { agent: string | null } | Refusal {
   const agent = delegatingAgent(req);
-  if (agent === UNKNOWN_CALLER) return { status: 403, error: 'this mission is unknown' };
+  if (agent === UNKNOWN_CALLER) return { status: 403, body: apiError('trigger_mission_unknown', 'this mission is unknown') };
   return { agent };
 }
 
@@ -218,13 +220,17 @@ function actingAgentOf(req: Request): { agent: string | null } | Refusal {
 function callerMayRun(req: Request, actions: readonly TriggerAction[]): Refusal | null {
   const mine = callerGrants(req);
   for (const action of actions) {
-    if (action.type === 'script' && callerIsAgent(req)) return { status: 403, error: SCRIPT_AGENT_REFUSAL };
+    if (action.type === 'script' && callerIsAgent(req)) return { status: 403, body: apiError('trigger_script_agent_refused', SCRIPT_AGENT_REFUSAL) };
     if (action.type === 'task') {
       const denied = delegationRefusal(req, action.agent);
-      if (denied) return { status: 403, error: `task refused: ${denied}` };
+      if (denied) return { status: 403, body: apiError('orchestration_denied', `task refused: ${denied}`, { detail: denied }) };
     }
     if (!grantsAllow(mine, ACTION_PERMISSION[action.type])) {
-      return { status: 403, error: `not permitted: ${action.type} needs ${ACTION_PERMISSION[action.type]}` };
+      return {
+        status: 403,
+        body: apiError('trigger_action_not_permitted', `not permitted: ${action.type} needs ${ACTION_PERMISSION[action.type]}`,
+          { action: action.type, permission: ACTION_PERMISSION[action.type] }),
+      };
     }
   }
   return null;
@@ -257,7 +263,7 @@ function cadenceRefusal(def: TriggerDefinition, row: TriggerRow | null): Refusal
     if (!reconfigured && !switchedOn) return null;
   }
   const problem = scheduleCadenceProblem(def.config.cron, def.config.tz);
-  return problem ? { status: 400, error: problem } : null;
+  return problem ? { status: 400, body: apiError('trigger_cadence_refused', problem, { detail: problem }) } : null;
 }
 
 /**
@@ -272,48 +278,52 @@ function refusal(
   listensOnLoopback: () => boolean, stored: readonly TriggerAction[] = [],
 ): Refusal | null {
   for (const action of actions) {
-    if (action.type === 'script' && callerIsAgent(req)) return { status: 403, error: SCRIPT_AGENT_REFUSAL };
+    if (action.type === 'script' && callerIsAgent(req)) return { status: 403, body: apiError('trigger_script_agent_refused', SCRIPT_AGENT_REFUSAL) };
     if (action.type === 'task') {
       const denied = delegationRefusal(req, action.agent);
-      if (denied) return { status: 403, error: `task refused: ${denied}` };
+      if (denied) return { status: 403, body: apiError('orchestration_denied', `task refused: ${denied}`, { detail: denied }) };
     }
     if (!grantsAllow(grants, ACTION_PERMISSION[action.type])) {
-      return { status: 403, error: `not permitted: ${action.type} needs ${ACTION_PERMISSION[action.type]}` };
+      return {
+        status: 403,
+        body: apiError('trigger_action_not_permitted', `not permitted: ${action.type} needs ${ACTION_PERMISSION[action.type]}`,
+          { action: action.type, permission: ACTION_PERMISSION[action.type] }),
+      };
     }
     // A script kept as it was is not re-checked: a project folder gone must not
     // stop the trigger from being renamed or switched off. Every run re-checks it.
     if (action.type === 'script' && !stored.some((old) => canonical(old) === canonical(action))) {
       const place = scriptCwd(action.cwd);
-      if ('error' in place) return { status: 400, error: place.error };
+      if ('error' in place) return { status: 400, body: apiError('trigger_script_cwd_refused', place.error, { detail: place.error }) };
     }
     if (action.type === 'task' && !existsSync(agentDir(canonicalAgentName(action.agent)))) {
-      return { status: 400, error: `unknown agent: ${action.agent}` };
+      return { status: 400, body: apiError('unknown_agent', `unknown agent: ${action.agent}`, { agent: action.agent }) };
     }
     // Kept as it was, like a script: an older row must stay renamable; every delivery re-checks it.
     if (action.type === 'webhook' && !stored.some((old) => canonical(old) === canonical(action))) {
       const refused = webhookUrlRefusal(action.url);
-      if (refused) return { status: 400, error: refused };
+      if (refused) return { status: 400, body: apiError('trigger_webhook_url_refused', refused, { detail: refused }) };
     }
     if (action.type === 'workflow' && !stored.some((old) => sameWorkflowTarget(old, action))) {
       // Offered only while Workflows runs; the workflow must be the caller's.
       const provider = actionProvider('workflow');
-      if (!provider) return { status: 400, error: ACTION_UNAVAILABLE };
+      if (!provider) return { status: 400, body: apiError('trigger_workflows_unavailable', ACTION_UNAVAILABLE) };
       const denied = provider.check(action, {
         ownerUserId: req.auth?.user?.id ?? null,
         seesAll: (grants ?? []).includes('*'),
       });
-      if (denied) return { status: 400, error: denied };
+      if (denied) return { status: 400, body: apiError('trigger_workflow_refused', denied, { detail: denied }) };
     }
   }
   if (def.source === 'webhook' && def.config.auth === 'none' && actions.some((action) => action.type === 'script')) {
     // Any local process — an agent's mission included — could run it by posting.
-    return { status: 400, error: 'a script action needs an authenticated webhook' };
+    return { status: 400, body: apiError('trigger_script_needs_auth', 'a script action needs an authenticated webhook') };
   }
   if (def.source === 'webhook' && def.config.auth === 'none') {
     // No secret = no proof of origin: never something an agent decides, and
     // never on a daemon reachable from another machine.
-    if (callerIsAgent(req)) return { status: 403, error: 'an agent cannot create an unauthenticated webhook' };
-    if (!listensOnLoopback()) return { status: 400, error: 'auth "none" is only allowed while the daemon listens on loopback, not behind a proxy' };
+    if (callerIsAgent(req)) return { status: 403, body: apiError('trigger_unauthenticated_by_agent', 'an agent cannot create an unauthenticated webhook') };
+    if (!listensOnLoopback()) return { status: 400, body: apiError('trigger_unauthenticated_not_loopback', 'auth "none" is only allowed while the daemon listens on loopback, not behind a proxy') };
   }
   return null;
 }
@@ -362,19 +372,19 @@ function insertDefinition(
  */
 function proposeTrigger(req: Request, def: TriggerDefinition, note: string | null): { status: number; body: unknown } {
   if (def.source === 'webhook') {
-    return { status: 403, body: { error: 'an agent cannot propose a webhook that runs a script: ask the user to create it' } };
+    return { status: 403, body: apiError('trigger_proposal_webhook_refused', 'an agent cannot propose a webhook that runs a script: ask the user to create it') };
   }
   const missionId = req.auth?.missionId;
   const mission = missionId ? scopedDb(viewerFromRequest(req)).getMission(missionId) : undefined;
   const owner = req.auth?.user ?? null;
-  if (!mission || !owner) return { status: 403, body: { error: 'this mission is unknown' } };
+  if (!mission || !owner) return { status: 403, body: apiError('trigger_mission_unknown', 'this mission is unknown') };
   const others = def.actions.filter((action) => action.type !== 'script');
   const refused = refusal(req, def, others, callerGrants(req), () => true);
-  if (refused) return { status: refused.status, body: { error: refused.error } };
+  if (refused) return refused;
   for (const action of def.actions) {
     if (action.type !== 'script') continue;
     const place = scriptCwd(action.cwd);
-    if ('error' in place) return { status: 400, body: { error: place.error } };
+    if ('error' in place) return { status: 400, body: apiError('trigger_script_cwd_refused', place.error, { detail: place.error }) };
   }
   const row = createLayoutProposal({
     id: randomUUID(), kind: TRIGGER_PROPOSAL_KIND, mission, owner, payload: def, note,
@@ -395,7 +405,7 @@ function approveTrigger(row: LayoutProposalRow, payload: unknown, req: Request) 
   const def = parsed.data;
   const grants = callerGrants(req);
   const refused = cadenceRefusal(def, null) ?? refusal(req, def, def.actions, grants, () => true);
-  if (refused) return problem(refused.status === 403 ? 'forbidden' : 'invalid', refused.error);
+  if (refused) return problem(refused.status === 403 ? 'forbidden' : 'invalid', refused.body.error);
   // The person approving vouches for the files as they are at this moment.
   const pinned = pinScripts(def.actions);
   if ('error' in pinned) return problem('invalid', pinned.error);
@@ -444,7 +454,7 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     if (!manager(req, res)) return;
     const raw = req.query.source;
     const source = typeof raw === 'string' && (TRIGGER_SOURCES as readonly string[]).includes(raw) ? raw as TriggerSource : undefined;
-    if (raw !== undefined && !source) { res.status(400).json({ error: `source must be ${TRIGGER_SOURCES.join('|')}` }); return; }
+    if (raw !== undefined && !source) { res.status(400).json(apiError('trigger_source_invalid', `source must be ${TRIGGER_SOURCES.join('|')}`, { expected: TRIGGER_SOURCES.join(', ') })); return; }
     const ownerId = req.auth?.isSuperadmin ? undefined : req.auth?.user?.id ?? null;
     // An account-less caller (`null`) sees nothing rather than every system row.
     const rows = ownerId === null ? [] : listTriggerRows({ source, ownerId });
@@ -455,41 +465,41 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     if (!manager(req, res)) return;
     const { secret: rawSecret, note: rawNote, ...rest } = (req.body ?? {}) as Record<string, unknown>;
     const parsed = triggerDefinitionSchema.safeParse(rest);
-    if (!parsed.success) { res.status(400).json({ error: zodMessage(parsed.error) }); return; }
+    if (!parsed.success) { res.status(400).json(apiError('trigger_definition_invalid', zodMessage(parsed.error), { detail: zodMessage(parsed.error) })); return; }
     let def = parsed.data;
     // Before a proposal too: one the user could only approve into a refusal is noise.
     const tooOften = cadenceRefusal(def, null);
-    if (tooOften) { res.status(tooOften.status).json({ error: tooOften.error }); return; }
+    if (tooOften) { res.status(tooOften.status).json(tooOften.body); return; }
     if (callerIsAgent(req) && def.actions.some((action) => action.type === 'script')) {
       const note = z.string().max(300).optional().safeParse(rawNote);
-      if (!note.success || rawSecret !== undefined) { res.status(400).json({ error: 'note: up to 300 characters; no secret on a proposal' }); return; }
+      if (!note.success || rawSecret !== undefined) { res.status(400).json(apiError('trigger_note_invalid', 'note: up to 300 characters; no secret on a proposal')); return; }
       const reply = proposeTrigger(req, def, note.data ?? null);
       if (reply.status === 202) auditRequest(req, 'trigger.propose', (reply.body as { proposal_id: string }).proposal_id);
       res.status(reply.status).json(reply.body);
       return;
     }
-    if (rawNote !== undefined) { res.status(400).json({ error: 'note: only on a trigger an agent proposes' }); return; }
+    if (rawNote !== undefined) { res.status(400).json(apiError('trigger_note_not_allowed', 'note: only on a trigger an agent proposes')); return; }
     const byAgent = callerIsAgent(req);
     if (byAgent) def = { ...def, enabled: false };
     let secret: string | null = null;
     if (rawSecret !== undefined) {
       const provided = providedSecretSchema.safeParse(rawSecret);
       if (def.source !== 'webhook' || def.config.auth === 'none' || !provided.success) {
-        res.status(400).json({ error: 'secret: a string of 16 to 256 characters, for an authenticated webhook only' });
+        res.status(400).json(apiError('trigger_secret_invalid', 'secret: a string of 16 to 256 characters, for an authenticated webhook only'));
         return;
       }
       secret = provided.data;
     }
     const acting = actingAgentOf(req);
-    if ('error' in acting) { res.status(acting.status).json({ error: acting.error }); return; }
+    if ('body' in acting) { res.status(acting.status).json(acting.body); return; }
     const grants = callerGrants(req);
     const refused = refusal(req, def, def.actions, grants, listensOnLoopback);
-    if (refused) { res.status(refused.status).json({ error: refused.error }); return; }
-    if (def.source === 'webhook' && slugTaken(def.slug, null)) { res.status(409).json({ error: `slug already used: ${def.slug}` }); return; }
+    if (refused) { res.status(refused.status).json(refused.body); return; }
+    if (def.source === 'webhook' && slugTaken(def.slug, null)) { res.status(409).json(apiError('trigger_slug_taken', `slug already used: ${def.slug}`, { slug: def.slug })); return; }
     if (def.source === 'webhook' && def.config.auth !== 'none' && secret === null) secret = generateSecret(def.config.auth);
     // Only a person gets here with a script (an agent's becomes a proposal above).
     const pinned = byAgent ? { pins: [] } : pinScripts(def.actions);
-    if ('error' in pinned) { res.status(400).json({ error: pinned.error }); return; }
+    if ('error' in pinned) { res.status(400).json(apiError('trigger_script_pin_failed', pinned.error, { detail: pinned.error })); return; }
     const agent = callerIsAgent(req) && req.auth?.missionId
       ? scopedDb(viewerFromRequest(req)).getMission(req.auth.missionId)?.agent_name ?? null
       : null;
@@ -503,7 +513,7 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
         grants,
       }, pinned.pins);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('trigger_save_failed', (err as Error).message, { detail: (err as Error).message }));
       return;
     }
     const { row, outboundSecret } = created;
@@ -517,11 +527,11 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
 
   app.get('/api/triggers/proposals', (req, res) => {
     if (!manager(req, res)) return;
-    if (callerIsAgent(req)) { res.status(403).json({ error: 'proposals are the user\'s to read and decide' }); return; }
+    if (callerIsAgent(req)) { res.status(403).json(apiError('trigger_proposals_user_only', 'proposals are the user\'s to read and decide')); return; }
     const raw = req.query.status;
     const status = raw === undefined ? 'pending' : raw;
     if (status !== 'pending' && status !== 'applied' && status !== 'dismissed') {
-      res.status(400).json({ error: 'status must be pending|applied|dismissed' });
+      res.status(400).json(apiError('trigger_proposal_status_invalid', 'status must be pending|applied|dismissed'));
       return;
     }
     const owner = req.auth?.isSuperadmin ? undefined : req.auth?.user?.id ?? null;
@@ -532,7 +542,7 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
   app.post('/api/triggers/proposals/:id/:decision', (req, res) => {
     if (!manager(req, res)) return;
     // A mission never decides, not even on its own card: that is the whole point.
-    if (callerIsAgent(req)) { res.status(403).json({ error: 'an agent cannot approve or reject a trigger' }); return; }
+    if (callerIsAgent(req)) { res.status(403).json(apiError('trigger_decide_by_agent', 'an agent cannot approve or reject a trigger')); return; }
     const decision = req.params.decision === 'approve' ? 'applied' : req.params.decision === 'reject' ? 'dismissed' : null;
     if (!decision) { res.status(404).json(apiError('not_found', 'not found')); return; }
     const row = dbApi.getLayoutProposal(paramId(req));
@@ -560,36 +570,47 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     const row = loadVisible(req, res);
     if (!row) return;
     const patch = updateTriggerSchema.safeParse(req.body ?? {});
-    if (!patch.success) { res.status(400).json({ error: zodMessage(patch.error) }); return; }
+    if (!patch.success) { res.status(400).json(apiError('trigger_definition_invalid', zodMessage(patch.error), { detail: zodMessage(patch.error) })); return; }
     const merged: Record<string, unknown> = { ...definitionOf(row) };
     for (const [key, value] of Object.entries(patch.data)) if (value !== undefined) merged[key] = value;
     const parsed = triggerDefinitionSchema.safeParse(merged);
-    if (!parsed.success) { res.status(400).json({ error: zodMessage(parsed.error) }); return; }
+    if (!parsed.success) { res.status(400).json(apiError('trigger_definition_invalid', zodMessage(parsed.error), { detail: zodMessage(parsed.error) })); return; }
     let def = parsed.data;
     const byAgent = callerIsAgent(req);
-    if (byAgent && row.enabled !== 1 && def.enabled !== false) { res.status(403).json({ error: AGENT_CANNOT_ENABLE }); return; }
+    if (byAgent && row.enabled !== 1 && def.enabled !== false) { res.status(403).json(apiError('trigger_enable_by_agent', AGENT_CANNOT_ENABLE)); return; }
     let actions: TriggerAction[] = def.actions;
     if (row.created_by === 'routine') {
       // A routine stays a routine: one task, prompt verbatim unless asked
       // otherwise — `/api/routines` and its readers depend on that shape.
       const only = actions[0];
       if (actions.length !== 1 || only?.type !== 'task') {
-        res.status(400).json({ error: 'a routine keeps a single task action; create a new trigger instead' });
+        res.status(400).json(apiError('routine_single_task', 'a routine keeps a single task action; create a new trigger instead'));
         return;
       }
       // What the routine tick does not read would be saved, shown, then
       // silently ignored — and wiped by the next PUT /api/routines.
       if (only.title !== undefined || only.priority !== undefined || only.raw === false
         || (def.source === 'schedule' && def.config.tz !== undefined)) {
-        res.status(400).json({ error: 'a routine has no title, priority, time zone or template: create a new trigger instead' });
+        res.status(400).json(apiError('routine_fields_unsupported', 'a routine has no title, priority, time zone or template: create a new trigger instead'));
         return;
       }
       actions = [{ ...only, raw: true }];
+      // The routine's extras follow it to its new agent: judged again against
+      // that agent, as `PUT /api/routines/:id` does.
+      const routine = dbApi.getRoutine(row.id);
+      if (routine && only.agent !== routine.agent_name) {
+        const extras = routineTaskExtras(routine);
+        const target = (() => { try { return loadConfig(only.agent); } catch { return null; } })();
+        const widening = spawnWideningDenied(req, {
+          extra_skills: extras.extraSkills, extra_mcp_servers: extras.extraMcpServers, extra_allowed_tools: extras.extraAllowedTools,
+        }, target, only.agent);
+        if (widening) { rejectOverride(req, res, 'routine.override_denied', `agent:${only.agent}`, widening); return; }
+      }
     }
     // Routines stay system rows (NULL). A human re-grants with their own
     // permissions; an agent can only keep what both it and the trigger hold.
     const acting = actingAgentOf(req);
-    if ('error' in acting) { res.status(acting.status).json({ error: acting.error }); return; }
+    if ('body' in acting) { res.status(acting.status).json(acting.body); return; }
     const previous = row.grants === null ? null : (safeJson(row.grants) as string[] | null) ?? [];
     const mine = callerGrants(req);
     // A trigger a plugin owns never widens, whoever edits it: a superadmin's `*` would
@@ -621,13 +642,13 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     const refused = switchOnly && def.enabled === false
       ? null
       : cadenceRefusal(def, row) ?? refusal(req, def, actions, switchOnly ? mine : grants ?? mine, listensOnLoopback, stored);
-    if (refused) { res.status(refused.status).json({ error: refused.error }); return; }
-    if (def.source === 'webhook' && slugTaken(def.slug, row.id)) { res.status(409).json({ error: `slug already used: ${def.slug}` }); return; }
+    if (refused) { res.status(refused.status).json(refused.body); return; }
+    if (def.source === 'webhook' && slugTaken(def.slug, row.id)) { res.status(409).json(apiError('trigger_slug_taken', `slug already used: ${def.slug}`, { slug: def.slug })); return; }
     // A person saving the actions (the editor sends them all) approves the
     // scripts as they are now; flipping the switch or renaming does not. An
     // agent never gets here with a script (`refusal`).
     const pinned = !byAgent && patch.data.actions !== undefined ? pinScripts(actions, { actions: stored, pins: getScriptPins(row.id) }) : null;
-    if (pinned && 'error' in pinned) { res.status(400).json({ error: pinned.error }); return; }
+    if (pinned && 'error' in pinned) { res.status(400).json(apiError('trigger_script_pin_failed', pinned.error, { detail: pinned.error })); return; }
     // Moving from `none` to a signed scheme: the secret is born here, and
     // this response is the only one that shows it.
     const newSecret = def.source === 'webhook' && def.config.auth !== 'none' && row.secret === null
@@ -680,17 +701,17 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     if (!row) return;
     const trigger = parseTrigger(row);
     if (!trigger || trigger.source !== 'webhook' || trigger.config.auth === 'none') {
-      res.status(400).json({ error: 'only an authenticated webhook has a secret' });
+      res.status(400).json(apiError('trigger_has_no_secret', 'only an authenticated webhook has a secret'));
       return;
     }
     // Whoever holds the secret fires the actions: owning it needs their rights.
     const denied = callerMayRun(req, trigger.actions);
-    if (denied) { res.status(denied.status).json({ error: denied.error }); return; }
+    if (denied) { res.status(denied.status).json(denied.body); return; }
     const raw = (req.body ?? {}) as { secret?: unknown };
     let secret: string;
     if (raw.secret !== undefined) {
       const provided = providedSecretSchema.safeParse(raw.secret);
-      if (!provided.success) { res.status(400).json({ error: 'secret: a string of 16 to 256 characters' }); return; }
+      if (!provided.success) { res.status(400).json(apiError('trigger_secret_length', 'secret: a string of 16 to 256 characters')); return; }
       secret = provided.data;
     } else {
       secret = generateSecret(trigger.config.auth);
@@ -705,12 +726,12 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     if (!row) return;
     const trigger = parseTrigger(row);
     if (!trigger || !sendsWebhooks(trigger.actions)) {
-      res.status(400).json({ error: 'only a trigger with a webhook action has an outbound secret' });
+      res.status(400).json(apiError('trigger_has_no_outbound_secret', 'only a trigger with a webhook action has an outbound secret'));
       return;
     }
     // Whoever holds it signs in the trigger's name: owning it needs its rights.
     const denied = callerMayRun(req, trigger.actions);
-    if (denied) { res.status(denied.status).json({ error: denied.error }); return; }
+    if (denied) { res.status(denied.status).json(denied.body); return; }
     const outboundSecret = generateSecret('standard');
     setTriggerOutboundSecret(row.id, outboundSecret);
     res.json({ trigger: publicTrigger(getTriggerRow(row.id)!), outbound_secret: outboundSecret });
@@ -720,20 +741,20 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     if (!manager(req, res)) return;
     // The approval is what a mission cannot give, not even for its owner's
     // trigger: refused before the lookup, so it learns nothing about the ids.
-    if (callerIsAgent(req)) { res.status(403).json({ error: 'an agent cannot approve a script: the user does it' }); return; }
+    if (callerIsAgent(req)) { res.status(403).json(apiError('trigger_script_approve_by_agent', 'an agent cannot approve a script: the user does it')); return; }
     const row = loadVisible(req, res);
     if (!row) return;
     const trigger = parseTrigger(row);
-    if (!trigger) { res.status(409).json({ error: 'stored trigger is unreadable' }); return; }
+    if (!trigger) { res.status(409).json(apiError('trigger_unreadable', 'stored trigger is unreadable')); return; }
     if (!trigger.actions.some((action) => action.type === 'script')) {
-      res.status(400).json({ error: 'this trigger runs no script' });
+      res.status(400).json(apiError('trigger_runs_no_script', 'this trigger runs no script'));
       return;
     }
     // Approving is vouching that it may run: the caller must be able to run it.
     const denied = callerMayRun(req, trigger.actions);
-    if (denied) { res.status(denied.status).json({ error: denied.error }); return; }
+    if (denied) { res.status(denied.status).json(denied.body); return; }
     const pinned = pinScripts(trigger.actions);
-    if ('error' in pinned) { res.status(400).json({ error: pinned.error }); return; }
+    if ('error' in pinned) { res.status(400).json(apiError('trigger_script_pin_failed', pinned.error, { detail: pinned.error })); return; }
     setScriptPins(row.id, pinned.pins);
     auditRequest(req, 'trigger.script.approve', row.id);
     res.json({
@@ -747,11 +768,15 @@ export function registerRoutes(app: Router, options: { listensOnLoopback?: () =>
     const row = loadVisible(req, res);
     if (!row) return;
     const trigger = parseTrigger(row);
-    if (!trigger) { res.status(409).json({ error: 'stored trigger is unreadable' }); return; }
+    if (!trigger) { res.status(409).json(apiError('trigger_unreadable', 'stored trigger is unreadable')); return; }
     const body = testTriggerSchema.safeParse(req.body ?? {});
-    if (!body.success) { res.status(400).json({ error: zodMessage(body.error) }); return; }
+    if (!body.success) { res.status(400).json(apiError('trigger_test_invalid', zodMessage(body.error), { detail: zodMessage(body.error) })); return; }
     const done = runTriggerTest(trigger, body.data, () => callerMayRun(req, trigger.actions));
-    if ('refused' in done) { res.status(done.refused.status).json({ error: done.refused.error }); return; }
+    if ('refused' in done) {
+      const refused = done.refused;
+      res.status(refused.status).json('body' in refused ? refused.body : apiError('payload_too_large', refused.error));
+      return;
+    }
     res.json(done.result);
   });
 

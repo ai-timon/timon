@@ -110,9 +110,9 @@ test('a third-party nav entry lands after every product entry', () => {
 });
 
 
-// ── Les tuiles du cockpit, montées comme le navigateur les monte ────────────
+// ── The cockpit tiles, mounted the way the browser mounts them ──────────────
 
-/** Le catalogue de l'hôte, calculé sur les inscriptions réellement montées. */
+/** The host catalogue, computed on the registrations actually mounted. */
 function tileCatalog() {
   const entries: WidgetSlotEntry[] = slotEntries('cockpit.widget').map((e) => ({
     registrationId: e.id,
@@ -125,20 +125,20 @@ function tileCatalog() {
 }
 
 test('the cockpit cards keep their placement id, title, rail and heights', () => {
-  // Ce que ces valeurs protègent : une tuile extraite qui perdrait sa clé
-  // changerait d'id de placement, donc de place, au premier rechargement — et
-  // rien au build ne le dirait.
+  // What these values protect: an extracted tile that lost its key
+  // would change its placement id, hence its place, on the first reload — and
+  // nothing at build time would say so.
   mountLayout();
   mountBundledClients(null);
   assert.deepEqual(
     tileCatalog().map((e) => [e.id, e.title, e.defaultZone, e.defaultHeight, e.minHeight]),
     [
       ['plugin:@timon/ui-layout:clock', 'Clock', 'gauche', 140, 110],
-      // « Your widget here », placed by the fresh-install arrangements only.
+      // "Your widget here", placed by the fresh-install arrangements only.
       ['plugin:@timon/ui-layout:add-widget', 'Your widget here', 'gauche', 160, 120],
       ['plugin:@timon/ui-layout:add-widget-2', 'Your widget here', 'gauche', 160, 120],
       ['plugin:@timon/vault:vault-graph', 'Vault graph', 'droite', 420, 200],
-      // The top bar's agent tabs and the former « Agents list » card, one
+      // The top bar's agent tabs and the former "Agents list" card, one
       // widget: first placed in the middle of the top bar (TODO #479).
       ['plugin:@timon/agents:working', 'Working agents', 'topbar.center.widget', 300, 120],
       ['plugin:@timon/agents:notifications', 'Notification center', 'agents.left.widget', 520, 200],
@@ -147,20 +147,25 @@ test('the cockpit cards keep their placement id, title, rail and heights', () =>
       // The rail of `/bots`, shown there in an island of its own.
       ['plugin:@timon/bots:rail', 'TIMs', 'gauche', 420, 200],
       ['plugin:@timon/missions:recent', 'Recent missions', 'gauche', 300, 150],
-      // Sa surface par défaut est le rail du chat : la carte ne parle que d'une
-      // conversation ouverte. Elle reste déplaçable partout ailleurs.
+      // Its default surface is the chat rail: the card only talks about an
+      // open conversation. It stays movable everywhere else.
       ['plugin:@timon/missions:delegations', 'Delegated missions', 'chat.left.widget', 220, 120],
       // The open mission's outbound connections (TODO #590): a chat-rail card,
       // waiting in the palette; the alert opens its island content instead.
       ['plugin:@timon/missions:egress', 'Mission network', 'chat.right.widget', 320, 160],
       ['plugin:@timon/projects:overview', 'Projects overview', 'gauche', 300, 150],
-      // Le carnet a DEUX surfaces depuis le volet 4/4 : la colonne « TO DO » du
-      // tableau, et cette tuile — un widget à part entière, pas l'alternative
-      // qu'elle était du temps de `@timon/backlog`.
+      // The notebook has TWO surfaces since part 4/4: the "TO DO" column of the
+      // board, and this tile — a widget in its own right, not the alternative
+      // it was in the days of `@timon/backlog`.
       ['plugin:@timon/kanban:todo', 'All-projects TO DO', 'droite', 320, 160],
       ['plugin:@timon/kanban:project-todo', 'Project TO DO', 'droite', 300, 160],
-      // Pas de tuile Dreams : le module retient ses surfaces pour la beta
-      // tant que son option `ui` n'est pas vraie (cf. le test dedie plus bas).
+      // A project's open pull requests and their read-only review, next to
+      // its notebook.
+      ['plugin:@timon/kanban:pull-requests', 'Pull requests', 'droite', 320, 160],
+      // The jobs that land through a pull request, and their preview.
+      ['plugin:@timon/kanban:landings', 'Jobs', 'droite', 320, 160],
+      // No Dreams tile: the module holds back its surfaces for the beta
+      // as long as its `ui` option is not true (see the dedicated test below).
       ['plugin:@timon/agent-chat:new', 'New agent chat', 'gauche', 520, 280],
       ['plugin:@timon/workflows:workflow-runs', 'Workflow runs', 'gauche', 240, 140],
       // The bell: one widget, first placed on the top bar's line; a button in
@@ -171,8 +176,8 @@ test('the cockpit cards keep their placement id, title, rail and heights', () =>
 });
 
 // TODO #479: the agent strip was on screen on every view before it became a
-// widget. A view stored before it, whatever it did with the former « Agents
-// list » card, finds it in the middle of the top bar — never at that card's
+// widget. A view stored before it, whatever it did with the former "Agents
+// list" card, finds it in the middle of the top bar — never at that card's
 // place (a hidden chat tab, on the view that showed the regression).
 test('the Working agents widget is placed by default and inherits nothing from the list card', () => {
   mountLayout();
@@ -197,8 +202,8 @@ test('the Working agents widget is placed by default and inherits nothing from t
 });
 
 test('a tile hidden by config, or whose module is off, never registers', () => {
-  // Même filtre que la table native d'avant : la carte quitte les rails ET la
-  // palette, sans que son placement persisté soit effacé (il devient orphelin).
+  // Same filter as the former native table: the card leaves the rails AND the
+  // palette, without its persisted placement being erased (it becomes orphaned).
   mountLayout();
   mountBundledClients(capabilities({ ui: { hidden: ['cockpit.vault-graph'], home: '/' } }));
   assert.equal(slotEntries('cockpit.widget').some((e) => e.key === 'vault-graph'), false);
@@ -208,36 +213,37 @@ test('a tile hidden by config, or whose module is off, never registers', () => {
   mountBundledClients(capabilities({
     modules: [{ id: '@timon/vault', tier: 'opt', active: false, reason: null, missing: [] }],
   }));
-  // Éteindre un module emporte sa tuile, et elle seule : la colonne « TO DO »
-  // reste, elle appartient au Kanban.
+  // Turning a module off takes its tile away, and only it: the "TO DO" column
+  // stays, it belongs to the Kanban.
   assert.deepEqual(slotEntries('cockpit.widget').filter((e) => e.pluginId === '@timon/vault'), []);
   assert.equal(slotEntries('kanban.column').some((e) => e.pluginId === '@timon/kanban'), true,
-    'éteindre un module n\'emporte que lui : le carnet est au tableau');
+    'turning a module off only takes it away: the notebook is on the board');
 });
 
-// ── Le carnet : la première colonne du tableau ─────────────────────────────
+// ── The notebook: the first column of the board ─────────────────────────────
 
-test('le carnet est une colonne du Kanban, sans réglage pour l\'en déloger', () => {
-  // Volet 2/4 : `@timon/backlog` et son option `surfaces` ont disparu. La
-  // colonne n'est plus une surface à activer — elle est là, ou le tableau
-  // entier ne l'est pas.
+test('the notebook is a Kanban column, with no setting to move it out', () => {
+  // Part 2/4: `@timon/backlog` and its `surfaces` option are gone. The
+  // column is no longer a surface to turn on — it is there, or the whole
+  // board is not.
   mountLayout();
   mountBundledClients(null);
   assert.deepEqual(
     slotEntries('kanban.column').map((e) => [e.pluginId, e.key]),
     [['@timon/kanban', 'todo']],
   );
-  // Volet 4/4 : les deux tuiles du carnet sont des widgets, à côté de la
-  // colonne et non plus à sa place. Elles n'occupent pas `kanban.column`.
+  // Part 4/4: the two notebook tiles are widgets, next to the
+  // column and no longer in its place. They do not occupy `kanban.column`,
+  // and neither do the two pull request widgets the module added since.
   assert.deepEqual(
     slotEntries('cockpit.widget').filter((e) => e.pluginId === '@timon/kanban').map((e) => e.key),
-    ['todo', 'project-todo'],
+    ['todo', 'project-todo', 'pull-requests', 'landings'],
   );
 });
 
-test('une config qui porte encore @timon/backlog ne change rien', () => {
-  // L'id est retiré côté daemon, sans alias : plus personne ne l'écoute, et
-  // surtout il n'éteint pas le Kanban par ricochet.
+test('a config that still carries @timon/backlog changes nothing', () => {
+  // The id is removed on the daemon side, with no alias: nobody listens to it any more, and
+  // above all it does not turn the Kanban off as a side effect.
   mountLayout();
   mountBundledClients(capabilities({
     modules: [{ id: '@timon/backlog', tier: 'std', active: false, reason: null, missing: [] }],
@@ -245,7 +251,7 @@ test('une config qui porte encore @timon/backlog ne change rien', () => {
   assert.equal(slotEntries('kanban.column').length, 1);
 });
 
-test('@timon/kanban éteint : ni tableau, ni colonne « TO DO »', () => {
+test('@timon/kanban off: no board, no "TO DO" column', () => {
   mountLayout();
   mountBundledClients(capabilities({
     modules: [{ id: '@timon/kanban', tier: 'std', active: false, reason: null, missing: [] }],
@@ -253,7 +259,7 @@ test('@timon/kanban éteint : ni tableau, ni colonne « TO DO »', () => {
   assert.equal(slotEntries('kanban.column').length, 0);
 });
 
-test('la colonne se masque aussi par ui.hidden, sans toucher au module', () => {
+test('the column also hides through ui.hidden, without touching the module', () => {
   mountLayout();
   mountBundledClients(capabilities({ ui: { hidden: ['kanban.todo'], home: '/' } }));
   assert.equal(slotEntries('kanban.column').length, 0);
@@ -263,7 +269,7 @@ test('every tile registers with a key: without one, a card loses its place on re
   mountLayout();
   mountBundledClients(null);
   for (const entry of slotEntries('cockpit.widget')) {
-    assert.ok(entry.key, `${entry.pluginId} enregistre un widget sans clé`);
+    assert.ok(entry.key, `${entry.pluginId} registers a widget without a key`);
   }
 });
 
@@ -276,7 +282,7 @@ test('a disableable product page follows its module, a core page does not', () =
   assert.equal(PAGE_MODULE['/users'], undefined, 'account administration is a plugin page now');
   const off = capabilities({
     modules: [
-      { id: '@timon/notifications', tier: 'std', active: false, reason: 'désactivé dans timon.config.json', missing: [] },
+      { id: '@timon/notifications', tier: 'std', active: false, reason: 'disabled in timon.config.json', missing: [] },
     ],
   });
   assert.equal(isProductPageOn(off, '/notifications'), false);
@@ -446,7 +452,7 @@ test('pages extracted into the `page` slot are not in PAGE_MODULE: they disappea
 });
 
 
-// ── `/dreams` : page de module, plus une route Next statique ───────────────
+// ── `/dreams`: a module page, no longer a static Next route ─────────────────
 
 test('extracted product pages occupy the `page` slot at their own route, and only while on', () => {
   mountLayout();
@@ -477,7 +483,7 @@ test('extracted product pages occupy the `page` slot at their own route, and onl
   assert.equal(slotEntry('page', '/dreams')?.pluginId, '@timon/dreams');
 });
 
-// ── Triggers : la page Routines renommée, tenue par `@timon/triggers` ──────
+// ── Triggers: the Routines page renamed, held by `@timon/triggers` ──────────
 
 test('the Triggers page belongs to triggers; routines stand in only when it is off', () => {
   const owner = (key: string) => slotEntry('page', key)?.pluginId ?? null;
@@ -516,7 +522,7 @@ test('a grant written for the former Routines page still opens the Triggers page
   assert.equal(slotEntry('page', '/triggers'), null);
 });
 
-// ── @timon/agent-chat : une carte par instance ─────────────────────────────
+// ── @timon/agent-chat: one card per instance ────────────────────────────────
 
 test('the agent-chat half offers its creation card even with no instance', () => {
   resetInstancesForTests();

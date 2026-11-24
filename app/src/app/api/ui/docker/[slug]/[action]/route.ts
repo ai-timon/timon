@@ -12,7 +12,7 @@ export async function POST(
   if (!ACTIONS.has(params.action)) {
     return Response.json({ error: 'action must be start|stop|restart|rebuild' }, { status: 400 });
   }
-  // Corps optionnel : `{ container }` cible un seul conteneur, absent = la stack.
+  // Optional body: `{ container }` targets a single container; absent = the whole stack.
   const body = await req.json().catch(() => ({}));
   return proxyJson(
     'POST',

@@ -26,11 +26,9 @@
     "working": "En cours…",
     "failed": "La connexion a échoué",
     "setupFailed": "La création a été refusée",
-    "freeUnavailable": "L’inscription Free n’est pas encore ouverte pour cette version. Réessayez plus tard ou utilisez une clé de licence existante.",
     "clientUpgradeRequired": "Mettez Timon à jour vers une version compatible, puis réessayez.",
     "transferPending": "Le jeton de la machine précédente n’a pas encore expiré. Patientez avant d’activer cette machine.",
-    "freeIncompatible": "Free ne peut pas être activé avec les comptes ou plugins actuels. Vos données sont conservées.",
-    "freeAccountRestricted": "Free autorise uniquement le premier superadmin actif. Ton compte et tes données sont conservés. Demande à cet administrateur d’activer une licence pour rétablir ton accès.",
+    "freeIncompatible": "Cette licence ne peut pas s’appliquer avec les comptes ou plugins actuels. Vos données sont conservées.",
     "local": "Ce compte est local : la connexion n’appelle jamais le serveur Timon."
   }
 }

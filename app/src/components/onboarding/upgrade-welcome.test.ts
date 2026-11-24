@@ -1,8 +1,8 @@
 /**
  * The upgrade welcome (docs/ONBOARDING.md, `Upgrade welcome`), rendered
  * (jsdom) against a fake daemon: the sign-in step signs in through the login
- * route; the mascot step saves the look and the mascot head on « Keep this
- * look », saves nothing on « Not now », and closes the welcome either way; an
+ * route; the mascot step saves the look and the mascot head on "Keep this
+ * look", saves nothing on "Not now", and closes the welcome either way; an
  * account that may not edit agents is not shown the screen.
  */
 import assert from 'node:assert/strict';
@@ -42,7 +42,7 @@ function daemon(me: Me): { calls: Call[]; fetcher: (input: string, init?: Reques
   };
 }
 
-test('« Keep this look » saves the look and makes the mascot the head', async () => {
+test('"Keep this look" saves the look and makes the mascot the head', async () => {
   const d = daemon({ welcome: 'mascot', signedIn: true });
   const look = { shape: 'tri', color: '#7ed957', eyes: 'code', acc: 'none' } as const;
   assert.equal(await keepLook('nova', look, d.fetcher), true);
@@ -103,7 +103,7 @@ async function render(step: 'signin' | 'mascot', me: Me, run: (host: HTMLElement
     const nav = {
       step, direction: 1 as const,
       next: () => undefined, back: () => undefined, goTo: () => undefined,
-      setLanguage: async (tag: string) => tag, setBackHandler: () => undefined,
+      setLanguage: async (tag: string) => tag, setBackHandler: () => undefined, skip: () => undefined, setOutcome: () => undefined,
     };
     const host = document.getElementById('root');
     assert.ok(host);
@@ -132,7 +132,7 @@ const sent = (calls: Call[]): string[] => calls.filter((c) => c.method !== 'GET'
 
 test('the sign-in step signs in through the login route, with the new mark above it', async () => {
   await render('signin', { welcome: 'returning', signedIn: false }, async (host, calls, React) => {
-    assert.ok(host.querySelector('[data-onboarding-signin] svg[data-brand-logo]'), 'the « T » mark');
+    assert.ok(host.querySelector('[data-onboarding-signin] svg[data-brand-logo]'), 'the "T" mark');
     const [email, password] = Array.from(host.querySelectorAll('input'));
     assert.ok(email && password);
     await React.act(async () => { type(email, 'robin@example.com'); type(password, 'secret'); });
@@ -154,18 +154,20 @@ test('the mascot step offers the main agent\'s configurator and keeps the look',
     assert.ok(keep);
     await React.act(async () => { keep.click(); });
     await settle(React);
-    assert.deepEqual(sent(calls), ['PATCH /api/ui/agents/nova/config', `POST ${WELCOME_DONE_PATH}`]);
+    assert.deepEqual(sent(calls), ['PATCH /api/ui/agents/nova/config', 'POST /api/ui/telemetry/event', `POST ${WELCOME_DONE_PATH}`]);
+    assert.deepEqual(calls.find((c) => c.url === '/api/ui/telemetry/event')?.body, { name: 'onboarding_screen', surface: 'web', screen: 'mascot', action: 'completed' });
     assert.equal((calls.find((c) => c.method === 'PATCH')?.body as { avatar?: string }).avatar, 'mascot');
   });
 });
 
-test('« Not now » saves nothing and closes the welcome', async () => {
+test('"Not now" saves nothing and closes the welcome', async () => {
   await render('mascot', { welcome: 'mascot', signedIn: true }, async (host, calls, React) => {
     const skip = Array.from(host.querySelectorAll('button')).find((b) => b.textContent === 'Not now');
     assert.ok(skip);
     await React.act(async () => { skip.click(); });
     await settle(React);
-    assert.deepEqual(sent(calls), [`POST ${WELCOME_DONE_PATH}`]);
+    assert.deepEqual(sent(calls), ['POST /api/ui/telemetry/event', `POST ${WELCOME_DONE_PATH}`]);
+    assert.deepEqual(calls.find((c) => c.url === '/api/ui/telemetry/event')?.body, { name: 'onboarding_screen', surface: 'web', screen: 'mascot', action: 'skipped' });
   });
 });
 

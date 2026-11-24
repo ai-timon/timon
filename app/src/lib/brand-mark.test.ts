@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ts from 'typescript';
-import { BRAND_KEYS, BrandMark, isPicture } from '../components/brand-mark';
+import { BRAND_KEYS, BrandMark, isPicture, isSingleColourSvg } from '../components/brand-mark';
 
 // BrandMark predates the automatic JSX runtime and expects `React` in scope.
 Object.defineProperty(globalThis, 'React', { value: React, configurable: true, writable: true });
@@ -135,4 +135,47 @@ test('a logo a provider declared is drawn as an image; nothing that would be fet
   const html = renderToStaticMarkup(React.createElement(BrandMark, { icon: svg, className: 'size-4' }));
   assert.match(html, /<img[^>]+src="data:image\/svg\+xml;base64,PHN2Zy8\+"/);
   assert.doesNotMatch(renderToStaticMarkup(React.createElement(BrandMark, { icon: 'https://evil.example/logo.png' })), /<img/);
+});
+
+const svgUrl = (markup: string): string => `data:image/svg+xml;base64,${Buffer.from(markup).toString('base64')}`;
+
+test('a currentColor logo is painted as a mask in the text colour, never injected as markup', () => {
+  const mono = svgUrl('<svg viewBox="0 0 16 16"><path fill="currentColor" d="M0 0h16v16z"/><path style="stroke: currentColor; fill: none" d="M0 0"/></svg>');
+  assert.equal(isSingleColourSvg(mono), true);
+  const html = renderToStaticMarkup(React.createElement(BrandMark, { icon: mono, className: 'size-4' }));
+  assert.match(html, /^<span aria-hidden="true" class="[^"]*bg-current[^"]*size-4"/);
+  assert.match(html, /mask-image:url\(&quot;data:image\/svg\+xml;base64,/);
+  assert.doesNotMatch(html, /<img|<svg|<path/);
+});
+
+test('a multi-colour logo, a logo without currentColor, an upload and an emoji keep their own colours', () => {
+  const coloured = [
+    svgUrl('<svg><path fill="currentColor"/><path fill="#ff7000"/></svg>'),
+    svgUrl('<svg><path style="fill:currentColor"/><stop stop-color="red"/></svg>'),
+    svgUrl('<svg><path fill="url(#g)"/><path fill="currentColor"/></svg>'),
+    svgUrl('<svg><path d="M0 0"/></svg>'),
+    svgUrl('<svg><path fill="#000"/></svg>'),
+  ];
+  for (const icon of coloured) {
+    assert.equal(isSingleColourSvg(icon), false, icon);
+    assert.match(renderToStaticMarkup(React.createElement(BrandMark, { icon })), /^<img/);
+  }
+  const upload = '/api/uploads/backends/abc.png';
+  assert.equal(isSingleColourSvg(upload), false);
+  // React 19 hoists a preload link in front of an image with a real URL; it is not part of the mark.
+  const withoutPreload = (html: string) => html.replace(/<link [^>]*\/>/g, '');
+  assert.equal(
+    withoutPreload(renderToStaticMarkup(React.createElement(BrandMark, { icon: upload, className: 'size-4' }))),
+    '<img src="/api/uploads/backends/abc.png" alt="" class="shrink-0 rounded-md object-cover size-4"/>',
+  );
+  assert.equal(
+    renderToStaticMarkup(React.createElement(BrandMark, { icon: '🦊', className: 'size-4' })),
+    '<span class="grid place-items-center leading-none size-4" aria-hidden="true">🦊</span>',
+  );
+});
+
+test('a data URL that is not clean base64 is never put in a style', () => {
+  const clean = svgUrl('<svg fill="currentColor"/>');
+  assert.equal(isSingleColourSvg(clean), true);
+  assert.equal(isSingleColourSvg(`${clean}");background:url(https://evil.example/x`), false);
 });

@@ -29,7 +29,7 @@ import { activate, deactivate, LicenseServerError, parseMachineName, setMachineN
 import { deviceId } from '../../license/device.js';
 import { isDowngrade } from '../../license/downgrade.js';
 import { effectiveEdition, installLicenseToken, unlicensed, type LicenseState } from '../../license/license.js';
-import { clearLicenseAlerts, forgetLicenseKey, readLicenseKey, recordServerContact, writeLicenseKey } from '../../license/refresh.js';
+import { clearLicenseAlerts, forgetLicenseKey, paidRightsLapse, readLicenseKey, recordServerContact, writeLicenseKey } from '../../license/refresh.js';
 import { licenseRevision, licenseState, setLicenseState } from '../../license/runtime.js';
 import { forgetMachineName, readLicenseStore, writeLicenseStore } from '../../license/store.js';
 import { loaderFromApp } from '../../plugins/runtime.js';
@@ -79,6 +79,10 @@ export function publicState() {
     subscriptionExpiresAt: state.subscriptionExpiresAt,
     paymentStatus: state.paymentStatus,
     offlineSince: state.offlineSince,
+    // Paid rights really lost on a build that fell back to Free: the one
+    // thing about the licence the web app shows as a card. An outage within
+    // the tolerance is `offlineSince` alone, and shows nothing.
+    lapse: paidRightsLapse(state),
     // What a beta tester needs to see coming: the channel and the build's end
     // date. Nothing of how the end is judged (clock marks, build stamp time).
     build: { channel: build.channel, expiresAt: build.expiresAt },

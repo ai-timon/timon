@@ -49,7 +49,7 @@ const WIDGETS = [
   'plugin:@timon/agents:team', 'plugin:@timon/agents:notifications', 'plugin:@timon/agents:tasks',
   'plugin:@timon/missions:recent', 'plugin:@timon/missions:Missions',
   'plugin:@timon/projects:overview', 'plugin:@timon/kanban:todo', 'plugin:@timon/kanban:project-todo',
-  'plugin:@timon/workflows:trace', 'plugin:@timon/files-widget:Files', 'plugin:@timon/git:repository',
+  'plugin:@timon/workflows:trace', 'plugin:@timon/files-widget:Files', 'plugin:@timon/git:branches',
   'plugin:@timon/grepai:grepai',
 ];
 // Checked against a live `widgets_get` (15/10/2026): each of these exists, and

@@ -120,13 +120,94 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 }
 
 /**
+ * A limit that IS reached, as opposed to the mere mention of one. Used on the
+ * text of a turn that ended WITHOUT an error flag, where `RATE_LIMIT_TEXT` would
+ * be far too broad: that text is normally the agent's own answer, and "added
+ * rate limiting to the API" is a work report.
+ */
+const QUOTA_REACHED =
+  /\b(?:quota|usage\s+limit|rate[\s_-]?limit)s?\s+(?:has\s+been\s+|was\s+|is\s+)?(?:reached|exceeded|exhausted|hit)\b|\byou(?:['’]ve|\s+have)\s+(?:hit|reached)\s+your\s+(?:\w+\s+){0,2}limit\b|\btoo\s+many\s+requests\b/i;
+
+/**
+ * The same phrase OPENING the text as a sentence of its own: at most a symbol
+ * (⚠) and an "Error:" / "Warning:" label before it, one qualifier ("Individual
+ * quota reached"), and the end of the sentence right after. An answer that
+ * goes on ("Quota exceeded means that…") is somebody explaining quotas.
+ */
+const QUOTA_NOTICE_OPENING = new RegExp(
+  '^[^\\p{L}\\p{N}]{0,6}(?:(?:api\\s+)?(?:error|warning)\\s*[:\\-–—]?\\s*)?(?:\\p{L}+\\s+)?(?:'
+    + QUOTA_REACHED.source
+    + ')\\s*(?:$|[.!:;,·|\\-–—(\\n])',
+  'iu',
+);
+
+/** The provider talking about its window reopening, or about a bigger plan. */
+const QUOTA_REOPENING_HINT =
+  /\bresets?\s+(?:in|at|on)\b|\btry\s+again\s+(?:in|at|later)\b|\bupgrade\s+(?:your\s+)?(?:subscription|plan)\b/i;
+
+/** A provider notice is one or two sentences; a work report quoting one is not. */
+const QUOTA_NOTICE_MAX_CHARS = 300;
+
+/** "Resets in 1h18m49s", "resets in 29m12s", "Resets in 2d 3h", "resets in 45s". */
+const QUOTA_RESETS_IN =
+  /\bresets?\s+in\s+(?:(\d+)\s*d)?\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m(?!s))?\s*(?:(\d+)\s*s)?/i;
+
+/** Reopening time (epoch ms) of a "Resets in 1h18m49s" counted from `at`, or
+ *  null when the text names no duration. */
+function quotaReopeningFromText(text: string, at: number): number | null {
+  const m = QUOTA_RESETS_IN.exec(text);
+  if (!m) return null;
+  const n = (i: number): number => Number(m[i] ?? 0);
+  const ms = (((n(1) * 24 + n(2)) * 60 + n(3)) * 60 + n(4)) * 1000;
+  return ms > 0 ? at + ms : null;
+}
+
+/**
+ * A quota notice sitting in the text of a turn that ended WITHOUT an error
+ * flag, or null (Antigravity, 2026-11-21).
+ *
+ * Some CLIs do not fail the turn when the account is out of quota: they end it
+ * normally and print the provider's notice as the answer. The codec has no
+ * status to translate, so the turn reaches us as `subtype: "success"` with
+ * "⚠ Individual quota reached. … Resets in 29m12s." for a result. Read as a
+ * success, it lifted the backend's cooldown, the task waited for the idle
+ * reaper and closed with no work done, and its fallback was never tried.
+ *
+ * Unlike an error message, this text is normally the agent's own answer, so
+ * the module's usual leaning towards detection does not hold here: a false
+ * positive sidelines a healthy backend and switches a live chat away from it.
+ * Two shapes only are accepted: the notice opens the text as its own sentence,
+ * or the whole text is a short notice that also says when the window reopens.
+ * A long report quoting a quota message in its body matches neither.
+ */
+function quotaNoticeInAnswer(text: unknown, at: number): RateLimitHit | null {
+  if (typeof text !== 'string') return null;
+  const t = text.trim();
+  if (!t) return null;
+  const opens = QUOTA_NOTICE_OPENING.test(t);
+  const shortNotice = t.length <= QUOTA_NOTICE_MAX_CHARS && QUOTA_REACHED.test(t) && QUOTA_REOPENING_HINT.test(t);
+  if (!opens && !shortNotice) return null;
+  // Only a notice is read for its family, never a whole report: same rule as
+  // `textKind`, a dry account is not downgraded to a window.
+  if (t.length <= QUOTA_NOTICE_MAX_CHARS && isExhaustedText(t)) {
+    return { kind: 'exhausted', window: null, resetsAt: null, source: 'text', pending: false };
+  }
+  return { kind: 'rate_limit', window: null, resetsAt: quotaReopeningFromText(t, at), source: 'text', pending: false };
+}
+
+/**
  * Usage limit announced by this event, or null.
  *
  * `pending` (`queued` status on the structured stream side) counts as a hit: the
  * mission is stopped while waiting for the quota, which must be treated as a
  * recoverable pause and not as a failure.
+ *
+ * `at` is when the event was emitted (epoch ms). It only matters to a notice
+ * that gives its reopening as a duration ("Resets in 29m12s"): the autopsy reads
+ * events minutes after the fact, and counting from then would push the retry
+ * back by as much.
  */
-export function rateLimitFromEvent(type: string, payload: unknown): RateLimitHit | null {
+export function rateLimitFromEvent(type: string, payload: unknown, at: number = Date.now()): RateLimitHit | null {
   const p = asRecord(payload);
   if (!p) return null;
 
@@ -148,7 +229,11 @@ export function rateLimitFromEvent(type: string, payload: unknown): RateLimitHit
     };
   }
 
-  if (type !== 'result' || p.is_error !== true) return null;
+  if (type !== 'result') return null;
+
+  // 1b. A turn that ended without an error flag, whose answer is the provider's
+  //     quota notice. Much stricter than the text rule of step 3.
+  if (p.is_error !== true) return quotaNoticeInAnswer(p.result, at);
 
   // 2. Same family seen on the `result` side: structured HTTP status, without a window.
   //    402 (Payment Required) is the SAME probe but the other family: the
@@ -237,12 +322,14 @@ function hitRank(hit: RateLimitHit): number {
  * does mean "paused on the quota".
  */
 export function bestRateLimit(
-  events: Iterable<{ type: string; payload: unknown }>,
+  events: Iterable<{ type: string; payload: unknown; timestamp?: number }>,
   opts: { includePending?: boolean } = {},
 ): RateLimitHit | null {
   let best: RateLimitHit | null = null;
   for (const ev of events) {
-    const hit = rateLimitFromEvent(ev.type, ev.payload);
+    // A persisted event carries its own date: a relative reopening time
+    // ("Resets in 29m12s") is counted from it, not from the time of the reading.
+    const hit = rateLimitFromEvent(ev.type, ev.payload, ev.timestamp);
     if (!hit) continue;
     if (hit.pending && !opts.includePending) continue;
     if (!best || hitRank(hit) > hitRank(best)) best = hit;

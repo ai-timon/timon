@@ -27,7 +27,7 @@ const CARDS: readonly { plugin: string; short: string; keys: readonly string[] }
   { plugin: '@timon/missions', short: 'missions', keys: ['Missions', 'agent-todos', 'mission'] },
   { plugin: '@timon/files-widget', short: 'files-widget', keys: ['Files'] },
   { plugin: '@timon/video-factory', short: 'video-factory', keys: ['video'] },
-  { plugin: '@timon/git', short: 'git', keys: ['repository'] },
+  { plugin: '@timon/git', short: 'git', keys: ['branches', 'graph', 'publish'] },
   { plugin: '@timon/docker-supervision', short: 'docker-supervision', keys: ['docker'] },
   { plugin: '@timon/orchestrator-self', short: 'orchestrator-self', keys: ['orchestrator'] },
   { plugin: '@timon/skills-widget', short: 'skills-widget', keys: ['skills'] },

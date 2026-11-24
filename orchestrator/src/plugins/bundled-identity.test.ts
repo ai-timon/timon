@@ -15,13 +15,13 @@ const { toPublicBundled } = await import('./public.js');
 const { PLUGIN_KINDS } = await import('./manifest.js');
 const { BUNDLED_ICONS, bundledIconUrl } = await import('./bundled-icons.js');
 
-test('chaque module du catalogue a une identité de galerie', () => {
+test('every catalogue module has a gallery identity', () => {
   const catalogIds = CATALOG.map((m) => m.id).sort();
   const identityIds = Object.keys(BUNDLED_IDENTITY).sort();
   assert.deepEqual(identityIds, catalogIds);
 });
 
-test('Agent chat est un widget, Settings une page, le noyau un backend', () => {
+test('Agent chat is a widget, Settings a page, the kernel a backend', () => {
   assert.deepEqual(bundledIdentity('@timon/agent-chat').kind, ['widget']);
   assert.deepEqual(bundledIdentity('@timon/agent-chat').slots, ['cockpit.widget']);
   assert.equal(bundledIdentity('@timon/settings').route, '/settings');
@@ -37,10 +37,10 @@ test('Agent chat est un widget, Settings une page, le noyau un backend', () => {
   // `@timon/kanban`.
   assert.deepEqual(bundledIdentity('@timon/dreams').kind, ['widget', 'page']);
   assert.equal(bundledIdentity('@timon/dreams').route, '/dreams');
-  // Volet 4/4 : le carnet a repris une tuile, le Kanban est donc AUSSI un
-  // widget — deux `kind`, comme dreams.
+  // Part 4/4: the notebook took over a tile, so the Kanban is ALSO a
+  // widget: two `kind`s, like dreams.
   assert.deepEqual(bundledIdentity('@timon/kanban').kind, ['page', 'widget']);
-  assert.deepEqual(bundledIdentity('@timon/kanban').slots, ['nav.item', 'kanban.column', 'cockpit.widget', 'task.form', 'kanban.card', 'todo.form']);
+  assert.deepEqual(bundledIdentity('@timon/kanban').slots, ['nav.item', 'kanban.column', 'cockpit.widget', 'task.form', 'kanban.card', 'todo.form', 'kanban.todo.landing', 'kanban.job.dialog', 'forge.publish.dialog', 'project.settings']);
   // TODO #311: the code pipeline paints nothing any more. TODO #356, #357:
   // the chat's Files, Skills and MCP cards are widgets of their own, so the
   // agents module leaves both chat rails.
@@ -59,15 +59,15 @@ test('Agent chat est un widget, Settings une page, le noyau un backend', () => {
   assert.deepEqual(bundledIdentity('@timon/browser-recording').slots, ['browser.toolbar', 'browser.drawer']);
 });
 
-test('toPublicBundled pose le kind réel, plus Timon comme auteur', () => {
+test('toPublicBundled sets the real kind, plus Timon as the author', () => {
   const agentChat = toPublicBundled({
     id: '@timon/agent-chat', tier: 'std', active: true, reason: null, missing: [], wanted: 'auto',
   });
   assert.deepEqual(agentChat.kind, ['widget']);
   assert.deepEqual(agentChat.slots, ['cockpit.widget']);
   assert.equal(agentChat.author, BUNDLED_AUTHOR);
-  assert.equal(agentChat.signed, null, 'un bundled n\'a pas de signature : le catalogue est la confiance');
-  assert.equal(agentChat.label, null, 'le libellé traduit vit dans le front, pas ici');
+  assert.equal(agentChat.signed, null, 'a bundled module has no signature: the catalogue is the trust');
+  assert.equal(agentChat.label, null, 'the translated label lives in the front end, not here');
   assert.deepEqual(agentChat.screenshots, []);
 
   const core = toPublicBundled({
@@ -86,14 +86,14 @@ test('the Files card plugin reaches the gallery as a widget, under its -widget n
   assert.equal(BUNDLED_IDENTITY['@timon/files'], undefined, 'the short-lived name is gone');
 });
 
-test('un id inconnu retombe sur behavior, sans inventer de surface', () => {
+test('an unknown id falls back to behavior, without inventing a surface', () => {
   const ghost = bundledIdentity('not-in-the-catalog');
   assert.deepEqual(ghost.kind, ['behavior']);
   assert.deepEqual(ghost.slots, []);
   assert.equal(ghost.route, null);
 });
 
-test('ui-layout déclare les prises de greffe settings, sans tiret', () => {
+test('ui-layout declares the settings grafting sockets, without a dash', () => {
   const declares = bundledIdentity('@timon/ui-layout').declares;
   assert.equal(declares['settings.section'], 'keyed');
   assert.equal(declares['settings.missions'], 'list');
@@ -107,7 +107,7 @@ test('aucun kind hors contrat', () => {
   const allowed = new Set<string>(PLUGIN_KINDS);
   for (const [id, identity] of Object.entries(BUNDLED_IDENTITY)) {
     for (const kind of identity.kind) {
-      assert.equal(allowed.has(kind), true, `${id} déclare un kind inconnu : ${kind}`);
+      assert.equal(allowed.has(kind), true, `${id} declares an unknown kind: ${kind}`);
     }
   }
 });
@@ -123,7 +123,7 @@ test('every catalogue module has a gallery picto, served as an SVG data URL', ()
   assert.equal(bundledIconUrl('@timon/absent'), null);
 });
 
-test('ui-layout déclare côté daemon exactement les prises que l’app ouvre au démarrage', async () => {
+test('ui-layout declares on the daemon side exactly the sockets the app opens at startup', async () => {
   const { readFileSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const { join } = await import('node:path');

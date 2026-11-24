@@ -1,3 +1,4 @@
+import { daemonMessage } from '../daemon-message.js';
 import { dbApi } from '../db.js';
 import { INTEGRATIONS_DB_PATH } from '../paths.js';
 import { settingInt } from '../settings.js';
@@ -49,6 +50,7 @@ export function daemonIntegrationHost(): IntegrationHost {
           type: 'alert',
           title: 'A messaging integration stopped retrying a message',
           body: `A message on the ${connection.transport} connection could not be processed. Replay it from Settings › Secrets › Connections.`,
+          message: daemonMessage('integration_gave_up', { transport: connection.transport }),
           // A connection the plugin owns itself names no account: the card goes to the administrators.
           ownerUserId: connection.identity.ownerUserId.startsWith('plugin:') ? null : connection.identity.ownerUserId,
         });

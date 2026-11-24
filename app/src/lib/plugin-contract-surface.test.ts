@@ -25,6 +25,12 @@ import { useProviderPage } from '../components/provider-page/provider-page-conte
 import { ProviderSection, ProviderSettingRow } from '../components/provider-page/provider-section';
 import { useProviderRow } from '../components/provider-list/provider-row-context';
 import { ProviderRow } from '../components/provider-list/provider-row';
+import { useJobDialog } from '../plugins-client/kanban/job-dialog-context';
+import { usePublishDialog } from '../plugins-client/kanban/publish-dialog-context';
+import { GitStackProjectPicker, useGitStackProject } from '../plugins-client/kanban/git-stack-project';
+import { useTodoOpener } from '../plugins-client/kanban/todo-opener';
+import { useProjectSettings } from '../components/project-settings-slot';
+import { useWidgetAttention, useWidgetCount, useWidgetInFront, useWidgetMenu } from '../components/widget-host/widget-self';
 import { platformModuleExports } from './plugin-host/platform-modules';
 import { PLATFORM_MODULES } from './plugin-host/modules';
 
@@ -198,13 +204,65 @@ test('UI_KIT hands a provider row its provider, and the host that paints one', (
 test('the notice cards and the update window open wave 17, after 0.1.8 shipped API 16', () => {
   // A plugin that imports them must declare 17, or a 0.1.8 host would load it
   // and its browser half would die on the missing export.
-  assert.equal(snapshot.apiVersion, 17);
+  assert.ok(snapshot.apiVersion >= 17);
   for (const name of ['useNotices', 'useNotice', 'useUpdateDialog']) {
     assert.equal(snapshot.modules['ui.js']?.[name]?.since, 17, name);
   }
   for (const path of ['notices', 'notices.push', 'notices.remove']) {
     assert.equal(snapshot.clientContext[path]?.since, 17, path);
   }
+});
+
+test('the job and Publish on GitHub dialogs join wave 19, still unreleased', () => {
+  // 0.1.9 shipped API 17 and 18 is the provider profile folder: a plugin
+  // importing these hooks must declare 19.
+  const declarations = readFileSync(join(process.cwd(), '../packages/sdk/src/ui.d.ts'), 'utf8');
+  assert.ok(snapshot.apiVersion >= 19);
+  assert.equal(UI_KIT.useJobDialog, useJobDialog);
+  assert.equal(UI_KIT.usePublishDialog, usePublishDialog);
+  for (const name of ['useJobDialog', 'usePublishDialog']) {
+    assert.ok(platformModuleExports('ui.js').includes(name), name);
+    assert.equal(snapshot.modules['ui.js']?.[name]?.since, 19, name);
+  }
+  assert.ok(declarations.includes('export function useJobDialog(): JobDialogValue | null;'));
+  assert.ok(declarations.includes('export function usePublishDialog(): PublishDialogValue | null;'));
+});
+
+test('the Git stack\'s project, the TO DO opener and the project settings row join wave 19, still unreleased', () => {
+  // A host 18 exports none of them: the github-issues plugin's browser half,
+  // which reads all four, declares 19.
+  const declarations = readFileSync(join(process.cwd(), '../packages/sdk/src/ui.d.ts'), 'utf8');
+  assert.equal(snapshot.apiVersion, 19);
+  assert.equal(UI_KIT.useGitStackProject, useGitStackProject);
+  assert.equal(UI_KIT.GitStackProjectPicker, GitStackProjectPicker);
+  assert.equal(UI_KIT.useTodoOpener, useTodoOpener);
+  assert.equal(UI_KIT.useProjectSettings, useProjectSettings);
+  for (const name of ['useGitStackProject', 'GitStackProjectPicker', 'useTodoOpener', 'useProjectSettings']) {
+    assert.ok(platformModuleExports('ui.js').includes(name), name);
+    assert.equal(snapshot.modules['ui.js']?.[name]?.since, 19, name);
+  }
+  assert.ok(declarations.includes('export function useGitStackProject(): GitStackProject;'));
+  assert.ok(declarations.includes('export const GitStackProjectPicker: PlatformComponent;'));
+  assert.ok(declarations.includes('export function useTodoOpener(): TodoOpener;'));
+  assert.ok(declarations.includes('export function useProjectSettings(): ProjectSettingsValue | null;'));
+});
+
+test('a widget\'s tab count, dot, menu and front state join wave 19, still unreleased', () => {
+  // The Issues tab of the Git stack is a third party's (github-issues): its
+  // count and its reload button need the hooks the product's own tabs read.
+  assert.equal(UI_KIT.useWidgetCount, useWidgetCount);
+  assert.equal(UI_KIT.useWidgetAttention, useWidgetAttention);
+  assert.equal(UI_KIT.useWidgetMenu, useWidgetMenu);
+  assert.equal(UI_KIT.useWidgetInFront, useWidgetInFront);
+  for (const name of ['useWidgetCount', 'useWidgetAttention', 'useWidgetMenu', 'useWidgetInFront']) {
+    assert.ok(platformModuleExports('ui.js').includes(name), name);
+    assert.equal(snapshot.modules['ui.js']?.[name]?.since, 19, name);
+  }
+  const declarations = readFileSync(join(process.cwd(), '../packages/sdk/src/ui.d.ts'), 'utf8');
+  assert.ok(declarations.includes('export function useWidgetCount(count: number | null | undefined): boolean;'));
+  assert.ok(declarations.includes('export function useWidgetAttention(label: string | null | undefined): boolean;'));
+  assert.ok(declarations.includes('export function useWidgetMenu(items: readonly WidgetMenuItem[]): boolean;'));
+  assert.ok(declarations.includes('export function useWidgetInFront(): boolean;'));
 });
 
 /** Platform names a client bundle imports, per module file (`ui.js`, …). */

@@ -20,8 +20,11 @@
  * this module: ESM imports being hoisted, an assignment in the calling file
  * would run AFTER this line, never before.
  */
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-test-home-'));
+// Canonical, as the product resolves paths: on macOS the temporary folder is
+// `/var/...`, a link to `/private/var/...`, and Windows may hand out an 8.3
+// short name; a test comparing a path the product returned would see both.
+process.env.TIMON_HOME = realpathSync.native(mkdtempSync(join(tmpdir(), 'timon-test-home-')));

@@ -35,7 +35,7 @@ const KIND_ICON: Record<string, string> = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function CockpitDreamsTile({ poignee, className }: WidgetProps) {
+export function CockpitDreamsTile({ handle, className }: WidgetProps) {
   const [dreams, setDreams] = useState<Dream[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -59,7 +59,7 @@ export function CockpitDreamsTile({ poignee, className }: WidgetProps) {
       title={t('dreamsPage.heading')}
       subtitle={loading ? '…' : t('cockpit.dreams.pending', { count: dreams.length })}
       className={cn(HUD_SURFACE, className)}
-      actions={poignee}
+      actions={handle}
     >
       {loading ? (
         <div className="flex items-center justify-center py-6">

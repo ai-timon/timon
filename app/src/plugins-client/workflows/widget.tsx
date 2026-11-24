@@ -14,7 +14,7 @@ import { sseOn } from '@/lib/sse-stream';
 import { RunStatusBadge } from './trace-panel';
 import { formatDuration, formatRelative, runDuration, sameJson, type WorkflowRun } from './types';
 
-export function WorkflowRunsWidget({ poignee, className }: WidgetProps) {
+export function WorkflowRunsWidget({ handle, className }: WidgetProps) {
   const [runs, setRuns] = useState<WorkflowRun[] | null>(null);
   const timer = useRef<number | null>(null);
   const load = useCallback(async () => {
@@ -36,7 +36,7 @@ export function WorkflowRunsWidget({ poignee, className }: WidgetProps) {
   return (
     <Tile title={t('workflows.widget.title')} actions={<>
       <Link prefetch={false} href="/workflows" className="text-[10.5px] text-muted-foreground hover:text-foreground">{t('workflows.widget.all')}</Link>
-      {poignee}
+      {handle}
     </>} className={className} bodyClassName="p-2">
       {runs === null && <p className="px-2 py-3 text-[11px] text-muted-foreground">{t('common.loading')}</p>}
       {runs && runs.length === 0 && (

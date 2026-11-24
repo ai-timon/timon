@@ -118,40 +118,6 @@ test('a refused key stays on the screen with its reason; a non-admin is told to 
   });
 });
 
-test('the end-date banner shows the licence\'s end at 14 and 3 days; the build\'s end is a notice card now', async () => {
-  await withDom(async ({ React, root, install }) => {
-    const day = 86_400_000;
-    let license: Record<string, unknown> = {};
-    install('fetch', async (input: string) => Response.json(input === '/api/ui/license' ? license : { beta: true, surfaces: { all: true } }));
-    const { LicenseBanner } = await import('./license-banner');
-    const base = { status: 'valid', reason: null, edition: 'expert', plan: 'Beta', lifetime: false, expiresAt: null, subscriptionExpiresAt: null, paymentStatus: 'active', offlineSince: null };
-    const render = async () => { await React.act(async () => { root.render(React.createElement(LicenseBanner, { key: Math.random() })); }); };
-
-    license = { ...base, build: { channel: 'beta', expiresAt: new Date(Date.now() + 2 * day).toISOString() } };
-    await render();
-    assert.equal(document.body.textContent, '', 'the build\'s end is said by the update notice card');
-
-    const beta = { channel: 'beta', expiresAt: null };
-    license = { ...base, build: beta, subscriptionExpiresAt: new Date(Date.now() + 10 * day).toISOString() };
-    await render();
-    const soon = document.querySelector('[role="status"]');
-    assert.match(soon?.textContent ?? '', /Your licence ends on/);
-    assert.doesNotMatch(soon?.className ?? '', /red/);
-
-    license = { ...base, build: beta, subscriptionExpiresAt: new Date(Date.now() + 2 * day).toISOString() };
-    await render();
-    assert.match(document.querySelector('[role="status"]')?.className ?? '', /red/);
-
-    license = { ...base, build: beta, subscriptionExpiresAt: new Date(Date.now() + 40 * day).toISOString() };
-    await render();
-    assert.equal(document.body.textContent, '');
-
-    license = { ...base, build: { channel: 'dev', expiresAt: null }, subscriptionExpiresAt: new Date(Date.now() + 2 * day).toISOString() };
-    await render();
-    assert.equal(document.body.textContent, '');
-  });
-});
-
 test('a remote machine\'s lock says whose licence it is and goes back to this computer through the app only', async () => {
   await withDom(async ({ React, root, install }) => {
     const posted: Array<{ url: string; body: unknown }> = [];

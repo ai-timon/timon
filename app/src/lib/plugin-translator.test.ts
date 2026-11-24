@@ -1,3 +1,4 @@
+// french-ok-file: the translations a plugin ships, the data under test
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 

@@ -607,6 +607,16 @@
       "description": "0 = archival disabled. Past this, older events migrate to ~/.timon/archive/events.db. They stay readable, but a default export or backup no longer includes them.",
       "unit": "days"
     },
+    "TIMON_EVENTS_RETENTION_DAYS": {
+      "label": "Mission history retention",
+      "description": "The messages, tool calls and outputs of a mission idle for longer than this are deleted for good, archived ones included, once a day. The mission stays in the list with its title. A running mission, or one an open task still needs, keeps its whole history. 0 keeps everything.",
+      "unit": "days"
+    },
+    "TIMON_LEARNINGS_RETENTION_DAYS": {
+      "label": "Raw memory facts retention",
+      "description": "Raw facts agents noted after their missions (learnings, and each agent's learnings.jsonl files) older than this are deleted for good, once a day. Curated memory rules are not affected. 0 keeps everything.",
+      "unit": "days"
+    },
     "TIMON_TRACE_SPANS_RETENTION_DAYS": {
       "label": "Mission timeline retention",
       "description": "The timeline of a mission over for this long is removed, keeping its tool, error and duration totals; a button on the mission rebuilds it from its events. A workflow run's own steps are kept. 0 keeps every timeline.",

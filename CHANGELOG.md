@@ -44,6 +44,154 @@ ask for it. Electron builds are made far more often than that — one is
 regularly produced just to check that everything holds — and those carry no
 bump. Until a release is called, everything accumulates in `changes/`.
 
+## [0.1.9] — 2026-11-18
+
+### Highlights
+- A new version now shows as a card at the bottom left, and Update installs it without leaving Timon.
+- Without a licence Timon is simply Free, and a briefly unreachable licensing service no longer shows anything.
+- Errors and Timon's own messages now read in your language.
+- New Settings › System › Privacy: mission history is cleaned after 180 days, and usage statistics turn off in one click.
+- Windows: many fixes to updates, the background service, worktrees and exports.
+
+### Added
+- On Linux, when you refuse the approval screen of an AppImage the app updated itself, **Go back to x.y.z** puts the previous version back and opens it.
+- A task created from the board or by a raw API call can be attached to an orchestrator's series with `timon task attach` (or the `kanban_attach_series` agent tool), with its reviews, merge and documentation tasks, so their returns reach that orchestrator.
+- A browser recording now shows a manual step when you act inside an embedded frame (a payment form, a captcha, a sign-in widget), and the learned skill pauses there and asks you to do that part yourself.
+- `timon agent import` can keep on the routines that run at the source, with `--keep-routines` for every agent or `--keep-routines-for` for some, and its preview counts them for each agent.
+- `timon agent set-main <name>` designates the main orchestrator from a terminal, and `timon doctor` and the **No main orchestrator** notice now name it when the seat is empty.
+- An account whose email address is not confirmed gets a card at the bottom left that opens the confirmation in Profile.
+- Without an internet connection, or when Timon's email service does not answer, the account screen now shows `timon user create-admin`, which creates the first account from a terminal without the email code.
+- Frosted glass: a page shown alone can now choose where its glass sits from **Customize interface** in the top bar (**Glass of this page**), and on a narrow screen the menu of each tab offers **Glass** for its island.
+- Deleting a memory rule now removes its text from the memory journal too, and two new settings delete mission history and raw memory facts older than a number of days; the privacy page lists what Timon keeps on your computer.
+- **Show closed cards again**, in the **…** menu of Settings › System › Updates, brings back the cards you closed at the bottom left, on all your devices.
+- After a few days of use, a card at the bottom left, with the GitHub logo, asks whether you would star Timon on GitHub; close it and it never comes back, on any of your devices.
+- The Sheet that creates your main agent during setup now sets its reasoning effort under the model, when that model offers levels.
+- The whole onboarding, from the account form to the agent creation and the preparation screen, is now translated into German, Spanish, Italian, Japanese, Korean, Dutch, Polish and Brazilian Portuguese.
+- **Plugins**: `ctx.notices`, the `notices` and `notices.card` slots, `useNotices()` and `useNotice()` let a plugin show cards at the bottom left, with a brand logo if it names one (`icon`), or paint them its own way (API 17).
+- `timon pr open` and the `pr_open` agent tool open the pull request of a job whose project lands through pull requests, after checks that push nothing when one fails; `set-integration --remote-url` names the push URL the project's remote must have.
+- `timon project set-integration` and `get-integration` record whether a project's Kanban jobs should land through a pull request, with the remote, target branch, GitHub account and gh config folder to use, and `--check` confirms which account gh signs in as.
+- Settings › System › Updates shows the version you run and whether it is up to date, with a button to check now or to update, and a menu for the release notes, the installer, the automatic check and the announcements.
+- Timon announcements now appear as cards at the bottom left, read from a signed list on timon-ai.com; the **Announcements** switch of Settings › System › Updates turns them off.
+- **Update**, on the update card or in Settings › System › Updates, opens an update window: the version and its date, the release's highlights, a link to the full changelog, then the download's progress, the running missions and **Restart and install**.
+- In the welcome conversation on the TIMs page, choosing **Create another TIM** now has your main agent create the new TIM itself once you agree to the name and job it proposes.
+
+### Fixed
+- **TIM-0145** — opencode missions now run on the model you chose instead of opencode's default one, and the thread says so when an agent refuses a model or thinking level.
+- The agent editor now shows `default` as the permission mode of an agent that never had one set, instead of `auto`, matching the shield and how the agent really runs.
+- Importing a new export from another Timon now updates the copy of an agent renamed there since the previous export, instead of adding a second agent.
+- Agent names can now be written in any language, Chinese, Arabic, Hebrew, Cyrillic and accented letters included; a name that differs from an existing agent's only by case is refused instead of replacing it.
+- Deleting, creating or renaming an agent now refuses a name made of dots or starting with a dot, so these actions can no longer reach files outside the agent's own folder.
+- A blocked task is reported to the orchestrator once instead of again after every restart, and a task you block yourself from the Kanban board no longer wakes it.
+- **TIM-0149** — A task left blocked in the last 24 hours because its agent kept being stopped by the system is retried once Timon restarts, up to its crash limit.
+- On a view other than TIMs, picking one TIM after another in the TIMs list now switches the chat it opened instead of piling up a new chat for each TIM.
+- On the Bots view, moving a bot to another team from the rail now updates the chat's banner at once, without waiting for the next refresh.
+- When Google refuses to sign an agent in from the built-in browser, the agent now asks you to run **Sign in with Chrome** in the browser panel instead of retrying on its own.
+- Agents running on Claude Code no longer list or message the other Claude Code sessions on your computer that are not part of Timon.
+- A Kanban code or merge task whose base branch is missing, or whose worktree cannot be created, now stays blocked with the reason instead of starting in the project's own folder.
+- Copilot CLI: **Update** on its card now updates the copy the card shows, including a path set under **Program › Advanced** and a CLI installed under an nvm pre-release of Node (such as `v21.0.0-rc.1`).
+- **TIM-0154** — When the background service is not running at startup, Timon now starts it once more and, if it stays down, says so with the folder of its logs instead of blaming the web app.
+- An agent that launched a mission now receives its result even when the delegated agent wrote its report as a plain message instead of waiting for the end of its turn.
+- In light mode, the desktop app's first-launch window now uses the current colours of the Timon theme.
+- The desktop app no longer reopens a window on the onboarding page when it restarts.
+- On a beta build with no licence, the developer mode switch now says the installation has no licence instead of mentioning a fixed plugin composition, and turning developer mode off by hand in `timon.config.json` now stops unsigned plugins without a restart.
+- In English, ages read "3 min ago" and "just now" again, instead of "3 min. ago" and "now".
+- **TIM-0147** — A paid licence that expired while the computer was off comes back on its own once Timon can renew it, instead of staying on Free until its key is entered again.
+- With the frosted glass on, the right widget rail and the chat's widget drawer now follow the glass scope like the other islands, instead of keeping a solid background.
+- Timon's export skill, run from a named Hermes profile, now lists every profile and keeps each one's name, so importing that profile again updates the same agent instead of the default one.
+- Counts in the interface read "1 file" and "3 files" instead of "file(s)", with the plural forms of each language.
+- **TIM-0149** — A task whose agent finished its turn but ignored both requests to close it is now closed as done when the agent goes idle, instead of being run again from the start; a review closed this way has no verdict and waits for a decision.
+- **TIM-0147** — After a hard reboot, Timon no longer falls back to a limited edition, turns modules back on by itself once the licence is read again, retries the renewal a few times in its first minutes when the network comes up after Timon, and alerts you when it cannot renew the licence.
+- A licensing service that is briefly unreachable no longer shows anything; license messages now appear as a card at the bottom left, only when paid features are actually paused.
+- **TIM-0150** — Linux: the app fills the window again when it is maximized or full screen.
+- Git: a local remote in a folder agents can write (the Timon data folder, the project's own folder) is now refused when you save it, with the reason, instead of being saved and then failing at every push and fetch.
+- The headers of a remote MCP server, such as an API key, are now kept in the secrets vault instead of in the server's file, and the server form shows a saved value as `***`; a server that waits for the vault to be switched on says so on its card.
+- The headers of a remote MCP server, such as an API key, and the key of a key connector are no longer written into the agents' MCP configuration: Timon adds them itself when it relays the agent's calls. With the secrets vault switched off, a remote MCP server with headers is no longer given to agents.
+- Invited members, accounts created by an administrator and changed sign-in emails can now confirm their address from the profile with an emailed code, so **Forgot password** can send them a reset code.
+- **TIM-0148** — A mission whose working directory no longer exists now says which folder is missing, and its Kanban task is blocked with that reason instead of being retried as a crash and switched to another provider.
+- **TIM-0151** — The mission details card now shows the provider and model the conversation will use, the same as the composer, instead of the agent's default model.
+- On a phone, the agent list of the Agents page now shows the project's logo and colour for an agent without a picture of its own, as the other views do.
+- A nightly backup that fails, for example on a full disk, no longer leaves a broken archive that replaces a valid one, old backups are still deleted, and Timon alerts you when the disk is too full or after three failed nights.
+- In the onboarding's developer sheet, choosing the main agent's project folder now offers that project's own skills too.
+- 3D mascots are fully opaque again: on the welcome screen's avalanche, and wherever heads overlap, one no longer shows through another.
+- **TIM-0156** — In the desktop app on macOS and Linux, Claude and Codex missions no longer lose Timon's own tools (Kanban, questions, the built-in browser), and Claude missions no longer stop at once with exit code 1: these tools start again inside the mission fence.
+- A third-party page plugin can no longer declare or take a route of the app, such as `/chat`, `/kanban` or a path under `/workflows`, even when the module serving it is switched off; its install is refused with the reason.
+- A plugin's webhook secret pattern or server `ready` pattern can no longer freeze Timon: a pattern that runs too long or is invalid is skipped, and one alert in the notification centre names the plugin.
+- `timon plugin sign` now signs the files `npm pack` ships, so it works in a plugin's working folder and the package installed from its archive passes verification; `timon plugin check` verifies the signature over the same files.
+- A file of the backends folder whose id is already taken, or whose name is not a valid id, is now listed in Providers as Blocked with the reason, and its page opens.
+- A mission whose history was deleted by the retention now says so in the chat, and the mission list no longer counts its deleted messages.
+- Agents created during setup without a project folder no longer stop at once with "Operation not permitted" on macOS and on Linux with Landlock; new ones now work in `~/.timon/workspace/home`.
+- On an installation with several accounts, **Assign** on a subscription account lists the installation's users again instead of an empty list.
+- The sign-in, invitation and email confirmation pages now wear the installation's theme, Timon included, instead of the blue product palette.
+- Lists of agents, projects, teams, bots, secrets and plugins are sorted the way the interface language sorts text, for example by pinyin in Chinese.
+- In the task form, a file that cannot be sent or removed is now explained in your language, next to the files, instead of showing the server's raw error text.
+- **TIM-0149** — A Kanban task left Blocked after its automatic retries now says in its reason that Timon will not retry it again, and how to restart it, instead of only "This is NOT a business block".
+- **TIM-0152** — Text fields accept typing again after the desktop window is restored.
+- Coming back to the TIMs page after the welcome reopens the conversation your main TIM had with you, instead of an empty chat.
+- The TO DO widget and the board's TO DO column now show the real number of open and done ideas past 200, instead of stopping at 200 open and 0 done.
+- The built-in browser's refusals, the setup wizard's errors, the alerts raised when Telegram or the web app stop starting, layout proposal cards and the message shown to an account waiting for a licence now follow the interface language.
+- Task and notification messages are now translated: the blocked-task alert, the reasons and returns of a task, and the notifications Timon raises itself (memory, licence, backup, plugins, backends, triggers, accounts) follow the interface language, push notifications excepted.
+- A failed check for a new version is tried again after 15 minutes instead of 6 hours, and opening the desktop app checks again when the last successful check is more than 30 minutes old.
+- On Windows, files attached together to a task or an idea now list in the order they were added.
+- On Windows, installing an AI CLI from its provider card no longer waits silently forever when the vendor's installer asks a question: the install now stops with an error instead.
+- On Windows, **Detach the worktree** on a Kanban task removes its folder instead of failing with "Permission denied", and the cleanup of finished tasks no longer stops on the same error.
+- A Timon export made on Windows (`timon export`) now imports on macOS and Linux: the folders of agents, projects and MCP servers under the user folder are written with `/`.
+- On Windows, a Pi agent whose MCP server program is missing now says the server could not start, instead of "exited (code 1): operable program or batch file.".
+- Windows: installing a plugin or a bundle from a folder works again.
+- Windows: when the installer is closed or ends abruptly, the Timon background service starts again instead of staying disabled.
+- Windows: updating Timon now stops the previous background service, which could keep running and block the new version.
+- A draft test run no longer replaces the published version of a workflow.
+
+### Changed
+- In the agent import preview, an agent's project is now picked from the list of this Timon's projects instead of typed by hand.
+- For scripts that call the daemon's HTTP API: an error's machine-readable code is now always snake_case in the `code` field, with the English sentence in `error` — backend and custom route codes (`duplicate` became `backend_duplicate`, `not-loaded` `backend_not_loaded`, `foreign-shape` `backend_foreign_shape`, `vault-<reason>` `backend_key_not_stored`, `query-refused` `query_refused`), GPT-Live codes (`no-key` became `gpt_live_no_key`…), secrets vault codes (`not-found` became `secret_unknown`…), and the fleet, connector, web terminal, notification sound and secret request routes, which used to put their code in `error`.
+- The app window now runs only the inline scripts Timon itself writes, each tied to a value that changes on every page load, so markup injected into a page can no longer start a script.
+- **TIM-0153** — When Hermes needs you to sign in, the mission now says to run `hermes --setup` in a terminal, and not to start `hermes-acp` yourself, which opens nothing and only waits.
+- The MCP servers page, the agent editor, the pipelines page, the remote sessions page, the chat's usage strip and many smaller labels now follow the interface language, where parts of them stayed in English or French whatever language you had picked.
+- A merge task can no longer be marked done while the branch it integrates is not in its base branch, or with a merge commit already recorded on another task.
+- Mission history idle for more than 180 days is now cleaned up; change it in Settings › Privacy.
+- **TIM-0147** — Without a licence, Timon is Free and says nothing about it: no banner after a licence ends, no alert when Timon starts with an ended licence, and a Free licence stored by an earlier version reads as no licence.
+- The onboarding now says that anonymous usage statistics are sent, with a one-click opt-out.
+- The one-line installers now refuse to install when they cannot check the signature of the release list: on Linux they need `openssl`, and on Windows .NET Framework 4.7 or later, instead of carrying on unchecked.
+- In Settings › System › Privacy, usage statistics are one row with a single Turn off or Turn on button, and a change blocked by the environment or the configuration file says where to make it.
+- The anonymous usage statistics now count an agent moving to its backup AI provider, with only the provider it left and the one it moved to; the privacy page lists it.
+- The reasons Timon itself gives for a blocked task (a mission cut by a quota, a failing backend or a killed process, a review with no verdict, a merge without its sha) and its backend outage alerts now show in French when the interface is in French, on the board, in the notification centre and on the Messages page.
+- Errors from your account, preferences, plugins, settings, AI providers and projects now read in your language instead of English.
+- Errors about agents, skills, MCP servers, conversations, agent messages and permission requests now read in your language instead of English.
+- Error messages from Git, workflows, the built-in browser, the secrets vault, the web terminal, notifications, connectors, dreams, GPT-Live and your machines now read in your language; a technical detail they quote stays in English.
+- Error messages from Timon now read in your language on more screens: agent editor and deletion, Git panels, workflows, triggers, routines, secrets vault, connectors, memory, built-in browser and task actions.
+- Error messages from tasks, the TO DO notebook, pipelines, memory, triggers and routines now read in your language; a technical detail they quote stays in English.
+- More of Timon's own messages now show in French when the interface is in French: a merge held by its review, a task blocked because git is missing, and the alerts about an agent that cannot be woken or a task that keeps getting blocked.
+- In the desktop app, **Install** on a downloaded update now approves it too: the new version backs up your data, migrates them and opens, showing only its progress, instead of asking you to approve the update again.
+- In the desktop app, **Install** on a downloaded update now installs it without leaving Timon: Windows runs the setup program silently and reopens Timon, macOS and Linux (`.deb`) ask for your administrator password, install, then restart Timon; the installer opens as before when that is not possible.
+- A new version is announced by a card at the bottom left with one Update button instead of the banner at the top of the app, and a build about to end is a warning card there too.
+- For plugin authors: a widget with its own frame now receives the host's layout controls as `handle` (API 17), which replaces `poignee`; `poignee` keeps working.
+
+### Known issues
+- A Kanban task that depends on a `code` task which never gets a merge (no changes to review, or no reviewer) waits indefinitely; remove that dependency to release it.
+- An agent's island card applied to a page other than the one on screen removes the tabs it replaces, but a replaced terminal keeps running: end it from the Terminal page.
+- Chat: pressing Escape to close a dialog while dictating also cancels the dictation and puts the message back as it was before you clicked the mic.
+- Chat: while a turn is being prepared, a tool the previous turn left unfinished can show as still running, with its old duration, until the new turn starts.
+- The desktop app still embeds Electron 33, which no longer receives security updates; the move to a supported Electron release is planned for the next version.
+- Linux: a Hermes agent stops with "Gateway could not start" in a fenced mission; an exception that allows Unix sockets for its agent lets it answer, but then opens every Unix socket of your session to that mission.
+- If your organisation disables third-party MCP servers in Copilot, agents on Copilot cannot use Timon's tools and fall back to the `timon` command.
+- macOS: the usage of a Claude subscription account is not shown in the LLM quotas widget nor under the chat composer; Codex accounts are.
+- macOS: while Timon runs with no session open, Git over HTTPS and `gh` fail in missions; Git over SSH works.
+- MCP servers you add over HTTP are not passed to opencode and Hermes agents; Timon's own tools and stdio servers are.
+- Onboarding form details are still in English outside English, French and Simplified Chinese; the step titles are translated.
+- opencode and Hermes have not yet been tried on a tester's own account, so a first mission (Hermes especially) may still fail.
+- opencode decides its own tool permissions: Timon shows no Allow/Deny card for it and cannot restrict what it does. The agent editor says so.
+- Opening the model list of opencode or Hermes leaves one empty session per agent in that agent's own history.
+- Pi has not been tried with a tester's own model provider yet, so a first mission may fail.
+- **Sign in with Chrome** copies cookies only: a site that keeps its sign-in in the page's own storage (many apps built on Firebase) is not signed in by it.
+- **Sign in with Chrome** copies the sign-in into the built-in browser; whether Google keeps it valid there over time has not been verified, and a password or 2FA step has not been tried. Run it again if the session is lost.
+- **TIM-0034** — The installers are not code-signed: Windows SmartScreen or Smart App Control and macOS Gatekeeper warn about them or block them. On Windows, choose **More info → Run anyway** (turn Smart App Control off in Windows Security if it blocks); on macOS, allow the app in **System Settings → Privacy & Security**.
+- Windows: a CLI installed with pnpm or yarn can keep running after Timon stops or crashes; end it from Task Manager, or install it with npm.
+- Windows: a Codex agent in auto or acceptEdits mode cannot `git commit` (Codex keeps `.git` read-only); give its code and merge tasks the bypassPermissions mode, or run them on another backend.
+- Windows: installing a new version of the app closes the built-in terminal's shells.
+- Windows, and Linux without Landlock: missions are not fenced and can read Timon's private files; on an installation with several accounts, set the mission isolation to Required, or give the Spawn missions permission only to people you trust with the whole installation.
+- Windows: on a work or school account of a PC joined to Microsoft Entra ID, Windows may refuse to run Timon's background task; Timon then runs only while its window is open.
+- With Pi as the only backend, conversations keep their default title.
+
 ## [0.1.8] — 2026-11-15
 
 ### Added

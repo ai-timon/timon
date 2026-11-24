@@ -198,7 +198,7 @@ export const ONBOARDING_RECIPES: readonly OnboardingRecipe[] = [
       widgets: {
         zones: {
           'chat.left.widget': ['plugin:@timon/missions:Missions', 'plugin:@timon/files-widget:Files'],
-          'chat.right.widget': ['plugin:@timon/kanban:project-todo', 'plugin:@timon/git:repository'],
+          'chat.right.widget': ['plugin:@timon/kanban:project-todo', 'plugin:@timon/git:branches'],
         },
       },
     },

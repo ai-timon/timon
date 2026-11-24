@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -65,7 +65,9 @@ async function api(method: string, path: string, body?: unknown, as: string | nu
   return { status: res.status, body: await res.json() as Json };
 }
 
-const root = mkdtempSync(join(tmpdir(), 'timon-script-'));
+// Canonical: a script path is checked lexically against the project's real
+// folder, and macOS hands out `/var/...` for `/private/var/...`.
+const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'timon-script-')));
 const projectDir = join(root, 'growth');
 const outside = join(root, 'elsewhere');
 mkdirSync(projectDir, { recursive: true });

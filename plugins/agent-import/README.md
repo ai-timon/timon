@@ -166,8 +166,10 @@ files too large) is added to the warnings.
 `skills/timon-export/SKILL.md` (Agent Skills format: front matter `name`,
 `description`, then the body), written from scratch for Timon: no other
 product's skill or code is read or reused. It tells
-the agent of another tool how to find its agents (Hermes: `$HERMES_HOME`,
-then `~/.hermes` or `%LOCALAPPDATA%\hermes`, a profile per agent; Grok Bot:
+the agent of another tool how to find its agents (Hermes: the active
+folder, `$HERMES_HOME` or the standard one, then the root that holds every
+profile, as Hermes resolves it, so that a run from a named profile still
+lists them all and keeps each one's name; a profile per agent; Grok Bot:
 the Bots and groups it sees, or itself; any other tool: itself), to ask which
 ones to export, to write `timon-agent-import.json` v1 with its fields and
 ceilings, secrets by name only, then `timon-agents-<app>-<date>.zip` in the

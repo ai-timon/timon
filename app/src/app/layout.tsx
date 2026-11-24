@@ -20,6 +20,7 @@ import { PLATFORM_MODULES } from '@/lib/plugin-host/modules';
 import { PlatformGlobals } from '@/lib/plugin-host/platform-globals';
 import { ClientPluginHost } from '@/lib/plugin-host/client-plugin-host';
 import { SettingsDialogHost } from '@/components/settings/settings-dialog-host';
+import { ForgeProposalDialogHost } from '@/plugins-client/kanban/forge-proposal-host';
 import { FirstRunGate } from '@/components/first-run-gate';
 import { FIRST_RUN_ALLOWED, FIRST_RUN_SCHEME_KEY } from '@/lib/first-run-gate';
 import { BetaLockScreen } from '@/components/beta-lock-screen';
@@ -32,6 +33,7 @@ import { AgentEditorModal } from '@/components/agent-editor/agent-editor-modal';
 import { UnsavedDocumentDialog } from '@/components/chat/unsaved-document-dialog';
 import { ConfirmDialogHost } from '@/components/confirm-dialog/confirm-dialog';
 import { NoticesHost } from '@/components/notices/notices-host';
+import { UpdatePreviewHost } from '@/components/updates/update-preview-host';
 import { APPEARANCE_SCOPE, DEFAULT_APPEARANCE, effectiveGlass, readNativeAppearance } from '@/plugins-client/ui-theme-variants';
 import { BACKGROUND_SCOPE } from '@/components/background/background-model';
 import { DEFAULT_USER_PREFS, type ColorScheme } from '@/lib/auth';
@@ -342,6 +344,9 @@ export default async function RootLayout({
               one host for every page, beside the toaster, inside the shell
               so they follow it when the browser panel is pinned. */}
           <NoticesHost />
+          {/* The update window's preview (`?update-preview=1`): paints
+              nothing unless the address asks for it. */}
+          <UpdatePreviewHost />
           {/* "Save changes?" before a document closes: asked by an island
               tab that may be unmounted, so it lives here, once. */}
           <UnsavedDocumentDialog />
@@ -358,6 +363,11 @@ export default async function RootLayout({
               first open, like the agent editor's form. */}
           <Suspense fallback={null}>
             <SettingsDialogHost />
+          </Suspense>
+          {/* "Publish on GitHub", same reason: the notification card of a
+              proposal opens it over any page, by `?forge-proposal=`. */}
+          <Suspense fallback={null}>
+            <ForgeProposalDialogHost />
           </Suspense>
         </BackgroundProvider>
         </ThemeProvider>

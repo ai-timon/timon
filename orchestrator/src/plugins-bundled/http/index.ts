@@ -10,6 +10,7 @@ import { registerRoutes as registerLicenseRoutes } from '../../kernel/routes/lic
 import { registerRoutes } from './routes.js';
 import { registerRemoteMcpRoutes } from '../../remote-mcp/routes.js';
 import { registerRoutes as registerAppRearmRoute } from '../web-app/routes.js';
+import { registerShutdownRoute } from './shutdown-route.js';
 
 export const manifest: ModuleManifest = {
   name: '@timon/http',
@@ -32,4 +33,7 @@ export function apply(ctx: Context): void {
   // Here rather than in `@timon/web-app`: it must answer while that module is
   // off, to say why there is nothing to rearm (TODO #485).
   registerAppRearmRoute(ctx.http.router());
+  // The common stop over the loopback, for the Windows stop paths that have
+  // no signal to send (`shutdown-route.ts`).
+  registerShutdownRoute(ctx.http.router());
 }

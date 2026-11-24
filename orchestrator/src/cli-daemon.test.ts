@@ -1,8 +1,8 @@
 /**
- * 4.2b — CLI `timon --daemon` / `timon daemon add` et Bearer du MCP.
+ * 4.2b: CLI `timon --daemon` / `timon daemon add` and the MCP Bearer.
  *
- * Témoin HTTP sur `127.0.0.1:0`, jamais le :3000 de prod. Chaque test pose
- * son propre TIMON_HOME. On ne `kill` un child que s'il a un pid, jamais `0`.
+ * HTTP witness on `127.0.0.1:0`, never the production :3000. Each test sets
+ * its own TIMON_HOME. A child is only `kill`ed if it has a pid, never `0`.
  */
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
@@ -89,10 +89,10 @@ function startMock(host = '127.0.0.1'): Promise<{
     server.listen(0, host, () => {
       const addr = server.address();
       if (!addr || typeof addr === 'string') {
-        reject(new Error('adresse d\'écoute inattendue'));
+        reject(new Error('unexpected listen address'));
         return;
       }
-      assert.notEqual(addr.port, 3000, 'le témoin ne doit pas prendre le port de prod');
+      assert.notEqual(addr.port, 3000, 'the witness must not take the production port');
       resolve({
         url: `http://${host}:${addr.port}`,
         seen,
@@ -223,7 +223,7 @@ test('real CLI discovers local targets and keeps explicit daemon URLs and tokens
   }
 });
 
-test('daemon add : fichier 0600 sous TIMON_HOME, stdout sans le token', async () => {
+test('daemon add: 0600 file under TIMON_HOME, stdout without the token', async () => {
   const home = freshHome();
   const r = await runTimon(
     ['daemon', 'add', 'vps', 'https://timon.example.ts.net/', 's3cr3t-token'],
@@ -249,7 +249,7 @@ test('daemon add : fichier 0600 sous TIMON_HOME, stdout sans le token', async ()
   assert.doesNotMatch(listed.stdout, /s3cr3t-token/);
 });
 
-test('daemon add refuse un nom traversal, une url sans schéma, un token vide', async () => {
+test('daemon add refuses a traversal name, a url without a scheme, an empty token', async () => {
   const home = freshHome();
   const env = baseEnv(home);
 
@@ -272,7 +272,7 @@ test('daemon add refuse un nom traversal, une url sans schéma, un token vide', 
   assert.equal(badUrl.code, 64);
 });
 
-test('timon --daemon vps task list : Bearer du profil, pas de TIMON_API_TOKEN', async () => {
+test('timon --daemon vps task list: Bearer of the profile, not TIMON_API_TOKEN', async () => {
   const home = freshHome();
   const mock = await startMock();
   try {
@@ -295,7 +295,7 @@ test('timon --daemon vps task list : Bearer du profil, pas de TIMON_API_TOKEN', 
   }
 });
 
-test('timon --daemon <url> : Bearer de TIMON_API_TOKEN', async () => {
+test('timon --daemon <url>: Bearer of TIMON_API_TOKEN', async () => {
   const home = freshHome();
   const mock = await startMock();
   try {
@@ -311,7 +311,7 @@ test('timon --daemon <url> : Bearer de TIMON_API_TOKEN', async () => {
   }
 });
 
-test('sans --daemon : TIMON_API_TOKEN gagne sur daemon-token ; sinon le fichier', async () => {
+test('without --daemon: TIMON_API_TOKEN wins over daemon-token; otherwise the file', async () => {
   const home = freshHome();
   writeFileSync(join(home, 'daemon-token'), 'fichier-token\n', { mode: 0o600 });
   const mock = await startMock();
@@ -479,14 +479,14 @@ test('a LAN listener address the machine no longer holds, or a host name, never 
   }
 });
 
-test('timon --daemon nom-inconnu : exit 64, aucun HTTP', async () => {
+test('timon --daemon unknown-name: exit 64, no HTTP', async () => {
   const home = freshHome();
   const r = await runTimon(['--daemon', 'absent', 'task', 'list'], baseEnv(home));
   assert.equal(r.code, 64);
   assert.match(r.stderr, /unknown daemon 'absent'/);
 });
 
-test('MCP : Bearer depuis TIMON_API_TOKEN, sinon daemon-token', async () => {
+test('MCP: Bearer from TIMON_API_TOKEN, otherwise daemon-token', async () => {
   const home = freshHome();
   writeFileSync(join(home, 'daemon-token'), 'mcp-fichier\n', { mode: 0o600 });
   const mock = await startMock();

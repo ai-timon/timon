@@ -1,9 +1,9 @@
 /**
- * 4.6 — backup périodique : routine 03:30, `timon export`, garde 7 archives.
+ * 4.6: periodic backup: 03:30 routine, `timon export`, keeps 7 archives.
  *
- * TIMON_HOME jetable, jamais le `~/.timon/backups` réel. Témoin HTTP sur
- * `127.0.0.1:0`, jamais le :3000 de prod. On ne `kill` un child que s'il
- * a un pid, jamais `0`.
+ * Throwaway TIMON_HOME, never the real `~/.timon/backups`. HTTP witness on
+ * `127.0.0.1:0`, never the production :3000. A child is only `kill`ed if it
+ * has a pid, never `0`.
  */
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import http from 'node:http';
@@ -88,10 +88,10 @@ function startMock(payload: Record<string, unknown>): Promise<{
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       if (!addr || typeof addr === 'string') {
-        reject(new Error('adresse d\'écoute inattendue'));
+        reject(new Error('unexpected listen address'));
         return;
       }
-      assert.notEqual(addr.port, 3000, 'le témoin ne doit pas prendre le port de prod');
+      assert.notEqual(addr.port, 3000, 'the witness must not take the production port');
       resolve({
         url: `http://127.0.0.1:${addr.port}`,
         seen,
@@ -103,7 +103,7 @@ function startMock(payload: Record<string, unknown>): Promise<{
   });
 }
 
-test('sans enable, status est inactif et le dossier n\'est pas le ~/.timon réel', () => {
+test('without enable, status is inactive and the folder is not the real ~/.timon', () => {
   const st = backupStatus();
   assert.equal(st.enabled, false);
   assert.equal(st.cron, BACKUP_CRON);
@@ -114,7 +114,7 @@ test('sans enable, status est inactif et le dossier n\'est pas le ~/.timon réel
   assert.ok(st.dir.startsWith(HOME));
 });
 
-test('enable crée la routine 03:30, idempotent, même id', () => {
+test('enable creates the 03:30 routine, idempotent, same id', () => {
   const first = enableBackupRoutine();
   assert.equal(first.enabled, true);
   assert.equal(first.cron, '30 3 * * *');
@@ -130,7 +130,7 @@ test('enable crée la routine 03:30, idempotent, même id', () => {
   assert.equal(rows.length, 1);
 });
 
-test('prune garde les 7 plus récents par nom de date', () => {
+test('prune keeps the 7 most recent by date name', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-backup-prune-'));
   for (let day = 10; day <= 18; day++) {
     writeFileSync(join(dir, `timon-2026-08-${day}.tar.gz`), `archive-${day}`);
@@ -151,13 +151,13 @@ test('prune garde les 7 plus récents par nom de date', () => {
   ]);
 });
 
-test('runNightlyBackup écrit sous TIMON_HOME/backups, pas un home réel', () => {
+test('runNightlyBackup writes under TIMON_HOME/backups, not a real home', () => {
   seedConfig();
   const when = new Date(2026, 7, 21, 3, 30, 0);
   const result = runNightlyBackup(when);
   const expected = join(HOME, 'backups', 'timon-2026-08-21.tar.gz');
   assert.equal(result.out, expected);
-  assert.ok(existsSync(expected), 'archive créée');
+  assert.ok(existsSync(expected), 'archive created');
   assert.ok(result.bytes > 0);
   assert.ok(!result.out.startsWith(REAL_TIMON_BACKUPS));
   assert.equal(backupArchiveName(when), 'timon-2026-08-21.tar.gz');
@@ -165,7 +165,7 @@ test('runNightlyBackup écrit sous TIMON_HOME/backups, pas un home réel', () =>
   assert.ok(listing.length > 0);
 });
 
-test('runNightlyBackup ne garde que 7 archives', () => {
+test('runNightlyBackup keeps only 7 archives', () => {
   const dir = backupsDir();
   mkdirSync(dir, { recursive: true });
   for (let day = 1; day <= 8; day++) {
@@ -180,12 +180,12 @@ test('runNightlyBackup ne garde que 7 archives', () => {
   assert.ok(!archives.includes('timon-2026-07-01.tar.gz'));
 });
 
-test('tick de la routine backup : archive, zéro task Kanban', async () => {
+test('tick of the backup routine: archive, zero Kanban tasks', async () => {
   enableBackupRoutine();
   db.prepare('UPDATE triggers SET next_run_at = ? WHERE id = ?').run(1, BACKUP_ROUTINE_ID);
   const before = dbApi.listTasks().length;
   await tickRoutines();
-  assert.equal(dbApi.listTasks().length, before, 'le backup ne crée pas de task');
+  assert.equal(dbApi.listTasks().length, before, 'the backup creates no task');
   const today = backupArchiveName();
   assert.ok(existsSync(join(HOME, 'backups', today)));
   const row = dbApi.getRoutine(BACKUP_ROUTINE_ID);
@@ -193,7 +193,7 @@ test('tick de la routine backup : archive, zéro task Kanban', async () => {
   assert.ok(row.next_run_at && row.next_run_at > Date.now());
 });
 
-test('tick d\'une routine normale crée toujours une task', async () => {
+test('tick of a normal routine still creates a task', async () => {
   const r = createRoutine({
     name: 'ping',
     agent_name: 'temoin',
@@ -208,7 +208,7 @@ test('tick d\'une routine normale crée toujours une task', async () => {
   assert.ok(tasks.some((t) => t.title === 'ping' && t.routine_id === r.id));
 });
 
-test('timon backup enable : POST /api/backup/enable sur le témoin, pas le :3000', async () => {
+test('timon backup enable: POST /api/backup/enable on the witness, not the :3000', async () => {
   const home = freshHome();
   const mock = await startMock({
     ok: true,
@@ -234,7 +234,7 @@ test('timon backup enable : POST /api/backup/enable sur le témoin, pas le :3000
   }
 });
 
-test('timon backup status : GET /api/backup/status', async () => {
+test('timon backup status: GET /api/backup/status', async () => {
   const home = freshHome();
   const mock = await startMock({
     enabled: false,
@@ -259,7 +259,7 @@ test('timon backup status : GET /api/backup/status', async () => {
   }
 });
 
-test('timon backup sans sous-commande : exit 64', async () => {
+test('timon backup without a subcommand: exit 64', async () => {
   const r = await runTimon(['backup'], baseEnv(freshHome()));
   assert.equal(r.code, 64);
   assert.match(r.stderr, /timon backup <enable\|status>/);

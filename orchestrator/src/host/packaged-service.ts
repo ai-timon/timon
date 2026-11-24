@@ -13,6 +13,15 @@ export function instanceId(home: string): string {
 export function packagedUnit(home: string): string {
   return `timon-desktop-${instanceId(home)}`;
 }
+/**
+ * The systemd unit this daemon runs under on Linux. A packaged service carries
+ * `TIMON_DESKTOP_SERVICE=1` and is named after its home; anything else is a
+ * source checkout's `sourceUnit`. Naming the source unit to a package user hands
+ * them a restart command that restarts nothing.
+ */
+export function ownLinuxUnit(sourceUnit: string, home: string, env: NodeJS.ProcessEnv = process.env): string {
+  return env.TIMON_DESKTOP_SERVICE === '1' ? packagedUnit(home) : sourceUnit;
+}
 export function runtimeDir(home: string): string { return join(home, 'desktop-runtime'); }
 export function packagedReleaseId(version = process.env.TIMON_DESKTOP_VERSION ?? 'current'): string {
   const readable = version.trim().replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 48) || 'unknown';

@@ -31,6 +31,11 @@ import type { BuildSpawnOpts } from './types.js';
 
 const REF_PREFIX = 'timon-seal-';
 
+/** Whether `text` carries a reference a seal minted: a value only a launch can swap back. */
+export function holdsSealReference(text: string): boolean {
+  return text.includes(REF_PREFIX);
+}
+
 export type SealEscape = 'none' | 'json';
 
 export class LaunchSeal {

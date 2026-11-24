@@ -1,3 +1,4 @@
+// french-ok-file: an accented agent tag, the Unicode routing under test
 /**
  * A channel message that starts with `@tag` goes to the agent the channel's
  * routing table names for it; tags are written in any script, like agent names.

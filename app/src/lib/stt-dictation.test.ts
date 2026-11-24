@@ -1,3 +1,4 @@
+// french-ok-file: French dictation samples, the language the transcripts were captured in
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -10,14 +11,14 @@ import {
   webSpeechWithoutEngine,
 } from './stt-dictation';
 
-test('une hésitation courte relance l’écoute', () => {
+test('a short hesitation restarts listening', () => {
   assert.equal(
     shouldRestartDictation({ stoppedByUser: false, fatalError: false, sinceLastActivity: 1_200 }),
     true,
   );
 });
 
-test('le silence au-delà de la fenêtre clôt la dictée', () => {
+test('silence beyond the window ends the dictation', () => {
   assert.equal(
     shouldRestartDictation({
       stoppedByUser: false,
@@ -28,21 +29,21 @@ test('le silence au-delà de la fenêtre clôt la dictée', () => {
   );
 });
 
-test('un stop demandé par l’utilisateur ne relance jamais', () => {
+test('a stop asked for by the user never restarts', () => {
   assert.equal(
     shouldRestartDictation({ stoppedByUser: true, fatalError: false, sinceLastActivity: 0 }),
     false,
   );
 });
 
-test('une erreur fatale coupe la boucle de relance', () => {
+test('a fatal error cuts the restart loop', () => {
   assert.equal(
     shouldRestartDictation({ stoppedByUser: false, fatalError: true, sinceLastActivity: 0 }),
     false,
   );
 });
 
-test('la fenêtre est paramétrable pour les appelants qui la règlent', () => {
+test('the window can be set by the callers that tune it', () => {
   assert.equal(
     shouldRestartDictation({
       stoppedByUser: false,
@@ -54,7 +55,7 @@ test('la fenêtre est paramétrable pour les appelants qui la règlent', () => {
   );
 });
 
-test('micro refusé ou volé = fatal, fin de tour ordinaire = non', () => {
+test('microphone refused or taken = fatal, ordinary end of turn = not', () => {
   assert.equal(isFatalDictationError('not-allowed'), true);
   assert.equal(isFatalDictationError('audio-capture'), true);
   assert.equal(isFatalDictationError('service-not-allowed'), true);
@@ -80,7 +81,7 @@ test('TIM-0061: Web Speech has no engine in the desktop app', () => {
   assert.equal(webSpeechWithoutEngine({ userAgent: chrome, desktopBridge: false }), false);
 });
 
-test('le repli conserve le texte déjà dicté et pose une espace', () => {
+test('the fallback keeps the text already dictated and adds a space', () => {
   assert.equal(composeDictation('bonjour', 'tout le monde'), 'bonjour tout le monde');
   assert.equal(composeDictation('bonjour ', 'tout le monde'), 'bonjour tout le monde');
   assert.equal(composeDictation('', 'bonjour'), 'bonjour');
@@ -88,7 +89,7 @@ test('le repli conserve le texte déjà dicté et pose une espace', () => {
   assert.equal(composeDictation('', ''), '');
 });
 
-test('deux segments finalisés et un interim donnent la phrase complète', () => {
+test('two final segments and an interim give the full sentence', () => {
   assert.equal(
     sessionText([
       { isFinal: true, transcript: 'bonjour' },
@@ -99,9 +100,9 @@ test('deux segments finalisés et un interim donnent la phrase complète', () =>
   );
 });
 
-test('un resultIndex avancé ne fait rien perdre : on repart toujours de zéro', () => {
-  // Ce que le moteur envoie après une pause : le segment 0 est figé, l'index
-  // pointe le nouveau. L'ancienne boucle ne rendait que « la suite ».
+test('an advanced resultIndex loses nothing: we always start again from zero', () => {
+  // What the engine sends after a pause: segment 0 is frozen, the index
+  // points at the new one. The old loop only returned "la suite".
   const results = [
     { isFinal: true, transcript: 'le début de ma phrase' },
     { isFinal: false, transcript: 'la suite' },
@@ -109,7 +110,7 @@ test('un resultIndex avancé ne fait rien perdre : on repart toujours de zéro',
   assert.equal(sessionText(results), 'le début de ma phrase la suite');
 });
 
-test('l’interim d’un tour remplace celui d’avant sans dupliquer', () => {
+test('the interim of a turn replaces the one before without duplicating', () => {
   const finalise = { isFinal: true, transcript: 'bonjour' };
   assert.equal(sessionText([finalise, { isFinal: false, transcript: 'tou' }]), 'bonjour tou');
   assert.equal(sessionText([finalise, { isFinal: false, transcript: 'tout le' }]), 'bonjour tout le');
@@ -119,8 +120,8 @@ test('l’interim d’un tour remplace celui d’avant sans dupliquer', () => {
   );
 });
 
-test('un moteur qui réémet la phrase entière à chaque event ne la duplique pas', () => {
-  // Capture du 10/10 : « salut salut comment salut comment ça salut comment ça va ».
+test('an engine that re-emits the whole sentence at each event does not duplicate it', () => {
+  // Capture of 10/10: "salut salut comment salut comment ça salut comment ça va". french-ok: the captured transcript
   const copies = ['salut', 'salut comment', 'salut comment ça', 'salut comment ça va'];
   assert.equal(
     sessionText(copies.map((transcript) => ({ isFinal: true, transcript }))),
@@ -135,15 +136,15 @@ test('un moteur qui réémet la phrase entière à chaque event ne la duplique p
   );
 });
 
-test('une liste vide, ou vide de parole, rend la chaîne vide', () => {
+test('an empty list, or one empty of speech, gives the empty string', () => {
   assert.equal(sessionText([]), '');
   assert.equal(sessionText([{ isFinal: false, transcript: '   ' }]), '');
 });
 
-test('dicte A, relance, dicte B : le champ porte « A B », une seule fois chacun', () => {
-  // Séquence complète telle que la vit `chat-client` : la base est vide, la
-  // session A se compose, `onend` la replie, la session B repart d'un
-  // `results` neuf.
+test('dictate A, restart, dictate B: the field holds "A B", once each', () => {
+  // The full sequence as `chat-client` lives it: the base is empty,
+  // session A is composed, `onend` folds it in, session B starts from a
+  // fresh `results`.
   let base = '';
   let session = sessionText([
     { isFinal: true, transcript: 'première' },
@@ -155,7 +156,7 @@ test('dicte A, relance, dicte B : le champ porte « A B », une seule fois chacu
     { isFinal: true, transcript: 'première' },
     { isFinal: true, transcript: 'phrase' },
   ]);
-  // Repli de `onend` avant la relance.
+  // Fallback of `onend` before the restart.
   base = composeDictation(base, session);
   session = '';
   assert.equal(base, 'première phrase');

@@ -1,11 +1,11 @@
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { mapCodexEvent } from '../../official-providers/provider-codex/lib/events.js';
 
-test('masque uniquement le warning de metadata des modèles tiers', () => {
+test('hides only the model metadata warning of third-party models', () => {
   const events = mapCodexEvent({
     type: 'item.completed',
     item: {
@@ -18,7 +18,7 @@ test('masque uniquement le warning de metadata des modèles tiers', () => {
   assert.deepEqual(events, []);
 });
 
-test('conserve les vraies erreurs du CLI', () => {
+test('keeps the real CLI errors', () => {
   const events = mapCodexEvent({
     type: 'item.completed',
     item: {

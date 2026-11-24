@@ -89,7 +89,7 @@ test('the body cannot carry a url', async () => {
 });
 
 test('key: required, kept in the vault, added by the relay', async () => {
-  assert.equal((await call('admin', 'POST', '/api/mcp-apps/github/connect', {})).json.error, 'key_required');
+  assert.equal((await call('admin', 'POST', '/api/mcp-apps/github/connect', {})).json.code, 'mcp_app_key_required');
   assert.equal((await call('admin', 'POST', '/api/mcp-apps/github/connect', { key: 'two words here' })).status, 400);
   const key = 'github_pat_' + 'A'.repeat(30);
   assert.equal((await call('admin', 'POST', '/api/mcp-apps/github/connect', { key })).status, 200);
@@ -143,7 +143,12 @@ test('an app saved on another url from the MCP page is no longer an Apps connect
 
 test('a server the user added under the same id is left alone', async () => {
   upsertMcp({ id: 'app-notion', transport: { type: 'http', url: 'https://notion.internal.example/mcp' } });
-  assert.equal((await call('admin', 'POST', '/api/mcp-apps/notion/connect', {})).status, 409);
+  const taken = await call('admin', 'POST', '/api/mcp-apps/notion/connect', {});
+  assert.equal(taken.status, 409);
+  // The webview names the server from the param; `reason` stays for older readers.
+  assert.equal(taken.json.code, 'mcp_app_id_taken');
+  assert.deepEqual(taken.json.params, { id: 'app-notion' });
+  assert.equal(taken.json.reason, taken.json.error);
   assert.equal((await call('admin', 'DELETE', '/api/mcp-apps/notion')).status, 404);
   assert.equal(getMcp('app-notion')?.transport.type === 'http' ? (getMcp('app-notion')!.transport as { url: string }).url : null, 'https://notion.internal.example/mcp');
   const listed = (await call('admin', 'GET', '/api/mcp-apps')).json.apps as Array<{ slug: string; state: { blocked: boolean } }>;

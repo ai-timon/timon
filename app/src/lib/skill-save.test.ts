@@ -43,7 +43,7 @@ test('form payload crosses the Next proxy and daemon and creates the skill', asy
       headers: { ...init.headers, ...(authenticated ? { authorization: 'Bearer contract-token' } : {}) },
     });
   });
-  const draft = { id: ' contract-skill ', content: '# Contract\r\n\nInstructions é\n' };
+  const draft = { id: ' contract-skill ', content: '# Contract\r\n\nInstructions é\n' }; // french-ok: a non-ASCII skill body, kept byte for byte
   const prepared = prepareSkillWrite(draft);
   assert.equal(prepared.ok, true);
   if (!prepared.ok) return;

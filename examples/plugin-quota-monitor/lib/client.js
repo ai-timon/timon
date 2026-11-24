@@ -559,13 +559,15 @@ function makeCompact(store) {
 function makeWidget(store) {
   const QuotaCompact = makeCompact(store)
   /** @param {Record<string, never> | import('@timon-ai/sdk').WidgetChromeProps} props */
-  return function QuotaWidget({ poignee, className, orientation, compact }) {
+  // `handle` is the host's grip and gear, given from apiVersion 17 (hence the
+  // manifest's 17). An older template read the same object as `poignee`.
+  return function QuotaWidget({ handle, className, orientation, compact }) {
     const { data, history, loading, failed } = store.useQuota()
     // In a compact zone the widget is its rings and their popover (the host
     // lays them out on a line or in a column, the grip following); in a wide
     // zone it is the tile. Same store, so both forms show the same reading.
     if (compact || orientation === 'horizontal') {
-      return h(React.Fragment, null, h(QuotaCompact, { vertical: orientation !== 'horizontal' }), poignee)
+      return h(React.Fragment, null, h(QuotaCompact, { vertical: orientation !== 'horizontal' }), handle)
     }
     const entries = (data && data.entries) || []
     const measured = entries.filter((entry) => entry.state === 'available').length
@@ -581,7 +583,7 @@ function makeWidget(store) {
           className: 'rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           'aria-label': t('refresh'),
         }, h(RefreshIcon)),
-        poignee),
+        handle),
     }, failed && !data
       ? h('div', { className: 'm-auto px-3 text-center text-xs' },
         h('p', { className: 'text-muted-foreground' }, t('loadFailed')),

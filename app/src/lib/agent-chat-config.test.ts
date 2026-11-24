@@ -1,3 +1,4 @@
+// french-ok-file: an accented sub-agent label, as a user names one
 /**
  * The config of a cockpit chat card: the other agents of the row are picked
  * from the installed agents, and nothing else is asked about them.

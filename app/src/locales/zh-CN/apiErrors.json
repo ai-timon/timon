@@ -75,6 +75,20 @@
     "email_service_unavailable": "Timon 的邮件服务暂不可用。请几分钟后重试。",
     "email_rate_limited": "向此邮箱发送的邮件过多。请在 {seconds, plural, other {# 秒}}后重试。",
     "email_rejected": "此邮箱无法接收验证码。",
-    "password_too_short": "密码至少需要 {min} 个字符。"
+    "password_too_short": "密码至少需要 {min} 个字符。",
+    "setup_main_agent_unavailable": "当前安装中未找到主智能体。你可以继续，稍后再创建。",
+    "setup_main_agent_invalid_name": "此名称不含 Timon 可用的字母或数字，请换一个名称。",
+    "setup_main_agent_name_taken": "已有智能体使用此名称，请换一个。",
+    "setup_workspace_unavailable": "工作文件夹不可用。请检查其位置和访问权限后重试。",
+    "setup_main_agent_rename_failed": "无法重命名智能体，请稍后重试。",
+    "setup_main_agent_invalid_avatar": "这张图片未由 Timon 保存，请重新上传。",
+    "setup_main_agent_failed": "无法保存你的智能体，请重试。",
+    "setup_invalid_identity": "请检查名称后重试。",
+    "setup_team_backend_unavailable": "没有可用的智能体工具。请安装或连接一个工具后重试，也可以选择从零开始。",
+    "setup_team_agent_conflict": "有一个预设智能体在创建开始后被修改。你的更改已保留，请解决冲突后重试。",
+    "setup_team_unavailable": "当前安装不支持团队设置。",
+    "setup_team_preset_locked": "团队创建已开始。请继续创建已选团队。",
+    "setup_team_instance_not_empty": "Timon 中已有你自己的智能体或工作内容。请选择“从零开始”，保留现有内容并完成设置。",
+    "setup_team_failed": "团队未能完整创建。请重试，从中断处继续。"
   }
 }

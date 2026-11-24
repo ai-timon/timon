@@ -49,7 +49,7 @@ function Row({ block, share, reads, onOpen }: { block: InjectionBlock; share: nu
  * it offers a choice of agent. A row opens the block in a dialog: an edit goes to
  * the real source the block names, then the list is read again.
  */
-export function AgentInjectionsCard({ poignee, className }: WidgetProps) {
+export function AgentInjectionsCard({ handle, className }: WidgetProps) {
   const chat = useChatRail();
   const agents = useAgents();
   const [chosen, setChosen] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export function AgentInjectionsCard({ poignee, className }: WidgetProps) {
       title={t('agentInjections.title')}
       subtitle={data ? t('agentInjections.summary', { blocks: data.blocks.length, tokens: formatTokens(data.prompt_tokens) }) : undefined}
       className={className}
-      actions={poignee}
+      actions={handle}
     >
       <div className="flex flex-col gap-3">
         {!inChat && (

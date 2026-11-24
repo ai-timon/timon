@@ -1,3 +1,4 @@
+// french-ok-file: a French message typed around a slash command
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applySlash, slashSpanAt } from './slash-caret';

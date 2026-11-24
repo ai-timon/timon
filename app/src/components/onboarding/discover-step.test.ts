@@ -1,6 +1,6 @@
 /**
- * « Discover Timon », the slides after the agent's creation: « Next » walks
- * them, the last one leaves for the welcome, « Skip all » leaves from any
+ * "Discover Timon", the slides after the agent's creation: "Next" walks
+ * them, the last one leaves for the welcome, "Skip all" leaves from any
  * slide, the progress bars follow and jump, the arrow keys walk both ways,
  * and the lead is the person's own TIM — its name on the last button.
  */
@@ -68,6 +68,7 @@ type Harness = {
   click: (el: Element | null | undefined) => Promise<void>;
   key: (name: string) => Promise<void>;
   nexts: () => number;
+  skips: () => number;
 };
 
 async function renderDiscover(run: (h: Harness) => Promise<void>, agent: MainAgentState = AGENT): Promise<void> {
@@ -76,9 +77,11 @@ async function renderDiscover(run: (h: Harness) => Promise<void>, agent: MainAge
     const { OnboardingProvider } = await import('./onboarding-context');
     const { DiscoverStep } = await import('./steps/discover');
     let nexts = 0;
+    let skips = 0;
     const nav = {
       step: 'discover' as const, direction: 1 as const,
       next: () => { nexts += 1; }, back: () => {}, goTo: () => {},
+      skip: () => { skips += 1; }, setOutcome: () => {},
       setLanguage: async (tag: string) => tag, setBackHandler: () => {},
     };
     const host = document.getElementById('root');
@@ -96,7 +99,7 @@ async function renderDiscover(run: (h: Harness) => Promise<void>, agent: MainAge
       await React.act(async () => {
         root.render(React.createElement(OnboardingProvider, { value: nav }, React.createElement(DiscoverStep, { loadAgent })));
       });
-      await run({ host, click, key, nexts: () => nexts });
+      await run({ host, click, key, nexts: () => nexts, skips: () => skips });
     } finally {
       await React.act(async () => { root.unmount(); });
     }
@@ -108,7 +111,7 @@ const slideOf = (host: HTMLElement): string | null =>
 const segments = (host: HTMLElement): string[] =>
   Array.from(host.querySelectorAll('[data-segment]')).map((el) => el.getAttribute('data-segment') ?? '');
 
-test('« Next » walks the slides; the last one leaves for the welcome, named after the TIM', async () => {
+test('"Next" walks the slides; the last one leaves for the welcome, named after the TIM', async () => {
   await renderDiscover(async ({ host, click, nexts }) => {
     assert.equal(slideOf(host), 'autonomous');
     assert.deepEqual(segments(host), ['current', 'todo', 'todo', 'todo']);
@@ -119,7 +122,7 @@ test('« Next » walks the slides; the last one leaves for the welcome, named af
       assert.equal(slideOf(host), id);
     }
     assert.deepEqual(segments(host), ['done', 'done', 'done', 'current']);
-    assert.ok(!host.querySelector('[data-discover-next]'), 'the last slide has no « Next »');
+    assert.ok(!host.querySelector('[data-discover-next]'), 'the last slide has no "Next"');
     const finish = host.querySelector('[data-discover-finish]');
     assert.equal(finish?.textContent, t('onboarding.discover.finish', { name: 'Nova' }));
     assert.equal(nexts(), 0, 'nothing left before the person\'s click');
@@ -128,14 +131,15 @@ test('« Next » walks the slides; the last one leaves for the welcome, named af
   });
 });
 
-test('« Skip all » leaves from the first slide; a progress bar jumps to its slide', async () => {
-  await renderDiscover(async ({ host, click, nexts }) => {
+test('"Skip all" leaves from the first slide; a progress bar jumps to its slide', async () => {
+  await renderDiscover(async ({ host, click, nexts, skips }) => {
     await click(host.querySelectorAll('[data-segment]')[2]);
     assert.equal(slideOf(host), 'projects', 'the third bar opens the third slide');
     await click(host.querySelectorAll('[data-segment]')[0]);
     assert.equal(slideOf(host), 'autonomous');
     await click(host.querySelector('[data-discover-skip]'));
-    assert.equal(nexts(), 1);
+    assert.equal(skips(), 1, 'the funnel counts it skipped, not completed');
+    assert.equal(nexts(), 0);
   });
 });
 
@@ -155,7 +159,7 @@ test('the arrow keys walk the slides both ways, past the last one too', async ()
   });
 });
 
-test('a TIM without a chosen name: the last button says « Let\'s go »', async () => {
+test('a TIM without a chosen name: the last button says "Let\'s go"', async () => {
   await renderDiscover(async ({ host, click }) => {
     await click(host.querySelectorAll('[data-segment]')[DISCOVER_SLIDE_IDS.length - 1]);
     assert.equal(host.querySelector('[data-discover-finish]')?.textContent, t('onboarding.discover.finishNoName'));

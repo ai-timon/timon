@@ -21,7 +21,8 @@ const posix = process.platform === 'win32' ? 'install.sh is a POSIX shell script
 
 const openssl = spawnSync('openssl', ['version'], { encoding: 'utf8' });
 const canVerify = openssl.status === 0 && /^OpenSSL ([3-9]|[1-9]\d)\./.test(openssl.stdout);
-const opensslPath = spawnSync('sh', ['-c', 'command -v openssl'], { encoding: 'utf8' }).stdout.trim();
+// No sh at all (a plain Windows machine): no stdout either.
+const opensslPath = spawnSync('sh', ['-c', 'command -v openssl'], { encoding: 'utf8' }).stdout?.trim() ?? '';
 // The P-256 signature is mandatory, and only openssl checks it: every run needs it.
 const skip = posix || (!opensslPath && 'needs openssl');
 

@@ -10,6 +10,7 @@
  * when the backend's ownership is certain; anything else is left as it is and
  * the operator is asked.
  */
+import { daemonMessage } from '../../daemon-message.js';
 import { dbApi, type SecretWithGrants } from '../../db.js';
 import { vaultEnabled } from '../../secrets/availability.js';
 import type { SecretGrant } from '../../secrets/resolve.js';
@@ -140,6 +141,7 @@ function askAboutSharedKey(id: string, row: SecretWithGrants): void {
           + 'it still enters those missions whatever backend they run on. '
           + `To keep it on this backend only, for the same missions: \`timon secret grant ${row.name} --scope backend:${id}\`. `
           + `To keep sharing it as it is, change its note in the Secrets page: it is then yours, and no longer removed with the backend.`,
+        message: daemonMessage('backend_key_shared', { backend: id, name: row.name, scopes }),
         anchor,
       });
     })

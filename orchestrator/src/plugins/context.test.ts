@@ -1,19 +1,19 @@
 /**
- * Le contrat `PluginContext` — ce que ces tests protègent.
+ * The `PluginContext` contract: what these tests protect.
  *
- * Ils sont écrits du point de vue d'un plugin TIERS, pas du daemon : ce qui
- * compte n'est pas qu'une façade marche, c'est que ce qui n'est pas dans le
- * contrat reste inatteignable. D'où trois familles :
+ * They are written from the point of view of a THIRD-PARTY plugin, not of the
+ * daemon: what matters is not that a facade works, it is that what is not in the
+ * contract stays out of reach. Hence three families:
  *
- *  - la surface elle-même (ce qu'un plugin reçoit, et ce qu'il ne reçoit
- *    JAMAIS : `dbApi`, `bus.publish`, `process.env` — §6 amendé par §10.10) ;
- *  - les permissions : une façade appelée sans sa permission throw, elle ne
- *    rend pas un résultat vide, sans quoi un plugin non autorisé croirait le
- *    Kanban simplement désert ;
- *  - le cloisonnement de `plugin_kv` : deux plugins qui écrivent la même clé
- *    ne se voient pas.
+ *  - the surface itself (what a plugin receives, and what it NEVER
+ *    receives: `dbApi`, `bus.publish`, `process.env`, §6 amended by §10.10);
+ *  - the permissions: a facade called without its permission throws, it does
+ *    not return an empty result, otherwise an unauthorised plugin would think the
+ *    Kanban was simply empty;
+ *  - the partitioning of `plugin_kv`: two plugins writing the same key
+ *    do not see each other.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
@@ -47,21 +47,21 @@ test.after(() => { resetConfig(); resetPluginPolicyState(); });
 
 type PluginHost = ReturnType<typeof daemonHost>;
 
-/** Manifeste valide, construit par le vrai lecteur de P.1 : les tests ne
- *  doivent pas pouvoir fabriquer un manifeste que le loader refuserait. */
+/** A valid manifest, built by the real reader of P.1: the tests must
+ *  not be able to make a manifest the loader would refuse. */
 function manifestOf(id: string, permissions: string[], extra: Record<string, unknown> = {}) {
   const res = readManifest({ timon: { id, apiVersion: PLUGIN_API_VERSION, permissions, ...extra } });
-  assert.equal(res.ok, true, `manifeste de test invalide pour ${id}`);
+  assert.equal(res.ok, true, `invalid test manifest for ${id}`);
   if (!res.ok) throw new Error('unreachable');
   return res.manifest;
 }
 
-/** Hôte double : aucune façade ne touche la vraie machine, sauf là où le test
- *  le demande explicitement (kv sur la vraie base). */
+/** Fake host: no facade touches the real machine, except where the test
+ *  asks for it explicitly (kv on the real database). */
 function fakeHost(overrides: Partial<PluginHost> = {}): PluginHost {
   const store = new Map<string, string>();
   return {
-    mountRouter: () => () => { /* rien monté */ },
+    mountRouter: () => () => { /* nothing mounted */ },
     kv: {
       get: (p, k) => store.get(`${p} ${k}`),
       set: (p, k, v) => void store.set(`${p} ${k}`, v),
@@ -77,7 +77,7 @@ function fakeHost(overrides: Partial<PluginHost> = {}): PluginHost {
     },
     kanban: { create: () => ({}), update: () => ({}), list: () => [] },
     notify: () => { /* silencieux */ },
-    subscribe: () => () => { /* rien */ },
+    subscribe: () => () => { /* nothing */ },
     exec: async () => ({ code: 0, stdout: '', stderr: '' }),
     fetch: (async () => new Response('ok')) as unknown as typeof globalThis.fetch,
     dataDir: (id) => `/tmp/timon-test-plugins/${id}`,
@@ -96,14 +96,14 @@ function fakeHost(overrides: Partial<PluginHost> = {}): PluginHost {
   };
 }
 
-/** Contexte Cordis porteur du fiber d'un plugin, façon loader (P.3). */
+/** Cordis context carrying a plugin's fiber, the way the loader does it (P.3). */
 async function pluginFiber(root: Context) {
   let inner!: Context;
   const fiber = await root.plugin({ name: 'plugin-holder', apply(ctx: Context) { inner = ctx; } });
   return { ctx: inner, dispose: () => fiber.dispose() };
 }
 
-test('un plugin recoit sa facade, et rien du daemon', async () => {
+test('a plugin receives its facade, and nothing of the daemon', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -116,18 +116,18 @@ test('un plugin recoit sa facade, et rien du daemon', async () => {
   assert.equal(typeof plugin.router, 'function');
   assert.equal(typeof plugin.effect, 'function');
 
-  // L'interdit dur du plan : ces noms ne doivent apparaître NULLE PART dans la
-  // surface — c'est par eux qu'un plugin atteindrait la base ou le bus.
+  // The hard ban of the plan: these names must appear NOWHERE in the
+  // surface; they are how a plugin would reach the database or the bus.
   const surface = new Set(Object.keys(plugin));
   for (const forbidden of ['db', 'dbApi', 'bus', 'env', 'process', 'loader', 'dispatcher']) {
-    assert.equal(surface.has(forbidden), false, `${forbidden} ne doit pas être exposé`);
+    assert.equal(surface.has(forbidden), false, `${forbidden} must not be exposed`);
   }
-  assert.equal('publish' in plugin.events, false, 'le bus est en lecture seule : pas de publish');
-  assert.deepEqual(plugin.config, {}, 'la config du plugin est la sienne, pas process.env');
+  assert.equal('publish' in plugin.events, false, 'the bus is read-only: no publish');
+  assert.deepEqual(plugin.config, {}, 'the plugin config is its own, not process.env');
   await root.fiber.dispose();
 });
 
-test('une facade appelee sans sa permission throw, elle ne rend pas un resultat vide', async () => {
+test('a facade called without its permission throws, it does not return an empty result', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -147,17 +147,17 @@ test('une facade appelee sans sa permission throw, elle ne rend pas un resultat 
   await assert.rejects(() => plugin.usage.get('claude'), PluginPermissionError);
   assert.throws(() => plugin.usage.registerCollector('acme', async () => null), PluginPermissionError);
   assert.throws(() => plugin.notify.report('t'), PluginPermissionError);
-  assert.throws(() => plugin.events.on('task_done', () => { /* jamais appelé */ }), PluginPermissionError);
+  assert.throws(() => plugin.events.on('task_done', () => { /* never called */ }), PluginPermissionError);
   assert.throws(() => plugin.storage.dir, PluginPermissionError);
   assert.throws(() => plugin.assertPermission('users:read'), PluginPermissionError);
-  assert.equal(plugin.user(), undefined, 'hors requête, pas d’appelant');
+  assert.equal(plugin.user(), undefined, 'outside a request, no caller');
 
-  // `fetch` est ABSENT sans `http:outbound` (§10.4) : son absence EST le refus.
+  // `fetch` is ABSENT without `http:outbound` (§10.4): its absence IS the refusal.
   assert.equal(plugin.fetch, undefined);
   await root.fiber.dispose();
 });
 
-test('ctx.secrets rend la valeur avec secrets:read, et le scope reste au daemon', async () => {
+test('ctx.secrets returns the value with secrets:read, and the scope stays with the daemon', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const asked: { plugin: string; name: string }[] = [];
@@ -176,8 +176,8 @@ test('ctx.secrets rend la valeur avec secrets:read, et le scope reste au daemon'
 
   assert.equal(await plugin.secrets.get('ACME_TOKEN'), 'v-acme');
   assert.equal(await plugin.secrets.get('AUTRE_TOKEN'), undefined);
-  // L'id du plugin est imposé par la façade : un plugin ne peut pas demander la
-  // portée d'un autre, il n'a aucun argument pour le dire.
+  // The plugin id is imposed by the facade: a plugin cannot ask for another
+  // one's scope, it has no argument to say so.
   assert.deepEqual(asked, [
     { plugin: 'acme-plugin', name: 'ACME_TOKEN' },
     { plugin: 'acme-plugin', name: 'AUTRE_TOKEN' },
@@ -185,7 +185,7 @@ test('ctx.secrets rend la valeur avec secrets:read, et le scope reste au daemon'
   await root.fiber.dispose();
 });
 
-test('fetch n apparait qu avec http:outbound', async () => {
+test('fetch only appears with http:outbound', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -196,7 +196,7 @@ test('fetch n apparait qu avec http:outbound', async () => {
   await root.fiber.dispose();
 });
 
-test('un plugin ne voit jamais les cles d un autre dans plugin_kv', async () => {
+test('a plugin never sees the keys of another one in plugin_kv', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const host = daemonHost(root);
@@ -212,16 +212,16 @@ test('un plugin ne voit jamais les cles d un autre dans plugin_kv', async () => 
 
   await a.storage.kv.del('secret');
   assert.equal(await a.storage.kv.get('secret'), undefined);
-  assert.deepEqual(await b.storage.kv.get('secret'), { token: 'de-b' }, 'la clé du voisin doit survivre');
+  assert.deepEqual(await b.storage.kv.get('secret'), { token: 'de-b' }, 'the neighbour key must survive');
 
-  // Et la table elle-même : rien d'autre que ce que ce plugin a écrit.
+  // And the table itself: nothing but what this plugin wrote.
   assert.equal(dbApi.pluginKvList('plugin-bbb').length, 1);
   dbApi.pluginKvClear('plugin-bbb');
   assert.equal(dbApi.pluginKvList('plugin-bbb').length, 0);
   await root.fiber.dispose();
 });
 
-test('les reglages du manifeste ne sont pas reecrivables par le stockage libre', async () => {
+test('the manifest settings cannot be rewritten through free storage', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const host = fakeHost();
@@ -231,15 +231,15 @@ test('les reglages du manifeste ne sont pas reecrivables par le stockage libre',
   const plugin = createPluginContext(ctx, { manifest, version: '1.0.0' }, host);
 
   assert.equal(plugin.settings.get('apiUrl'), 'https://exemple.test');
-  // Valeur posée par l'utilisateur depuis /settings (P.7 écrira par ce chemin).
+  // A value set by the user from /settings (P.7 will write through this path).
   host.kv.set('settings-plugin', '@settings/apiUrl', JSON.stringify('https://reel.test'));
   assert.equal(plugin.settings.get('apiUrl'), 'https://reel.test');
 
-  // Un réglage non déclaré est une faute du plugin, pas une valeur absente.
+  // An undeclared setting is the plugin's fault, not a missing value.
   assert.throws(() => plugin.settings.get('inconnu'), /not declared/);
-  // Et le stockage libre ne peut pas empiéter sur l'espace des réglages.
+  // And free storage cannot encroach on the settings space.
   await assert.rejects(() => plugin.storage.kv.set('@settings/apiUrl', 'pirate'), /reserved/);
-  assert.deepEqual(await plugin.storage.kv.list(), [], 'les réglages ne fuient pas dans le kv');
+  assert.deepEqual(await plugin.storage.kv.list(), [], 'the settings do not leak into the kv');
   await root.fiber.dispose();
 });
 
@@ -261,7 +261,7 @@ test('settings.get reseals a plaintext secret and returns the value', async () =
   await root.fiber.dispose();
 });
 
-test('une mission spawnee par un plugin porte toujours son canal', async () => {
+test('a mission spawned by a plugin always carries its channel', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const seen: { agent: string; channel: string }[] = [];
@@ -277,14 +277,14 @@ test('une mission spawnee par un plugin porte toujours son canal', async () => {
   }));
 
   withPolicy({ spawn: { approved: ['spawner'] } });
-  // Le plugin TENTE de se faire passer pour le chat humain : le canal imposé
-  // par la façade doit gagner, sinon la traçabilité ne vaut rien.
+  // The plugin TRIES to pass itself off as the human chat: the channel imposed
+  // by the facade must win, otherwise traceability is worth nothing.
   await plugin.missions.spawn({ agent: 'demo', mission: 'test', meta: { channel: 'chat' } });
   assert.deepEqual(seen, [{ agent: 'demo', channel: 'plugin:spawner' }]);
   await root.fiber.dispose();
 });
 
-test('les events sont filtres, et le desabonnement suit le fiber', async () => {
+test('events are filtered, and unsubscribing follows the fiber', async () => {
   const root = new Context();
   const { ctx, dispose } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -292,26 +292,26 @@ test('les events sont filtres, et le desabonnement suit le fiber', async () => {
     version: '1.0.0',
   }, daemonHost(root));
 
-  // Les transcripts (`event`, `event_delta`) ne sont pas des kinds génériques :
-  // sans `missions:transcript` (API 10), les demander est une erreur nommée,
-  // pas un abonnement silencieusement mort. Un kind inconnu reste "non exposé".
+  // Transcripts (`event`, `event_delta`) are not generic kinds:
+  // without `missions:transcript` (API 10), asking for them is a named error,
+  // not a silently dead subscription. An unknown kind stays "not exposed".
   assert.equal(PLUGIN_EVENT_KINDS.includes('task_done'), true);
-  assert.throws(() => plugin.events.on('event' as never, () => { /* jamais */ }), PluginPermissionError);
-  assert.throws(() => plugin.events.on('nope' as never, () => { /* jamais */ }), /not exposed/);
+  assert.throws(() => plugin.events.on('event' as never, () => { /* never */ }), PluginPermissionError);
+  assert.throws(() => plugin.events.on('nope' as never, () => { /* never */ }), /not exposed/);
 
   const seen: string[] = [];
   plugin.events.on('task_done', (ev) => void seen.push((ev as { taskId: string }).taskId));
   bus.publish({ kind: 'task_done', taskId: 't1' });
   bus.publish({ kind: 'notifications_changed' });
-  assert.deepEqual(seen, ['t1'], 'seul le kind demandé arrive');
+  assert.deepEqual(seen, ['t1'], 'only the requested kind arrives');
 
   await dispose();
   bus.publish({ kind: 'task_done', taskId: 't2' });
-  assert.deepEqual(seen, ['t1'], 'le plugin déchargé ne doit plus rien recevoir');
+  assert.deepEqual(seen, ['t1'], 'the unloaded plugin must receive nothing more');
   await root.fiber.dispose();
 });
 
-test('les routes d un plugin vivent sous /api/plugins/<id> et tombent avec lui', async () => {
+test('the routes of a plugin live under /api/plugins/<id> and fall with it', async () => {
   const app = express();
   const root = new Context();
   await root.plugin(createHttpPlugin(app));
@@ -330,7 +330,7 @@ test('les routes d un plugin vivent sous /api/plugins/<id> et tombent avec lui',
 
   assert.equal((await fetch(url)).status, 200);
   await dispose();
-  assert.equal((await fetch(url)).status, 404, 'la route doit tomber avec le plugin');
+  assert.equal((await fetch(url)).status, 404, 'the route must fall with the plugin');
   server.close();
   await root.fiber.dispose();
 });
@@ -343,7 +343,7 @@ test('les routes d un plugin vivent sous /api/plugins/<id> et tombent avec lui',
  * routes: the asset curtain (`thirdPartyAssetVisible`, bundles/covers) accepts
  * `layout:<short>`, this one only ever accepts `plugin:<id>`.
  */
-test('la surface layout n ouvre pas l API du plugin — seul plugin:<id> le fait', async () => {
+test('the layout surface does not open the plugin API, only plugin:<id> does', async () => {
   const app = express();
   let permissions: string[] = [];
   // A non-superadmin viewer carrying exactly these grants (`users/identity.ts`:
@@ -372,9 +372,9 @@ test('la surface layout n ouvre pas l API du plugin — seul plugin:<id> le fait
   const url = `http://127.0.0.1:${port}${PLUGIN_ROUTE_PREFIX}/hybrid-behavior/ping`;
 
   permissions = ['layout:hybrid-behavior'];
-  assert.equal((await fetch(url)).status, 404, 'le chrome ne donne pas l API');
+  assert.equal((await fetch(url)).status, 404, 'the chrome does not give the API');
   permissions = ['widget:hybrid-behavior'];
-  assert.equal((await fetch(url)).status, 404, 'ni une autre surface');
+  assert.equal((await fetch(url)).status, 404, 'nor another surface');
   permissions = ['plugin:hybrid-behavior'];
   assert.equal((await fetch(url)).status, 200, 'plugin:<id> ouvre le paquet');
 
@@ -383,23 +383,23 @@ test('la surface layout n ouvre pas l API du plugin — seul plugin:<id> le fait
   await root.fiber.dispose();
 });
 
-test('le contexte isole ne resout aucun service interne', async () => {
+test('the isolated context resolves no internal service', async () => {
   const root = new Context();
   await root.plugin({ name: 'core-db-ish', apply(ctx: Context) { ctx.provide('db', dbApi); } });
-  assert.notEqual(root.get('db'), undefined, 'le daemon, lui, voit sa base');
+  assert.notEqual(root.get('db'), undefined, 'the daemon, for its part, sees its database');
 
   const isolated = isolateForPlugin(root);
-  assert.equal(isolated.get('db'), undefined, 'un plugin ne doit pas atteindre db');
+  assert.equal(isolated.get('db'), undefined, 'a plugin must not reach db');
 
-  // Même par la porte de service : un plugin qui déclarerait `inject: ['db']`
-  // resterait PENDING plutôt que de recevoir la base.
+  // Even through the back door: a plugin declaring `inject: ['db']`
+  // would stay PENDING rather than receive the database.
   let applied = false;
   await isolated.plugin({ name: 'sournois', inject: ['db'], apply() { applied = true; } });
-  assert.equal(applied, false, 'inject: [db] ne doit jamais activer un plugin sous l isolat');
+  assert.equal(applied, false, 'inject: [db] must never activate a plugin under the isolate');
   await root.fiber.dispose();
 });
 
-test('un jeton UI est signe, date et lie a son plugin', async () => {
+test('a UI token is signed, dated and bound to its plugin', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const host = fakeHost();
@@ -408,16 +408,16 @@ test('un jeton UI est signe, date et lie a son plugin', async () => {
   const claims = verifyToken(plugin.ui.token(), host.tokenKey());
   assert.equal(claims?.aud, 'plugin:ui-plugin');
   assert.ok(typeof claims?.exp === 'number' && claims.exp * 1000 > Date.now());
-  assert.ok((claims.exp as number) - (claims.iat as number) <= 600, 'jeton court : 10 min au plus');
+  assert.ok((claims.exp as number) - (claims.iat as number) <= 600, 'short token: 10 min at most');
 
-  // Signé par une autre clé, expiré, ou malformé : refusé sans throw.
+  // Signed by another key, expired, or malformed: refused without throwing.
   assert.equal(verifyToken(plugin.ui.token(), Buffer.alloc(32, 9)), null);
   assert.equal(verifyToken(signToken({ exp: 1 }, host.tokenKey()), host.tokenKey()), null);
   assert.equal(verifyToken('pas-un-jeton', host.tokenKey()), null);
   await root.fiber.dispose();
 });
 
-test('le Kanban d un plugin applique les memes gardes que POST /api/tasks', async () => {
+test('a plugin Kanban applies the same guards as POST /api/tasks', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -427,8 +427,8 @@ test('le Kanban d un plugin applique les memes gardes que POST /api/tasks', asyn
   // A job's task that runs is a spawn (TODO #562): the operator approved this one.
   withPolicy({ spawn: { approved: ['kanban-plugin'] } });
 
-  // Un `scheduled_at` en string ISO était stocké tel quel puis comparé
-  // numériquement : la task ne partait jamais, sans la moindre erreur.
+  // A `scheduled_at` as an ISO string was stored as is then compared
+  // numerically: the task never started, without the slightest error.
   await assert.rejects(
     () => plugin.kanban.add({ title: 't', agent: 'a', scheduledAt: '2026-01-01' as unknown as number }),
     /scheduled_at/i,
@@ -440,10 +440,13 @@ test('le Kanban d un plugin applique les memes gardes que POST /api/tasks', asyn
   assert.ok(created.id);
   const listed = await plugin.kanban.list({ status: 'PENDING' }) as { id: string }[];
   assert.ok(listed.some((t) => t.id === created.id));
+  const several = await plugin.kanban.list({ status: ['BLOCKED', 'PENDING'] }) as { id: string }[];
+  assert.ok(several.some((t) => t.id === created.id), 'a list of statuses reaches the facade');
+  await assert.rejects(() => plugin.kanban.list({ status: [] }), /at least one/);
   await root.fiber.dispose();
 });
 
-test('une notification de plugin porte sa provenance', async () => {
+test('a plugin notification carries its provenance', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const seen: { title: string; source: string }[] = [];
@@ -461,14 +464,14 @@ test('une notification de plugin porte sa provenance', async () => {
   await root.fiber.dispose();
 });
 
-/* ── Les effets ────────────────────────────────────────────────────────────
-   §10.4 promet un effet « identique au noyau ». Ces tests le prennent au mot :
-   ils exercent les formes que Cordis accepte (disposer, promesse, itérable,
-   disposer async) À TRAVERS la façade, et vérifient que le déchargement ATTEND
-   ce qui doit l'être. Sans ça, un plugin qui ferme une socket ou un process
-   croirait l'avoir fait alors que le daemon serait déjà passé à la suite. */
+/* ── Effects ────────────────────────────────────────────────────────────
+   §10.4 promises an effect "identical to the kernel". These tests take it at its word:
+   they exercise the shapes Cordis accepts (disposer, promise, iterable,
+   async disposer) THROUGH the facade, and check that unloading WAITS for
+   what must be waited for. Without that, a plugin closing a socket or a process
+   would think it had done so while the daemon had already moved on. */
 
-test('un disposer async est attendu au dechargement', async () => {
+test('an async disposer is awaited on unload', async () => {
   const root = new Context();
   const { ctx, dispose } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -478,18 +481,18 @@ test('un disposer async est attendu au dechargement', async () => {
 
   const trace: string[] = [];
   plugin.effect(() => async () => {
-    // La ressource ne se ferme pas dans le tick courant : c'est tout l'enjeu.
+    // The resource does not close in the current tick: that is the whole point.
     await new Promise((resolve) => setTimeout(resolve, 20));
     trace.push('ferme');
   });
 
-  assert.deepEqual(trace, [], "l'effet ne libère rien tant que le plugin vit");
+  assert.deepEqual(trace, [], 'the effect frees nothing while the plugin lives');
   await dispose();
-  assert.deepEqual(trace, ['ferme'], 'le déchargement doit AVOIR ATTENDU le disposer async');
+  assert.deepEqual(trace, ['ferme'], 'unloading must HAVE WAITED for the async disposer');
   await root.fiber.dispose();
 });
 
-test('un corps d effet asynchrone rend son disposer', async () => {
+test('an asynchronous effect body returns its disposer', async () => {
   const root = new Context();
   const { ctx, dispose } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -498,14 +501,14 @@ test('un corps d effet asynchrone rend son disposer', async () => {
   }, fakeHost());
 
   const trace: string[] = [];
-  // Corps async : le plugin ouvre sa ressource avant de savoir la fermer.
+  // Async body: the plugin opens its resource before knowing how to close it.
   const handle = plugin.effect(async () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
     trace.push('ouvert');
     return async () => { trace.push('ferme'); };
   });
 
-  // Le handle est attendable : il livre le disposer une fois le corps établi.
+  // The handle is awaitable: it delivers the disposer once the body is set up.
   await handle;
   assert.deepEqual(trace, ['ouvert']);
   await dispose();
@@ -513,7 +516,7 @@ test('un corps d effet asynchrone rend son disposer', async () => {
   await root.fiber.dispose();
 });
 
-test('un effet iterable enregistre chaque disposer, demontes en ordre inverse', async () => {
+test('an iterable effect registers each disposer, torn down in reverse order', async () => {
   const root = new Context();
   const { ctx, dispose } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -528,11 +531,11 @@ test('un effet iterable enregistre chaque disposer, demontes en ordre inverse', 
   });
 
   await dispose();
-  assert.deepEqual(trace, ['deux', 'un'], 'ordre inverse d’enregistrement');
+  assert.deepEqual(trace, ['deux', 'un'], 'reverse order of registration');
   await root.fiber.dispose();
 });
 
-test('le handle rendu par effect demonte l effet et se regle quand c est fini', async () => {
+test('the handle returned by effect tears the effect down and settles when done', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -549,11 +552,11 @@ test('le handle rendu par effect demonte l effet et se regle quand c est fini', 
   await handle();
   assert.deepEqual(trace, ['ferme'], 'le handle attend le disposer async');
   await handle();
-  assert.deepEqual(trace, ['ferme'], 'appeler deux fois ne libère pas deux fois');
+  assert.deepEqual(trace, ['ferme'], 'calling twice does not free twice');
   await root.fiber.dispose();
 });
 
-test('un effet qui ne rend rien reste legitime', async () => {
+test('an effect that returns nothing stays legitimate', async () => {
   const root = new Context();
   const { ctx, dispose } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -568,9 +571,9 @@ test('un effet qui ne rend rien reste legitime', async () => {
   await root.fiber.dispose();
 });
 
-/* ── secu-5 : la politique s'applique DANS la façade ─────────────────────── */
+/* ── secu-5: the policy applies INSIDE the facade ─────────────────────── */
 
-test('spawn : un plugin non approuvé est refusé, puis quota-é une fois approuvé', async () => {
+test('spawn: an unapproved plugin is refused, then rate-limited once approved', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const plugin = createPluginContext(ctx, {
@@ -587,7 +590,7 @@ test('spawn : un plugin non approuvé est refusé, puis quota-é une fois approu
   await root.fiber.dispose();
 });
 
-test('host:exec : hors allowlist refusé, et jamais les abonnements', async () => {
+test('host:exec: outside the allowlist refused, and never the subscriptions', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const ran: string[] = [];
@@ -602,12 +605,12 @@ test('host:exec : hors allowlist refusé, et jamais les abonnements', async () =
   await plugin.host.exec('ls', ['-l']);
   await assert.rejects(() => plugin.host.exec('curl'), PluginPolicyError);
   await assert.rejects(() => plugin.host.exec('claude', ['-p', 'x']), PluginPolicyError);
-  // Rien d'autre que l'autorisé n'est jamais parvenu à l'hôte.
+  // Nothing but what is allowed ever reached the host.
   assert.deepEqual(ran, ['ls']);
   await root.fiber.dispose();
 });
 
-test('http:outbound : seuls les hôtes de l\'allowlist sortent', async () => {
+test('http:outbound: only allowlisted hosts go out', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const seen: string[] = [];
@@ -625,7 +628,7 @@ test('http:outbound : seuls les hôtes de l\'allowlist sortent', async () => {
   await root.fiber.dispose();
 });
 
-test('usage:read rend les quotas, usage:collect reste une permission distincte', async () => {
+test('usage:read returns the quotas, usage:collect stays a separate permission', async () => {
   const root = new Context();
   const { ctx } = await pluginFiber(root);
   const entry = {
@@ -639,19 +642,19 @@ test('usage:read rend les quotas, usage:collect reste une permission distincte',
     usage: {
       list: async () => [entry],
       get: async (backend) => (backend === 'claude' ? entry : null),
-      registerCollector: () => () => { /* jamais atteint */ },
+      registerCollector: () => () => { /* never reached */ },
     },
   }));
 
   assert.deepEqual(await plugin.usage.list(), [entry]);
   assert.equal(await plugin.usage.get('inconnu'), null);
-  // Lire n'est pas fournir : un plugin qui ne déclare que `usage:read` ne peut
-  // pas se substituer à la sonde du produit.
+  // Reading is not providing: a plugin that only declares `usage:read` cannot
+  // stand in for the product's probe.
   assert.throws(() => plugin.usage.registerCollector('claude', async () => null), PluginPermissionError);
   await root.fiber.dispose();
 });
 
-test('une sonde d\'usage fournie par un plugin est retirée à son déchargement', async () => {
+test('a usage probe provided by a plugin is removed when it unloads', async () => {
   const root = new Context();
   const { ctx, dispose } = await pluginFiber(root);
   const registered: string[] = [];
@@ -673,11 +676,11 @@ test('une sonde d\'usage fournie par un plugin est retirée à son déchargement
   plugin.usage.registerCollector('acme-llm', async () => ({ windows: {}, extra: null }));
   assert.deepEqual(registered, ['collector:acme-llm']);
   await dispose();
-  assert.equal(removed, 1, 'le déchargement du plugin retire sa sonde');
+  assert.equal(removed, 1, 'unloading the plugin removes its probe');
   await root.fiber.dispose();
 });
 
-test('backends:register — le daemon garde le spawn, l\'allowlist et le retrait', async () => {
+test('backends:register: the daemon keeps the spawn, the allowlist and the removal', async () => {
   const root = new Context();
   const { ctx, dispose } = await pluginFiber(root);
   const calls: string[] = [];
@@ -698,15 +701,15 @@ test('backends:register — le daemon garde le spawn, l\'allowlist et le retrait
     },
   }));
 
-  // Un profil posé sur un dialecte du produit n'apporte PAS son binaire :
-  // c'est celui que le daemon lance déjà pour ses propres profils.
+  // A profile set on a product dialect does NOT bring its binary:
+  // it is the one the daemon already launches for its own profiles.
   withPolicy({ exec: { allow: [] } });
   plugin.backends.registerProfile({
     id: 'acme-llm', dialect: 'codex', label: 'ACME', defaultModel: 'acme-1',
     models: [{ slug: 'acme-1', label: 'acme-1' }], env: {},
   });
 
-  // Un binaire que le PLUGIN choisit passe, lui, par l'allowlist de l'opérateur.
+  // A binary the PLUGIN chooses goes, for its part, through the operator's allowlist.
   assert.throws(() => plugin.backends.registerProfile({
     id: 'acme-cli', dialect: 'codex', label: 'ACME CLI', cmd: 'acme',
     defaultModel: 'acme-1', models: [], env: {},
@@ -726,7 +729,7 @@ test('backends:register — le daemon garde le spawn, l\'allowlist et le retrait
 
   assert.deepEqual(calls, ['profile:provider:acme-llm', 'dialect:provider:acme-proto']);
   await dispose();
-  assert.equal(removed, 2, 'le déchargement retire profil et dialecte');
+  assert.equal(removed, 2, 'unloading removes profile and dialect');
   await root.fiber.dispose();
 });
 
@@ -866,7 +869,7 @@ test('realtime validates inputs and fixes the publishing plugin identity', async
       assert.throws(() => plugin.realtime.publish('changed', payload, owner), /JSON-serializable/);
     }
     assert.throws(() => plugin.realtime.publish('changed', 'a'.repeat(16383), owner), /16 KiB/);
-    assert.throws(() => plugin.realtime.publish('changed', 'é'.repeat(8192), owner), /16 KiB/);
+    assert.throws(() => plugin.realtime.publish('changed', 'é'.repeat(8192), owner), /16 KiB/); // french-ok: a two-byte letter that doubles the UTF-8 size
     assert.throws(() => plugin.events.on('plugin_realtime' as never, () => {}));
     assert.deepEqual(events, []);
     plugin.realtime.publish('task_done', { pluginId: 'other-plugin' }, owner);

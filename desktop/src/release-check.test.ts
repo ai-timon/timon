@@ -106,5 +106,5 @@ test('TODO #439: the check page says the installation is being verified, before 
   assert.match(html, /<li class="pending">.*Service/);
   assert.match(html, /antivirus/);
   assert.doesNotMatch(html, /<script|src=|href=/);
-  assert.match(waitingPage('fr-FR', 'dark', 'verifying'), /Vérification de l’installation…/);
+  assert.match(waitingPage('fr-FR', 'dark', 'verifying'), /Vérification de l’installation…/); // french-ok: the French locale under test
 });

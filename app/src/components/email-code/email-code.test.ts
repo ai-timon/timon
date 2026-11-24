@@ -1,7 +1,7 @@
 /**
  * The code screen (docs/EMAIL-CODE-UI.md): the daemon's refusals read in the
  * reader's language with their wait counted down, six digits checked once
- * complete, a wrong code cleared with its tries left, « Resend » closed for
+ * complete, a wrong code cleared with its tries left, "Resend" closed for
  * 60 s, and the `email.code` slot taken and given back by a plugin.
  */
 import assert from 'node:assert/strict';
@@ -178,7 +178,7 @@ test('six digits are checked once complete; a wrong one is cleared with its trie
   assert.equal(verified, 1);
 });
 
-test('« Resend » opens after its wait, and a refused resend shows the delay the daemon asked for', async (t) => {
+test('"Resend" opens after its wait, and a refused resend shows the delay the daemon asked for', async (t) => {
   const { resetSlotsForTests } = await import('@/lib/plugin-host/slots');
   resetSlotsForTests();
   const { codeFailure } = await import('./email-code-failure');

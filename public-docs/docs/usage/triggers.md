@@ -21,7 +21,9 @@ Creating, editing and deleting triggers needs the **Manage triggers** permission
 
 A schedule fires at the times of a cron expression, for example `0 9 * * 1` (Mondays at 9:00). Pick a preset or type the expression, and optionally a time zone. A schedule has no incoming data, so it has no filter; its templates can use `{now}`, `{timestamp}` and `{trigger.name}`. A schedule runs at most once a minute: an optional sixth field for seconds may hold a single value (`30 * * * * *`), never several.
 
-If Timon was not running at a scheduled time, that occurrence is skipped: the next run is computed from the moment Timon is back, without catching up.
+If Timon was not running at a scheduled time, that occurrence runs once when Timon is back, and the next run is computed from that moment, without catching up on the others. A trigger that runs a workflow waits for the Workflows module to start (up to five minutes) before it runs. When a scheduled run fails, its journal shows why and you get a notification.
+
+A Kanban task starts with no MCP server: only those of its project role and those it names itself. An agent outside any project role therefore has none of its tools when a routine opens its task. In the routine's editor, under **MCP servers for each task**, pick the servers the agent needs: every task the routine opens carries them. The agent's own configuration is never copied on its own. From the CLI or an agent's tools, the same lists are `--extra-mcp`, `--extra-skills` and `--allow` (`extra_mcp_servers`, `extra_skills`, `extra_allowed_tools`). An agent can only pass on servers, skills and tools the routine's agent already holds: a stdio server it does not hold, or a new tool, takes you.
 
 ### Webhooks
 

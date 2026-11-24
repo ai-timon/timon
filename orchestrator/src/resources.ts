@@ -79,14 +79,17 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { cpus, homedir, loadavg } from 'node:os';
 import { basename, join } from 'node:path';
 import { config } from './config/load.js';
+import type { TimonConfig } from './config/schema.js';
 import { apiError } from './api-error.js';
+import { daemonMessage, type DaemonMessage } from './daemon-message.js';
 import { CwdUnusableError } from './cwd-check.js';
 import { getHost } from './host/index.js';
 import { nodeRuntime } from './host/node-runtime.js';
 import { daemonRuntimePaths } from './mission-fence-target.js';
 import { FENCE_EXIT, fenceLaunchDecision, type FenceStatus } from './host/fence.js';
 import {
-  agentPackageCacheDir, isFenceAgent, isFenceSegment, missionTmpDir, resolveFence, type FenceMode, type FenceTarget, type IsolationTarget,
+  agentPackageCacheDir, fenceConfigWritesCredentialStore, fenceWritesCredentialStore, isFenceAgent, isFenceSegment, missionTmpDir, resolveFence,
+  type FenceMode, type FenceTarget, type IsolationTarget,
 } from './host/isolation.js';
 import type { FenceMechanism, HostFence, HostFenceWitness } from './host/types.js';
 import { argsUnderFence, type NestedSandboxDeclaration } from './backends/permission-models.js';
@@ -103,6 +106,7 @@ import { RETIRED_SETTINGS, resolve, retiredSettingsInUse, settingBool, settingNu
 import {
   diffScopeKills,
   formatKillNotice,
+  killNoticeMessage,
   missionPrefixOfScope,
   parseKernelOom,
   readScopeSnapshots,
@@ -431,6 +435,8 @@ export type MissionFenceOutcome =
     readonly workspace: 'rw' | 'ro';
     /** The agent's package cache (`agentPackageCacheDir`), for the package managers; null without one. */
     readonly packageCacheDir: string | null;
+    /** A `writable` grant reaches the macOS login keychain (`fenceWritesCredentialStore`): the CLI can renew its sign-in there. */
+    readonly credentialStoreWritable: boolean;
   }
   /** `warning` is null only when the configuration turned the fence off. */
   | { readonly state: 'unfenced'; readonly warning: string | null; readonly tampered: boolean };
@@ -610,6 +616,26 @@ export type FenceMissionOptions = {
 };
 
 /**
+ * Whether the next launch of a mission of `target` will run inside a fence that
+ * keeps the OS credential store read-only, asked before the provider builds its
+ * command: `fenceMissionCommand` then decides for real, on the same configuration
+ * and the same probe. Read by the move of an account's keychain entry
+ * (`mission-fence-state.ts`), which only such a launch needs: outside the fence,
+ * or with a `writable` exception reaching the keychain, the CLI updates the entry
+ * itself. A wrong guess costs a needless move or none, never a lost sign-in:
+ * that launch's CLI is not running yet, and once it runs, it is recorded as what it is.
+ */
+export function missionFenceExpected(
+  target: { agent?: string; project?: string } = {},
+  on: { cfg?: TimonConfig; fence?: HostFence | undefined; platform?: NodeJS.Platform; home?: string } = {},
+): boolean {
+  const cfg = on.cfg ?? config();
+  const fence = 'fence' in on ? on.fence : getHost().fence;
+  if (cfg.host.isolation.filesystem === 'off' || hostFenceStatus(fence).state !== 'ready') return false;
+  return !fenceConfigWritesCredentialStore(cfg, target, on.platform ?? getHost().platform, on.home ?? homedir());
+}
+
+/**
  * The fence layer of a mission launch: the command wrapped by the host's
  * fence, or left as is with a warning, or refused. Never silent: outside
  * `off`, a mission that runs unfenced says why, and an altered package is
@@ -674,10 +700,11 @@ export function fenceMissionCommand(
       + 'its missions also reach the other folders in it. Give the agent a project folder (a folder inside it) for a stricter fence.');
   }
   const policyFile = fencePolicyFile(target.timonHome, unit);
+  const credentialStoreWritable = fenceWritesCredentialStore(policy, target.platform ?? process.platform, target.home ?? homedir());
   try {
     const wrapped = fence.wrap(policy, cmd, nested.args, policyFile);
     reportFenceReady(fence.mechanism, status.abi, status.state === 'ready' ? status.fallback : undefined);
-    return { ...wrapped, fence: { state: 'fenced', mechanism: fence.mechanism, policyFile, tmpDir, workspace, packageCacheDir } };
+    return { ...wrapped, fence: { state: 'fenced', mechanism: fence.mechanism, policyFile, tmpDir, workspace, packageCacheDir, credentialStoreWritable } };
   } catch (err) {
     return unfenced({ state: 'unsupported', reason: `the fence policy cannot be applied (${(err as Error).message})`, abi: status.abi });
   }
@@ -1061,7 +1088,7 @@ const lastEvents = new Map<string, Watched>();
 let watchTimer: NodeJS.Timeout | null = null;
 
 /** Injected by index.ts to avoid an import cycle with notifications.ts. */
-type AlertFn = (opts: { title: string; body: string; urgent: boolean }) => void;
+type AlertFn = (opts: { title: string; body: string; urgent: boolean; message?: DaemonMessage }) => void;
 let alertSink: AlertFn = ({ title, body }) => console.warn(`[resources] ALERTE ${title} — ${body}`);
 
 export function setResourceAlertSink(fn: AlertFn): void {
@@ -1099,6 +1126,9 @@ function checkUnit(
       body: `Cgroup ${unit} hit MemoryMax (${fmtGb(st.memoryMax)}) ${st.events.max - prev.max} time(s).`
         + ` No OOM kill so far, but there is no headroom left.`,
       urgent: true,
+      message: daemonMessage('resource_memory_max', {
+        label, unit, max: fmtGb(st.memoryMax), times: st.events.max - prev.max,
+      }),
     });
     return;
   }
@@ -1110,6 +1140,9 @@ function checkUnit(
       body: `Cgroup ${unit} went over MemoryHigh (${fmtGb(st.memoryHigh)}) — usage ${fmtGb(st.memoryCurrent)}.`
         + ` The kernel throttles and reclaims memory; nothing is killed, but the load is abnormal.`,
       urgent: false,
+      message: daemonMessage('resource_memory_high', {
+        label, unit, high: fmtGb(st.memoryHigh), usage: fmtGb(st.memoryCurrent),
+      }),
     });
   }
 }
@@ -1120,6 +1153,9 @@ function genericOomAlert(n: number, unit: string, label: string, st: CgroupStats
     body: `The kernel killed ${n} process(es) of cgroup ${unit} (memory ${fmtGb(st.memoryCurrent)} / max ${fmtGb(st.memoryMax)}).`
       + ` A task may have failed without a readable message — check \`journalctl -k -g "Out of memory"\`.`,
     urgent: true,
+    message: daemonMessage('resource_oom_killed', {
+      count: n, label, unit, usage: fmtGb(st.memoryCurrent), max: fmtGb(st.memoryMax),
+    }),
   });
 }
 
@@ -1201,6 +1237,7 @@ async function attributeMissionOoms(
       title: `OOM: mission ${prefix ?? kill.scope} — process killed`,
       body: text,
       urgent: true,
+      message: killNoticeMessage(kill, prefix ?? kill.scope),
     });
   }
   if (attributed === 0) genericOomAlert(n, MISSION_SLICE, 'missions', st);
@@ -1229,6 +1266,9 @@ export function checkSlicePressure(avg10: number | null, st: Pick<CgroupStats, '
       + `(usage ${fmtGb(st.memoryCurrent)} / max ${fmtGb(st.memoryMax)}). Above `
       + `${SLICE_OOMD_PRESSURE_LIMIT} for 20 s, systemd-oomd will kill a mission.`,
     urgent: true,
+    message: daemonMessage('resource_pressure_high', {
+      pressure: avg10.toFixed(0), usage: fmtGb(st.memoryCurrent), max: fmtGb(st.memoryMax), limit: SLICE_OOMD_PRESSURE_LIMIT,
+    }),
   });
 }
 

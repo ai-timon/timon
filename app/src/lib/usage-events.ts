@@ -8,11 +8,29 @@
  */
 
 export type UsageSurface = 'web' | 'desktop';
+
+/** How a screen of the onboarding was shown or left (`onboarding_screen`). */
+export type OnboardingScreenAction = 'viewed' | 'completed' | 'skipped' | 'back';
+
+/**
+ * What "Choose your LLM" adds when the person goes on: the choice, the CLI
+ * found ready (or the one that was not), whether one was, and why not. The
+ * daemon maps the CLI to a product backend or `other`; nothing else of it
+ * leaves, never a key or an address.
+ */
+export type OnboardingScreenDetail = {
+  llmChoice?: 'plan' | 'local';
+  backend?: string;
+  connection?: 'ok' | 'failed' | 'unknown';
+  failureCode?: 'not_installed' | 'signed_out' | 'unreachable';
+};
+
 export type UsageEvent =
   | { name: 'app_opened'; surface: UsageSurface; setupCompleted: boolean; loadMs?: number }
   | { name: 'ui_error'; surface: UsageSurface; path: string }
   | { name: 'page_viewed'; surface: UsageSurface; path: string }
-  | { name: 'upgrade_action'; surface: UsageSurface; action: 'plans_viewed' | 'buy_opened'; entryPoint: 'license_page' | 'users' | 'settings' | 'banner' | 'other' };
+  | { name: 'upgrade_action'; surface: UsageSurface; action: 'plans_viewed' | 'buy_opened'; entryPoint: 'license_page' | 'users' | 'settings' | 'banner' | 'other' }
+  | ({ name: 'onboarding_screen'; surface: UsageSurface; screen: string; action: OnboardingScreenAction } & OnboardingScreenDetail);
 
 export const USAGE_EVENT_ROUTE = '/api/ui/telemetry/event';
 /** Pages of a signed-out visitor: the daemon would refuse them anyway. */
@@ -38,6 +56,17 @@ export function reportUsage(event: UsageEvent, fetcher: Fetcher = (input, init) 
       keepalive: true,
     })).catch(() => undefined);
   } catch { /* never surfaces */ }
+}
+
+/**
+ * One screen of the onboarding shown or left. The screens before the account
+ * are reported too: the daemon takes this event anonymously while the machine
+ * has no account, and drops it when sharing is off.
+ */
+export function reportOnboardingScreen(
+  screen: string, action: OnboardingScreenAction, detail: OnboardingScreenDetail = {}, fetcher?: Fetcher,
+): void {
+  reportUsage({ name: 'onboarding_screen', surface: usageSurface(), screen, action, ...detail }, fetcher);
 }
 
 /** The bits of `window` the reporter reads, injectable for tests. */

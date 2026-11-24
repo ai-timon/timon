@@ -55,6 +55,12 @@ export const TASK_CREATE_FIELDS = {
    *  `planGroupRefusal`. */
   plan_group: z.unknown(),
   pipeline: override,
+  /** 'pr' on the final `merge` task of a job that lands through a pull
+   *  request: it publishes the job's branch instead of merging into it.
+   *  'local' on the final `merge` task of a job a project that merges locally
+   *  runs on a branch of its own: it merges that branch into the target.
+   *  Checked by `landingRefusal`. */
+  landing: override,
   project: override,
   /** Orchestrator mission that opens (or joins) the work. Normally
    *  inferred from the `X-TIMON-Mission` header; the field only exists for the

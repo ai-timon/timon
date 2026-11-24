@@ -93,7 +93,7 @@ test('French gallery labels land on the same ids', () => {
   setLocale('fr');
   try {
     const themes = appearanceOptions('theme', caps({ all: true }), catalog);
-    assert.equal(themes.find((row) => row.id === PRODUCT_THEME_PLUGIN)?.label, 'Thème');
+    assert.equal(themes.find((row) => row.id === PRODUCT_THEME_PLUGIN)?.label, 'Thème'); // french-ok: the French locale under test
     assert.equal(themes.find((row) => row.id === 'plugin-theme')?.label, 'Nord');
   } finally {
     setLocale('en');

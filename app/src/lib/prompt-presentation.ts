@@ -1,5 +1,6 @@
 import { escapeHtml, mdToSafeHtml } from './markdown';
 import { t } from './i18n';
+import { daemonMessageText, parseDaemonMessage, type StoredDaemonMessage } from './api-error';
 import { readReplyAttachment, REPLY_PART_LABEL } from './reply-attachment';
 
 export { readAnnotationAttachment, type AnnotationAttachment, type AnnotationCardItem } from './annotation-attachment';
@@ -31,6 +32,8 @@ export type ReturnCard = {
   todo_progress?: { id: number; progress: string; landed?: number; total?: number }[];
   summary?: string;
   blocked_reason?: string;
+  /** The code of `blocked_reason` when the daemon wrote it: read in the reader's language. */
+  blocked_reason_code?: StoredDaemonMessage;
   findings?: string;
   report?: string;
 };
@@ -204,6 +207,8 @@ function readCard(raw: unknown): ReturnCard | undefined {
   }
   // An empty reason still marks the block: the card then says it is unknown.
   if (isStr(c.blocked_reason)) card.blocked_reason = c.blocked_reason;
+  const reasonCode = parseDaemonMessage(c.blocked_reason_code);
+  if (reasonCode && card.blocked_reason) card.blocked_reason_code = reasonCode;
   return card;
 }
 
@@ -256,7 +261,8 @@ function renderCard(card: ReturnCard, detailsHtml: string): string {
     + (chips.length ? `<div class="return-card-chips">${chips.join('')}</div>` : '')
     + (card.summary ? block('summary', null, card.summary) : '')
     + (card.blocked_reason !== undefined
-      ? block('alert', t('chatPage.returnCard.blockedReason'), card.blocked_reason.trim() || t('chatPage.returnCard.noReason'))
+      ? block('alert', t('chatPage.returnCard.blockedReason'),
+        daemonMessageText(card.blocked_reason_code, card.blocked_reason).trim() || t('chatPage.returnCard.noReason'))
       : '')
     + (card.findings ? block('findings', t('chatPage.returnCard.findings'), card.findings) : '')
     + (card.report ? block('report', null, card.report) : '')

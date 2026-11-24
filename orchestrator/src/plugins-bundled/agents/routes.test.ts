@@ -172,14 +172,16 @@ test('GET /api/mcp/:id masks transport secrets for non-managers', async () => {
   assert.equal(httpAsAda.status, 200);
   assert.deepEqual((httpAsAda.json as { transport: { headers: Record<string, string> } }).transport.headers, { authorization: '***' });
 
-  // The superadmin reads the real values back.
+  // The superadmin reads the env back; a header's value is in the vault, which nothing reads back.
   const stdioAsAdmin = await call('GET', '/api/mcp/mask-stdio', { cookie: adminCookie });
   assert.equal(stdioAsAdmin.status, 200);
   assert.deepEqual((stdioAsAdmin.json as { transport: { env: Record<string, string> } }).transport.env, { SECRET: 'stdio-secret' });
 
   const httpAsAdmin = await call('GET', '/api/mcp/mask-http', { cookie: adminCookie });
   assert.equal(httpAsAdmin.status, 200);
-  assert.deepEqual((httpAsAdmin.json as { transport: { headers: Record<string, string> } }).transport.headers, { authorization: 'Bearer http-secret' });
+  assert.deepEqual((httpAsAdmin.json as { transport: { headers: Record<string, string> } }).transport.headers, { authorization: '***' });
+  assert.ok(!JSON.stringify(httpAsAdmin.json).includes('header_secrets'), 'which vault secret holds it is not said');
+  assert.ok(!JSON.stringify(http.json).includes('http-secret'), 'nor is it in the response of the write');
 });
 
 test('employee is 403 on POST/DELETE /api/skills*', async () => {
@@ -437,7 +439,7 @@ test('a file outside the agent folder opens only with files:external, as an abso
 });
 
 test('skill creation persists markdown and rejects anonymous callers', async () => {
-  const body = { id: 'contract-skill', content: '# Contract\n\nInstructions é\r\n' };
+  const body = { id: 'contract-skill', content: '# Contract\n\nInstructions é\r\n' }; // french-ok: a non-ASCII byte the skill round-trips
   assert.equal((await call('POST', '/api/skills', { body })).status, 401);
   const created = await call('POST', '/api/skills', { cookie: adminCookie, body });
   assert.equal(created.status, 200);

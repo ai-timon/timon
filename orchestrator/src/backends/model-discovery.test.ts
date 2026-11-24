@@ -1,14 +1,14 @@
 /**
- * Découverte des modèles amont — ce qui doit rester vrai quoi qu'il arrive au
- * réseau.
+ * Upstream model discovery: what must stay true whatever happens to the
+ * network.
  *
- * Le contrat testé n'est pas "on sait parser du JSON", c'est la POLITIQUE de
- * dégradation : un provider injoignable, muet ou incohérent ne doit jamais
- * vider un menu ni faire disparaître un modèle que l'utilisateur pourrait
- * choisir. Sans ces tests, la panne se voit en production sous forme de
- * sélecteur vide, symptôme muet.
+ * The contract tested is not "we can parse JSON", it is the degradation
+ * POLICY: an unreachable, mute or inconsistent provider must never
+ * empty a menu nor make a model the user could pick disappear.
+ * Without these tests, the failure shows in production as an
+ * empty picker, a mute symptom.
  *
- * `node --test --import tsx src/backends/model-discovery.test.ts` (ou `npm test`).
+ * `node --test --import tsx src/backends/model-discovery.test.ts` (or `npm test`).
  */
 
 import { test } from 'node:test';
@@ -17,9 +17,9 @@ import assert from 'node:assert/strict';
 import { refreshModels, discoveredModels, discoveryError } from './model-discovery.js';
 import type { BackendProfile } from './types.js';
 
-/** Profil minimal, un id différent par test : l'état de découverte est un
- *  cache module indexé par id, deux tests qui partageraient l'id partageraient
- *  le cache (et donc le TTL déjà consommé). */
+/** A minimal profile, a different id per test: the discovery state is a
+ *  module cache indexed by id, two tests sharing the id would share
+ *  the cache (and so the TTL already consumed). */
 function profileOf(id: string): BackendProfile {
   return {
     id,
@@ -34,7 +34,7 @@ function profileOf(id: string): BackendProfile {
   };
 }
 
-/** Remplace `fetch` le temps d'un test et le restaure ensuite. */
+/** Replaces `fetch` for the length of a test and restores it afterwards. */
 async function withFetch(
   impl: () => Promise<Response>,
   fn: () => Promise<void>,
@@ -55,7 +55,7 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-test('les slugs viennent de l\'amont, les métadonnées restent locales', async () => {
+test('the slugs come from upstream, the metadata stays local', async () => {
   const p = profileOf('disco-merge');
   await withFetch(
     async () => jsonResponse({ data: [{ id: 'known-a' }, { id: 'brand-new' }] }),
@@ -63,13 +63,13 @@ test('les slugs viennent de l\'amont, les métadonnées restent locales', async 
       await refreshModels(p);
       const models = discoveredModels(p.id);
       assert.ok(models);
-      // `known-b` a disparu de l'amont → il disparaît du menu : c'est tout
-      // l'intérêt, ne plus proposer un modèle retiré.
+      // `known-b` disappeared upstream → it disappears from the menu: that is the whole
+      // point, no longer offering a withdrawn model.
       assert.deepEqual(models.map((m) => m.slug), ['known-a', 'brand-new']);
-      // Ce que l'amont ne sait pas (preset, fenêtre de contexte) survit.
+      // What upstream does not know (preset, context window) survives.
       assert.equal(models[0]?.presetLabel, 'A');
       assert.equal(models[0]?.contextWindow, 128_000);
-      // Un modèle inconnu du repo n'invente aucune métadonnée.
+      // A model unknown to the repository invents no metadata.
       assert.equal(models[1]?.label, 'brand-new');
       assert.equal(models[1]?.contextWindow, undefined);
       assert.equal(discoveryError(p.id), null);
@@ -77,20 +77,20 @@ test('les slugs viennent de l\'amont, les métadonnées restent locales', async 
   );
 });
 
-test('un endpoint en panne laisse la liste statique, jamais une liste vide', async () => {
+test('a failing endpoint leaves the static list, never an empty list', async () => {
   const p = profileOf('disco-http-500');
   await withFetch(
     async () => jsonResponse({ error: 'boom' }, 500),
     async () => {
       await refreshModels(p);
-      // null = "rien de découvert" → l'appelant retombe sur profile.models.
+      // null = "nothing discovered" → the caller falls back on profile.models.
       assert.equal(discoveredModels(p.id), null);
       assert.match(discoveryError(p.id) ?? '', /500/);
     },
   );
 });
 
-test('une réponse vide ou illisible est traitée comme une panne', async () => {
+test('an empty or unreadable response is treated as a failure', async () => {
   for (const [id, body] of [
     ['disco-empty', { data: [] }],
     ['disco-shape', { models: ['a'] }],
@@ -107,7 +107,7 @@ test('une réponse vide ou illisible est traitée comme une panne', async () => 
   }
 });
 
-test('une découverte réussie survit à une panne ultérieure', async () => {
+test('a successful discovery survives a later failure', async () => {
   const p = profileOf('disco-sticky');
   await withFetch(
     async () => jsonResponse({ data: [{ id: 'known-a' }] }),
@@ -115,15 +115,15 @@ test('une découverte réussie survit à une panne ultérieure', async () => {
   );
   assert.deepEqual(discoveredModels(p.id)?.map((m) => m.slug), ['known-a']);
   await withFetch(
-    async () => { throw new Error('réseau coupé'); },
+    async () => { throw new Error('réseau coupé'); }, // french-ok: sample error text
     async () => { await refreshModels(p, true); },
   );
-  // L'état précédent tient : mieux vaut une liste d'hier qu'aucune liste.
+  // The previous state holds: better a list from yesterday than no list.
   assert.deepEqual(discoveredModels(p.id)?.map((m) => m.slug), ['known-a']);
-  assert.match(discoveryError(p.id) ?? '', /réseau coupé/);
+  assert.match(discoveryError(p.id) ?? '', /réseau coupé/); // french-ok: sample error text
 });
 
-test('sans endpoint déclaré, aucune requête n\'est tentée', async () => {
+test('without a declared endpoint, no request is attempted', async () => {
   const p: BackendProfile = { ...profileOf('disco-none'), modelsEndpoint: undefined };
   let called = false;
   await withFetch(
@@ -134,7 +134,7 @@ test('sans endpoint déclaré, aucune requête n\'est tentée', async () => {
   assert.equal(discoveredModels(p.id), null);
 });
 
-test('le TTL évite de re-solliciter l\'amont à chaque lecture', async () => {
+test('the TTL avoids asking upstream again on each read', async () => {
   const p = profileOf('disco-ttl');
   let calls = 0;
   await withFetch(
@@ -144,7 +144,7 @@ test('le TTL évite de re-solliciter l\'amont à chaque lecture', async () => {
       await refreshModels(p);
       await refreshModels(p);
       assert.equal(calls, 1);
-      // `force` court-circuite le TTL — c'est ce que fait le boot.
+      // `force` short-circuits the TTL: that is what the boot does.
       await refreshModels(p, true);
       assert.equal(calls, 2);
     },

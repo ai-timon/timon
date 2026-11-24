@@ -1,4 +1,5 @@
 import { NativeBrowserError } from './native-browser-provider.js';
+import { apiError } from './api-error.js';
 
 export type BrowserActor = { id: string; kind: 'human' | 'agent' };
 type Lease = BrowserActor & { expiresAt: number };
@@ -20,7 +21,7 @@ export function browserControls(now: () => number = Date.now) {
     },
     acquire(profile: string, actor: BrowserActor, force = false) {
       const lease = live(profile);
-      if (lease && lease.id !== actor.id && !force) throw new NativeBrowserError('Another controller is using this browser. Take control to interact.', 409);
+      if (lease && lease.id !== actor.id && !force) throw new NativeBrowserError(apiError('browser_control_taken', 'Another controller is using this browser. Take control to interact.'), 409);
       const changed = lease?.id !== actor.id;
       leases.set(profile, { ...actor, expiresAt: now() + LEASE_MS });
       return changed;
@@ -31,7 +32,7 @@ export function browserControls(now: () => number = Date.now) {
     },
     release(profile: string, actor: BrowserActor) {
       const lease = live(profile);
-      if (lease && lease.id !== actor.id) throw new NativeBrowserError('Only the current controller can release this browser.', 409);
+      if (lease && lease.id !== actor.id) throw new NativeBrowserError(apiError('browser_control_not_holder', 'Only the current controller can release this browser.'), 409);
       leases.delete(profile);
     },
   };

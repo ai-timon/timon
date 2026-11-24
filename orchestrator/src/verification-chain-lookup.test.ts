@@ -17,7 +17,7 @@ process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
 const { dbApi } = await import('./db.js');
 const { evaluateDeps } = await import('./merge-gate.js');
 
-test('listVerificationChain : racine, reviews, itérations et merges (non étiquetés)', () => {
+test('listVerificationChain: root, reviews, iterations and merges (unlabelled)', () => {
   dbApi.createTask('c1', 'feat', 'a', { type: 'code' });
   dbApi.createTask('r1', 'review 1', 'a', { type: 'review', deps: ['c1'] });
   dbApi.setTaskVerificationMeta('r1', 1, 'c1');
@@ -26,7 +26,7 @@ test('listVerificationChain : racine, reviews, itérations et merges (non étiqu
   dbApi.createTask('r2', 'review 2', 'a', { type: 'review', deps: ['c2'] });
   dbApi.setTaskVerificationMeta('r2', 2, 'c1');
   dbApi.createTask('m2', 'merge', 'a', { type: 'merge', deps: ['r2'] });
-  // bruit : une autre chaîne et une task sans lien
+  // noise: another chain and an unrelated task
   dbApi.createTask('c9', 'autre', 'a', { type: 'code' });
   dbApi.createTask('r9', 'review autre', 'a', { type: 'review', deps: ['c9'] });
   dbApi.setTaskVerificationMeta('r9', 1, 'c9');
@@ -35,14 +35,14 @@ test('listVerificationChain : racine, reviews, itérations et merges (non étiqu
   assert.deepEqual(ids, ['c1', 'c2', 'm2', 'r1', 'r2']);
 });
 
-test('listVerificationChain : review créée à la main (sans étiquette) rattachée par deps', () => {
+test('listVerificationChain: a review created by hand (unlabelled) attached through deps', () => {
   dbApi.createTask('h1', 'feat', 'a', { type: 'code' });
   dbApi.createTask('hr', 'review', 'a', { type: 'review', deps: ['h1'] });
   const ids = dbApi.listVerificationChain('h1').map((t) => t.id).sort();
   assert.deepEqual(ids, ['h1', 'hr']);
 });
 
-test('evaluateDeps sur de vraies lignes : le dépendant attend le merge, puis démarre', () => {
+test('evaluateDeps on real rows: the dependent waits for the merge, then starts', () => {
   dbApi.createTask('g1', 'feat', 'a', { type: 'code', pipeline: 'full' });
   dbApi.updateTaskStatus('g1', 'DONE');
   dbApi.setTaskWorktree('g1', '/wt/g1', 'timon/task/g1', 'main');

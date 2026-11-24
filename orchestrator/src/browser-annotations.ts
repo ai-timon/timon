@@ -19,6 +19,7 @@ import { resolveMissionBrowserProfile, type BrowserProfile } from './browser-pro
 import { isSealed } from './secrets/box.js';
 import { openWithVault, pluginKvIdentity, sealWithVault } from './secrets/store.js';
 import { NativeBrowserError } from './native-browser-provider.js';
+import { apiError } from './api-error.js';
 import {
   ANNOTATION_COMMENT_MAX, isDevelopmentUrl, missionSourcePath, sanitizeAnnotationCapture, sanitizeAnnotationComment,
   type AnnotationThumbnail, type RawAnnotationSource, type SanitizedAnnotationCapture,
@@ -90,7 +91,7 @@ const Metadata = z.object({
 const metaKey = (id: string) => `${META_PREFIX}${id}`;
 const secretKey = (id: string) => `${SECRET_PREFIX}${id}`;
 const thumbnailKey = (id: string) => `${THUMBNAIL_PREFIX}${id}`;
-const unavailable = () => new NativeBrowserError('The browser annotation vault is unavailable or its encrypted data is invalid.', 503);
+const unavailable = () => new NativeBrowserError(apiError('browser_vault_unavailable', 'The browser annotation vault is unavailable or its encrypted data is invalid.'), 503);
 
 export function isBrowserAnnotationId(id: unknown): id is string {
   return typeof id === 'string' && ANNOTATION_ID.test(id);
@@ -255,7 +256,7 @@ export function annotationStateOf(result: unknown): Record<string, unknown> {
 
 export function setBrowserAnnotationComment(meta: BrowserAnnotationMetadata, comment: string, origin: BrowserAnnotationOrigin, now = Date.now()): BrowserAnnotationMetadata {
   // Once sent, the agent may already have read it: what it acts on must not change under it.
-  if (meta.status !== 'draft') throw new NativeBrowserError('This annotation was already sent; its comment can no longer change.', 409);
+  if (meta.status !== 'draft') throw new NativeBrowserError(apiError('browser_annotation_sent', 'This annotation was already sent; its comment can no longer change.'), 409);
   const body = readBrowserAnnotation(meta);
   const next = { ...meta, updatedAt: now };
   write(next, { ...body, comment: sanitizeAnnotationComment(comment) });
@@ -279,10 +280,10 @@ export type BrowserAnnotationTarget = { missionId: string | null; agentName: str
  * path is checked here against the cwd it goes to; the reader's own cwd checks it again.
  */
 export function sendBrowserAnnotations(metas: readonly BrowserAnnotationMetadata[], target: BrowserAnnotationTarget, origin: BrowserAnnotationOrigin, now = Date.now()): { batchId: string; annotations: BrowserAnnotationMetadata[] } {
-  if (!metas.length || metas.length > MAX_ANNOTATIONS_PER_BATCH) throw new NativeBrowserError(`Send between 1 and ${MAX_ANNOTATIONS_PER_BATCH} annotations.`, 400);
-  if (!target.missionId && !target.agentName) throw new NativeBrowserError('Name the mission or the agent the annotations go to.', 400);
+  if (!metas.length || metas.length > MAX_ANNOTATIONS_PER_BATCH) throw new NativeBrowserError(apiError('browser_annotation_batch_size', `Send between 1 and ${MAX_ANNOTATIONS_PER_BATCH} annotations.`, { max: MAX_ANNOTATIONS_PER_BATCH }), 400);
+  if (!target.missionId && !target.agentName) throw new NativeBrowserError(apiError('browser_annotation_target_required', 'Name the mission or the agent the annotations go to.'), 400);
   const sent = metas.find((meta) => meta.status !== 'draft');
-  if (sent) throw new NativeBrowserError(`Annotation ${sent.id} was already sent.`, 409);
+  if (sent) throw new NativeBrowserError(apiError('browser_annotation_already_sent', `Annotation ${sent.id} was already sent.`, { id: sent.id }), 409);
   const bodies = metas.map(readBrowserAnnotation);
   const batchId = `bab-${randomUUID()}`;
   const delivery: BrowserAnnotationDelivery = { batchId, missionId: target.missionId, agentName: target.agentName, sentAt: now };
@@ -316,7 +317,8 @@ export function withdrawBrowserAnnotations(sent: readonly BrowserAnnotationMetad
 export type BrowserAnnotationResolution = { status: 'resolved' | 'dismissed'; note: string };
 
 export function resolveBrowserAnnotation(meta: BrowserAnnotationMetadata, resolution: BrowserAnnotationResolution, origin: BrowserAnnotationOrigin, now = Date.now()): BrowserAnnotationMetadata {
-  if (meta.status === 'resolved' || meta.status === 'dismissed') throw new NativeBrowserError(`This annotation is already ${meta.status}.`, 409);
+  if (meta.status === 'resolved') throw new NativeBrowserError(apiError('browser_annotation_resolved', 'This annotation is already resolved.'), 409);
+  if (meta.status === 'dismissed') throw new NativeBrowserError(apiError('browser_annotation_dismissed', 'This annotation is already dismissed.'), 409);
   const body = readBrowserAnnotation(meta);
   const note = sanitizeAnnotationComment(resolution.note).slice(0, RESOLUTION_NOTE_MAX);
   const next: BrowserAnnotationMetadata = { ...meta, status: resolution.status, resolvedAt: now, resolvedBy: origin, updatedAt: now };
@@ -327,11 +329,11 @@ export function resolveBrowserAnnotation(meta: BrowserAnnotationMetadata, resolu
 
 export function setBrowserAnnotationExternalRef(meta: BrowserAnnotationMetadata, ref: unknown, origin: BrowserAnnotationOrigin, now = Date.now()): BrowserAnnotationMetadata {
   const parsed = ref === null ? null : ExternalRef.safeParse(ref);
-  if (parsed && !parsed.success) throw new NativeBrowserError('The external reference is invalid.', 400);
+  if (parsed && !parsed.success) throw new NativeBrowserError(apiError('browser_external_ref_invalid', 'The external reference is invalid.'), 400);
   const externalRef = parsed ? parsed.data : null;
   if (externalRef) {
     const taken = allAnnotations().find((row) => row.id !== meta.id && row.externalRef?.provider === externalRef.provider && row.externalRef.ref === externalRef.ref);
-    if (taken) throw new NativeBrowserError('This external reference is already linked to another annotation.', 409);
+    if (taken) throw new NativeBrowserError(apiError('browser_external_ref_taken', 'This external reference is already linked to another annotation.'), 409);
   }
   const next = { ...meta, externalRef, updatedAt: now };
   dbApi.pluginKvSet(STORE, metaKey(meta.id), JSON.stringify(next));

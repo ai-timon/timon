@@ -58,6 +58,10 @@ export type AuthMe = {
    *  has to sign in again, `mascot` to that account once signed in. Absent on
    *  a daemon older than the field: nothing to show. */
   welcome?: MeWelcome;
+  /** The account's address was made without its mailed code (a member, a
+   *  first admin made offline, a moved login): the profile offers to confirm
+   *  it, which a password reset by email needs. Absent on an older daemon. */
+  emailUnverified?: boolean;
 };
 
 export type MeWelcome = 'returning' | 'mascot' | null;
@@ -103,14 +107,14 @@ export function meCan(me: AuthMe | null, permission: MePermission): boolean | nu
 export async function fetchMe(): Promise<AuthMe> {
   const response = await sharedGet('/api/ui/auth/me');
   if (!response.ok) return { user: null, needsSetup: false, prefs: { ...DEFAULT_USER_PREFS }, can: {}, acting: null };
-  const body = await readJsonObject(response, '/api/ui/auth/me') as { user?: PublicUser | null; needsSetup?: boolean; setupRequiresLicense?: boolean; setupRequiresToken?: boolean; prefs?: unknown; can?: unknown; acting?: unknown; welcome?: unknown };
+  const body = await readJsonObject(response, '/api/ui/auth/me') as { user?: PublicUser | null; needsSetup?: boolean; setupRequiresLicense?: boolean; setupRequiresToken?: boolean; prefs?: unknown; can?: unknown; acting?: unknown; welcome?: unknown; emailUnverified?: unknown };
   return readAuthMe(body);
 }
 
 /** A `/api/ui/auth/me` body, typed. On a remote machine the permissions are
  *  the acting account's — the routes they grey are relayed there — and none
  *  while that machine has not said who the device is. */
-export function readAuthMe(body: { user?: PublicUser | null; needsSetup?: boolean; setupRequiresLicense?: boolean; setupRequiresToken?: boolean; prefs?: unknown; can?: unknown; acting?: unknown; welcome?: unknown }): AuthMe {
+export function readAuthMe(body: { user?: PublicUser | null; needsSetup?: boolean; setupRequiresLicense?: boolean; setupRequiresToken?: boolean; prefs?: unknown; can?: unknown; acting?: unknown; welcome?: unknown; emailUnverified?: unknown }): AuthMe {
   const acting = parseActingAccount(body.acting);
   return {
     user: body.user ?? null,
@@ -121,6 +125,8 @@ export function readAuthMe(body: { user?: PublicUser | null; needsSetup?: boolea
     can: acting ? (acting.user ? acting.can : {}) : parseCan(body.can),
     acting,
     welcome: parseWelcome(body.welcome),
+    // The local session's own address: a remote machine's account is not confirmed from here.
+    emailUnverified: !acting && body.emailUnverified === true,
   };
 }
 

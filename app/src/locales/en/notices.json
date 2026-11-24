@@ -6,6 +6,11 @@
       "title": "A star on GitHub?",
       "action": "Star on GitHub"
     },
+    "confirmEmail": {
+      "title": "Confirm your email address",
+      "body": "It lets you reset your password by email.",
+      "action": "Confirm"
+    },
     "feed": {
       "open": "Learn more"
     },
@@ -18,6 +23,43 @@
       "feed": {
         "title": "Live demo on Thursday",
         "body": "Agents and plugins, one hour."
+      },
+      "update": {
+        "highlight1": "Updates download, verify and install from the app.",
+        "highlight2": "Missions pick up where they stopped after a restart.",
+        "highlight3": "Long conversations scroll faster.",
+        "highlight4": "Plugins can add their own settings page.",
+        "states": "Preview",
+        "state": {
+          "downloading": "Download",
+          "verified": "Verified",
+          "missions": "Missions",
+          "network": "Network error",
+          "cancelled": "Password cancelled"
+        },
+        "done": "Preview: nothing was installed."
+      }
+    },
+    "license": {
+      "enterKey": "Enter my key",
+      "paused": {
+        "title": "Paid features are paused",
+        "body": "They come back as soon as {brand} reaches the license server.",
+        "action": "Learn more"
+      },
+      "refused": {
+        "title": "Your license is no longer active",
+        "body": "{brand} continues on Free. Enter a key to get paid features back."
+      },
+      "pastDue": {
+        "title": "Payment overdue",
+        "body": "Renew your subscription to keep paid features.",
+        "bodyUntil": "Renew your subscription before {date} to keep paid features.",
+        "action": "See my license"
+      },
+      "ends": {
+        "title": "Your license ends on {date}",
+        "body": "Enter a new key before then to keep paid features."
       }
     }
   }

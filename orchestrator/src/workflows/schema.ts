@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { pluginNodeReference, workflowNodeSpec } from './nodes/registry.js';
 import { settingNum } from '../settings.js';
 import { refusedMatchesPattern } from './expr.js';
+import { apiError, type ApiErrorBody } from '../api-error.js';
 
 const node = z.object({ id:z.string().min(1), type:z.string(), label:z.string().optional(), position:z.object({x:z.number(),y:z.number()}).optional(), config:z.record(z.string(), z.unknown()).default({}) });
 const edge = z.object({ id:z.string().min(1), from:z.string(), fromPort:z.string(), to:z.string(), toPort:z.string().default('in'), condition:z.string().nullable().optional(), loop:z.boolean().optional(), maxIterations:z.number().int().positive().optional() });
@@ -119,10 +120,14 @@ export function workflowIssues(error: unknown): WorkflowIssue[] | null {
 
 /** The API body of a refused publish or run: one readable sentence, never a
  * raw zod dump, plus the per-node list when validation is the cause. */
-export function describeWorkflowError(error: unknown): { error: string; issues?: WorkflowIssue[] } {
+export function describeWorkflowError(error: unknown): ApiErrorBody & { issues?: WorkflowIssue[] } {
   const issues = workflowIssues(error);
-  if (!issues || !issues.length) return { error: error instanceof Error ? error.message : String(error) };
+  if (!issues || !issues.length) {
+    const message = error instanceof Error ? error.message : String(error);
+    return apiError('workflow_refused', message, { detail: message });
+  }
   const [first] = issues;
   const rest = issues.length - 1;
-  return { error: rest > 0 ? `${first!.message} (+${rest} more)` : first!.message, issues };
+  const message = rest > 0 ? `${first!.message} (+${rest} more)` : first!.message;
+  return { ...apiError('workflow_refused', message, { detail: message }), issues };
 }

@@ -7,6 +7,7 @@ import { viewerSeesAll } from './users/owned.js';
 import { scopedDb } from './users/scoped-db.js';
 import { filterGallery } from './users/surfaces.js';
 import { apiError } from './api-error.js';
+import { integrationVisibleTo } from './integration-visibility.js';
 
 // Defence in depth: if for some unforeseen reason `seen` grew
 // beyond the replay window, it is purged rather than left to leak.
@@ -342,6 +343,17 @@ export function sseHandler(req: Request, res: Response): void {
       if (filter) return;
       if (viewer && !viewerSeesAll(viewer, 'tasks') && !scope.getTask(ev.taskId)) return;
       writeEvent(ev.kind, { kind: ev.kind, taskId: ev.taskId });
+      return;
+    }
+    // A job's landing moved: global stream only, for a viewer who may read the
+    // job through its routes (same rule, re-read now: a job's series may have
+    // changed hands since the stream opened). The event carries ids and the
+    // state alone; the screens read the job again behind its scoped route.
+    if (ev.kind === 'integration_changed') {
+      if (filter) return;
+      const row = dbApi.getIntegrationById(ev.integrationId);
+      if (!row || !integrationVisibleTo(viewer, row)) return;
+      writeEvent('integration_changed', ev, true);
       return;
     }
     // A task's first start, for its opt-in sound and toast: the owner's own

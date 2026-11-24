@@ -131,19 +131,27 @@ export function PasswordReset({ initialEmail = '', onClose }: PasswordResetProps
   };
 
   if (view === 'code' && challenge) {
+    // The daemon answers a reset to an unconfirmed address like a sent one
+    // (telling them apart would reveal which addresses hold an account), so
+    // the way out is always said under the code.
     return (
-      <EmailCodeHost
-        key={codeRefusal?.round ?? 0}
-        purpose="reset"
-        email={address}
-        resendAt={challenge.resendAt}
-        verify={keep}
-        resend={resend}
-        onVerified={() => { setFailure(null); setView('new'); }}
-        changeEmail={() => { setFailure(null); setView('ask'); }}
-        failure={codeRefusal?.failure ?? null}
-        settleMs={0}
-      />
+      <div className="flex w-full flex-col items-center">
+        <EmailCodeHost
+          key={codeRefusal?.round ?? 0}
+          purpose="reset"
+          email={address}
+          resendAt={challenge.resendAt}
+          verify={keep}
+          resend={resend}
+          onVerified={() => { setFailure(null); setView('new'); }}
+          changeEmail={() => { setFailure(null); setView('ask'); }}
+          failure={codeRefusal?.failure ?? null}
+          settleMs={0}
+        />
+        <p data-reset-unconfirmed="" className="mt-4 max-w-[380px] text-center text-[12.5px] leading-[1.5] text-muted-foreground">
+          {t('passwordReset.unconfirmed')}
+        </p>
+      </div>
     );
   }
 

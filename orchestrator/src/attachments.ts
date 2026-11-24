@@ -26,7 +26,7 @@
  * signature check for what a browser renders inline, and sandboxing headers.
  */
 
-import { copyFileSync, createReadStream, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, type ReadStream } from 'node:fs';
+import { copyFileSync, createReadStream, mkdirSync, readdirSync, renameSync, rmSync, statSync, utimesSync, writeFileSync, type ReadStream } from 'node:fs';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -411,13 +411,27 @@ function acceptedName(rawName: string): { base: string; typed: { ext: string; ty
   return { base, typed };
 }
 
-/** Written in a hidden folder then renamed: a listing never sees half a file. */
+/**
+ * Written in a hidden folder then renamed: a listing never sees half a file.
+ * The file is dated after every file already there, since the listing's order
+ * is the files' mtime: Windows stamps a file with a clock that moves in ticks
+ * of up to 16 ms, so two files added together got the same date and came back
+ * in the order of their random ids; and copying a file there keeps its source's
+ * date.
+ */
 function writeStaged(dir: string, id: string, name: string, write: (target: string) => void): void {
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const staging = join(dir, `.${id}.tmp`);
   mkdirSync(staging, { mode: 0o700 });
   try {
-    write(join(staging, name));
+    const target = join(staging, name);
+    write(target);
+    const latest = listEntries(dir).reduce((max, e) => Math.max(max, e.mtime), -Infinity);
+    if (statSync(target).mtimeMs <= latest) {
+      // In seconds, unrounded: a Date would cut the millisecond and land on the same date again.
+      const after = (latest + 1) / 1000;
+      utimesSync(target, after, after);
+    }
     renameSync(staging, join(dir, id));
   } catch (err) {
     rmSync(staging, { recursive: true, force: true });

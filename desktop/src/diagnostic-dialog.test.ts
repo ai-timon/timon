@@ -27,7 +27,7 @@ test('OK is first, default and cancel; Windows gets no command links', () => {
 test('on Linux, the copied note says to paste before closing: the clipboard leaves with the app', () => {
   assert.match(diagnosticCopy('en', 'linux').copied, /before clicking OK/);
   assert.doesNotMatch(diagnosticCopy('en', 'win32').copied, /before clicking OK/);
-  assert.match(diagnosticCopy('fr', 'linux').copied, /avant de cliquer sur OK/);
+  assert.match(diagnosticCopy('fr', 'linux').copied, /avant de cliquer sur OK/); // french-ok: the French locale under test
 });
 
 function deps(over: Partial<ProblemDeps> & Pick<ProblemDeps, 'show'>): ProblemDeps {
@@ -81,7 +81,7 @@ test('each action answers in a box of its own, then the problem box comes back u
   assert.ok(log.includes('[desktop] diagnostic copied to the clipboard (6 characters)'), log.join('\n'));
 });
 
-test('« Show in folder » selects the saved file in the file manager', async () => {
+test('"Show in folder" selects the saved file in the file manager', async () => {
   const { show } = script([2, 1, 0]);
   const selected: string[] = [];
   await showProblem(deps({ show, showInFolder: (path) => selected.push(path) }), { type: 'error', title: 'Timon', message: 'm', detail: 'd' });
@@ -117,7 +117,7 @@ test('a logs folder that will not open gets an error box; one that opens needs n
   assert.equal(shown[2]!.detail, 'no file manager');
 });
 
-test('a click that has to wait shows « Preparing report… », closed by its signal once the report is ready', async () => {
+test('a click that has to wait shows "Preparing report…", closed by its signal once the report is ready', async () => {
   let finish!: (report: { text: string; findings: string[] }) => void;
   const shown: BoxOptions[] = [];
   const responses = [2, 0, 0];
@@ -140,7 +140,7 @@ test('a click that has to wait shows « Preparing report… », closed by its si
   assert.deepEqual(saved, ['LATE']);
 });
 
-test('cancelling « Preparing report… » before the report is ready goes back to the problem box', async () => {
+test('cancelling "Preparing report…" before the report is ready goes back to the problem box', async () => {
   const { shown, show } = script([1, 0, 0]);
   await showProblem(deps({
     show,

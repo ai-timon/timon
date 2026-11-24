@@ -239,7 +239,6 @@
     "initialStdin": "# Instructions\nAgent de test.\n\n# Task\nBonjour.",
     "config": {
       "": [
-        "experimental_use_freeform_apply_patch = false",
         "model_provider = \"ollama-cloud\""
       ],
       "sandbox_workspace_write": [

@@ -1,19 +1,19 @@
 /**
- * Garde-fou ressources — logique de profil.
+ * Resource guard: profile logic.
  *
- * On ne teste PAS ici l'interaction systemd (elle exige un manager utilisateur
- * vivant, donc ne tourne pas en CI) mais les décisions qui, elles, se trompent
- * en silence : quelle heure tombe dans quel profil, et le fait qu'un cap "jour"
- * ne puisse JAMAIS être plus permissif que le cap de nuit — une faute de frappe
- * dans les réglages ne doit pas relever un plafond de sécurité.
+ * The systemd interaction is NOT tested here (it requires a live user
+ * manager, so it does not run in CI) but the decisions that do go wrong
+ * silently: which hour falls into which profile, and the fact that a "day" cap
+ * can NEVER be more permissive than the night cap: a typo
+ * in the settings must not raise a safety ceiling.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import './test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Les réglages sont lus via l'env (priorité absolue sur la base) : on les pose
-// AVANT l'import du module, qui met en cache la résolution au premier appel.
+// The settings are read through the env (absolute priority over the database): they are set
+// BEFORE importing the module, which caches the resolution on the first call.
 process.env.TIMON_DAY_START_HOUR = '8';
 process.env.TIMON_DAY_END_HOUR = '20';
 process.env.TIMON_DAY_MAX_LIVE_MISSIONS = '4';
@@ -40,7 +40,7 @@ const { setHasSystemdForTest, setSystemctlForTest } = await import('./host/syste
 
 const at = (h: number) => new Date(2026, 7, 13, h, 0, 0);
 
-test('la fenêtre jour couvre 8 h–20 h, bornes comprises côté début', () => {
+test('the day window covers 8 a.m.–8 p.m., bounds included on the start side', () => {
   assert.equal(currentProfile(at(7)), 'night');
   assert.equal(currentProfile(at(8)), 'day');
   assert.equal(currentProfile(at(15)), 'day');
@@ -49,7 +49,7 @@ test('la fenêtre jour couvre 8 h–20 h, bornes comprises côté début', () =>
   assert.equal(currentProfile(at(3)), 'night');
 });
 
-test('le profil jour bride CPU et concurrence, la nuit relâche', () => {
+test('the day profile throttles CPU and concurrency, the night relaxes', () => {
   const day = profileLimits(at(15));
   const night = profileLimits(at(3));
   assert.equal(day.cpuQuotaPct, 400);
@@ -60,9 +60,9 @@ test('le profil jour bride CPU et concurrence, la nuit relâche', () => {
   assert.equal(night.maxParallel, 8);
 });
 
-test('un cap jour supérieur au cap global est écrêté, jamais appliqué tel quel', async () => {
-  // Scénario : réglage jour saisi à 99 par erreur. Le profil "discret" ne doit
-  // en aucun cas devenir plus permissif que le plafond global.
+test('a day cap above the global cap is clipped, never applied as is', async () => {
+  // Scenario: day setting typed as 99 by mistake. The "discreet" profile must
+  // by no means become more permissive than the global ceiling.
   process.env.TIMON_DAY_MAX_LIVE_MISSIONS = '99';
   const { invalidateSettingsCache } = await import('./settings.js');
   invalidateSettingsCache();
@@ -71,27 +71,27 @@ test('un cap jour supérieur au cap global est écrêté, jamais appliqué tel q
   invalidateSettingsCache();
 });
 
-test("les propriétés de l'enveloppe systemd sont en forme longue", () => {
-  // Régression : `-p=MemoryMax=12G` est rejeté par systemd-run ("Unknown
-  // assignment") et fait échouer le spawn de TOUTES les missions, pas
-  // seulement le confinement. Aucun typecheck ne voit une ligne de commande —
-  // seule cette assertion (et la sonde au démarrage) protège.
+test('the properties of the systemd envelope are in long form', () => {
+  // Regression: `-p=MemoryMax=12G` is rejected by systemd-run ("Unknown
+  // assignment") and makes the spawn of ALL missions fail, not
+  // only the confinement. No typecheck sees a command line;
+  // only this assertion (and the startup probe) protects.
   const { cmd, args } = wrapMissionLaunch('claude', ['--x'], 'aaaaaaaa-0000-4000-8000-000000000000');
-  if (cmd !== 'systemd-run') return; // pas de systemd ici (CI) : rien à vérifier
+  if (cmd !== 'systemd-run') return; // no systemd here (CI): nothing to check
   for (const a of args.filter((v) => v.includes('MemoryMax') || v.includes('CPUWeight'))) {
     assert.match(a, /^--property=/);
   }
-  assert.ok(args.includes('--'), 'un séparateur -- doit précéder la commande enveloppée');
+  assert.ok(args.includes('--'), 'a -- separator must precede the wrapped command');
   assert.deepEqual(args.slice(-2), ['claude', '--x']);
   const slice = args.find((v) => v.startsWith('--slice='));
   if (slice) assert.equal(slice, `--slice=${instancePrefix()}-missions.slice`);
 });
 
-test('le nom de scope est unique par tour et rattachable à sa mission', () => {
+test('the scope name is unique per turn and can be attached to its mission', () => {
   const id = 'b73f0bd2-9c47-489c-9118-0296e6749dbe';
   const a = missionScopeUnit(id);
   const b = missionScopeUnit(id);
-  assert.notEqual(a, b, 'deux tours de la même mission ne peuvent pas partager une unit');
+  assert.notEqual(a, b, 'two turns of the same mission cannot share a unit');
   const prefix = instancePrefix();
   for (const u of [a, b]) {
     assert.match(u, new RegExp(`^${prefix}-mission-b73f0bd2-`));
@@ -99,25 +99,25 @@ test('le nom de scope est unique par tour et rattachable à sa mission', () => {
   }
 });
 
-test("garde-fou désactivé : stopMissionScopes n'exécute aucune commande systemd", async () => {
-  // Régression du 29/08/2026 : appelée au boot et sur SIGTERM, cette fonction
-  // arrêtait TOUTES les `timon-mission-*.scope` de la machine sans distinction
-  // d'instance. Un orchestrateur témoin lancé par un agent tuait donc la scope
-  // de cet agent, et les missions de la prod avec. Le garde-fou désactivé doit
-  // rendre la fonction totalement inerte — pas même la sonde `hasSystemd()`,
-  // qui exécute déjà `systemctl`. On mesure les exécutions réelles du binaire :
-  // un retour de 0 ne prouverait rien (c'est aussi "0 scope arrêtée").
+test('resource guard disabled: stopMissionScopes runs no systemd command', async () => {
+  // Regression of 29/08/2026: called at boot and on SIGTERM, this function
+  // stopped ALL the `timon-mission-*.scope` of the machine without telling
+  // instances apart. A witness orchestrator launched by an agent therefore killed the scope
+  // of that agent, and the production missions with it. The disabled guard must
+  // make the function totally inert, not even the `hasSystemd()` probe,
+  // which already runs `systemctl`. The real runs of the binary are measured:
+  // a return of 0 would prove nothing (it is also "0 scopes stopped").
   const { invalidateSettingsCache } = await import('./settings.js');
   process.env.TIMON_RESOURCE_GUARD_ENABLED = '0';
   invalidateSettingsCache();
   const before = systemctlCallCount();
   assert.equal(stopMissionScopes(), 0);
-  assert.equal(systemctlCallCount(), before, 'aucun appel à systemctl ne doit avoir lieu');
+  assert.equal(systemctlCallCount(), before, 'no call to systemctl must happen');
   delete process.env.TIMON_RESOURCE_GUARD_ENABLED;
   invalidateSettingsCache();
 });
 
-test('deux TIMON_HOME distincts produisent deux préfixes d\'instance distincts', () => {
+test('two distinct TIMON_HOMEs produce two distinct instance prefixes', () => {
   const a = instancePrefix('/tmp/timon-home-a');
   const b = instancePrefix('/tmp/timon-home-b');
   assert.match(a, /^timon-[0-9a-f]{8}$/);
@@ -127,7 +127,7 @@ test('deux TIMON_HOME distincts produisent deux préfixes d\'instance distincts'
   assert.equal(missionScopePattern('/tmp/timon-home-a'), `${a}-mission-*.scope`);
 });
 
-test("stopMissionScopes du home A ne construit aucune commande au préfixe de B", async () => {
+test("stopMissionScopes of home A builds no command with B's prefix", async () => {
   const { invalidateSettingsCache } = await import('./settings.js');
   const homeA = '/tmp/timon-home-iso-a';
   const homeB = '/tmp/timon-home-iso-b';
@@ -158,7 +158,7 @@ test("stopMissionScopes du home A ne construit aucune commande au préfixe de B"
     }
     for (const args of calls) {
       const joined = args.join(' ');
-      assert.equal(joined.includes(prefixB), false, `commande au préfixe de B : ${joined}`);
+      assert.equal(joined.includes(prefixB), false, `command with B's prefix: ${joined}`);
       assert.equal(args.includes(LEGACY_MISSION_SCOPE_PATTERN), false);
       assert.equal(args.includes(unitB), false);
       assert.equal(args.includes(legacy), false);
@@ -171,7 +171,7 @@ test("stopMissionScopes du home A ne construit aucune commande au préfixe de B"
   }
 });
 
-test("le nom d'unité de prod n'est plus créé ; l'adoption le liste encore", async () => {
+test('the production unit name is no longer created; adoption still lists it', async () => {
   const { invalidateSettingsCache } = await import('./settings.js');
   const home = '/tmp/timon-home-adopt';
   const own = `${instancePrefix(home)}-mission-aaaaaaaa-1.scope`;
@@ -195,7 +195,7 @@ test("le nom d'unité de prod n'est plus créé ; l'adoption le liste encore", a
   try {
     const listed = listMissionScopes(home);
     assert.ok(listed.includes(own));
-    assert.ok(listed.includes(legacy), 'les scopes historiques restent visibles (adoption en lecture)');
+    assert.ok(listed.includes(legacy), 'the historical scopes stay visible (read-only adoption)');
     assert.equal(listed.includes(foreign), false);
   } finally {
     setSystemctlForTest(null);

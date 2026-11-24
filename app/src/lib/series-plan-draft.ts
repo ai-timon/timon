@@ -8,7 +8,7 @@
  * starts from that draft. Same mechanism as `ask-user-draft.ts`.
  */
 import type {
-  SeriesPlanFormPayload, SeriesPlanGroupRole, SeriesPlanMode, SeriesPlanRole,
+  SeriesPlanFinish, SeriesPlanFormPayload, SeriesPlanGroupRole, SeriesPlanMode, SeriesPlanRole,
 } from '@/components/series-plan-form';
 import type { ModelPick } from '@/components/model-picker';
 
@@ -20,6 +20,16 @@ export type SeriesPlanDraft = {
   groupPicks: Record<string, SeriesPlanPicks>;
   groupCustom: Record<string, boolean>;
   note: string;
+  /** The branch topic typed in place of the proposed one; absent when untouched. */
+  branch?: string;
+  /** "Existing" was chosen over a new branch; absent for a new one. */
+  branchKind?: 'existing';
+  /** The existing branch picked in the list; absent when none. */
+  existing?: string;
+  /** The destination chosen against the form's default; absent when untouched. */
+  finish?: SeriesPlanFinish;
+  /** "Resolves its issues entirely" was ticked; absent when not. */
+  resolvesIssues?: true;
 };
 type DraftStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -54,7 +64,12 @@ function hasContent(draft: SeriesPlanDraft): boolean {
     || Object.keys(draft.picks).length > 0
     || Object.values(draft.groupPicks).some((p) => Object.keys(p).length > 0)
     || Object.values(draft.groupCustom).some(Boolean)
-    || draft.note.trim() !== '';
+    || draft.note.trim() !== ''
+    || draft.branch !== undefined
+    || draft.branchKind !== undefined
+    || draft.existing !== undefined
+    || draft.finish !== undefined
+    || draft.resolvesIssues === true;
 }
 
 /** Keeps the cells that still name a role of `roles` and hold a well-formed pair. */
@@ -100,6 +115,11 @@ export function loadSeriesPlanDraft(
     groupPicks: {},
     groupCustom: {},
     note: typeof stored.note === 'string' ? stored.note : '',
+    ...(typeof stored.branch === 'string' ? { branch: stored.branch } : {}),
+    ...(stored.branchKind === 'existing' ? { branchKind: 'existing' as const } : {}),
+    ...(typeof stored.existing === 'string' && stored.existing !== '' ? { existing: stored.existing } : {}),
+    ...(stored.finish === 'merge' || stored.finish === 'keep' ? { finish: stored.finish } : {}),
+    ...(stored.resolvesIssues === true ? { resolvesIssues: true as const } : {}),
   };
   if (stored.groupPicks && typeof stored.groupPicks === 'object') {
     for (const [name, picks] of Object.entries(stored.groupPicks as Record<string, unknown>)) {

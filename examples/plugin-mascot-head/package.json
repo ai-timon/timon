@@ -1,0 +1,27 @@
+{
+  "name": "@timon-ai/plugin-mascot-head",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": { "./client": "./lib/client.js" },
+  "files": ["lib", "README.md", "SIGNATURE"],
+  "timon": {
+    "id": "example-mascot-head",
+    "apiVersion": 15,
+    "kind": "behavior",
+    "label": "Ember head",
+    "description": "Adds an ember head to the mascot configurator: a flame in the agent's colour that this plugin draws itself, whose eyes follow its state.",
+    "permissions": [],
+    "client": {
+      "slots": ["mascot.parts"],
+      "external": ["react", "@timon/ui"],
+      "mode": "esm"
+    },
+    "mascot": {
+      "shape": ["ember"]
+    },
+    "settings": [],
+    "license": { "required": false }
+  }
+}

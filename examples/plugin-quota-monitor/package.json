@@ -11,7 +11,7 @@
   "files": ["lib", "icon.svg", "README.md", "SIGNATURE"],
   "timon": {
     "id": "quota-monitor",
-    "apiVersion": 6,
+    "apiVersion": 17,
     "kind": ["widget"],
     "label": "LLM quota monitor",
     "description": "Usage of your LLM accounts: a movable widget — rings in the top bar or a sidebar, details on click, a tile in a wide zone — with history and thresholds. Written entirely with the SDK — not one line in the daemon.",

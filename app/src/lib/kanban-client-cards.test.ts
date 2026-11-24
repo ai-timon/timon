@@ -5,7 +5,7 @@ import test from 'node:test';
 /**
  * The Kanban card as rendered by the real `KanbanClient`: the agent's own
  * avatar and role, the running dot and time, the model logo, the linked
- * idea's tags, the « Scheduled » line and the footer counts. `kanban-card.test.ts`
+ * idea's tags, the "Scheduled" line and the footer counts. `kanban-card.test.ts`
  * covers the arithmetic; this checks each piece lands on the right card.
  *
  * Same harness and teardown as `kanban-client-graph.test.ts` — see its header
@@ -88,7 +88,7 @@ test('a card shows its agent, model, idea tags, schedule and dependency counts',
     assert.ok(running.querySelector('[aria-label="Running"]'), 'the running dot');
     assert.ok(!card('next-bbbbbb')!.querySelector('[aria-label="Running"]'), 'no dot on a queued task');
 
-    // Model: the backend's logo drawn, « inherited » when nothing is known.
+    // Model: the backend's logo drawn, "inherited" when nothing is known.
     await until(() => !!running.querySelector('[data-task-params] svg'), 'the model logo');
     assert.match(running.querySelector('[data-task-params]')?.textContent ?? '', /opus/);
     assert.match(card('old-dddddd')!.querySelector('[data-task-params]')?.textContent ?? '', /nobody$/, 'no model: the backend name, no dropdown mark once the task is done');

@@ -20,6 +20,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Host, SpawnOpts } from '../host/index.js';
 import { createNotification } from '../notifications.js';
+import type { DaemonMessage } from '../daemon-message.js';
 
 /** First relaunch delay, then doubling up to the ceiling. */
 export const FIRST_DELAY_MS = 2_000;
@@ -62,8 +63,12 @@ export type SuperviseOpts = {
   args: string[];
   /** Options passed as is to `host.spawn` (cwd, env, stdio). */
   spawn: SpawnOpts;
-  /** Alert raised when giving up. `null` = log only. */
-  alert?: { title: string; body: (why: string) => string } | null;
+  /**
+   * Alert raised when giving up. `null` = log only. `message` is the code of
+   * `title` and `body`, for the webview to show them in the reader's language;
+   * `why` stays the technical English cause, a param of that message.
+   */
+  alert?: { title: string; body: (why: string) => string; message?: (why: string) => DaemonMessage } | null;
   /**
    * Path where to publish the pid of the current child. Absent = nothing is written.
    *
@@ -172,7 +177,7 @@ export function superviseChild(host: Host, opts: SuperviseOpts): () => void {
   };
 
   const alert = (why: string): void => {
-    if (opts.alert) createNotification({ type: 'alert', urgent: true, title: opts.alert.title, body: opts.alert.body(why) });
+    if (opts.alert) createNotification({ type: 'alert', urgent: true, title: opts.alert.title, body: opts.alert.body(why), message: opts.alert.message?.(why) ?? null });
   };
 
   /** `beforeStart` refused: nothing ran, so this never feeds `rapidFalls`. */

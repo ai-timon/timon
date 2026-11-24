@@ -5,6 +5,7 @@
  */
 import { BRAND } from '@/lib/brand';
 import { providerCliState, readyForSetupChat, type ProviderCli } from '@/lib/provider-clis';
+import type { OnboardingScreenDetail } from '@/lib/usage-events';
 
 /** The block under the header: the two choices, the provider cards, or the local models. */
 export type LlmView = 'choose' | 'plan' | 'local';
@@ -96,4 +97,31 @@ export function splitAtSlots(render: (vars: Record<string, string>) => string, n
     if (i % 2 === 1 && names.includes(piece)) return [{ kind: 'slot', name: piece }];
     return piece ? [{ kind: 'text', text: piece }] : [];
   });
+}
+
+/** The shape the daemon accepts for a CLI name; anything else is not reported at all. */
+const CLI_NAME = /^[a-z][a-z0-9-]{0,31}$/;
+
+function withBackend(detail: OnboardingScreenDetail, cli: ProviderCli | undefined): OnboardingScreenDetail {
+  return cli && CLI_NAME.test(cli.name) ? { ...detail, backend: cli.name } : detail;
+}
+
+/**
+ * How the person left "Choose your LLM", for the onboarding funnel: by the
+ * same rule as "Continue" (`readyForSetupChat`), the CLI the chat would start
+ * on, or why there was none. Local models are not checked here: `unknown`.
+ */
+export function llmOutcome(choice: 'plan' | 'local', answer: ProviderAnswer): OnboardingScreenDetail {
+  if (choice === 'local') return { llmChoice: 'local', connection: 'unknown' };
+  if (!answer) return { llmChoice: 'plan', connection: 'failed', failureCode: 'unreachable' };
+  const usable = answer.filter((cli) => cli.seedsMainAgent);
+  const ready = usable.filter((cli) => cli.path !== null && cli.signedIn !== false);
+  if (ready.length > 0) {
+    const first = ready.find((cli) => providerCliState(cli) === 'ready') ?? ready[0];
+    return withBackend({ llmChoice: 'plan', connection: 'ok' }, first);
+  }
+  const signedOut = usable.find((cli) => cli.path !== null && cli.signedIn === false);
+  return signedOut
+    ? withBackend({ llmChoice: 'plan', connection: 'failed', failureCode: 'signed_out' }, signedOut)
+    : { llmChoice: 'plan', connection: 'failed', failureCode: 'not_installed' };
 }

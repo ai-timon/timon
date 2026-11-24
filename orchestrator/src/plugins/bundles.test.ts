@@ -1,11 +1,11 @@
 /**
- * Serveur de bundles — confinement du chemin et cache par `rev`.
+ * Bundle server: path confinement and caching by `rev`.
  *
- * Ce que ces tests protègent : une URL ne désigne jamais un fichier. L'id
- * passe par le registre, le registre ne connaît que des chemins déclarés
- * par `exports['./client']` et confinés dans le paquet. Une tentative de
- * traversal, un plugin absent, une révision périmée : 404, jamais un autre
- * fichier.
+ * What these tests protect: a URL never designates a file. The id goes
+ * through the registry, and the registry only knows paths declared by
+ * `exports['./client']` and confined to the package. A traversal attempt,
+ * a missing plugin, a stale revision: 404, never another
+ * file.
  */
 import '../test-home.js';
 import '../../tests/helpers/paid-license.js';
@@ -67,7 +67,7 @@ async function serve(
   };
 }
 
-test('resolveClientEntry refuse un chemin qui sort du paquet', () => {
+test('resolveClientEntry refuses a path that leaves the package', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-bundle-'));
   const res = resolveClientEntry(dir, { exports: { './client': '../secret.js' } });
   assert.equal(res.ok, false);
@@ -75,7 +75,7 @@ test('resolveClientEntry refuse un chemin qui sort du paquet', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('resolveClientEntry refuse un chemin absolu et un exports absent', () => {
+test('resolveClientEntry refuses an absolute path and a missing exports', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-bundle-'));
   assert.equal(resolveClientEntry(dir, { exports: { './client': '/etc/passwd' } }).ok, false);
   assert.equal(resolveClientEntry(dir, { name: 'x' }).ok, false);
@@ -83,7 +83,7 @@ test('resolveClientEntry refuse un chemin absolu et un exports absent', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('GET /plugins/<id>/client.js sert le fichier déclaré, pas un voisin', async () => {
+test('GET /plugins/<id>/client.js serves the declared file, not a neighbour', async () => {
   const registry = new BundleRegistry();
   const registered = registry.register('fixture-ok', OK_DIR, pkg());
   assert.equal(registered.ok, true);
@@ -98,7 +98,7 @@ test('GET /plugins/<id>/client.js sert le fichier déclaré, pas un voisin', asy
   await s.close();
 });
 
-test('sans rev : no-cache ; révision inconnue : 404 ; identique : cacheable', async () => {
+test('without rev: no-cache; unknown revision: 404; identical: cacheable', async () => {
   const registry = new BundleRegistry();
   registry.register('fixture-ok', OK_DIR, pkg());
   const s = await serve(registry);
@@ -131,7 +131,7 @@ test('plugin absent → 404', async () => {
   await s.close();
 });
 
-test('une tentative de traversal est refusée — l\'URL ne construit pas de chemin', async () => {
+test('a traversal attempt is refused: the URL does not build a path', async () => {
   const registry = new BundleRegistry();
   registry.register('fixture-ok', OK_DIR, pkg());
   const s = await serve(registry);
@@ -145,13 +145,13 @@ test('une tentative de traversal est refusée — l\'URL ne construit pas de che
   ];
   for (const path of attempts) {
     const res = await fetch(s.url(path));
-    assert.equal(res.status, 404, `${path} ne doit rien servir (reçu ${res.status})`);
+    assert.equal(res.status, 404, `${path} must serve nothing (got ${res.status})`);
     await res.arrayBuffer();
   }
   await s.close();
 });
 
-test('un exports qui pointe hors du paquet n\'est jamais enregistré', () => {
+test('an exports entry pointing outside the package is never registered', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-bundle-'));
   mkdirSync(join(dir, 'lib'));
   writeFileSync(join(dir, 'lib', 'client.js'), 'export default 1\n');
@@ -168,7 +168,7 @@ test('un exports qui pointe hors du paquet n\'est jamais enregistré', () => {
  * permission: a role can carry a `layout:<id>` string the catalogue never
  * minted for that package.
  */
-test('layout:<short> sert la moitié navigateur d\'un layout tiers', async () => {
+test('layout:<short> serves the browser half of a third-party layout', async () => {
   const registry = new BundleRegistry();
   registry.register('fixture-ok', OK_DIR, pkg());
   const s = await serve(registry, {
@@ -203,19 +203,19 @@ test('theme:<short> serves only the browser half of a resolved third-party theme
   }
 });
 
-test('layout:<short> sur un paquet qui n\'est pas un layout : 404', async () => {
+test('layout:<short> on a package that is not a layout: 404', async () => {
   for (const kinds of [['widget'], ['behavior'], ['page', 'widget'], []]) {
     const registry = new BundleRegistry();
     registry.register('fixture-ok', OK_DIR, pkg());
     const s = await serve(registry, { permissions: ['layout:fixture-ok'], kinds });
     const res = await fetch(s.url(`${BUNDLE_ROUTE_PREFIX}/fixture-ok/client.js`));
-    assert.equal(res.status, 404, `kind ${JSON.stringify(kinds)} ne doit rien servir`);
+    assert.equal(res.status, 404, `kind ${JSON.stringify(kinds)} must serve nothing`);
     await res.arrayBuffer();
     await s.close();
   }
 });
 
-test('un paquet layout+behavior sert sa moitié navigateur, plugin:<id> reste requis pour le reste', async () => {
+test('a layout+behavior package serves its browser half, plugin:<id> stays required for the rest', async () => {
   const registry = new BundleRegistry();
   registry.register('fixture-ok', OK_DIR, pkg());
   const chrome = await serve(registry, {
@@ -227,7 +227,7 @@ test('un paquet layout+behavior sert sa moitié navigateur, plugin:<id> reste re
   await res.arrayBuffer();
   await chrome.close();
 
-  // Sans aucune des deux clés, rien — même pour un layout.
+  // With neither key, nothing, even for a layout.
   const denied = await serve(registry, { permissions: ['widget:fixture-ok'], kinds: ['layout'] });
   const shut = await fetch(denied.url(`${BUNDLE_ROUTE_PREFIX}/fixture-ok/client.js`));
   assert.equal(shut.status, 404);

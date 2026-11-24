@@ -1,15 +1,18 @@
 /**
- * Retention of what agents leave behind on the computer — off by default.
+ * Retention of what agents leave behind on the computer.
  *
- * Two settings, both `0` (keep everything) until someone asks otherwise:
- *  - `TIMON_EVENTS_RETENTION_DAYS`: the mission history (`events`, the cold
- *    archive included, and the text the history search copied from it);
- *  - `TIMON_LEARNINGS_RETENTION_DAYS`: the raw facts (`learnings` table, and
- *    the `learnings.jsonl` / `learnings.archive.jsonl` files of each agent).
+ * Two settings, `0` keeping everything:
+ *  - `TIMON_EVENTS_RETENTION_DAYS`, 180 days by default: the history of the
+ *    missions idle for longer (`events`, the cold archive included, and the
+ *    text the history search copied from it);
+ *  - `TIMON_LEARNINGS_RETENTION_DAYS`, off by default: the raw facts
+ *    (`learnings` table, and the `learnings.jsonl` / `learnings.archive.jsonl`
+ *    files of each agent), which feed the memory curation.
  *
  * Unlike `TIMON_EVENTS_HOT_DAYS`, which moves events and loses nothing, this
- * deletes. A running mission is never touched. The provider sessions (Codex
- * rollouts) have their own retention, `TIMON_PROVIDER_SESSION_TTL_MS`.
+ * deletes. A running mission, or one an open task or workflow run still
+ * needs, is never touched. The provider sessions (Codex rollouts) have their
+ * own retention, `TIMON_PROVIDER_SESSION_TTL_MS`.
  */
 import { existsSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dbApi } from './db.js';
@@ -59,7 +62,14 @@ function pruneLearningsFile(path: string, cutoff: number): number {
     rmSync(tmp, { force: true });
     return 0;
   }
-  renameSync(tmp, path);
+  try {
+    renameSync(tmp, path);
+  } catch (e) {
+    // Windows refuses to replace a file another process holds open: the
+    // agent's own append. The next pass tries again; no copy is left behind.
+    rmSync(tmp, { force: true });
+    throw e;
+  }
   return removed;
 }
 
@@ -86,33 +96,57 @@ export function pruneOldLearnings(now = Date.now()): { rows: number; lines: numb
   return { rows, lines };
 }
 
-/** One slice of the events past the retention, hot table first. */
-export function pruneOldEvents(now = Date.now(), maxRows = 5_000): number {
+/** Missions listed per query: each costs a few index probes. */
+const MISSION_PAGE = 200;
+
+export type EventsPruneOptions = { now?: number; sliceRows?: number; pauseMs?: number; stopped?: () => boolean };
+
+/**
+ * The history of the missions idle past the retention, whole conversations at
+ * a time (`historyExpiredSql` in `db.ts` says which). Events go in slices,
+ * handing the event loop back between two: the first pass on a large home
+ * deletes millions of rows, and better-sqlite3 holds the whole daemon while it
+ * writes.
+ */
+export async function pruneOldEvents(opts: EventsPruneOptions = {}): Promise<number> {
+  const { now = Date.now(), sliceRows = 5_000, pauseMs = 200, stopped = () => false } = opts;
   const days = settingInt('TIMON_EVENTS_RETENTION_DAYS');
   if (days <= 0) return 0;
   const cutoff = now - days * DAY;
-  let dropped = dbApi.pruneEventsBatch('events', cutoff, maxRows);
-  if (dropped < maxRows && dbApi.eventsArchiveAttached()) {
-    dropped += dbApi.pruneEventsBatch('archive.events', cutoff, maxRows - dropped);
+  const archive = dbApi.eventsArchiveAttached();
+  const tables = archive ? (['events', 'archive.events'] as const) : (['events'] as const);
+  const pause = () => new Promise((resolve) => setTimeout(resolve, pauseMs));
+  let after = 0;
+  let dropped = 0;
+  // Rows deleted since the last pause: many small missions add up to a slice too.
+  let sinceYield = 0;
+  while (!stopped()) {
+    const page = dbApi.expiredHistoryMissions(cutoff, archive, after, MISSION_PAGE);
+    if (!page.length) break;
+    for (const mission of page) {
+      if (stopped()) break;
+      after = mission.rowid;
+      for (const table of tables) {
+        for (;;) {
+          if (stopped()) break;
+          if (sinceYield >= sliceRows) { await pause(); sinceYield = 0; }
+          const room = sliceRows - sinceYield;
+          const slice = dbApi.pruneMissionEventsBatch(table, mission.id, cutoff, archive, room, days);
+          dropped += slice;
+          sinceYield += slice;
+          if (slice < room) break; // nothing left of this mission in this table
+        }
+      }
+    }
+    await new Promise((resolve) => setImmediate(resolve));
   }
   return dropped;
 }
 
-/**
- * The daily pass. Events go in slices, handing the event loop back between
- * two: the first pass on a large home deletes millions of rows, and
- * better-sqlite3 holds the whole daemon while it writes.
- */
-export async function runDataRetention(opts: { now?: number; sliceRows?: number; pauseMs?: number; stopped?: () => boolean } = {}): Promise<RetentionOutcome> {
-  const { now = Date.now(), sliceRows = 5_000, pauseMs = 200, stopped = () => false } = opts;
-  const learnings = pruneOldLearnings(now);
-  let events = 0;
-  while (!stopped()) {
-    const slice = pruneOldEvents(now, sliceRows);
-    events += slice;
-    if (slice < sliceRows) break;
-    await new Promise((resolve) => setTimeout(resolve, pauseMs));
-  }
+/** The daily pass. */
+export async function runDataRetention(opts: EventsPruneOptions = {}): Promise<RetentionOutcome> {
+  const learnings = pruneOldLearnings(opts.now);
+  const events = await pruneOldEvents(opts);
   if (events) console.log(`[retention] ${events} mission event(s) past retention deleted`);
   return { events, learnings: learnings.rows, learningLines: learnings.lines };
 }

@@ -7,8 +7,9 @@
  * subscription the person already pays for, or the local models. "Back"
  * first brings the two choices back on this same screen.
  *
- * The terms sit under the two choices. No usage-statistics box: sharing is on
- * by default and turned off in Settings › Privacy.
+ * The terms sit under the two choices, with one line saying that anonymous
+ * usage statistics are sent and a one-click way to turn them off. No box to
+ * tick: sharing is on by default, an opt-out.
  */
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { ArrowRight, Check, ChevronRight, ExternalLink } from 'lucide-react';
@@ -19,14 +20,16 @@ import type { AgentLook } from '@/components/mascot/agent-look';
 import { ProviderCliCards } from '@/components/provider-cli/provider-cli-cards';
 import { fetchProviderClis, type ProviderCli } from '@/lib/provider-clis';
 import { t } from '@/lib/i18n';
+import type { OnboardingScreenDetail } from '@/lib/usage-events';
 import { formatList } from '@/lib/intl';
 import { settingsPath } from '@/lib/settings-path';
 import {
-  LEGAL_LINKS, llmBack, OLLAMA_DOWNLOAD_URL, OLLAMA_NAME, planStatus, splitAtSlots, subscriptionProviders,
+  LEGAL_LINKS, llmBack, llmOutcome, OLLAMA_DOWNLOAD_URL, OLLAMA_NAME, planStatus, splitAtSlots, subscriptionProviders,
   type LlmView, type ProviderAnswer,
 } from '../llm-choice';
 import { useOnboarding, useOnboardingBack } from '../onboarding-context';
 import { ViewSwap } from '../view-swap';
+import { TelemetryNotice } from '../telemetry-notice';
 
 /** The row above the title: a small crowd of every skull, standing on one line. */
 const TEAM: readonly { look: Partial<AgentLook>; size: number }[] = [
@@ -40,7 +43,7 @@ const TEAM: readonly { look: Partial<AgentLook>; size: number }[] = [
 ];
 
 export function LlmStep(): ReactElement {
-  const { next } = useOnboarding();
+  const { next, setOutcome } = useOnboarding();
   const [view, setView] = useState<LlmView>('choose');
   // Read once for the names on the "subscription" choice; the local block never waits for it.
   const [known, setKnown] = useState<ProviderAnswer>(undefined);
@@ -51,6 +54,11 @@ export function LlmStep(): ReactElement {
       .catch(() => { if (alive) setKnown(null); });
     return () => { alive = false; };
   }, []);
+  // The funnel learns the choice and whether an AI was ready, with the "Continue" that leaves.
+  const goOn = useCallback((detail: OnboardingScreenDetail): void => {
+    setOutcome(detail);
+    next();
+  }, [next, setOutcome]);
   useOnboardingBack(() => {
     const to = llmBack(view);
     if (!to) return false;
@@ -77,9 +85,9 @@ export function LlmStep(): ReactElement {
         view={view}
         className="flex min-h-0 w-full flex-col items-center px-4 pb-5"
         render={(shown) => (shown === 'plan'
-          ? <PlanBlock onContinue={next} />
+          ? <PlanBlock onContinue={goOn} />
           : shown === 'local'
-            ? <LocalBlock onContinue={next} />
+            ? <LocalBlock onContinue={goOn} />
             : <ChooseBlock onPick={setView} known={known} />)}
       />
     </section>
@@ -125,6 +133,7 @@ function ChooseBlock({ onPick, known }: { onPick: (view: LlmView) => void; known
             </a>
           )))}
       </p>
+      <TelemetryNotice />
     </>
   );
 }
@@ -149,10 +158,11 @@ function ChoiceRow({ title, detail, onClick, marks, name }: {
   );
 }
 
-function PlanBlock({ onContinue }: { onContinue: () => void }): ReactElement {
+function PlanBlock({ onContinue: leave }: { onContinue: (detail: OnboardingScreenDetail) => void }): ReactElement {
   const [answer, setAnswer] = useState<ProviderAnswer>(undefined);
   const onBackends = useCallback((backends: ProviderCli[] | null) => setAnswer(backends), []);
   const status = planStatus(answer);
+  const onContinue = (): void => leave(llmOutcome('plan', answer));
   return (
     <>
       <p className="mb-2.5 max-w-[460px] text-[13px] text-muted-foreground">{t('onboarding.llm.plan.hint')}</p>
@@ -191,7 +201,8 @@ function PlanBlock({ onContinue }: { onContinue: () => void }): ReactElement {
   );
 }
 
-function LocalBlock({ onContinue }: { onContinue: () => void }): ReactElement {
+function LocalBlock({ onContinue: leave }: { onContinue: (detail: OnboardingScreenDetail) => void }): ReactElement {
+  const onContinue = (): void => leave(llmOutcome('local', undefined));
   return (
     <>
       <p className="mb-2.5 max-w-[460px] text-[13px] text-muted-foreground">{t('onboarding.llm.local.hint')}</p>

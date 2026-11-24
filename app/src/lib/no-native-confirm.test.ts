@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 /**
  * No browser `confirm()` anywhere in the app or the plugin templates (TODO
  * #781): it freezes the page, names the site rather than Timon, cannot be
- * themed, and a browser told to stop showing dialogs answers « no » without
+ * themed, and a browser told to stop showing dialogs answers "no" without
  * asking anyone. Every confirmation goes through `confirmAction()`
  * (`components/confirm-dialog/confirm-dialog-context.ts`), painted by the
  * `confirm.dialog` slot. All 36 calls were migrated on 03/11/2026: the count

@@ -9,7 +9,7 @@
 import '../../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -221,7 +221,10 @@ test('an impostor on the endpoint is never trusted, never launched over, never s
 });
 
 test('the real host process keeps a running command across a daemon restart', { skip: loadNodePty() === null || process.platform === 'win32' }, async () => {
-  const home = mkdtempSync(join(tmpdir(), 'hosted-real-'));
+  // In the machine's temporary folder, like a real home a short path: the test
+  // runner's own folder is nested deep enough on macOS that the host's socket
+  // would outgrow its 104 bytes. Removed at the end, the runner does not.
+  const home = mkdtempSync(join(process.env.TIMON_TEST_REAL_TMPDIR || tmpdir(), 'hosted-real-'));
   const files = hostFiles(home);
   const entry = fileURLToPath(new URL('../../terminal-host/main.ts', import.meta.url));
   let hostPid: number | null = null;
@@ -264,6 +267,7 @@ test('the real host process keeps a running command across a daemon restart', { 
     if (hostPid !== null && hostPid > 0) {
       try { process.kill(hostPid); } catch { /* left on its own */ }
     }
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

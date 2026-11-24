@@ -63,13 +63,13 @@ test('every call passes exactly the arguments of its English message', () => {
   assert.deepEqual(wrong, []);
 });
 
-/** Search keywords: a French reader types "français" to find the language setting. */
+/** Search keywords: a French reader types "français" to find the language setting. french-ok: the word a French reader types */
 const FRENCH_ON_PURPOSE = new Set(['settingsSearch.tabKeywords.interface.language']);
 
 test('English holds no French copy', () => {
   const french = leafKeys(english).filter((key) => {
     const message = lookup(english, key);
-    return typeof message === 'string' && /[àâçéèêëîïôûùüÿœæ]/i.test(message) && !FRENCH_ON_PURPOSE.has(key);
+    return typeof message === 'string' && /[àâçéèêëîïôûùüÿœæ]/i.test(message) && !FRENCH_ON_PURPOSE.has(key); // french-ok: the French letters the check looks for
   });
   assert.deepEqual(french, []);
 });

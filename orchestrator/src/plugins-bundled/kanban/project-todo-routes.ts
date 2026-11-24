@@ -30,6 +30,7 @@ import {
 import { todoExtensionFields } from '../../project-todo-extensions.js';
 import { apiError } from '../../api-error.js';
 import { z } from 'zod';
+import { TODO_LANDING_STATES } from '../../todo-landing.js';
 
 /** Hard ceiling of one page: a client after more narrows the filters instead. */
 export const PROJECT_TODO_LIST_MAX_LIMIT = 1000;
@@ -46,6 +47,9 @@ const LIST_QUERY = z.object({
   urgency: z.string().transform(splitComma)
     .pipe(z.array(z.enum([...TODO_URGENCIES, 'none'])).min(1))
     .optional(),
+  // The idea's landing badge (its worst job): `open` = pull request open,
+  // `pending` = not created yet.
+  landing: z.enum(TODO_LANDING_STATES).optional(),
 });
 
 /**
@@ -81,30 +85,30 @@ export function registerRoutes(app: Router): void {
     try {
       const rawStatus = typeof req.query.status === 'string' ? req.query.status : undefined;
       if (rawStatus && rawStatus !== 'all' && !parseTodoStatusFilter(rawStatus)) {
-        res.status(400).json({ error: 'status must be open|done|promoted|all' });
+        res.status(400).json(apiError('todo_status_filter_invalid', 'status must be open|done|promoted|all'));
         return;
       }
       const project = typeof req.query.project === 'string' && req.query.project ? req.query.project : undefined;
       const query = LIST_QUERY.safeParse(req.query);
       if (!query.success) {
         const field = query.error.issues[0]?.path[0];
-        res.status(400).json({
-          error: field === 'urgency'
-            ? `urgency must be ${[...TODO_URGENCIES, 'none'].join('|')}, comma-separated for several`
-            : field === 'limit'
-              ? `limit must be an integer from 1 to ${PROJECT_TODO_LIST_MAX_LIMIT}`
-              : 'ids must be comma-separated positive integers',
-        });
+        res.status(400).json(field === 'urgency'
+          ? apiError('todo_urgency_filter_invalid', `urgency must be ${[...TODO_URGENCIES, 'none'].join('|')}, comma-separated for several`)
+          : field === 'landing'
+            ? apiError('todo_landing_filter_invalid', `landing must be ${TODO_LANDING_STATES.join('|')}`)
+          : field === 'limit'
+            ? apiError('todo_limit_invalid', `limit must be an integer from 1 to ${PROJECT_TODO_LIST_MAX_LIMIT}`, { max: PROJECT_TODO_LIST_MAX_LIMIT })
+            : apiError('todo_ids_invalid', 'ids must be comma-separated positive integers'));
         return;
       }
       const progress = parseTodoProgress(req.query.progress);
       if (req.query.progress !== undefined && !progress) {
-        res.status(400).json({ error: `progress must be ${TODO_PROGRESSES.join('|')}` });
+        res.status(400).json(apiError('todo_progress_invalid', `progress must be ${TODO_PROGRESSES.join('|')}`));
         return;
       }
       const scope = scopedDb(viewerFromRequest(req));
       const status = rawStatus === 'all' ? undefined : parseTodoStatusFilter(rawStatus);
-      const filter = { project, urgencies: query.data.urgency, progress, ids: query.data.ids };
+      const filter = { project, urgencies: query.data.urgency, progress, ids: query.data.ids, landing: query.data.landing };
       const items = scope.listProjectTodo({ ...filter, status, limit: query.data.limit });
       // Counted in SQL with the list's own filters: a client that counted the
       // rows it received stopped at the limit (200 open ideas, 0 done).
@@ -114,14 +118,14 @@ export function registerRoutes(app: Router): void {
         : counts.byStatus.open + counts.byStatus.done + counts.byStatus.promoted;
       res.json({
         // Links ride on the rows the caller may see: no second visibility rule.
-        items: withLinks(items),
+        items: withLinks(items, viewerFromRequest(req)),
         counts,
         truncated: items.length < matching,
         // Kept for older clients: the caller's open ideas across EVERY
         // project, whatever the filters. `counts.byStatus.open` is the filtered one.
         open: scope.countOpenProjectTodo(),
       });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('todo_request_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/project-todo', (req, res) => {
@@ -130,7 +134,7 @@ export function registerRoutes(app: Router): void {
       const unknownPost = Object.keys(req.body ?? {}).filter((k) => !KNOWN_POST.has(k));
       if (unknownPost.length) {
         const accepted = [...KNOWN_POST].sort().join(', ');
-        res.status(400).json({ error: `unknown field: ${unknownPost[0]}; accepted: ${accepted}` });
+        res.status(400).json(apiError('todo_field_unknown', `unknown field: ${unknownPost[0]}; accepted: ${accepted}`, { field: unknownPost[0] ?? '' }));
         return;
       }
       const body = (req.body ?? {}) as {
@@ -140,23 +144,23 @@ export function registerRoutes(app: Router): void {
       const text = typeof body.text === 'string' ? body.text.trim() : '';
       if (!text) { res.status(400).json(apiError('text_required', 'text (non-empty string) required')); return; }
       if (body.project !== undefined && body.project !== null && typeof body.project !== 'string') {
-        res.status(400).json({ error: 'project must be a string or null' });
+        res.status(400).json(apiError('todo_project_invalid', 'project must be a string or null'));
         return;
       }
       if (body.notes !== undefined && body.notes !== null && typeof body.notes !== 'string') {
-        res.status(400).json({ error: 'notes must be a string or null' });
+        res.status(400).json(apiError('todo_notes_invalid', 'notes must be a string or null'));
         return;
       }
       let urgency: TodoUrgency | null = null;
       if (body.urgency !== undefined && body.urgency !== null) {
         const u = parseTodoUrgency(body.urgency);
-        if (!u) { res.status(400).json({ error: `urgency must be ${TODO_URGENCIES.join('|')} or null` }); return; }
+        if (!u) { res.status(400).json(apiError('todo_urgency_invalid', `urgency must be ${TODO_URGENCIES.join('|')} or null`)); return; }
         urgency = u;
       }
       let progress: TodoProgress | undefined;
       if (body.progress !== undefined) {
         progress = parseTodoProgress(body.progress);
-        if (!progress) { res.status(400).json({ error: `progress must be ${TODO_PROGRESSES.join('|')}` }); return; }
+        if (!progress) { res.status(400).json(apiError('todo_progress_invalid', `progress must be ${TODO_PROGRESSES.join('|')}`)); return; }
       }
       const item = scopedDb(viewerFromRequest(req)).insertProjectTodo({
         text,
@@ -167,8 +171,8 @@ export function registerRoutes(app: Router): void {
         author: resolveTodoAuthor(req, body.author),
       });
       publishTodoChanged(item);
-      res.status(201).json({ item: withLinksOne(item) });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+      res.status(201).json({ item: withLinksOne(item, viewerFromRequest(req)) });
+    } catch (err) { res.status(500).json(apiError('todo_request_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.patch('/api/project-todo/:id', (req, res) => {
@@ -181,7 +185,7 @@ export function registerRoutes(app: Router): void {
       const unknown = Object.keys(req.body ?? {}).filter((k) => !allKnown.has(k));
       if (unknown.length) {
         const accepted = [...allKnown].sort().join(', ');
-        res.status(400).json({ error: `unknown field: ${unknown[0]}; accepted: ${accepted}` });
+        res.status(400).json(apiError('todo_field_unknown', `unknown field: ${unknown[0]}; accepted: ${accepted}`, { field: unknown[0] ?? '' }));
         return;
       }
       const body = (req.body ?? {}) as {
@@ -201,13 +205,13 @@ export function registerRoutes(app: Router): void {
         if (body.urgency === null) fields.urgency = null;
         else {
           const u = parseTodoUrgency(body.urgency);
-          if (!u) { res.status(400).json({ error: `urgency must be ${TODO_URGENCIES.join('|')} or null` }); return; }
+          if (!u) { res.status(400).json(apiError('todo_urgency_invalid', `urgency must be ${TODO_URGENCIES.join('|')} or null`)); return; }
           fields.urgency = u;
         }
       }
       if (body.progress !== undefined) {
         const p = parseTodoProgress(body.progress);
-        if (!p) { res.status(400).json({ error: `progress must be ${TODO_PROGRESSES.join('|')}` }); return; }
+        if (!p) { res.status(400).json(apiError('todo_progress_invalid', `progress must be ${TODO_PROGRESSES.join('|')}`)); return; }
         fields.progress = p;
       }
       if (body.text !== undefined) {
@@ -217,21 +221,21 @@ export function registerRoutes(app: Router): void {
       }
       if (body.project !== undefined) {
         if (body.project !== null && typeof body.project !== 'string') {
-          res.status(400).json({ error: 'project must be a string or null' });
+          res.status(400).json(apiError('todo_project_invalid', 'project must be a string or null'));
           return;
         }
         fields.project = typeof body.project === 'string' ? body.project.trim() || null : null;
       }
       if (body.notes !== undefined) {
         if (body.notes !== null && typeof body.notes !== 'string') {
-          res.status(400).json({ error: 'notes must be a string or null' });
+          res.status(400).json(apiError('todo_notes_invalid', 'notes must be a string or null'));
           return;
         }
         fields.notes = body.notes;
       }
       if (body.author !== undefined) {
         if (body.author !== null && typeof body.author !== 'string') {
-          res.status(400).json({ error: 'author must be a string or null' });
+          res.status(400).json(apiError('todo_author_invalid', 'author must be a string or null'));
           return;
         }
         fields.author = typeof body.author === 'string' ? body.author.trim() || null : null;
@@ -239,11 +243,9 @@ export function registerRoutes(app: Router): void {
       if (body.status !== undefined) {
         const status = parseTodoStatusEdit(body.status);
         if (!status) {
-          res.status(400).json({
-            error: body.status === 'promoted'
-              ? 'status "promoted" cannot be set by hand — use POST /api/project-todo/:id/promote'
-              : 'status must be open|done',
-          });
+          res.status(400).json(body.status === 'promoted'
+            ? apiError('todo_promoted_by_hand', 'status "promoted" cannot be set by hand — use POST /api/project-todo/:id/promote')
+            : apiError('todo_status_invalid', 'status must be open|done'));
           return;
         }
         fields.status = status;
@@ -256,10 +258,10 @@ export function registerRoutes(app: Router): void {
       // The writer rides along: a connector tells its own echo by it.
       const item = withTodoOrigin(todoOriginFromRequest(req), () => patchTodo(existing, fields, req.body ?? {}));
       if (!item) { res.status(404).json(apiError('todo_not_found', 'project-todo item not found')); return; }
-      res.json({ item: withLinksOne(item) });
+      res.json({ item: withLinksOne(item, viewerFromRequest(req)) });
     } catch (err) {
-      if (err instanceof TodoExtensionError) { res.status(err.status).json({ error: err.message }); return; }
-      res.status(500).json({ error: (err as Error).message });
+      if (err instanceof TodoExtensionError) { res.status(err.status).json(apiError('todo_field_refused', err.message, { detail: err.message })); return; }
+      res.status(500).json(apiError('todo_request_failed', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -292,12 +294,13 @@ export function registerRoutes(app: Router): void {
         priority?: unknown; pipeline?: unknown; project?: unknown; trace_id?: unknown;
       };
       if (typeof body.agent_name !== 'string' || !body.agent_name.trim()) {
-        res.status(400).json({ error: 'agent_name (non-empty string) required — who runs the task?' });
+        res.status(400).json(apiError('agent_required', 'agent_name (non-empty string) required — who runs the task?'));
         return;
       }
       const agentName = body.agent_name.trim();
       const outcome = promoteTodoItem(
         item,
+        viewerFromRequest(req),
         typeof body.project === 'string' && body.project.trim() ? body.project.trim() : undefined,
         (spec) => createTaskFromBody(req, {
           title: spec.title,
@@ -317,7 +320,7 @@ export function registerRoutes(app: Router): void {
       );
       if (!outcome.ok) { res.status(outcome.status).json(outcome.json); return; }
       res.status(201).json({ task: outcome.task, item: outcome.item });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('todo_request_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/project-todo/:id/handoff', async (req, res) => {
@@ -327,7 +330,7 @@ export function registerRoutes(app: Router): void {
       const item = scopedDb(viewerFromRequest(req)).getProjectTodo(id);
       if (!item) { res.status(404).json(apiError('todo_not_found', 'project-todo item not found')); return; }
       if (!item.project) {
-        res.status(400).json({ error: 'idea without a project — set a project so it can be routed' });
+        res.status(400).json(apiError('todo_project_missing', 'idea without a project — set a project so it can be routed'));
         return;
       }
       // Same rule as the dispatcher's recap routing: the agent holding the
@@ -337,9 +340,7 @@ export function registerRoutes(app: Router): void {
       // message in a ghost inbox.
       const toAgent = orchestratorForProject(item.project);
       if (!toAgent) {
-        res.status(400).json({
-          error: `no orchestrator for project "${item.project}": give an agent of this project the orchestrator role`,
-        });
+        res.status(400).json(apiError('todo_no_orchestrator', `no orchestrator for project "${item.project}": give an agent of this project the orchestrator role`, { project: item.project }));
         return;
       }
       const payload = [
@@ -365,7 +366,7 @@ export function registerRoutes(app: Router): void {
         payload,
       });
       res.status(201).json({ to_agent: toAgent, message_id: row.id });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('todo_request_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.delete('/api/project-todo/:id', (req, res) => {
@@ -379,6 +380,6 @@ export function registerRoutes(app: Router): void {
       if (!withTodoOrigin(todoOriginFromRequest(req), () => dbApi.deleteProjectTodo(id))) { res.status(404).json(apiError('todo_not_found', 'project-todo item not found')); return; }
       publishTodoChanged(item);
       res.json({ ok: true });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('todo_request_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 }

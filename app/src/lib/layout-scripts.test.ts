@@ -42,7 +42,7 @@ function layoutScripts(): string[] {
 // it must leave the server's class alone.
 test('server-rendered layout scripts parse and paint the onboarding dark whatever the OS', () => {
   const scripts = layoutScripts().map((code) => new Script(code));
-  for (const pathname of ['/', '/agents', '/chat', '/login', '/login///', '/setup', '/setup/team/', '/setup-other', "/projects/l'été ` </script>"]) {
+  for (const pathname of ['/', '/agents', '/chat', '/login', '/login///', '/setup', '/setup/team/', '/setup-other', "/projects/l'été ` </script>"]) { // french-ok: an accented path, the escaping under test
     for (const light of [true, false]) {
       const classes = new Set(['dark']);
       let osAsked = false;

@@ -113,6 +113,31 @@ for (const failure of [null, 'foreign', 'query', 'stop']) test(`Windows ${failur
   } finally { f.clean(); }
 });
 
+test('Windows recognises the task of its home in every revision, and no other home', () => {
+  const home = 'C:\\Users\\Sam\\.timon';
+  const actions = [
+    `"C:\\T\\resources\\orchestrator\\dist\\host\\windows-service-launcher.js" "${home}\\run\\timon-service.json"`,
+    `--timon-service "${home}\\run\\timon-service.json"`,
+    `/d /s /c ""${home}\\run\\timon-service.cmd""`,
+    `/c set TIMON_HOME=${home}&& run`,
+  ];
+  for (const [index, args] of actions.entries()) {
+    for (const timonHome of [home, 'c:\\users\\sam\\.TIMON', 'C:\\Users\\Other\\.timon']) {
+      const calls: string[] = [];
+      const f = fixture('win32', (_cmd, a) => {
+        calls.push(a.at(-1) ?? '');
+        return calls.length === 1 ? ok(JSON.stringify({ Arguments: args })) : ok();
+      });
+      try {
+        const opts = { ...f.opts, timonHome };
+        const own = timonHome.toLowerCase() === home.toLowerCase() && (index < 3 || timonHome === home);
+        if (own) removeDesktopService(opts); else assert.throws(() => removeDesktopService(opts), /another data directory/);
+        assert.equal(calls.some((c) => c.includes('Unregister-ScheduledTask')), own, `${args} for ${timonHome}`);
+      } finally { f.clean(); }
+    }
+  }
+});
+
 test('Linux missing service accepts systemctl exit 4 without modifying anything', () => {
   let calls = 0;
   const f = fixture('linux', () => { calls++; return { code: 4, stdout: 'LoadState=not-found\n', stderr: '' }; });

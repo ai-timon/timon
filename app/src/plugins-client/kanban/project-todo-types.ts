@@ -12,6 +12,25 @@ export type ProjectTodoLink = {
   created_at: number;
 };
 
+/** State of one job's branch, mirror of the daemon's `todo-landing.ts`:
+ *  `branch` (embargo, no pull request expected), `pending` (not created),
+ *  `open`, `merged`, `closed` (without a merge). */
+export type TodoLandingState = 'branch' | 'pending' | 'open' | 'merged' | 'closed';
+
+/** One job (integration branch) of an idea. */
+export type TodoLandingJob = {
+  /** The job's id in `/api/kanban/landings/:id`; absent from an older daemon. */
+  jobId?: string;
+  state: TodoLandingState;
+  branch: string;
+  prNumber: number | null;
+  prUrl: string | null;
+};
+
+/** Where the branch of an idea's jobs stands: the job furthest from landing
+ *  on top, every job in `jobs`, oldest first. Derived by the daemon, read-only. */
+export type TodoLanding = TodoLandingJob & { jobs: TodoLandingJob[] };
+
 /** Mirror of `/api/project-todo` (ProjectTodoRow on the orchestrator side). Shared by
  *  the tile and the detail modal so a field added to the schema does not drift
  *  between the two. */
@@ -38,6 +57,8 @@ export type ProjectTodo = {
   links?: ProjectTodoLink[];
   /** Files attached to the idea; absent from a daemon older than the attachments. */
   attachment_count?: number;
+  /** `null` when no job of the idea has an integration branch; absent from an older daemon. */
+  landing?: TodoLanding | null;
 };
 
 type TodoStatus = ProjectTodo['status'];

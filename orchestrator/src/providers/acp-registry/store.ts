@@ -4,6 +4,7 @@
  *
  *   state.json                       which agents are installed, at which version, with which hashes
  *   agents/<id>/<version>/…          the extracted program, one folder per version
+ *   icons/<id>.svg                   the registry logo, checked at install and again when read; outside the hashed tree
  *   tmp/                             downloads in flight, always removed
  *
  * `treeSha256` is the second half of "sha256 before any launch": the archive is
@@ -56,6 +57,7 @@ export type AcpRegistryPaths = {
   agents: string;
   tmp: string;
   versionDir(id: string, version: string): string;
+  iconFile(id: string): string;
 };
 
 export function acpRegistryPaths(home: string): AcpRegistryPaths {
@@ -66,6 +68,8 @@ export function acpRegistryPaths(home: string): AcpRegistryPaths {
     agents: join(root, 'agents'),
     tmp: join(root, 'tmp'),
     versionDir: (id, version) => join(root, 'agents', id, version),
+    // Its own folder: a version may be named anything the version pattern allows, `icon.svg` included.
+    iconFile: (id) => join(root, 'icons', `${id}.svg`),
   };
 }
 

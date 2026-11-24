@@ -293,7 +293,7 @@ test('path format: /api/plugins/hooks/<slug>/<name>, never `@` nor `%`, scoped i
     assert.match(path, /^\/api\/plugins\/hooks\/[a-z0-9-]+\/[a-z0-9-]+$/);
     assert.ok(PLUGIN_HOOK_PATH.test(path), path);
   }
-  for (const id of ['@Acme/X', '@acme/x y', '@acme/é', '']) assert.equal(pluginHookSlug(id), null, id);
+  for (const id of ['@Acme/X', '@acme/x y', '@acme/é', '']) assert.equal(pluginHookSlug(id), null, id); // french-ok: an accented id the slug refuses
   assert.equal(PLUGIN_HOOK_PATH.test('/api/plugins/hooks/%40timon%2Ftodo/todo'), false);
 });
 

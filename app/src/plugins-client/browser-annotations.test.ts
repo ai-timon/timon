@@ -1,6 +1,6 @@
 /**
  * The client half of `@timon/browser-annotations` (TODO #468, reworked by TODO #481): ✎ and its
- * pill, « N annotations · Send » posting the queue as one message of the conversation, the history
+ * pill, "N annotations · Send" posting the queue as one message of the conversation, the history
  * drawer, the PWA layer with its bubble and pins. Everything it does goes through the plugin's
  * daemon routes or the chrome's `command()`, and only because the half declares `browser:control`.
  */
@@ -257,7 +257,7 @@ test('a pick waiting on the desktop is collected once into the queue: no drawer 
   } finally { await ui.cleanup(); }
 });
 
-test('« N annotations · Send » posts the current queue to the chat\'s conversation: no composer, the pins go, the chat follows', async () => {
+test('"N annotations · Send" posts the current queue to the chat\'s conversation: no composer, the pins go, the chat follows', async () => {
   const sent = new Set<string>();
   const ui = await annotationsDom({
     owner: true,

@@ -60,6 +60,10 @@ export type CatalogEntry = WidgetConstraints & {
   catalogTitle?: string;
   /** Glyph of the card in the widget window (`WidgetOptions.icon`). */
   icon?: string;
+  /** Name on its tab in a stack (`WidgetOptions.tabTitle`). */
+  tabTitle?: string;
+  /** Kept mounted behind its stack's front tab (`WidgetOptions.liveCount`). */
+  liveCount?: boolean;
 };
 
 /**
@@ -136,6 +140,8 @@ export function buildWidgetCatalog(
       ...(options?.description ? { description: options.description } : {}),
       ...(options?.catalogTitle ? { catalogTitle: options.catalogTitle } : {}),
       ...(options?.icon ? { icon: options.icon } : {}),
+      ...(options?.tabTitle ? { tabTitle: options.tabTitle } : {}),
+      ...(options?.liveCount ? { liveCount: true } : {}),
       ...(options?.placedByDefault ? { placedByDefault: true } : {}),
       ...(formerIdsOf(entry.pluginId, options).length ? { formerIds: formerIdsOf(entry.pluginId, options) } : {}),
       // The declared zone is only a first-placement preference: the slot alone

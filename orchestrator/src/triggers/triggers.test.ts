@@ -31,7 +31,8 @@ const { config, setConfig } = await import('../config/load.js');
 const { insertTrigger } = await import('./store.js');
 const { createEventDispatcher, eventFromBus } = await import('./events.js');
 const { deferredEventListener, switchOffUnapprovedAgentTriggers } = await import('../plugins-bundled/triggers/index.js');
-const { flushAllCoalesced, tickSchedules } = await import('./engine.js');
+const { flushAllCoalesced, SCHEDULE_PROVIDER_GRACE_MS, tickSchedules } = await import('./engine.js');
+const { ACTION_UNAVAILABLE, registerActionProvider } = await import('./actions.js');
 const { signGeneric } = await import('./signature.js');
 const { patchTodo } = await import('../plugins-bundled/kanban/todo-api.js');
 const { registerTodoExtension } = await import('../project-todo-extensions.js');
@@ -135,9 +136,12 @@ test('management routes: anonymous 401, no permission 403, secret shown once onl
   assert.equal(JSON.stringify(read.body).includes(String(created.body.secret)), false);
   const list = await api('GET', '/api/triggers');
   assert.equal(JSON.stringify(list.body).includes(String(created.body.secret)), false);
-  assert.equal((await api('POST', '/api/triggers', {
+  const duplicate = await api('POST', '/api/triggers', {
     source: 'webhook', name: 'dup', slug: 'gh-issues', config: { auth: 'github' }, actions: [ISSUE_TODO],
-  })).status, 409);
+  });
+  assert.equal(duplicate.status, 409);
+  // The English stays for the CLI; the code and its param are what the Triggers page translates.
+  assert.deepEqual(duplicate.body, { error: 'slug already used: gh-issues', code: 'trigger_slug_taken', params: { slug: 'gh-issues' } });
   assert.equal((await api('POST', '/api/triggers', {
     source: 'webhook', name: 'bad', slug: 'x', config: { auth: 'github' }, actions: [{ type: 'script', run: 'rm -rf /' }],
   })).status, 400);
@@ -924,6 +928,110 @@ test('schedule source: due trigger runs once with its time variables, next run m
   const notes = db.prepare(`SELECT title FROM notifications WHERE source = ?`).all(`trigger:${id}`) as Array<{ title: string }>;
   assert.deepEqual(notes.map((n) => n.title), [`Tick at ${now}`]);
   assert.ok(Number((db.prepare(`SELECT next_run_at FROM triggers WHERE id = ?`).get(id) as { next_run_at: number }).next_run_at) > now);
+});
+
+/** A schedule that needs Workflows, saved straight in the store: the API refuses it while nobody serves the action. */
+function workflowSchedule(name: string, nextRunAt: number): string {
+  return insertTrigger({
+    name, slug: null, source: 'schedule', enabled: true, config: { cron: '0 8 1 1 *' }, filter: null,
+    actions: [{ type: 'notify', title: `${name} notify` }, { type: 'workflow', workflow: 'wf', node: 'start' }],
+    secret: null, ownerUserId: bob.id, createdBy: 'user', creatorAgent: null, actingAgent: null, grants: ['*'], nextRunAt,
+  }).id;
+}
+const scheduleRow = (id: string) => db.prepare(`SELECT last_run_at, next_run_at FROM triggers WHERE id = ?`)
+  .get(id) as { last_run_at: number | null; next_run_at: number | null };
+const scheduleDeliveries = (id: string) => db.prepare(`SELECT status, reason FROM trigger_deliveries WHERE trigger_id = ? ORDER BY id`)
+  .all(id) as Array<{ status: string; reason: string | null }>;
+const scheduleNotes = (id: string) => db.prepare(`SELECT type, title, body FROM notifications WHERE source = ?`)
+  .all(`trigger:${id}`) as Array<{ type: string; title: string; body: string | null }>;
+const workflowStub = (runs: string[], check: () => string | null = () => null) => ({
+  check, run: (trigger: { id: string }) => { runs.push(trigger.id); return `run-${runs.length}`; }, originOfMission: () => null,
+});
+
+test('schedule waiting for Workflows at boot: the occurrence is kept, then runs exactly once when the module is there', async (t) => {
+  const t0 = Date.now();
+  const id = workflowSchedule('Missed while off', t0 - 30 * 60_000);
+  const before = scheduleRow(id);
+  tickSchedules(t0);
+  tickSchedules(t0 + 30_000);
+  assert.deepEqual(scheduleRow(id), before, 'not claimed while the module is not running');
+  assert.deepEqual(scheduleDeliveries(id), [], 'no journal row per waiting tick');
+  assert.deepEqual(scheduleNotes(id), [], 'its other actions wait too');
+
+  const runs: string[] = [];
+  t.after(registerActionProvider('workflow', workflowStub(runs)));
+  const ranAt = t0 + 60_000;
+  tickSchedules(ranAt);
+  tickSchedules(ranAt);
+  tickSchedules(ranAt + 30_000);
+  assert.deepEqual(runs, [id], 'one run, no catch-up');
+  const row = scheduleRow(id);
+  assert.equal(row.last_run_at, ranAt);
+  assert.ok(Number(row.next_run_at) > ranAt, 'the next occurrence is computed from the run');
+  assert.deepEqual(scheduleDeliveries(id).map((d) => d.status), ['received']);
+  assert.deepEqual(scheduleNotes(id).map((n) => n.title), ['Missed while off notify'], 'no failure alert');
+});
+
+test('schedule whose module never starts: it runs once after the grace, journals the failure and alerts its owner once', () => {
+  const t0 = Date.now();
+  const id = workflowSchedule('Never served', t0 - 60_000);
+  tickSchedules(t0);
+  tickSchedules(t0 + SCHEDULE_PROVIDER_GRACE_MS - 1);
+  assert.equal(scheduleRow(id).last_run_at, null, 'still waiting within the grace');
+  const gaveUpAt = t0 + SCHEDULE_PROVIDER_GRACE_MS;
+  tickSchedules(gaveUpAt);
+  for (let i = 1; i <= 5; i++) tickSchedules(gaveUpAt + i * 30_000);
+  assert.equal(scheduleRow(id).last_run_at, gaveUpAt);
+  assert.ok(Number(scheduleRow(id).next_run_at) > gaveUpAt);
+  const journal = scheduleDeliveries(id);
+  assert.equal(journal.length, 1);
+  assert.equal(journal[0]!.status, 'error');
+  assert.match(String(journal[0]!.reason), new RegExp(`workflow: ${ACTION_UNAVAILABLE}`));
+  const notes = scheduleNotes(id);
+  assert.deepEqual(notes.map((n) => n.title).sort(), ['Never served notify', 'Scheduled trigger failed: Never served'],
+    'the other actions run, and one alert, never one per tick');
+  const alert = notes.find((n) => n.title.startsWith('Scheduled trigger failed'))!;
+  assert.equal(alert.type, 'alert');
+  assert.match(String(alert.body), /Workflows module is not running/);
+});
+
+test('schedule whose target fails for real: no waiting, the owner is alerted at once', (t) => {
+  const runs: string[] = [];
+  t.after(registerActionProvider('workflow', workflowStub(runs, () => 'unknown workflow: wf')));
+  const now = Date.now();
+  const id = workflowSchedule('Broken target', now - 60_000);
+  tickSchedules(now);
+  tickSchedules(now + 30_000);
+  assert.deepEqual(runs, []);
+  assert.equal(scheduleRow(id).last_run_at, now);
+  assert.deepEqual(scheduleDeliveries(id).map((d) => d.status), ['error']);
+  const alerts = scheduleNotes(id).filter((n) => n.type === 'alert');
+  assert.equal(alerts.length, 1);
+  assert.match(String(alerts[0]!.body), /workflow: unknown workflow: wf/);
+});
+
+test('schedule failing occurrence after occurrence: one alert per streak, a success starts a new one', (t) => {
+  let broken = true;
+  const runs: string[] = [];
+  t.after(registerActionProvider('workflow', workflowStub(runs, () => (broken ? 'unknown workflow: wf' : null))));
+  const t0 = Date.now();
+  const id = workflowSchedule('Flaky target', t0 - 60_000);
+  const occurrence = (at: number) => {
+    db.prepare(`UPDATE triggers SET next_run_at = ? WHERE id = ?`).run(at - 1, id);
+    tickSchedules(at);
+  };
+  const alerts = () => scheduleNotes(id).filter((n) => n.type === 'alert').length;
+  occurrence(t0);
+  occurrence(t0 + 60_000);
+  occurrence(t0 + 120_000);
+  assert.equal(scheduleDeliveries(id).length, 3);
+  assert.equal(alerts(), 1, 'the owner is told once, not at every occurrence');
+  broken = false;
+  occurrence(t0 + 180_000);
+  assert.deepEqual(runs, [id]);
+  broken = true;
+  occurrence(t0 + 240_000);
+  assert.equal(alerts(), 2, 'a failure after a success is a new streak');
 });
 
 test('schedule floor: once a minute at most on every write, a schedule saved before it stays renamable and switchable off', async () => {

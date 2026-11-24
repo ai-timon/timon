@@ -80,9 +80,9 @@ function carteDeLInstance(id: string): (props: WidgetProps) => React.ReactNode {
  * those" — a widget is normally a singleton. A blank card sitting in the
  * palette gives that gesture without inventing host UI for it.
  */
-function NouvelleCarte({ poignee, className, onReplace }: WidgetProps) {
+function NouvelleCarte({ handle, className, onReplace }: WidgetProps) {
   return (
-    <Tile title={t('agentChat.newCard')} className={className} bodyClassName="p-0" actions={poignee}>
+    <Tile title={t('agentChat.newCard')} className={className} bodyClassName="p-0" actions={handle}>
       <p className="px-3 pt-3 text-[11px] leading-snug text-muted-foreground/70">
         {t('agentChat.newCardHint')}
       </p>

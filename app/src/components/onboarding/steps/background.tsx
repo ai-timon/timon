@@ -32,12 +32,12 @@ const ROWS: readonly { mode: ServiceSessionMode; Icon: typeof Sun }[] = [
 ];
 
 export function BackgroundStep(): ReactElement | null {
-  const { next, back, direction } = useOnboarding();
+  const { next, skip, direction } = useOnboarding();
   const [asking, setAsking] = useState(false);
   const [lingering, setLingering] = useState(false);
   const [recorded] = useState(() => readSessionChoice(machineSessionStorage()));
-  const moves = useRef({ next, back, direction });
-  moves.current = { next, back, direction };
+  const moves = useRef({ skip, direction });
+  moves.current = { skip, direction };
 
   useEffect(() => {
     let active = true;
@@ -49,8 +49,7 @@ export function BackgroundStep(): ReactElement | null {
         return;
       }
       // Stepped over in the direction the reader was going, so "Back" from the account still reaches the welcome.
-      if (moves.current.direction === -1) moves.current.back();
-      else moves.current.next();
+      moves.current.skip(moves.current.direction);
     });
     return () => { active = false; };
   }, []);

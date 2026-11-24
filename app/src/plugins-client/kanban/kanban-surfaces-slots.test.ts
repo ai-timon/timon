@@ -202,7 +202,7 @@ test('the TO DO widget paints its rows through kanban.card, and creates and edit
     const { ProjectTodoTile } = await import('./project-todo-tile');
     const product = m.registerProduct();
     await m.render(m.React.createElement(ProjectTodoTile, {
-      scope: { kind: 'project', slug: 'timon' }, titre: 'Project TO DO', poignee: null, realtime: m.realtime, editing: false,
+      scope: { kind: 'project', slug: 'timon' }, titre: 'Project TO DO', handle: null, realtime: m.realtime, editing: false,
     } as never));
     await m.until(() => !!document.querySelector('li button[aria-label="Mark as done"]'), 'the product row');
     const add = () => Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Add');

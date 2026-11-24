@@ -273,7 +273,8 @@ test('Ctrl-C at the prompt stops with 130, says nothing and sends nothing', asyn
 
 // portability: `script` is how a test gets a real terminal without a new dependency; the prompt itself is covered above on every OS.
 const scriptBinary = '/usr/bin/script';
-test('in a real terminal the key typed at the prompt does not appear', { skip: process.platform !== 'linux' || !existsSync(scriptBinary) }, async () => {
+const realTerminal = process.platform === 'linux' && existsSync(scriptBinary);
+test('in a real terminal the key typed at the prompt does not appear', { skip: !realTerminal }, async () => {
   const command = `'${process.execPath}' '${TIMON}' backend add 'Tty box' --base-url ${providerUrl} --protocol openai-responses`;
   const child = spawn(scriptBinary, ['-qfec', command, '/dev/null'], { env: cliEnv({}), stdio: ['pipe', 'pipe', 'pipe'] });
   let output = '';
@@ -693,5 +694,6 @@ test('the key reached no output, no file and no audit line over the whole file',
   assert.ok(outputs.length > 30);
   for (const output of outputs) assert.doesNotMatch(output, LEAK);
   assert.doesNotMatch(JSON.stringify(dbApi.listAuditLog(500)), LEAK);
-  for (const id of ['parity-cli', 'parity-route', 'tty-box']) assert.doesNotMatch(readFileSync(backendFile(id), 'utf8'), LEAK);
+  // `tty-box` only exists where the real-terminal test ran.
+  for (const id of ['parity-cli', 'parity-route', ...(realTerminal ? ['tty-box'] : [])]) assert.doesNotMatch(readFileSync(backendFile(id), 'utf8'), LEAK);
 });

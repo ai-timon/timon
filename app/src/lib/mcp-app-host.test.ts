@@ -100,7 +100,7 @@ test('size-changed is bounded to 80–2000; a malformed one is ignored', () => {
 test('a message over 256 KiB is refused without an answer', () => {
   const h = harness();
   h.host.receive({ jsonrpc: '2.0', id: 9, method: 'ping', params: { pad: 'x'.repeat(MAX_MESSAGE_BYTES) } });
-  h.host.receive({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: 300, pad: 'é'.repeat(MAX_MESSAGE_BYTES / 2) } });
+  h.host.receive({ jsonrpc: '2.0', method: 'ui/notifications/size-changed', params: { height: 300, pad: 'é'.repeat(MAX_MESSAGE_BYTES / 2) } }); // french-ok: multi-byte padding, the byte cap under test
   assert.deepEqual(h.out, []);
   assert.deepEqual(h.sizes, []);
 });

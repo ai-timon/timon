@@ -85,7 +85,7 @@ async function mount(plugins: unknown[] = []) {
     assert.ok(el, 'element to click');
     await React.act(async () => { (el as HTMLElement).click(); });
   };
-  /** The label of the product's dialog on screen — the detail's « Save » or the quick entry's « Add » —, if any.
+  /** The label of the product's dialog on screen — the detail's "Save" or the quick entry's "Add" —, if any.
    *  A text, never an element: `assert` would inspect a jsdom node, whose graph exhausts the memory. */
   const productForm = (): string | undefined => Array.from(document.querySelectorAll('button'))
     .filter((b) => !b.hasAttribute('data-plain-save') && !b.hasAttribute('data-acme-save'))

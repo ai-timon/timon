@@ -367,7 +367,7 @@ test('listing with the real npm never runs a script of the plugin (`prepack`, `p
 
 test('npm that could not start is told apart from npm refusing the package, in any language', () => {
   // `env` finds no `node`: its message follows the user's locale, the exit code does not.
-  assert.equal(npmCouldNotStart({ code: 127, stdout: '', stderr: '/usr/bin/env: «node»: Aucun fichier ou dossier de ce nom\n' }), true);
+  assert.equal(npmCouldNotStart({ code: 127, stdout: '', stderr: '/usr/bin/env: «node»: Aucun fichier ou dossier de ce nom\n' }), true); // french-ok: the error a French system prints
   assert.equal(npmCouldNotStart({ code: 127, stdout: '', stderr: '' }), true);
   assert.equal(npmCouldNotStart({ code: 1, stdout: '', stderr: "'npm' is not recognized as an internal or external command" }), true);
   assert.equal(npmCouldNotStart({ code: 1, stdout: '', stderr: 'spawn npm ENOENT' }), true);

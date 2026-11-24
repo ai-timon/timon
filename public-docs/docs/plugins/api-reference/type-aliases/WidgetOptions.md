@@ -80,6 +80,17 @@ only its shape counts — a 24×24 line drawing reads best.
 
 ***
 
+### liveCount?
+
+> `optional` **liveCount?**: `boolean`
+
+The widget publishes a count or a dot for its tab (`useWidgetCount`,
+`useWidgetAttention` from `@timon/ui`): in a stack it stays mounted,
+hidden, behind the tab in front, so its tab stays true. Keep it quiet
+while hidden: read `useWidgetInFront()` before any costly call. Client API 19.
+
+***
+
 ### minHeight?
 
 > `optional` **minHeight?**: `number`
@@ -95,6 +106,15 @@ Minimum resize height in pixels.
 Placed in `zone` on every view that has neither placed nor removed it yet,
 instead of waiting in the palette. For a surface that was already on screen
 before it became a widget.
+
+***
+
+### tabTitle?
+
+> `optional` **tabTitle?**: `string`
+
+Name on the widget's tab when it is stacked, where `title` would not fit
+("PR" for "Pull requests"); the tab's tooltip keeps `title`. Client API 19.
 
 ***
 

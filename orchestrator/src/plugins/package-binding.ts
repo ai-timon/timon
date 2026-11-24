@@ -28,6 +28,7 @@
  * The folder goes to a dated trash rather than nowhere: the operator may still
  * want what the previous package wrote.
  */
+import { daemonMessage } from '../daemon-message.js';
 import { existsSync, mkdirSync, readFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -292,6 +293,9 @@ export function settlePluginPackage(id: string, pkg: PluginPackage, file: string
         body: `\`${pkg.pkg}\` replaced \`${previous!.pkg}\` under this id, and nobody granted it what the previous package held. `
           + `${lines.join('. ')}. Grant them again only if you trust this package with them.`,
         anchor: `plugin-package:${id}`,
+        message: daemonMessage('plugin_package_takeover', {
+          id, pkg: pkg.pkg, previous: previous!.pkg, changes: lines.join('. '),
+        }),
       }))
       .catch(() => { /* no notification subsystem here: the log above says it */ });
   }

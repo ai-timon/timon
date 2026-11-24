@@ -137,6 +137,13 @@ test('a superadmin mission token reaches no account route', async () => {
 
   const reset = await call('POST', `/api/users/${adaId}/reset-password`, { bearer: adminToken });
   assert.equal(reset.status, 404);
+
+  const firstAdmin = await call('POST', '/api/users/first-admin', {
+    bearer: adminToken,
+    body: { email: 'mallory@example.com', name: 'Mallory', password: 'mallory-secret' },
+  });
+  assert.equal(firstAdmin.status, 404, 'the terminal\'s first account is the daemon token\'s only');
+  assert.equal(dbApi.getUserByEmail('mallory@example.com'), undefined);
 });
 
 test('superadmin mission token is accepted on kanban/notify of its mission', async () => {

@@ -84,7 +84,8 @@ test('an unreadable key file raises a typed error and is NOT rewritten', () => {
   }
 });
 
-test('a key file without read permission raises `unreadable`, not a new key', { skip: process.getuid?.() === 0 ? 'root reads everything' : false }, () => {
+// Windows has no read bit: chmod 0 only sets the read-only attribute, and the file stays readable.
+test('a key file without read permission raises `unreadable`, not a new key', { skip: process.platform === 'win32' ? 'no POSIX read bit' : process.getuid?.() === 0 ? 'root reads everything' : false }, () => {
   clean();
   const original = randomBytes(MASTER_KEY_BYTES).toString('base64');
   writeFileSync(SECRET_KEY_FILE, original, { mode: 0o600 });

@@ -19,7 +19,7 @@ const info: SystemInfo = {
   importCommands: [],
 };
 
-// TODO #582: Settings › System › Installation leads to « About Timon » and the speech-model licences.
+// TODO #582: Settings › System › Installation leads to "About Timon" and the speech-model licences.
 test('installation settings: the About button exists only in a desktop that can open the window, and opens it', async () => {
   const { JSDOM } = await import('jsdom');
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/?settings=system/installation' });

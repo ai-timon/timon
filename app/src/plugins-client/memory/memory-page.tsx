@@ -17,6 +17,7 @@ import { mdToSafeHtml } from '@/lib/markdown';
 import { t } from '@/lib/i18n';
 import { formatDateTime, formatRelativeTime } from '@/lib/intl';
 import { apiErrorMessage, responseErrorMessage } from '@/lib/api-error';
+import { ACTION_CLASS, actionLabel, missingTextKey } from './audit-labels';
 
 /* ───────── types ───────── */
 type Kind = 'decision' | 'pitfall' | 'preference';
@@ -47,23 +48,16 @@ type AuditRow = {
   scope: string;
   project: string | null;
   agent: string | null;
-  action: 'new' | 'merge' | 'supersede' | 'reject' | 'archive' | 'rescope' | 'retier';
+  action: 'new' | 'merge' | 'supersede' | 'reject' | 'archive' | 'rescope' | 'retier' | 'manual_delete';
   rule_id: number | null;
   target_rule_id: number | null;
   candidate_text: string | null;
   rationale: string | null;
   reverted: number;
+  /** 1 when the rule this row speaks of was deleted, its text with it. */
+  rule_deleted?: number;
 };
 
-const ACTION_META: Record<string, { label: string; className: string }> = {
-  new: { label: '+ added', className: 'text-emerald-500 border-emerald-500/40' },
-  merge: { label: '⧉ merged', className: 'text-sky-500 border-sky-500/40' },
-  supersede: { label: '↻ superseded', className: 'text-amber-500 border-amber-500/40' },
-  reject: { label: '✕ rejected', className: 'text-muted-foreground border-border' },
-  archive: { label: '⌁ archived', className: 'text-muted-foreground border-border' },
-  rescope: { label: '⇄ rescoped', className: 'text-violet-500 border-violet-500/40' },
-  retier: { label: '★ retiered', className: 'text-violet-500 border-violet-500/40' },
-};
 
 /**
  * What one curator pass decided, line by line. Opened from the
@@ -112,15 +106,15 @@ function CurationRunDialog({ runId, onClose }: { runId: string; onClose: () => v
           )}
           <ul className="flex flex-col gap-2">
             {(rows ?? []).map((r) => {
-              const meta = ACTION_META[r.action] ?? { label: r.action, className: 'border-border' };
+              const actionClass = ACTION_CLASS[r.action] ?? 'border-border';
               return (
                 <li
                   key={r.id}
                   className="rounded-md border border-border bg-card/40 p-2.5 text-[12px] leading-snug"
                 >
                   <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                    <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', meta.className)}>
-                      {meta.label}
+                    <span className={cn('rounded border px-1.5 py-0.5 text-[10px]', actionClass)}>
+                      {actionLabel(r.action)}
                     </span>
                     <span className="text-[10px] text-muted-foreground/70">
                       {t('memoryPage.scopeOf', { scope: r.scope })}
@@ -135,7 +129,11 @@ function CurationRunDialog({ runId, onClose }: { runId: string; onClose: () => v
                     )}
                   </div>
                   <p className="whitespace-pre-wrap text-foreground/90">
-                    {r.candidate_text ?? <span className="italic text-muted-foreground">{t('memoryPage.noCandidateText')}</span>}
+                    {r.candidate_text ?? (
+                      <span className="italic text-muted-foreground">
+                        {t(missingTextKey(r))}
+                      </span>
+                    )}
                   </p>
                   {r.rationale && (
                     <p className="mt-1 text-[11px] italic text-muted-foreground">
@@ -342,9 +340,9 @@ function CurationRuns({ onOpenRun }: { onOpenRun: (runId: string) => void }) {
                     r.counts[a] ? (
                       <span
                         key={a}
-                        className={cn('rounded border px-1.5 py-0.5', ACTION_META[a]?.className)}
+                        className={cn('rounded border px-1.5 py-0.5', ACTION_CLASS[a])}
                       >
-                        {r.counts[a]} {ACTION_META[a]?.label.replace(/^\S+\s/, '')}
+                        {r.counts[a]} {actionLabel(a).replace(/^\S+\s/, '')}
                       </span>
                     ) : null,
                   )}

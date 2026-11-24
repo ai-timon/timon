@@ -9,6 +9,39 @@ test('native bounds round inward and clip the surface to the content window', ()
   assert.deepEqual(browserPanelBounds({ left: -1, top: 250, width: 521, height: 600 }, { width: 520, height: 738 }), { x: 0, y: 250, width: 520, height: 488 });
 });
 
+const ZOOMS = [0.8, 0.9, 1, 1.1, 1.2, 1.25, 1.33, 1.5, 1.75, 2];
+
+test('native bounds under the interface size are window DIPs: the CSS rectangle times the zoom, rounded inward', () => {
+  assert.deepEqual(browserPanelBounds({ left: 600.5, top: 263.5, width: 519.5, height: 474.5 }, { width: 1120, height: 738 }, 1),
+    browserPanelBounds({ left: 600.5, top: 263.5, width: 519.5, height: 474.5 }, { width: 1120, height: 738 }), 'zoom 1 is the old answer');
+  // 1250×800 DIPs at 125 %: the page lays out 1000×640 CSS pixels.
+  assert.deepEqual(browserPanelBounds({ left: 600, top: 40, width: 400, height: 600 }, { width: 1000, height: 640 }, 1.25), { x: 750, y: 50, width: 500, height: 750 });
+  assert.deepEqual(browserPanelBounds({ left: 600.3, top: 40.1, width: 399.4, height: 599.6 }, { width: 1000, height: 640 }, 1.25), { x: 751, y: 51, width: 498, height: 748 });
+  assert.deepEqual(browserPanelBounds({ left: 500, top: 0, width: 600, height: 700 }, { width: 1000, height: 640 }, 1.25), { x: 625, y: 0, width: 625, height: 800 }, 'clipped to the window');
+  for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.deepEqual(browserPanelBounds({ left: 10, top: 10, width: 100, height: 100 }, { width: 500, height: 500 }, bad), { x: 10, y: 10, width: 100, height: 100 }, `zoom ${bad} reads as 100 %`);
+  }
+});
+
+test('native bounds never pass the real content window, at any stop and any window size', () => {
+  for (const zoom of ZOOMS) {
+    for (let contentWidth = 400; contentWidth <= 3840; contentWidth += 1) {
+      // The content window is a whole number of DIPs; the page measures it in CSS pixels, here the whole ones that fit in it.
+      const innerWidth = Math.floor(contentWidth / zoom);
+      const contentHeight = Math.round(contentWidth * 0.6);
+      const innerHeight = Math.floor(contentHeight / zoom);
+      for (const [left, width] of [[0, innerWidth], [innerWidth - 333.3, 333.3], [innerWidth * 0.5 + 0.7, innerWidth], [-12.5, 80.25]] as const) {
+        const b = browserPanelBounds({ left, top: innerHeight * 0.1, width, height: innerHeight }, { width: innerWidth, height: innerHeight }, zoom);
+        assert.ok(b.x >= 0 && b.y >= 0 && b.width >= 0 && b.height >= 0, `${zoom} @ ${contentWidth}: ${JSON.stringify(b)}`);
+        assert.ok(b.x + b.width <= contentWidth, `${zoom} @ ${contentWidth}: ${JSON.stringify(b)} passes the width`);
+        assert.ok(b.y + b.height <= contentHeight, `${zoom} @ ${contentWidth}: ${JSON.stringify(b)} passes the height`);
+        // Inside the CSS surface too: rounded inward, never outward.
+        assert.ok(b.x >= Math.max(0, left * zoom) - 1e-9 && b.x + b.width <= Math.max(b.x, (left + width) * zoom) + 1e-9);
+      }
+    }
+  }
+});
+
 test('an open panel on a free running browser claims it by itself; a browser held by another device is left alone', () => {
   const open = { visible: true, hasProfile: true, running: true };
   assert.equal(shouldAutoClaim({ ...open, holder: null }), true);

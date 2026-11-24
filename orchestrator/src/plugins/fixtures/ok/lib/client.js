@@ -1,6 +1,6 @@
 /**
- * Moitié navigateur de la fixture nominale. Le serveur de bundles la sert
- * telle quelle : le test vérifie le corps, pas le comportement.
+ * Browser half of the nominal fixture. The bundle server serves it
+ * as is: the test checks the body, not the behaviour.
  */
 export const marker = 'fixture-ok-client'
 export function apply() {}

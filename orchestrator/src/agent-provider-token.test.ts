@@ -259,12 +259,12 @@ test('seal: a reference cut across two writes is still swapped, other bytes pass
   assert.equal(sealed.mcpEnv.OTHER, 'x');
   let out = '';
   real.on('data', (c: Buffer) => { out += c.toString('utf8'); });
-  const line = `{"a":"${ref}","b":"é${ref}"}\n`;
+  const line = `{"a":"${ref}","b":"é${ref}"}\n`; // french-ok: a two-byte letter in the stream
   const cut = 14;
   await new Promise<void>((resolve) => sealed.io.stdin.write(line.slice(0, cut), () => resolve()));
   await new Promise<void>((resolve) => sealed.io.stdin.write(line.slice(cut), () => resolve()));
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(out, '{"a":"tok\\"en","b":"étok\\"en"}\n');
+  assert.equal(out, '{"a":"tok\\"en","b":"étok\\"en"}\n'); // french-ok: a two-byte letter in the stream
   assert.equal(out.includes('timon-seal-'), false);
 });
 

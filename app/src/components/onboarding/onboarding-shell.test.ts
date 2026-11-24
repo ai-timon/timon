@@ -1,5 +1,5 @@
 /**
- * The onboarding's frame, rendered: « Continue » walks the steps, « Back »
+ * The onboarding's frame, rendered: "Continue" walks the steps, "Back"
  * walks them back (a step's own sub-view first, a skipped step skipped both
  * ways), the dots and the address follow, and a reload reopens the step. With
  * the real card and guard: a stand-in that leaves the page installs nothing.
@@ -42,6 +42,9 @@ async function withDom<T>(url: string, run: (dom: Dom, react: typeof import('rea
 /** How many times the shell left the onboarding (`finish`, the TIMs page in the product). */
 let finished = 0;
 
+/** What the shell told the funnel, one `screen action` (and its detail) per line. */
+let reports: string[] = [];
+
 /** `open`: every step mounts; `closed`: the steps that need the service wait (the real guard's rule). */
 type GateMode = 'open' | 'closed';
 
@@ -68,7 +71,7 @@ async function renderShell(
       const { next } = useOnboarding();
       return h('section', { 'data-step': id }, h('button', { 'data-next': '', onClick: next }, 'next'));
     };
-    // A step with a sub-view: « Back » closes the sub-view before leaving the step.
+    // A step with a sub-view: "Back" closes the sub-view before leaving the step.
     function WithSubView() {
       const { next } = useOnboarding();
       const [sub, setSub] = React.useState(false);
@@ -81,11 +84,18 @@ async function renderShell(
         h('button', { 'data-open-sub': '', onClick: () => setSub(true) }, 'sub'),
         h('button', { 'data-next': '', onClick: next }, 'next'));
     }
+    // "Choose your LLM" says how the person went on before leaving.
+    function Llm() {
+      const { next, setOutcome } = useOnboarding();
+      return h('section', { 'data-step': 'llm' }, h('button', {
+        'data-next': '', onClick: () => { setOutcome({ llmChoice: 'local', connection: 'unknown' }); next(); },
+      }, 'next'));
+    }
     const steps = [
       { id: 'splash', Component: plain('splash') },
       { id: 'background', Component: plain('background') },
       { id: 'account', Component: WithSubView },
-      { id: 'llm', Component: plain('llm') },
+      { id: 'llm', Component: Llm },
       { id: 'profile', Component: legacyStep(null) },
       { id: 'agent', Component: plain('agent') },
       { id: 'discover', Component: plain('discover') },
@@ -99,7 +109,10 @@ async function renderShell(
       await React.act(async () => { (el as HTMLElement).click(); });
     };
     try {
-      await React.act(async () => { root.render(h(OnboardingShell, { steps, gate, companions: [], finish: () => { finished += 1; } })); });
+      const report = (screen: string, action: string, detail?: object): void => {
+        reports.push(detail ? `${screen} ${action} ${JSON.stringify(detail)}` : `${screen} ${action}`);
+      };
+      await React.act(async () => { root.render(h(OnboardingShell, { steps, gate, companions: [], report, finish: () => { finished += 1; } })); });
       await run(host, click, dom);
     } finally {
       await React.act(async () => { root.unmount(); });
@@ -113,7 +126,7 @@ const backButton = (host: HTMLElement): HTMLButtonElement | undefined =>
   Array.from(host.querySelectorAll('button')).find((b) => !b.hasAttribute('data-next') && !b.hasAttribute('data-open-sub') && !b.hasAttribute('data-mascot-style'));
 const styleToggle = (host: HTMLElement): Element | null => host.querySelector('[data-mascot-style-toggle]');
 
-test('« Continue » walks the steps; the dots and the address follow; a skipped step is skipped', async () => {
+test('"Continue" walks the steps; the dots and the address follow; a skipped step is skipped', async () => {
   await renderShell('http://localhost/onboarding', async (host, click, dom) => {
     assert.equal(shown(host), 'splash');
     assert.deepEqual(dots(host), [], 'no dots on the welcome');
@@ -133,7 +146,7 @@ test('« Continue » walks the steps; the dots and the address follow; a skipped
     assert.deepEqual(dots(host), ['done', 'done', 'done', 'done', 'current']);
     finished = 0;
     await click(host.querySelector('[data-next]'));
-    assert.equal(shown(host), 'discover', 'the agent made, « Discover Timon » follows');
+    assert.equal(shown(host), 'discover', 'the agent made, "Discover Timon" follows');
     assert.deepEqual(dots(host), [], 'no dots on the slides');
     assert.equal(backButton(host), undefined, 'no way back to the agent\'s creation');
     assert.equal(finished, 0);
@@ -151,7 +164,7 @@ test('a tab still on the former chat step goes to the welcome, not to the splash
   });
 });
 
-test('« Back » walks back: past a skipped step, and through a sub-view before leaving its step', async () => {
+test('"Back" walks back: past a skipped step, and through a sub-view before leaving its step', async () => {
   await renderShell('http://localhost/onboarding?step=agent', async (host, click) => {
     assert.equal(shown(host), 'agent', 'a reload reopens the step of the address');
     await click(backButton(host));
@@ -176,14 +189,14 @@ test('the guard keeps the agent step closed while the service is not ready; the 
     await click(host.querySelector('[data-next]'));
     assert.equal(shown(host), null, 'the agent step is not mounted');
     assert.equal(host.querySelector('[data-gate]')?.getAttribute('data-gate'), 'agent');
-    assert.deepEqual(dots(host), ['done', 'done', 'done', 'done', 'current'], 'the frame stays: dots and « Back »');
+    assert.deepEqual(dots(host), ['done', 'done', 'done', 'done', 'current'], 'the frame stays: dots and "Back"');
     await click(backButton(host));
-    assert.equal(shown(host), 'llm', '« Back » still leaves a closed step');
+    assert.equal(shown(host), 'llm', '"Back" still leaves a closed step');
   }, 'closed');
 });
 
 /**
- * The real « Preparing Timon » card and guard against a fake daemon: what the
+ * The real "Preparing Timon" card and guard against a fake daemon: what the
  * page asked, in order — `/api/ui/onboarding` actions, the configuration
  * write, and the moment the stand-in left (`left:<hash>`).
  */
@@ -285,4 +298,62 @@ test('a stand-in agent step leaves only once the service is installed and the co
   const write = events.indexOf('write-config');
   const left = events.indexOf('left:#setup-agent');
   assert.ok(install >= 0 && write > install && left > write, events.join(' → '));
+});
+
+test('the funnel hears each screen once per display, and how it was left', async () => {
+  reports = [];
+  await renderShell('http://localhost/onboarding', async (host, click) => {
+    assert.deepEqual(reports, ['splash viewed']);
+    await click(host.querySelector('[data-next]'));
+    await click(host.querySelector('[data-next]'));
+    // A sub-view's own "Back" stays on the screen: nothing to report.
+    await click(host.querySelector('[data-open-sub]'));
+    await click(backButton(host));
+    await click(backButton(host));
+    assert.equal(shown(host), 'background');
+    await click(host.querySelector('[data-next]'));
+    await click(host.querySelector('[data-next]'));
+    await click(host.querySelector('[data-next]'));
+    assert.equal(shown(host), 'agent');
+    await click(host.querySelector('[data-next]'));
+    await click(host.querySelector('[data-next]'));
+  });
+  assert.deepEqual(reports, [
+    'splash viewed', 'splash completed',
+    'background viewed', 'background completed',
+    'account viewed', 'account back',
+    'background viewed', 'background completed',
+    'account viewed', 'account completed',
+    'llm viewed', 'llm completed {"llmChoice":"local","connection":"unknown"}',
+    // The stand-in steps aside on its own: skipped, not completed.
+    'profile viewed', 'profile skipped',
+    'agent viewed', 'agent completed',
+    'discover viewed', 'discover completed',
+  ]);
+});
+
+test('a failing reporter never holds the onboarding', async () => {
+  await withDom('http://localhost/onboarding', async (_dom, React) => {
+    const { createRoot } = await import('react-dom/client');
+    const { OnboardingShell } = await import('./onboarding-shell');
+    const { useOnboarding } = await import('./onboarding-context');
+    const h = React.createElement;
+    const Plain = (id: string) => function Plain() {
+      const { next } = useOnboarding();
+      return h('section', { 'data-step': id }, h('button', { 'data-next': '', onClick: next }, 'next'));
+    };
+    const steps = [{ id: 'splash', Component: Plain('splash') }, { id: 'background', Component: Plain('background') }] as const;
+    const host = document.getElementById('root');
+    assert.ok(host);
+    const root = createRoot(host);
+    const report = (): void => { throw new Error('analytics down'); };
+    const pass = ({ children }: { children: React.ReactNode }) => h(React.Fragment, null, children);
+    try {
+      await React.act(async () => { root.render(h(OnboardingShell, { steps, gate: pass, companions: [], report })); });
+      await React.act(async () => { (host.querySelector('[data-next]') as HTMLElement).click(); });
+      assert.equal(shown(host), 'background');
+    } finally {
+      await React.act(async () => { root.unmount(); });
+    }
+  });
 });

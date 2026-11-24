@@ -1,3 +1,4 @@
+// french-ok-file: the French locale of the stale-shell dialog under test
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';

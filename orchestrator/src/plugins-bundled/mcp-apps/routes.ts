@@ -21,6 +21,7 @@ import { isMissionToken } from '../../users/conversion-mission.js';
 import { auditRequest } from '../../users/audit-actor.js';
 import { APP_CATALOG, appEntry, appServerId } from './catalog.js';
 import type { AppEntry } from './schema.js';
+import { apiError } from '../../api-error.js';
 
 /** What a card shows: the reviewed entry and where its server stands. */
 export type AppView = AppEntry & {
@@ -70,7 +71,8 @@ export function appSecretName(slug: string): string {
 function rejectAppWrite(req: Request, res: Response): boolean {
   if (!requireAuth(req, res)) return true;
   if (isMissionToken(req)) {
-    res.status(403).json({ error: 'forbidden', code: 'mission_refused', reason: 'Connecting an app is a gesture of the user, not of an agent.' });
+    const reason = 'Connecting an app is a gesture of the user, not of an agent.';
+    res.status(403).json({ ...apiError('mission_refused', reason), reason });
     return true;
   }
   return rejectIfDenied(req, res, 'mcp:manage');
@@ -85,21 +87,24 @@ export function registerMcpAppsRoutes(router: Router): void {
   router.post('/api/mcp-apps/:slug/connect', (req, res) => {
     if (rejectAppWrite(req, res)) return;
     const entry = appEntry(req.params.slug ?? '');
-    if (!entry) { res.status(404).json({ error: 'unknown app' }); return; }
+    if (!entry) { res.status(404).json(apiError('mcp_app_unknown', 'unknown app')); return; }
     const parsed = connectBody.safeParse(req.body ?? {});
-    if (!parsed.success) { res.status(400).json({ error: 'invalid body', issues: parsed.error.issues.map((i) => i.message) }); return; }
+    if (!parsed.success) { const issues = parsed.error.issues.map((i) => i.message);
+      res.status(400).json({ ...apiError('invalid_detail', 'invalid body', { detail: issues.join('; ') }), issues }); return; }
     const id = appServerId(entry.slug);
     const existing = getMcp(id);
     if (existing && existing.app_slug !== entry.slug) {
-      res.status(409).json({ error: 'id_taken', reason: `An MCP server named ${id} already exists and was not added from Apps.` });
+      const reason = `An MCP server named ${id} already exists and was not added from Apps.`;
+      res.status(409).json({ ...apiError('mcp_app_id_taken', reason, { id }), reason });
       return;
     }
     const auth = entry.auth;
     const key = parsed.data.key;
-    if (auth.type === 'key' && !key) { res.status(400).json({ error: 'key_required' }); return; }
-    if (auth.type !== 'key' && key) { res.status(400).json({ error: 'no key for this app' }); return; }
+    if (auth.type === 'key' && !key) { res.status(400).json(apiError('mcp_app_key_required', 'this app needs a key')); return; }
+    if (auth.type !== 'key' && key) { res.status(400).json(apiError('mcp_app_takes_no_key', 'no key for this app')); return; }
     if (auth.type === 'key' && !vaultEnabled()) {
-      res.status(409).json({ error: 'vault_off', reason: 'The key is kept in the secrets vault, which is switched off.' });
+      const reason = 'The key is kept in the secrets vault, which is switched off.';
+      res.status(409).json({ ...apiError('mcp_app_vault_off', reason), reason });
       return;
     }
     let secretId: string | null = null;
@@ -124,7 +129,7 @@ export function registerMcpAppsRoutes(router: Router): void {
       if (secretId) {
         try { deleteSecret(secretId); } catch { /* the server was not written: nothing names it */ }
       }
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json(apiError('mcp_app_connect_failed', (err as Error).message, { detail: (err as Error).message }));
       return;
     }
     auditRequest(req, 'mcp-apps.connect', `mcp:${id} — ${entry.name} (${auth.type})`);
@@ -137,10 +142,10 @@ export function registerMcpAppsRoutes(router: Router): void {
   router.delete('/api/mcp-apps/:slug', (req, res) => {
     if (rejectAppWrite(req, res)) return;
     const entry = appEntry(req.params.slug ?? '');
-    if (!entry) { res.status(404).json({ error: 'unknown app' }); return; }
+    if (!entry) { res.status(404).json(apiError('mcp_app_unknown', 'unknown app')); return; }
     const id = appServerId(entry.slug);
     const existing = getMcp(id);
-    if (!existing || existing.app_slug !== entry.slug) { res.status(404).json({ error: 'not connected' }); return; }
+    if (!existing || existing.app_slug !== entry.slug) { res.status(404).json(apiError('mcp_app_not_connected', 'not connected')); return; }
     deleteMcp(id);
     auditRequest(req, 'mcp-apps.disconnect', `mcp:${id} — ${entry.name}`);
     res.json({ ok: true });

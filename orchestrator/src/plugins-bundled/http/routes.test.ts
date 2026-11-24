@@ -20,6 +20,8 @@ const express = (await import('express')).default;
 const { registerRoutes } = await import('./routes.js');
 const { instanceId } = await import('../../host/packaged-service.js');
 const { BRAND } = await import('../../brand.js');
+const { installPlanFor } = await import('../../host/machine.js');
+const { machineFromEnvironment } = await import('../../onboarding.js');
 
 test('/api/health names the service that answers', async () => {
   const app = express();
@@ -81,7 +83,7 @@ const CONFIG = join(HOME, 'timon.config.json');
  * `POST /api/onboarding` (step 5.7.3) — the surface where a browser can make
  * this machine run something. What it refuses matters more than what it does.
  */
-test('onboarding: seule une action nommée passe, jamais une commande', async () => {
+test('onboarding: only a named action gets through, never a command', async () => {
   const { base, server } = await listening();
   try {
     for (const body of [
@@ -103,11 +105,11 @@ test('onboarding: seule une action nommée passe, jamais une commande', async ()
 });
 
 /**
- * L'ordre que cette porte impose au client : installer le service D'ABORD,
- * écrire `timon.config.json` ENSUITE — écrire ce fichier met fin au premier
- * lancement, donc ferme cette route.
+ * The order this door imposes on the client: install the service FIRST,
+ * write `timon.config.json` NEXT; writing that file ends the first
+ * launch, and so closes this route.
  */
-test("onboarding: refusé dès qu'une config existe, sans conseiller un CLI absent", async () => {
+test('onboarding: refused as soon as a config exists, without advising a missing CLI', async () => {
   const { base, server } = await listening();
   writeFileSync(CONFIG, '{}\n');
   try {
@@ -125,7 +127,11 @@ test("onboarding: refusé dès qu'une config existe, sans conseiller un CLI abse
   }
 });
 
-test('onboarding: un prérequis privilégié rend la commande à coller', async () => {
+// Where the install needs no administrator rights (Homebrew on macOS) the
+// route really runs it: a test must not install git on the machine it runs on.
+const gitPlan = installPlanFor('git', machineFromEnvironment());
+const installsForReal = gitPlan !== null && !gitPlan.elevated;
+test('onboarding: a privileged prerequisite returns the command to paste', { skip: installsForReal && 'this machine installs git without privileges' }, async () => {
   const { base, server } = await listening();
   try {
     const res = await fetch(`${base}/api/onboarding`, {
@@ -135,8 +141,8 @@ test('onboarding: un prérequis privilégié rend la commande à coller', async 
     });
     assert.equal(res.status, 200);
     const body = await res.json() as { ok: boolean; command: string | null; reason: string | null };
-    // Sur cette machine (apt) : refusé et montré. Sur une machine sans
-    // gestionnaire connu : refusé sans commande. Jamais exécuté dans les deux cas.
+    // On this machine (apt): refused and shown. On a machine without a
+    // known manager: refused without a command. Never run in either case.
     assert.equal(body.ok, false);
     assert.ok(body.reason);
   } finally {

@@ -19,8 +19,14 @@ const { mountOfficialProviders } = await import('../../tests/helpers/official-pr
 await mountOfficialProviders();
 
 /** Lookup options of a machine where NOTHING is installed: no PATH, no desktop
- *  app. The verdict then no longer depends on the machine running the test. */
-const EMPTY_MACHINE = { path: '', homeDir: join('/', 'nowhere'), env: {} as NodeJS.ProcessEnv };
+ *  app. The verdict then no longer depends on the machine running the test.
+ *  On macOS a provider also looks in absolute app folders (Codex inside
+ *  `/Applications/ChatGPT.app`) that no option empties: there the lookup is
+ *  the Linux one, which has none. */
+const EMPTY_MACHINE = {
+  path: '', homeDir: join('/', 'nowhere'), env: {} as NodeJS.ProcessEnv,
+  ...(process.platform === 'darwin' ? { platform: 'linux' as const } : {}),
+};
 
 test('no CLI installed: every backend is reported, once per binary', () => {
   const statuses = checkBackendBinaries(EMPTY_MACHINE);

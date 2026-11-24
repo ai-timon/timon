@@ -1,3 +1,4 @@
+// french-ok-file: the localised menu labels under test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -5,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { MenuItemConstructorOptions } from 'electron';
 import { appMenuTemplate } from './app-menu.js';
+import { stepUiZoom } from './ui-zoom.js';
 
 type Item = MenuItemConstructorOptions;
 
@@ -20,11 +22,11 @@ function flatten(items: Item[]): Item[] {
 
 function aboutEntry(items: Item[], label: string): Item {
   const entry = flatten(items).find((item) => item.label === label);
-  assert.ok(entry, `no « ${label} » entry`);
+  assert.ok(entry, `no "${label}" entry`);
   return entry;
 }
 
-test('app menu: on macOS no entry keeps the native About panel, and « About Timon » calls Timon\'s window', () => {
+test('app menu: on macOS no entry keeps the native About panel, and "About Timon" calls Timon\'s window', () => {
   let opened = 0;
   const items = template('en-US', () => { opened += 1; });
   assert.equal(flatten(items).filter((item) => item.role === 'about').length, 0);
@@ -57,6 +59,27 @@ test('app menu: Windows and Linux keep Electron\'s menu, which has no About', ()
   }
 });
 
+test('app menu: on Windows and Linux, with a zoom handler, Electron\'s menus stay but View sizes the interface', () => {
+  for (const platform of ['win32', 'linux'] as const) {
+    const steps: string[] = [];
+    const items = appMenuTemplate({ platform, appName: 'Timon', locale: 'en', onAbout: () => {}, onZoom: (d) => { steps.push(d); } });
+    assert.ok(items, platform);
+    assert.deepEqual(items.map((item) => item.role), ['fileMenu', 'editMenu', 'viewMenu', 'windowMenu'], 'no macOS application menu');
+    assert.ok(!flatten(items).some((item) => item.label === 'About Timon' || item.role === 'about' || item.role === 'services'));
+    assert.ok(!flatten(items).some((item) => item.role === 'zoomIn' || item.role === 'zoomOut' || item.role === 'resetZoom'));
+    const view = items[2]!;
+    assert.ok(Array.isArray(view.submenu));
+    assert.deepEqual(view.submenu.filter((item) => item.role).map((item) => item.role), ['reload', 'forceReload', 'toggleDevTools', 'togglefullscreen']);
+    for (const [label, direction] of [['Actual Size', 'reset'], ['Zoom In', 'in'], ['Zoom Out', 'out']] as const) {
+      const entry = view.submenu.find((item) => item.label === label);
+      assert.ok(entry, label);
+      assert.equal(entry.registerAccelerator, false, 'the keys stay with before-input-event');
+      entry.click?.({} as never, undefined, {} as never);
+      assert.equal(steps.at(-1), direction);
+    }
+  }
+});
+
 // The wiring lives in main.ts, which cannot load outside Electron: this runs its real functions with fake Electron objects.
 const source = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 const parsed = ts.createSourceFile('main.ts', source, ts.ScriptTarget.Latest, true);
@@ -73,6 +96,7 @@ const compiled = ts.transpileModule(wiring, { compilerOptions: { target: ts.Scri
 
 function boot(input: { platform: NodeJS.Platform; releasePending: boolean }) {
   const shown: { locale: string; notices: string | null }[] = [];
+  const zoomed: { factor: number; persist: boolean }[] = [];
   const check: string[] = [];
   const installed: Item[][] = [];
   const context = {
@@ -92,9 +116,12 @@ function boot(input: { platform: NodeJS.Platform; releasePending: boolean }) {
     showAboutWindow: (page: { locale: string; notices: string | null }) => { shown.push(page); },
     releasePending: input.releasePending,
     releaseCheckWindow: { show: () => check.push('show'), focus: () => check.push('focus') },
+    currentUiZoom: 1.2,
+    stepUiZoom,
+    applyUiZoom: (factor: number, persist: boolean) => { zoomed.push({ factor, persist }); return factor; },
   };
   runInNewContext(`${compiled}\ninstallAppMenu()`, context);
-  return { context, shown, check, installed };
+  return { context, shown, check, installed, zoomed };
 }
 
 test('main.ts: the macOS menu bar opens the same window, with the licences', () => {
@@ -117,8 +144,18 @@ test('main.ts: while the release is being checked, the menu bar opens no window;
   assert.equal(shown.length, 1);
 });
 
-test('main.ts: Windows and Linux keep their menu', () => {
-  for (const platform of ['win32', 'linux'] as const) assert.deepEqual(boot({ platform, releasePending: false }).installed, []);
+test('main.ts: Windows and Linux install Electron\'s menus with a View that sizes the interface, and no macOS application menu', () => {
+  for (const platform of ['win32', 'linux'] as const) {
+    const { installed, zoomed } = boot({ platform, releasePending: false });
+    assert.equal(installed.length, 1, platform);
+    const items = installed[0] ?? [];
+    assert.deepEqual(items.map((item) => item.role), ['fileMenu', 'editMenu', 'viewMenu', 'windowMenu']);
+    assert.ok(!flatten(items).some((item) => item.label === 'À propos de Timon'), 'no About entry outside macOS');
+    aboutEntry(items, 'Zoom avant').click?.({} as never, undefined, {} as never);
+    aboutEntry(items, 'Zoom arrière').click?.({} as never, undefined, {} as never);
+    aboutEntry(items, 'Taille réelle').click?.({} as never, undefined, {} as never);
+    assert.deepEqual(zoomed, [{ factor: 1.25, persist: true }, { factor: 1.1, persist: true }, { factor: 1, persist: true }], 'View › Zoom goes through applyUiZoom');
+  }
 });
 
 test('main.ts: the menu is installed once windows are guarded and before the release check can open one', () => {

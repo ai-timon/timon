@@ -1,0 +1,24 @@
+{
+  "name": "@timon-ai/plugin-todo-landing",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": { "./client": "./lib/client.js" },
+  "files": ["lib", "README.md", "SIGNATURE"],
+  "timon": {
+    "id": "example-todo-landing",
+    "apiVersion": 19,
+    "kind": "behavior",
+    "label": "Plain pull request badge",
+    "description": "Replaces the badge that says where the branch of a TO DO idea stands with a plain line of text: the pull request's number and state, a link when it exists.",
+    "permissions": [],
+    "client": {
+      "slots": ["kanban.todo.landing"],
+      "external": ["react", "@timon/ui"],
+      "mode": "esm"
+    },
+    "settings": [],
+    "license": { "required": false }
+  }
+}

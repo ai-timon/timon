@@ -1,3 +1,4 @@
+// french-ok-file: the French sentences a daemon or the French locale returns
 /**
  * The gallery used to drop every refusal: `if (!response.ok) return`. A `core`
  * module (403), an unknown id (404) or an expired session (401) all looked the

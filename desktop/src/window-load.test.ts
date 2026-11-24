@@ -30,5 +30,5 @@ test('retries stop at the budget instead of looping forever', () => {
 
 test('giving up names the address and the delay', () => {
   assert.equal(giveUpMessage('http://127.0.0.1:3110', 'en'), 'http://127.0.0.1:3110 did not answer within 120s.');
-  assert.equal(giveUpMessage('http://127.0.0.1:3110', 'fr-FR'), 'http://127.0.0.1:3110 n’a pas répondu en 120 s.');
+  assert.equal(giveUpMessage('http://127.0.0.1:3110', 'fr-FR'), 'http://127.0.0.1:3110 n’a pas répondu en 120 s.'); // french-ok: the French locale under test
 });

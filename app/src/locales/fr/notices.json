@@ -6,6 +6,11 @@
       "title": "Une étoile sur GitHub ?",
       "action": "Mettre une étoile sur GitHub"
     },
+    "confirmEmail": {
+      "title": "Confirmez votre adresse e-mail",
+      "body": "Elle permet de réinitialiser votre mot de passe par e-mail.",
+      "action": "Confirmer"
+    },
     "feed": {
       "open": "En savoir plus"
     },
@@ -18,6 +23,43 @@
       "feed": {
         "title": "Démo en direct jeudi",
         "body": "Agents et plugins, une heure."
+      },
+      "update": {
+        "highlight1": "Les mises à jour se téléchargent, se vérifient et s'installent depuis l'app.",
+        "highlight2": "Les missions reprennent où elles s'étaient arrêtées après un redémarrage.",
+        "highlight3": "Les longues conversations défilent plus vite.",
+        "highlight4": "Les plugins peuvent ajouter leur propre page de réglages.",
+        "states": "Aperçu",
+        "state": {
+          "downloading": "Téléchargement",
+          "verified": "Vérifié",
+          "missions": "Missions",
+          "network": "Erreur réseau",
+          "cancelled": "Mot de passe annulé"
+        },
+        "done": "Aperçu : rien n'a été installé."
+      }
+    },
+    "license": {
+      "enterKey": "Saisir ma clé",
+      "paused": {
+        "title": "Fonctions payantes en pause",
+        "body": "Elles reviennent dès que {brand} joint le serveur de licences.",
+        "action": "En savoir plus"
+      },
+      "refused": {
+        "title": "Votre licence n’est plus active",
+        "body": "{brand} continue en Free. Saisissez une clé pour retrouver les fonctions payantes."
+      },
+      "pastDue": {
+        "title": "Paiement en retard",
+        "body": "Renouvelez votre abonnement pour garder les fonctions payantes.",
+        "bodyUntil": "Renouvelez votre abonnement avant le {date} pour garder les fonctions payantes.",
+        "action": "Voir ma licence"
+      },
+      "ends": {
+        "title": "Votre licence se termine le {date}",
+        "body": "Saisissez une nouvelle clé d’ici là pour garder les fonctions payantes."
       }
     }
   }

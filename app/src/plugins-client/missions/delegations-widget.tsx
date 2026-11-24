@@ -30,7 +30,7 @@ import { formatElapsed } from '@/lib/elapsed';
 import { t } from '@/lib/i18n';
 import type { Delegation } from '@/hooks/use-delegations';
 
-export function DelegationsWidget({ poignee, className, editing }: WidgetProps) {
+export function DelegationsWidget({ handle, className, editing }: WidgetProps) {
   const chat = useChatRail();
   const delegations = chat?.delegations ?? [];
   const [now, setNow] = useState(() => Date.now());
@@ -49,7 +49,7 @@ export function DelegationsWidget({ poignee, className, editing }: WidgetProps) 
       title={t('delegations.title')}
       subtitle={active ? String(delegations.length) : null}
       className={cn('border-border bg-card', className)}
-      actions={poignee}
+      actions={handle}
       bodyClassName="p-0"
     >
       {active ? (

@@ -54,7 +54,7 @@ async function renderRail(locale: string, feed: Feed): Promise<Rendered> {
     await React.act(async () => {
       root.render(
         React.createElement(AppRouterContext.Provider, { value: router as never },
-          React.createElement(QueueRail, { poignee: null })),
+          React.createElement(QueueRail, { handle: null })),
       );
     });
     await React.act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
@@ -94,7 +94,7 @@ test('the empty queue reads in English', async () => {
 test('the empty queue reads in French', async () => {
   const r = await renderRail('fr', EMPTY);
   assert.match(r.text, /File vide/);
-  assert.match(r.text, /Aucune tâche en cours ni en attente\./);
+  assert.match(r.text, /Aucune tâche en cours ni en attente\./); // french-ok: the French locale under test
   assert.doesNotMatch(r.text, /Queue empty|No task/);
 });
 

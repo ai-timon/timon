@@ -1,13 +1,13 @@
 /**
- * Le placement des widgets doit voyager avec `timon export` / `timon import`.
+ * The placement of widgets must travel with `timon export` / `timon import`.
  *
- * Aucun code ne l'y met : il vit dans `ui_layout`, et la base part entière par
- * `VACUUM INTO`. Ce test existe pour que cette gratuité reste vraie — le jour
- * où quelqu'un filtrerait des tables à l'export, c'est ici que ça casse.
+ * No code puts it there: it lives in `ui_layout`, and the database leaves whole through
+ * `VACUUM INTO`. This test exists so that this freebie stays true: the day
+ * someone filters tables at export, this is where it breaks.
  *
- * Piège de méthode : `export.test.ts` passe `vacuumInto: () => {}`, ce qui
- * n'emporte AUCUNE base. Copier cette forme donnerait un test vert qui ne
- * prouve rien. On exerce ici le vrai chemin, celui de `/api/admin/export`.
+ * Method trap: `export.test.ts` passes `vacuumInto: () => {}`, which
+ * takes NO database. Copying that shape would give a green test that
+ * proves nothing. The real path is exercised here, the one of `/api/admin/export`.
  */
 import './test-home.js';
 import { test } from 'node:test';
@@ -20,7 +20,7 @@ import { join } from 'node:path';
 const { db, dbApi } = await import('./db.js');
 const { exportTimon, importTimon } = await import('./export.js');
 
-test('un export emporte le placement des widgets, et un import le restaure', () => {
+test('an export takes the placement of widgets, and an import restores it', () => {
   const home = process.env.TIMON_HOME!;
   const layout = [{ id: 'agenda', rail: 'droite', rang: 1, hauteur: 320 }];
   dbApi.uiLayoutSet('', 'cockpit', JSON.stringify(layout));
@@ -29,8 +29,8 @@ test('un export emporte le placement des widgets, et un import le restaure', () 
   exportTimon({
     out,
     home,
-    // Exactement ce que fait la route /api/admin/export : la base ouverte du
-    // daemon, copiée à chaud sans son -wal serait tronquée.
+    // Exactly what the /api/admin/export route does: the open database of the
+    // daemon, copied hot without its -wal, would be truncated.
     vacuumInto: (dest) => { db.exec(`VACUUM INTO '${dest.replace(/'/g, "''")}'`); },
   });
 
@@ -43,7 +43,7 @@ test('un export emporte le placement des widgets, et un import le restaure', () 
   try {
     const row = restored.prepare(`SELECT value FROM ui_layout WHERE scope=?`).get('cockpit') as
       { value: string } | undefined;
-    assert.ok(row, 'la table ui_layout doit avoir voyagé avec la base');
+    assert.ok(row, 'the ui_layout table must have travelled with the database');
     assert.deepEqual(JSON.parse(row.value), layout);
   } finally {
     restored.close();

@@ -21,6 +21,7 @@
  * and its two events (`command_request`, `command_request_resolved`) put it in
  * the conversation, for a page reloaded mid-request.
  */
+import { daemonMessage } from '../../daemon-message.js';
 import { getAgent, missionPermissionModel } from '../../agent.js';
 import type { PermissionModel } from '../../backends/types.js';
 import { bus } from '../../bus.js';
@@ -241,6 +242,7 @@ export function createCommandRequest(input: {
     type: 'action_required',
     urgent: true,
     title: `Command to decide: ${row.agent}`,
+    message: daemonMessage('command_to_decide', { agent: row.agent }),
     body: `${row.mission_title}${row.project ? ` (${row.project})` : ''} — \`${shortCommand(row.command)}\``
       + (row.note ? `. ${row.note}` : ''),
     missionId: mission.id,

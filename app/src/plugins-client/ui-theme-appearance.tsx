@@ -25,6 +25,8 @@ import { useColorScheme } from '@/components/theme-provider';
 import { cn } from '@/lib/utils';
 import { GLASS_SCOPES, GLASS_TUNING_ENABLED } from '@/lib/glass-scope';
 import { GlassTuningSettings } from './ui-theme-glass-tuning';
+import { DockIconSetting } from './ui-theme-dock-icon';
+import { InterfaceSizeSetting } from './ui-theme-zoom';
 import { GlassProfilesSection } from '@/components/glass-profiles';
 import { mascotAnimationPref, useMascotAnimation } from '@/components/mascot/mascot-animation-pref';
 import { MASCOT_STYLES, mascotStylePref, useMascotStyle, useWebGL2, type MascotStyle } from '@/components/mascot/mascot-style-pref';
@@ -319,6 +321,8 @@ export function AppearanceSettings(): ReactElement {
 
   return (
     <div className="flex flex-col gap-2">
+      {/* First: the answer to a screen that reads too small, whatever the theme. */}
+      <InterfaceSizeSetting />
       {selectedTheme === '@timon/ui-theme' && <fieldset className="pb-6 pt-4">
         <legend className="text-sm font-medium">{t('appearance.styleTitle')}</legend>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t('appearance.styleHint')}</p>
@@ -471,6 +475,7 @@ export function AppearanceSettings(): ReactElement {
       </fieldset>
       </div>
       <MascotAnimationSetting />
+      <DockIconSetting />
       <BackgroundSettings />
       <RadioList
         name="appearance-theme"

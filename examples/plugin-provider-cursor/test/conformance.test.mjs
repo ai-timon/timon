@@ -53,7 +53,7 @@ const expectation = {
   sessionId: 'cursor-session-0001',
   cmd: 'cursor-agent',
   args: ['acp'],
-  says: "Le fichier src/index.ts exporte le point d'entrée du daemon.",
+  says: "Le fichier src/index.ts exporte le point d'entrée du daemon.", // french-ok: a French answer the provider passes through untouched
   stopReason: 'end_turn',
   mcpServers: ['timon', 'timon_ask'],
   permission: { requestId: 'perm-1', tool: 'Edit src/index.ts', allowOptionId: 'allow-once', denyOptionId: 'reject-once' },

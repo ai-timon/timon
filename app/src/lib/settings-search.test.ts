@@ -1,3 +1,4 @@
+// french-ok-file: the French labels and search words under test
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 

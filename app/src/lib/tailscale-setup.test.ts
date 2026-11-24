@@ -53,7 +53,7 @@ test('a failed step stays next to the button that retries it', () => {
   assert.equal(login.kind === 'offer' && login.failure?.failure, 'permission');
 });
 
-test('an unreadable CLI answer is shown, not taken for « not connected »', () => {
+test('an unreadable CLI answer is shown, not taken for "not connected"', () => {
   const parsed = parseSetupStatus(200, { platform: 'darwin', state: 'unreadable', error: 'The Tailscale GUI failed to start', job: null });
   assert.ok(parsed);
   assert.deepEqual(setupView(parsed), { kind: 'unreadable', error: 'The Tailscale GUI failed to start' });

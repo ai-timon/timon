@@ -12,6 +12,7 @@
  * modules it runs, and one minted before this module existed must not switch
  * the routines off with it.
  */
+import { daemonMessage } from '../../daemon-message.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ModuleManifest } from '../../kernel/registry.js';
 import { bus, type BusEvent } from '../../bus.js';
@@ -122,6 +123,7 @@ export function switchOffUnapprovedAgentTriggers(): UnapprovedTrigger[] {
       body: 'An agent set these up and nobody had switched them on. A trigger an agent makes now waits for you: '
         + `review each one on the Triggers page and switch it back on if you want it.\n${lines.join('\n')}`,
       ownerUserId: owner,
+      message: daemonMessage('agent_triggers_switched_off', { count: triggers.length, list: lines.join('\n') }),
     });
   }
   for (const trigger of off) {

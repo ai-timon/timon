@@ -80,7 +80,7 @@ test('no session means no cookie: the daemon still decides, the route never subs
 
 test('the daemon refusals keep their status and their message', async () => {
   await withRoute(async (post, _calls, setUpstream) => {
-    setUpstream(() => Response.json({ error: '@timon/db est un module core : il ne se désactive pas' }, { status: 403 }));
+    setUpstream(() => Response.json({ error: '@timon/db est un module core : il ne se désactive pas' }, { status: 403 })); // french-ok: the French refusal an older daemon sent
     const response = await post({ id: '@timon/db', enabled: false }, 'session-one');
     assert.equal(response.status, 403);
     assert.match(await response.text(), /module core/);

@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-daemon-message-test-'));
 
 const { db, dbApi } = await import('./db.js');
-const { daemonMessage, decodeDaemonMessage, encodeDaemonMessage } = await import('./daemon-message.js');
+const { daemonMessage, decodeDaemonMessage, encodeDaemonMessage, withDaemonMessageBody } = await import('./daemon-message.js');
 const { setRedactionSource } = await import('./secrets/redact.js');
 
 function pendingTask(type: 'code' | 'doc' | 'merge' = 'doc'): string {
@@ -130,4 +130,23 @@ test('a notification stores its code, with its string params masked like its tex
 test('a notification without a code stores NULL', () => {
   const row = dbApi.createNotification({ id: randomUUID(), type: 'report', title: 'Hand-written' });
   assert.equal(dbApi.getNotification(row.id)?.message_code, null);
+});
+
+test('a notification body that is another stored message survives the column, masked too', () => {
+  const restore = setRedactionSource(() => ['hunter2-secret-value']);
+  try {
+    const message = withDaemonMessageBody(
+      daemonMessage('task_blocked', { title: 'x', taskId: 'abcd1234' }),
+      daemonMessage('task_base_missing', { base: 'hunter2-secret-value', type: 'code' }),
+    );
+    const row = dbApi.createNotification({ id: randomUUID(), type: 'alert', title: 'Task blocked: x', message });
+    const stored = decodeDaemonMessage(dbApi.getNotification(row.id)?.message_code);
+    assert.equal(stored?.code, 'task_blocked');
+    assert.equal(stored?.body?.code, 'task_base_missing');
+    assert.equal(stored?.body?.params.type, 'code');
+    assert.ok(!String(stored?.body?.params.base).includes('hunter2-secret-value'));
+    assert.equal(withDaemonMessageBody(message, null), message);
+  } finally {
+    setRedactionSource(restore);
+  }
 });

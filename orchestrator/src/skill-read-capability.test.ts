@@ -8,6 +8,7 @@ import './test-home.js';
 import '../tests/helpers/paid-license.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { join } from 'node:path';
 import { TIMON_HOME } from './paths.js';
 
 const { buildEffectivePrompt, loadConfig, resolveSpawnSkills, upsertAgent } = await import('./agent.js');
@@ -56,7 +57,8 @@ function promptOn(name: string, backend: string, skills: string[] = ['read-alpha
 }
 
 const CATALOGUE = '# Skills available on demand';
-const skillPath = (id: string) => `skills/${id}/SKILL.md`;
+// The prompt names the file with the host's separator.
+const skillPath = (id: string) => join('skills', id, 'SKILL.md');
 
 test('no MCP and no disk: the catalogue skill is pasted whole, with no promise of a tool or a path', () => {
   const p = promptOn('read-remote', 'skills-remote');

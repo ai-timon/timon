@@ -22,7 +22,8 @@ import { protectedHomeDirProblem } from './credential-home-dirs.js';
 import { isDirectoryLink, linkDirectory, removeDirectoryLink } from '../host/directory-link.js';
 import { ensurePrivateDir } from '../host/private-dir.js';
 import { TIMON_HOME } from '../paths.js';
-import type { LaunchSeal } from './launch-seal.js';
+import { PROVIDER_PROFILES } from '../host/isolation.js';
+import { holdsSealReference, type LaunchSeal } from './launch-seal.js';
 import { forgetProviderMediaRoots } from './provider-media.js';
 import { createScratchDir, type ProviderScratchDir } from './scratch-dir.js';
 
@@ -187,6 +188,36 @@ export function openMissionScratch(input: {
   });
   shareMissionCaches(input.pluginId, scratch.path);
   return scratch;
+}
+
+/** Where `openProfileScratch` puts the folder of `profileId` for `pluginId` (nothing is created). */
+export function profileScratchPath(pluginId: string, profileId: string): string {
+  return join(providerCacheDir(), segment('plugin id', pluginId), PROVIDER_PROFILES, segment('profile id', profileId));
+}
+
+/** Thrown when a text for a profile's folder carries a launch's reference: swapped back, it would stay on disk for good. */
+export class ProfileScratchReferenceError extends Error {
+  constructor() {
+    super('this text carries a launch\'s reference, and a profile\'s folder outlives the mission: write it in scratch.mission() instead');
+    this.name = 'ProfileScratchReferenceError';
+  }
+}
+
+/**
+ * The folder `pluginId` keeps for one profile it launches, across that profile's missions
+ * (`ctx.provider.scratch.profile`): under `provider-cache/`, so that neither the retention
+ * purge nor the cache trim, which read `provider-runs/` only, ever reaches it, and a backend
+ * switch leaves it alone. The fence opens it to that profile's missions only. Nothing a
+ * launch minted is written into it, and `link` takes no source: it outlives every mission.
+ */
+export function openProfileScratch(pluginId: string, profileId: string): ProviderScratchDir {
+  return createScratchDir({
+    root: profileScratchPath(pluginId, profileId),
+    swap: (text) => {
+      if (holdsSealReference(text)) throw new ProfileScratchReferenceError();
+      return text;
+    },
+  });
 }
 
 /** The mission is explicitly done with: every plugin's folder for it goes, with the CLI's session store inside. */

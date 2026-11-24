@@ -1,12 +1,12 @@
 /**
- * Clôture automatique : une mission qui finit sans que l'agent ait rien clos.
+ * Automatic closing: a mission that ends without the agent having closed anything.
  *
- * `watchMissionComplete` pose alors DONE via `setTaskStatusOnly` — choisi
- * précisément parce qu'`updateTaskStatus` écraserait les champs d'un agent qui
- * aurait clos juste avant de mourir. Le défaut : le `done_comment` restait vide
- * et le pilote recevait un `task_closed` muet, impossible à distinguer d'un
- * agent qui n'avait rien à dire. On qualifie donc la clôture automatique —
- * sans jamais toucher un commentaire déjà posé.
+ * `watchMissionComplete` then sets DONE through `setTaskStatusOnly`, chosen
+ * precisely because `updateTaskStatus` would overwrite the fields of an agent that
+ * closed just before dying. The defect: the `done_comment` stayed empty
+ * and the pilot received a mute `task_closed`, impossible to tell from an
+ * agent that had nothing to say. So the automatic closing is qualified,
+ * without ever touching a comment already set.
  *
  * `node --test --import tsx src/task-autoclose.test.ts`
  */
@@ -16,6 +16,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+
+// french-ok-file: French sample comments and reasons the test feeds in
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-autoclose-test-'));
 
@@ -39,7 +41,7 @@ function completes(missionId: string): void {
   bus.publish({ kind: 'mission_complete', missionId, status: 'completed', exitCode: 0 });
 }
 
-test('une clôture automatique se nomme, au lieu de laisser un retour vide', () => {
+test('an automatic closing names itself, instead of leaving an empty return', () => {
   const stop = watchMissionComplete();
   try {
     const { taskId, missionId } = dispatched();
@@ -50,12 +52,12 @@ test('une clôture automatique se nomme, au lieu de laisser un retour vide', () 
   } finally { stop(); }
 });
 
-test('le commentaire d\'un agent qui a clos juste avant de mourir n\'est pas écrasé', () => {
+test('the comment of an agent that closed just before dying is not overwritten', () => {
   const stop = watchMissionComplete();
   try {
     const { taskId, missionId } = dispatched();
-    // L'agent a écrit son retour mais la task est restée IN_PROGRESS (clôture
-    // partielle) : c'est exactement le cas que `setTaskStatusOnly` protège.
+    // The agent wrote its return but the task stayed IN_PROGRESS (partial
+    // closing): that is exactly the case `setTaskStatusOnly` protects.
     dbApi.updateTaskStatus(taskId, 'IN_PROGRESS', { doneComment: 'refonte livrée, 3 fichiers' });
     completes(missionId);
     const task = dbApi.getTask(taskId);
@@ -64,26 +66,26 @@ test('le commentaire d\'un agent qui a clos juste avant de mourir n\'est pas éc
   } finally { stop(); }
 });
 
-test('la phrase de clôture automatique ne peut pas passer pour un verdict de review', () => {
+test('the automatic closing sentence cannot pass for a review verdict', () => {
   const stop = watchMissionComplete();
   try {
     const { taskId, missionId } = dispatched('review');
     completes(missionId);
-    // `unknown` fait escalader la chaîne. Un `pass` fabriqué ici ferait merger
-    // du code que personne n'a relu.
+    // `unknown` makes the chain escalate. A `pass` made up here would merge
+    // code nobody reviewed.
     assert.equal(parseReviewVerdict(dbApi.getTask(taskId)?.done_comment ?? null).verdict, 'unknown');
   } finally { stop(); }
 });
 
-test('une mission morte n\'hérite d\'aucun retour : la phrase ne vaut que pour un DONE', () => {
+test('a dead mission inherits no return: the sentence only applies to a DONE', () => {
   const stop = watchMissionComplete();
   try {
     const { taskId, missionId } = dispatched();
     bus.publish({ kind: 'mission_complete', missionId, status: 'failed', exitCode: 1 });
     const task = dbApi.getTask(taskId);
-    // Mort système : la task est requeue, elle ne passe pas DONE — et surtout
-    // elle ne reçoit pas un commentaire de clôture pour un travail qui n'a pas
-    // eu lieu.
+    // System death: the task is requeued, it does not go DONE, and above all
+    // it does not receive a closing comment for work that did not
+    // happen.
     assert.notEqual(task?.status, 'DONE');
     assert.equal(task?.done_comment, null);
   } finally { stop(); }

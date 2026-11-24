@@ -177,11 +177,22 @@ test('brief: base ≠ active branch advances the base by reference, never ff-onl
   assert.match(brief, /rev-parse main/);
 });
 
-test('brief: base = active branch keeps the ff-only', () => {
+test('brief: base = active branch keeps the ff-only, then reads the sha back', () => {
   const task = dbApi.getTask(mkTask('merge', 'basey.merger'))!;
-  for (const active of ['main', null, undefined]) {
+  const brief = worktreeDirective(task, fakeWt('main'), 'main');
+  assert.match(brief, /git -C \/repo merge --ff-only timon\/merge\/t/);
+  assert.doesNotMatch(brief, /push \./);
+  assert.match(brief, /git -C \/repo rev-parse main\ngit rev-parse timon\/merge\/t/);
+});
+
+// A detached HEAD in the main repo used to take the ff-only: it moved the
+// user's HEAD and left the base where it was.
+test('brief: a detached or unreadable HEAD moves the base by reference, never ff-only', () => {
+  const task = dbApi.getTask(mkTask('merge', 'basey.merger'))!;
+  for (const active of [null, undefined]) {
     const brief = worktreeDirective(task, fakeWt('main'), active);
-    assert.match(brief, /git -C \/repo merge --ff-only timon\/merge\/t/, `active=${active}`);
-    assert.doesNotMatch(brief, /push \./);
+    assert.match(brief, /git -C \/repo push \. timon\/merge\/t:main/, `active=${active}`);
+    assert.doesNotMatch(brief, /merge --ff-only/, `active=${active}`);
+    assert.match(brief, /detached HEAD/, `active=${active}`);
   }
 });

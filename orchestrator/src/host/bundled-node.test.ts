@@ -61,8 +61,9 @@ test('a service of the shipped Node runs it, staged inside the release, without 
   const linux = packagedServiceOptions(base, '/opt/Timon/resources/node/node', 3110, '0.1.7');
   assert.match(linux.nodePath, /desktop-runtime[\\/]releases[\\/][^\\/]+[\\/]resources[\\/]node[\\/]node$/);
   assert.equal(linux.environment?.ELECTRON_RUN_AS_NODE, undefined);
-  // The unit names the staged path with the host separator: only a Linux host writes it for real.
-  assert.match(linux.unitContent ?? '', /resources[\\/]node[\\/]node" --max-old-space-size=512/);
+  // The unit names the staged path with the host separator, escaped by systemd quoting on
+  // Windows (`\\`): only a Linux host writes it for real.
+  assert.match(linux.unitContent ?? '', /resources[\\/]+node[\\/]+node" --max-old-space-size=512/);
   const mac = packagedServiceOptions({ ...base, platform: 'darwin' }, '/Applications/Timon.app/Contents/Resources/node/node', 3110, '0.1.7');
   assert.match(mac.nodePath, /Timon\.app[\\/]Contents[\\/]Resources[\\/]node[\\/]node$/, 'the staged copy keeps the bundle name');
   assert.match(mac.installDir, /Timon\.app[\\/]Contents[\\/]Resources[\\/]orchestrator$/);
@@ -72,10 +73,11 @@ test('a service of the shipped Node runs it, staged inside the release, without 
 });
 
 test('the Windows launcher and the update runner set the Electron flag only for Electron', async () => {
-  const { renderWindowsLauncher } = await import('./service-install.js');
+  const { renderWindowsLauncherConfig } = await import('./service-install.js');
   const opts = { timonHome: 'C:\\Users\\Sam\\.timon', installDir: 'C:\\Programs\\Timon\\resources\\orchestrator', heapMb: 512, port: 3010 };
-  assert.doesNotMatch(renderWindowsLauncher({ ...opts, nodePath: 'C:\\Programs\\Timon\\resources\\node\\node.exe' }), /ELECTRON_RUN_AS_NODE/);
-  assert.match(renderWindowsLauncher({ ...opts, nodePath: 'C:\\Programs\\Timon\\Timon.exe' }), /set "ELECTRON_RUN_AS_NODE=1"/);
+  const env = (nodePath: string) => (JSON.parse(renderWindowsLauncherConfig({ ...opts, nodePath })) as { env: Record<string, string> }).env;
+  assert.equal(env('C:\\Programs\\Timon\\resources\\node\\node.exe').ELECTRON_RUN_AS_NODE, undefined);
+  assert.equal(env('C:\\Programs\\Timon\\Timon.exe').ELECTRON_RUN_AS_NODE, '1');
   const { runnerEnvironment } = await import('./packaged-apply.js');
   const input = { platform: 'linux' as const, home: '/h', cliVersion: '0.1.7', installDir: '/opt/Timon/resources/orchestrator',
     daemonPort: 3010, appEnabled: true, appPort: 3110, path: undefined, now: 0 };

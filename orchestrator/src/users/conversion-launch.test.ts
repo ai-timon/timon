@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
@@ -34,6 +34,7 @@ process.on('exit', () => {
 });
 
 const { mountOfficialProviders } = await import('../../tests/helpers/official-providers.js');
+const { sbplString } = await import('../host/seatbelt.js');
 const { getHost } = await import('../host/index.js');
 const { spawnAgent, upsertAgent } = await import('../agent.js');
 const { dbApi } = await import('../db.js');
@@ -75,13 +76,15 @@ function fakeChild(): FakeChild {
 
 const CONVERSION = { channel: 'chat', meta: { browser_recording_id: 'br-00000000-0000-4000-8000-000000000469' } };
 
-async function launch(agent: string, source?: { channel: string; meta?: unknown }): Promise<{ spawned: boolean; args: string[]; missionId: string; error?: Error }> {
+async function launch(agent: string, source?: { channel: string; meta?: unknown }): Promise<{ spawned: boolean; args: string[]; missionId: string; policy: string | null; error?: Error }> {
   const host = getHost();
   const original = host.spawn;
   const child = fakeChild();
-  const seen = { spawned: false, args: [] as string[], missionId: randomUUID() };
+  const seen = { spawned: false, args: [] as string[], missionId: randomUUID(), policy: null as string | null };
   host.spawn = ((_cmd: string, args: string[]) => {
     seen.spawned = true; seen.args = args;
+    // A Seatbelt launch (`-f <policy> -- cli …`): its policy file is gone once the mission ends.
+    if (args[0] === '-f' && args[1]) seen.policy = readFileSync(args[1], 'utf8');
     return child;
   }) as typeof host.spawn;
   try {
@@ -125,7 +128,18 @@ test('a codex conversion runs in a read-only sandbox with its shell switched off
   const run = await launch('codex.learner', CONVERSION);
   assert.equal(run.error, undefined);
   assert.ok(run.spawned);
-  assert.equal(run.args[run.args.indexOf('--sandbox') + 1], 'read-only');
+  const level = run.args[run.args.indexOf('--sandbox') + 1];
+  if (run.policy !== null) {
+    // Under the Seatbelt fence (macOS) codex's own sandbox cannot start: it is
+    // switched off, and the fence keeps the working tree read-only instead.
+    assert.equal(level, 'danger-full-access');
+    const spellings = [PROJECT, realpathSync(PROJECT)].map(sbplString);
+    const policy = run.policy;
+    assert.ok(spellings.some((p) => policy.includes(`(deny file-write* (subpath ${p}))`)), 'the fence denies writes to the project');
+    assert.ok(!spellings.some((p) => policy.includes(`(allow file-read-data file-write* (subpath ${p}))`)), 'and grants none');
+  } else {
+    assert.equal(level, 'read-only');
+  }
   const disabled = run.args.flatMap((arg, i) => (arg === '--disable' ? [run.args[i + 1]] : []));
   assert.deepEqual(disabled, ['shell_tool', 'unified_exec', 'view_image', 'apps', 'plugins', 'image_generation']);
   assert.ok(run.args.includes('web_search=disabled'));

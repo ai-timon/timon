@@ -10,7 +10,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { readFileSync } from 'node:fs';
-import { installDaemonShutdown, onDaemonShutdown, type ShutdownStep } from './daemon-shutdown.js';
+import {
+  daemonShutdownState, installDaemonShutdown, onDaemonShutdown, requestDaemonShutdown, type ShutdownStep,
+} from './daemon-shutdown.js';
 import { stopSignalsFor } from './host/stop-signals.js';
 
 type Run = { proc: EventEmitter; order: string[]; exits: number[]; exited: Promise<void>; uninstall: () => void };
@@ -116,6 +118,43 @@ test('a registered step runs at the stop, and no longer once taken back', async 
   assert.deepEqual(order, ['kept']);
   kept();
   uninstall();
+});
+
+test('a request runs the same stop as a signal: steps, release, exit 0', async () => {
+  const order: string[] = [];
+  const r = run({ steps: [() => { order.push('scopes'); }] });
+  assert.equal(daemonShutdownState(), 'stopping', 'a request would start the stop');
+  assert.equal(requestDaemonShutdown('test'), 'stopping');
+  await r.exited;
+  assert.deepEqual([...order, ...r.order], ['scopes', 'release', 'exit 0']);
+  r.uninstall();
+});
+
+test('asking again while stopping never hurries the exit, unlike a second signal', async () => {
+  const r = run({ release: () => new Promise<void>(() => {}), graceMs: 30 });
+  assert.equal(requestDaemonShutdown('first'), 'stopping');
+  assert.equal(requestDaemonShutdown('again'), 'already-stopping');
+  assert.equal(daemonShutdownState(), 'already-stopping');
+  assert.deepEqual(r.exits, [], 'still within the grace');
+  await r.exited;
+  assert.deepEqual(r.exits, [0]);
+  r.uninstall();
+});
+
+test('a signal after a request exits at once, as a second signal does', () => {
+  const r = run({ release: () => new Promise<void>(() => {}), graceMs: 1_000 });
+  requestDaemonShutdown('first');
+  r.proc.emit('SIGINT', 'SIGINT');
+  assert.deepEqual(r.exits, [0]);
+  r.uninstall();
+});
+
+test('nothing installed: a request is unavailable and starts nothing', () => {
+  const r = run();
+  r.uninstall();
+  assert.equal(daemonShutdownState(), 'unavailable');
+  assert.equal(requestDaemonShutdown('test'), 'unavailable');
+  assert.deepEqual(r.exits, []);
 });
 
 test('each system listens for what it actually delivers, never SIGHUP where nohup relies on it', () => {

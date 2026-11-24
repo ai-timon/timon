@@ -29,12 +29,26 @@ export type SettingsCategoryId =
   | 'secrets'
   | 'plugins';
 
-export const SETTINGS_CATEGORY_IDS: readonly SettingsCategoryId[] = [
-  'interface', 'models', 'instructions', 'missions', 'resources', 'memory', 'network', 'system', 'secrets', 'plugins',
+export type SettingsNavGroupId = 'workspace' | 'agents' | 'machine' | 'extensions';
+
+/**
+ * The nav, in reading order: the person's own workspace, what shapes the
+ * agents, what runs the machine, then plugins. Only the two middle groups are
+ * named; the first and the last are one category each and the spacing around
+ * them says enough. Grouping is display only: a URL names the category,
+ * never its group.
+ */
+export const SETTINGS_NAV_GROUPS: readonly { id: SettingsNavGroupId; titled: boolean; categories: readonly SettingsCategoryId[] }[] = [
+  { id: 'workspace', titled: false, categories: ['interface'] },
+  { id: 'agents', titled: true, categories: ['models', 'instructions', 'memory', 'missions', 'resources'] },
+  { id: 'machine', titled: true, categories: ['network', 'secrets', 'system'] },
+  { id: 'extensions', titled: false, categories: ['plugins'] },
 ];
 
+export const SETTINGS_CATEGORY_IDS: readonly SettingsCategoryId[] = SETTINGS_NAV_GROUPS.flatMap((group) => group.categories);
+
 /** Device-local panes: no row in the settings table. */
-export type NativePaneId = 'language' | 'push' | 'voice' | 'webui' | 'desktop' | 'installation' | 'instructions' | 'preamble' | 'fallback' | 'secrets' | 'connections' | 'devices' | 'developer' | 'isolation';
+export type NativePaneId = 'language' | 'push' | 'voice' | 'webui' | 'desktop' | 'installation' | 'instructions' | 'preamble' | 'fallback' | 'secrets' | 'connections' | 'devices' | 'developer' | 'isolation' | 'privacy';
 
 type Placement = { category: SettingsCategoryId; tab: string };
 
@@ -43,14 +57,17 @@ const PROVIDERS_PLUGIN = '@timon/backends';
 
 type StaticTab =
   | { id: string; kind: 'rows' }
-  | { id: string; kind: 'native'; pane: NativePaneId }
+  /** `hosts`: a plugin whose pane the native one paints below its own rows. */
+  | { id: string; kind: 'native'; pane: NativePaneId; hosts?: string }
   | { id: string; kind: 'plugin'; pluginId: string };
 
 /** Static tabs, in display order. Plugin-owned tabs are appended at runtime. */
 export const STATIC_TABS: Readonly<Record<SettingsCategoryId, readonly StaticTab[]>> = {
+  // The instructions a person writes first; the preamble Timon writes is
+  // there to be read, not edited.
   instructions: [
-    { id: 'preamble', kind: 'native', pane: 'preamble' },
     { id: 'global', kind: 'native', pane: 'instructions' },
+    { id: 'preamble', kind: 'native', pane: 'preamble' },
   ],
   interface: [
     { id: 'appearance', kind: 'plugin', pluginId: '@timon/ui-theme' },
@@ -76,14 +93,17 @@ export const STATIC_TABS: Readonly<Record<SettingsCategoryId, readonly StaticTab
     { id: 'confinement', kind: 'rows' },
     { id: 'schedule', kind: 'rows' },
   ],
+  // In the order memory lives: what reaches a prompt (and the switch for all
+  // of it), what is captured, how it is digested, kept, scored and dreamt;
+  // the notes vault, a place more than a behaviour, comes last.
   memory: [
-    { id: 'obsidian', kind: 'rows' },
     { id: 'injection', kind: 'rows' },
     { id: 'capture', kind: 'rows' },
     { id: 'synthesis', kind: 'rows' },
     { id: 'promotion', kind: 'rows' },
-    { id: 'dreaming', kind: 'rows' },
     { id: 'scoring', kind: 'rows' },
+    { id: 'dreaming', kind: 'rows' },
+    { id: 'obsidian', kind: 'rows' },
   ],
   network: [
     { id: 'webui', kind: 'native', pane: 'webui' },
@@ -106,8 +126,9 @@ export const STATIC_TABS: Readonly<Record<SettingsCategoryId, readonly StaticTab
     { id: 'backup', kind: 'rows' },
     { id: 'diagnostics', kind: 'rows' },
     { id: 'desktop', kind: 'native', pane: 'desktop' },
-    // Anonymous usage statistics: the telemetry module's own pane.
-    { id: 'privacy', kind: 'plugin', pluginId: '@timon/telemetry' },
+    // What Timon keeps on the computer and for how long, then the anonymous
+    // usage statistics of the telemetry module, painted below.
+    { id: 'privacy', kind: 'native', pane: 'privacy', hosts: '@timon/telemetry' },
   ],
   secrets: [
     { id: 'vault', kind: 'native', pane: 'secrets' },
@@ -147,6 +168,9 @@ const KEY_PLACEMENT: Readonly<Record<string, Placement>> = {
   TIMON_BRAIN_VAULT: { category: 'memory', tab: 'obsidian' },
   TIMON_VAULT_MCP_SERVER: { category: 'memory', tab: 'obsidian' },
   TIMON_PREAPPROVED_MCP_TOOLS: { category: 'missions', tab: 'permissions' },
+  // `Misc` and `Infra` strays that have a home: Diagnostics keeps logs and retention.
+  TIMON_CHROME_PATH: { category: 'network', tab: 'browser' },
+  DISPATCHER_INTERVAL_MS: { category: 'missions', tab: 'execution' },
   TIMON_RESOURCE_GUARD_ENABLED: { category: 'resources', tab: 'confinement' },
   TIMON_MISSION_MEM_MAX_GB: { category: 'resources', tab: 'confinement' },
   TIMON_RESOURCE_WATCH_MS: { category: 'resources', tab: 'confinement' },
@@ -163,6 +187,9 @@ const KEY_PLACEMENT: Readonly<Record<string, Placement>> = {
   TIMON_BACKUP_MAX_AGE_DAYS: { category: 'system', tab: 'backup' },
   TIMON_AGENT_TRASH_ENABLED: { category: 'system', tab: 'backup' },
   TIMON_AGENT_TRASH_RETENTION_DAYS: { category: 'system', tab: 'backup' },
+  // Painted as rows of the Privacy pane, with their own copy.
+  TIMON_EVENTS_RETENTION_DAYS: { category: 'system', tab: 'privacy' },
+  TIMON_LEARNINGS_RETENTION_DAYS: { category: 'system', tab: 'privacy' },
   // Switched from the "…" menu of the Updates pane, not as rows of their own under Plugins.
   TIMON_UPDATES_CHECK: { category: 'system', tab: 'updates' },
   TIMON_NOTICES_CHECK: { category: 'system', tab: 'updates' },
@@ -175,6 +202,8 @@ const OWNER_PLACEMENT: Readonly<Record<string, Placement>> = {
   '@timon/browser-annotations': { category: 'network', tab: 'browser' },
   '@timon/web-push': { category: 'network', tab: 'urls' },
   '@timon/terminal-native': { category: 'interface', tab: 'terminal' },
+  // The built-in terminal's own switch: "terminal unavailable" sends people to Interface › Terminal.
+  '@timon/terminal-web': { category: 'interface', tab: 'terminal' },
   '@timon/dreams': { category: 'memory', tab: 'dreaming' },
 };
 
@@ -213,7 +242,13 @@ export function placeSetting(row: SettingsRowLike): Placement {
 
 export type SettingsTab =
   | { id: string; kind: 'rows'; keys: string[]; grafts: string[]; ownerLabel?: string }
-  | { id: string; kind: 'native'; pane: NativePaneId; grafts: string[] }
+  | {
+    id: string; kind: 'native'; pane: NativePaneId; grafts: string[];
+    /** The rows filed in the tab that the pane paints itself (Privacy). */
+    keys?: string[];
+    /** The plugin pane it paints below its own, when that plugin is there. */
+    hosted?: { pluginId: string; origin: SettingsPluginOrigin };
+  }
   | { id: string; kind: 'plugin'; pluginId: string; origin: SettingsPluginOrigin; label: string };
 
 export type SettingsCategory = { id: SettingsCategoryId; tabs: SettingsTab[] };
@@ -298,6 +333,17 @@ export function buildSettingsLayout(input: SettingsLayoutInput): SettingsCategor
         if (tab.pane === 'desktop' && !input.desktop) continue;
         if (tab.pane === 'secrets' && !input.secrets) continue;
         if ((tab.pane === 'installation' || tab.pane === 'developer' || tab.pane === 'isolation') && !input.superadmin) continue;
+        if (tab.hosts) {
+          const plugin = pluginById.get(tab.hosts);
+          if (plugin) placedPlugins.add(plugin.id);
+          const keys = rowsByTab.get(tabKey) ?? [];
+          if (keys.length === 0 && !plugin) continue;
+          tabs.push({
+            id: tab.id, kind: 'native', pane: tab.pane, grafts, keys,
+            ...(plugin ? { hosted: { pluginId: plugin.id, origin: plugin.origin } } : {}),
+          });
+          continue;
+        }
         tabs.push({ id: tab.id, kind: 'native', pane: tab.pane, grafts });
       } else {
         const plugin = pluginById.get(tab.pluginId);
@@ -410,7 +456,7 @@ export function legacyGroupTarget(slug: string): SettingsTarget {
   const known = LEGACY_SLUGS[slug];
   if (known) return known;
   for (const [category, tabs] of Object.entries(STATIC_TABS) as [SettingsCategoryId, readonly StaticTab[]][]) {
-    const tab = tabs.find((t) => t.kind === 'plugin' && t.pluginId === slug);
+    const tab = tabs.find((t) => (t.kind === 'plugin' && t.pluginId === slug) || (t.kind === 'native' && t.hosts === slug));
     if (tab) return { category, tab: tab.id };
   }
   return { category: 'plugins', tab: slug };

@@ -1,0 +1,38 @@
+{
+  "name": "@timon-ai/plugin-github-issues",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js"
+  },
+  "files": [
+    "lib",
+    "README.md"
+  ],
+  "scripts": {
+    "build:client": "cd ../../orchestrator && npx esbuild ../plugins/github-issues/src/client.tsx --bundle --format=esm --external:react --external:@timon/ui --outfile=../plugins/github-issues/lib/client.js",
+    "typecheck": "node ../../orchestrator/node_modules/typescript/bin/tsc -p tsconfig.json"
+  },
+  "timon": {
+    "id": "github-issues",
+    "apiVersion": 19,
+    "kind": ["behavior", "widget"],
+    "label": "GitHub issues",
+    "description": "Lists the open issues of a project's GitHub repository that carry a label, in the Issues widget of the Git stack, and turns the one you pick into an idea of the TO DO notebook. Nothing is imported on its own, and nothing is written on GitHub.",
+    "author": "Timon",
+    "permissions": ["forge:read", "todos:read", "todos:write", "storage", "settings"],
+    "settings": [
+      { "key": "label", "type": "string", "label": "Label of the issues to list, unless a project sets its own", "default": "accepted" }
+    ],
+    "client": {
+      "slots": ["cockpit.widget", "project.settings"],
+      "external": ["react", "@timon/ui"],
+      "mode": "esm"
+    },
+    "license": { "required": false }
+  }
+}

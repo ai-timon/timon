@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClientRealtime } from '@/lib/plugin-host/realtime';
 import { subscribeProjectTodoChanges } from '@/lib/project-todo-realtime';
+import { movesTodoLanding, useLandingChanges } from './landing-events';
 import { KanbanCardHost } from './kanban-card-slot';
 import { TodoFormModal } from './todo-form-modal';
 import { handOffIdea } from './todo-handoff';
@@ -93,6 +94,10 @@ export function KanbanTodoColumn({ realtime }: { realtime: ClientRealtime }) {
     void load();
     return unsubscribe;
   }, [load, realtime]);
+  // An idea's landing badge moves with its jobs, which the notebook's own
+  // signal does not announce. Not narrowed to the project: an idea may be
+  // carried out by a job of another one.
+  useLandingChanges(() => { void load(); }, movesTodoLanding);
 
   return (
     <section aria-label={t('kanbanPage.columns.todo')} className="timon-island flex min-h-0 flex-1 flex-col">

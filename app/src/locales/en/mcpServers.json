@@ -20,6 +20,10 @@
       "pending": "pending",
       "unknown": "unknown"
     },
+    "heldBack": {
+      "vaultOff": "Needs the secrets vault",
+      "vaultOffHint": "This server carries a key or an OAuth sign-in: agents only get it while the secrets vault is on."
+    },
     "oauth": {
       "title": "OAuth",
       "pending": "OAuth: pending",
@@ -57,7 +61,7 @@
       "url": "URL",
       "saveBeforeOAuth": "Save the server first, then come back here to authorize it via OAuth if the endpoint requires it.",
       "headers": "Headers",
-      "headersHint": "(Key: value per line, '=' also works)",
+      "headersHint": "(Key: value per line, '=' also works. A saved value shows as ***: leave it to keep it)",
       "saving": "Saving…"
     },
     "heading": "MCP servers",

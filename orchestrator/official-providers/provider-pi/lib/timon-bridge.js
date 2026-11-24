@@ -494,7 +494,10 @@ export function resolveSpawn(command, args, os = {}) {
     }
     if (found) break;
   }
-  const target = found ?? command;
+  // Found nowhere: Node starts it itself, and a missing program fails with ENOENT ("could not
+  // start"). Through cmd.exe it would only exit 1 with "operable program or batch file.".
+  if (!found) return { file: command, args, verbatim: false };
+  const target = found;
   const ext = win32.extname(target).toLowerCase();
   if (ext === '.exe' || ext === '.com') return { file: target, args, verbatim: false };
   const line = [target.replace(CMD_META, '^$1'), ...args.map(quoteCmdArgument)].join(' ');

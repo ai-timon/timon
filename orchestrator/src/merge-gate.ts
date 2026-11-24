@@ -51,15 +51,21 @@ const SATISFIED: DepGate = { ok: true };
  *  fixtures without fabricating a complete SQLite row. `iteration` and
  *  `verification_root_id` are optional: a dep outside a verification chain
  *  (code task created by hand, chore…) does not carry them. */
-type GatedTask = Pick<TaskRow, 'type' | 'deps'>;
+type GatedTask = Pick<TaskRow, 'type' | 'deps'> & Partial<Pick<TaskRow, 'base_branch' | 'landing'>>;
 type DepTask = Pick<TaskRow, 'id' | 'type' | 'status' | 'done_comment'> &
   Partial<
     Pick<
       TaskRow,
       'iteration' | 'verification_root_id' | 'pipeline' | 'branch_name' | 'worktree_path' | 'deps' | 'updated_at'
-      | 'merged_commit_sha'
+      | 'merged_commit_sha' | 'base_branch' | 'integration_mode'
     >
   >;
+
+/** Where a dependency's chain stands (`chain-landing.ts`), injected to keep
+ *  this module SQLite-free. */
+export type DepLanding = 'local' | 'integrated' | 'landed' | 'closed';
+type LandingLookup = (dep: DepTask) => DepLanding;
+const ALWAYS_LOCAL: LandingLookup = () => 'local';
 
 /** All the tasks of a verification chain (same `verification_root_id`).
  *  Injected rather than imported: the module stays testable without SQLite. Empty
@@ -202,7 +208,10 @@ function isCodeOnlyPipeline(pipeline: string | null | undefined): boolean {
  *  - code-self / code-group pipeline: the coder, or a group merge, integrates;
  *  - `review`, `merge` or `doc` dependent: it is the chain itself (the review
  *    depends on the code, the merge on the review, the doc on the merge) — waiting for it here
- *    would be a deadlock;
+ *    would be a deadlock. Not the `merge` that ends a job on its branch
+ *    (`landing = 'pr'` opens the pull request, `'local'` merges the branch into
+ *    its target): it depends on the job's code tasks and lands what their
+ *    chains merged, so it waits for those merges like any dependent;
  *  - dependency without a branch or worktree (agent outside git): the verification-loop
  *    creates neither review nor merge (no diff);
  *  - `code` task of the chain marked merged (`merged_commit_sha`): integrated
@@ -214,7 +223,8 @@ function codeChainGate(
   listChain: ChainLookup,
 ): DepGate | null {
   if (dep.type !== 'code') return null;
-  if (task.type === 'review' || task.type === 'merge' || task.type === 'doc') return null;
+  if (task.type === 'review' || task.type === 'doc') return null;
+  if (task.type === 'merge' && !task.landing) return null;
   if (isCodeOnlyPipeline(dep.pipeline)) return null;
   if (!dep.branch_name && !dep.worktree_path) return null;
   // Marked merged (TIM-0109): the branch landed outside the chain — a PR
@@ -245,6 +255,28 @@ function codeChainGate(
     waitingFor: wait.reason,
     ...(wait.awaitingRepairSince !== undefined ? { awaitingRepairSince: wait.awaitingRepairSince } : {}),
     ...(wait.awaitingRepairOf ? { awaitingRepairOf: wait.awaitingRepairOf } : {}),
+  };
+}
+
+/**
+ * Landing guard: a dependency integrated into an integration branch
+ * (`feat/<topic>`) is in that branch only. A dependent of the same job (same
+ * base, or no base yet: it inherits the dependency's) starts from the branch
+ * and has what it needs. A dependent of ANY other base would start without the
+ * work, so it waits until the branch lands (`docs/KANBAN-PR-PIPELINE.md`
+ * §2.7). Always a wait: a pull request merged later frees it, and one closed
+ * without a merge says so in the reason.
+ */
+function landingGate(task: GatedTask, dep: DepTask, landingOf: LandingLookup): DepGate | null {
+  if (!task.base_branch || !dep.base_branch || task.base_branch === dep.base_branch) return null;
+  const landing = landingOf(dep);
+  if (landing === 'local' || landing === 'landed') return null;
+  return {
+    ok: false,
+    blockedReason: null,
+    waitingFor: landing === 'closed'
+      ? `${dep.type} ${dep.id} is in ${dep.base_branch}, whose pull request was closed without a merge`
+      : `${dep.type} ${dep.id} is integrated into ${dep.base_branch}, which has not landed in ${task.base_branch} yet`,
   };
 }
 
@@ -306,12 +338,15 @@ export function repairWaitStall(gate: DepGate, now: number): { reason: string; c
  *
  * Second rule, on the dependency itself: a `code` dep of the `full` pipeline
  * is satisfied only once the merge of its chain is DONE (`codeChainGate`).
+ * Third: a dep integrated into an integration branch frees a dependent of
+ * another base only once that branch landed (`landingGate`).
  */
 export function evaluateDeps(
   task: GatedTask,
   getTask: (id: string) => DepTask | undefined,
   listChain: ChainLookup = NO_CHAIN,
   listFullChain: ChainLookup = listChain,
+  landingOf: LandingLookup = ALWAYS_LOCAL,
 ): DepGate {
   let deps: string[];
   try {
@@ -326,6 +361,8 @@ export function evaluateDeps(
     if (!dep || dep.status !== 'DONE') return { ok: false, blockedReason: null };
     const chainGate = codeChainGate(task, dep, listFullChain);
     if (chainGate) return chainGate;
+    const landed = landingGate(task, dep, landingOf);
+    if (landed) return landed;
     if (task.type !== 'merge' || dep.type !== 'review') continue;
 
     const own = verdictGate(dep);

@@ -1,20 +1,20 @@
 /**
- * `timon module list|enable|disable` — ce que la CLI écrit dans
- * `timon.config.json`, et ce qu'elle en relit.
+ * `timon module list|enable|disable`: what the CLI writes into
+ * `timon.config.json`, and what it reads back.
  *
- * Ce que ces tests protègent, dans l'ordre du risque :
- *   1. L'écriture est CHIRURGICALE : le reste du fichier survit à la bascule,
- *      y compris les options du module lui-même. Un `timon module disable` qui
- *      réinitialiserait la configuration d'un module en passant serait une
- *      perte de données silencieuse.
- *   2. Un id inconnu est REFUSÉ. Une faute de frappe poserait une clé morte
- *      dans la config, en laissant croire que le réglage est pris.
- *   3. `list` rend l'état RÉEL (capacités, tier), pas seulement ce que la
- *      config demande — c'est toute la différence entre "je l'ai activé" et
- *      "il tourne".
+ * What these tests protect, in the order of risk:
+ *   1. The write is SURGICAL: the rest of the file survives the switch,
+ *      the options of the module itself included. A `timon module disable` that
+ *      reset the configuration of a module on the way would be a
+ *      silent data loss.
+ *   2. An unknown id is REFUSED. A typo would set a dead key
+ *      in the config, making one believe the setting is taken.
+ *   3. `list` returns the REAL state (capabilities, tier), not only what the
+ *      config asks for: that is the whole difference between "I enabled it" and
+ *      "it runs".
  *
- * Aucun daemon, aucun `~/.timon` réel : `TIMON_HOME` est un dossier jetable et
- * les capacités hôte sont injectées.
+ * No daemon, no real `~/.timon`: `TIMON_HOME` is a throwaway folder and
+ * the host capabilities are injected.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -33,7 +33,7 @@ const CATALOG = [
   { id: '@timon/db', name: './core-db.js', tier: 'core' },
   { id: '@timon/web-app', name: './web-app.js', tier: 'std' },
   { id: '@timon/grepai', name: './grepai.js', tier: 'dev', requires: ['grepai'] },
-  // `std`, comme dans le vrai catalogue : son verrou ne vient pas du tier.
+  // `std`, as in the real catalogue: its lock does not come from the tier.
   { id: '@timon/ui-theme', name: './ui-theme/client.js', tier: 'std', clientOnly: true },
 ] as const;
 
@@ -44,7 +44,7 @@ function cfgFile(obj: unknown = {}): string {
   return file;
 }
 
-test('enable/disable écrit modules.<id> dans timon.config.json', () => {
+test('enable/disable writes modules.<id> into timon.config.json', () => {
   const file = cfgFile({ profile: 'linux-desktop' });
 
   setModuleEnabled('@timon/web-app', true, file, CATALOG);
@@ -57,14 +57,14 @@ test('enable/disable écrit modules.<id> dans timon.config.json', () => {
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).modules['@timon/web-app'], false);
 });
 
-test('un fichier de config absent est créé, pas exigé', () => {
+test('a missing config file is created, not required', () => {
   const file = join(HOME, 'jamais-ecrit.json');
   assert.equal(existsSync(file), false);
   setModuleEnabled('@timon/web-app', false, file, CATALOG);
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { modules: { '@timon/web-app': false } });
 });
 
-test('la bascule préserve les options du module et le reste du fichier', () => {
+test('the switch keeps the module options and the rest of the file', () => {
   const file = cfgFile({
     edition: 'expert',
     settings: { TIMON_ALLOW_HTTP: true },
@@ -74,8 +74,8 @@ test('la bascule préserve les options du module et le reste du fichier', () => 
   setModuleEnabled('@timon/grepai', false, file, CATALOG);
   const after = JSON.parse(readFileSync(file, 'utf8'));
 
-  // L'objet survit : `port` est une option passée à `apply`, la perdre en
-  // désactivant cinq secondes reviendrait à reconfigurer le module.
+  // The object survives: `port` is an option passed to `apply`, losing it by
+  // disabling for five seconds would amount to reconfiguring the module.
   assert.deepEqual(after.modules['@timon/grepai'], { enabled: false, port: 4242 });
   assert.equal(after.modules['@timon/web-app'], false);
   assert.equal(after.edition, 'expert');
@@ -83,11 +83,11 @@ test('la bascule préserve les options du module et le reste du fichier', () => 
 });
 
 /**
- * `timon module disable grepai` doit continuer de marcher après le passage aux
- * ids `@timon/*` : la commande est dans les doigts et dans les scripts. Elle
- * écrit, elle, l'id courant — la config converge d'elle-même.
+ * `timon module disable grepai` must keep working after the move to
+ * `@timon/*` ids: the command is in people's fingers and in scripts. It
+ * writes the current id: the config converges on its own.
  */
-test('un id hérité reste accepté en entrée, et écrit l’id courant', () => {
+test('a legacy id stays accepted as input, and writes the current id', () => {
   const file = cfgFile({ modules: { grepai: { enabled: true, port: 4242 } } });
 
   setModuleEnabled('grepai', false, file, CATALOG);
@@ -97,24 +97,24 @@ test('un id hérité reste accepté en entrée, et écrit l’id courant', () =>
   assert.equal(after.modules['grepai'], undefined);
 });
 
-test('un module inconnu est refusé, et rien n’est écrit', () => {
+test('an unknown module is refused, and nothing is written', () => {
   const file = cfgFile({ modules: { '@timon/web-app': true } });
   assert.throws(() => setModuleEnabled('web-ap', true, file, CATALOG), UnknownModuleError);
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).modules, { '@timon/web-app': true });
 });
 
-test('un module core ne se désactive pas', () => {
+test('a core module cannot be disabled', () => {
   const file = cfgFile();
   assert.throws(() => setModuleEnabled('@timon/db', false, file, CATALOG), CoreModuleError);
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), {});
-  // …mais l'activer explicitement reste permis (no-op côté noyau, pas une erreur).
+  // …but enabling it explicitly stays allowed (a no-op on the kernel side, not an error).
   setModuleEnabled('@timon/db', true, file, CATALOG);
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).modules['@timon/db'], true);
 });
 
-test('le thème produit ne se désactive pas : il porte tous les tokens', () => {
-  // `std`, pas `core` — le daemon n'en a pas besoin. C'est le navigateur qui
-  // se retrouverait sans une seule custom property, galerie comprise.
+test('the product theme cannot be disabled: it carries all the tokens', () => {
+  // `std`, not `core`: the daemon does not need it. The browser is what
+  // would end up without a single custom property, gallery included.
   const file = cfgFile();
   assert.throws(() => setModuleEnabled('@timon/ui-theme', false, file, CATALOG), CoreModuleError);
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), {});
@@ -122,27 +122,27 @@ test('le thème produit ne se désactive pas : il porte tous les tokens', () => 
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).modules['@timon/ui-theme'], true);
 });
 
-test('list distingue ce que la config demande de ce qui tournerait', () => {
+test('list tells what the config asks for from what would run', () => {
   const file = cfgFile({ modules: { '@timon/web-app': false } });
   const rows = listModules({ file, catalog: CATALOG, capabilities: [] });
   const by = Object.fromEntries(rows.map((r) => [r.id, r]));
 
-  // core : la config n'a pas son mot à dire.
+  // core: the config has no say.
   assert.equal(by['@timon/db'].active, true);
   assert.equal(by['@timon/db'].wanted, 'auto');
 
-  // désactivé à la main.
+  // disabled by hand.
   assert.equal(by['@timon/web-app'].wanted, false);
   assert.equal(by['@timon/web-app'].active, false);
   assert.match(by['@timon/web-app'].reason, /timon\.config\.json/);
 
-  // voulu par défaut, mais la capacité manque : `auto` ≠ actif.
+  // wanted by default, but the capability is missing: `auto` ≠ active.
   assert.equal(by['@timon/grepai'].wanted, 'auto');
   assert.equal(by['@timon/grepai'].active, false);
   assert.deepEqual(by['@timon/grepai'].missing, ['grepai']);
 });
 
-test('list : une capacité présente rend le module actif', () => {
+test('list: a present capability makes the module active', () => {
   const rows = listModules({ file: cfgFile(), catalog: CATALOG, capabilities: ['grepai'] });
   const grepai = rows.find((r) => r.id === '@timon/grepai');
   assert.equal(grepai?.active, true);

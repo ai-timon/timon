@@ -35,6 +35,8 @@ export function notificationHref(n: NotificationLinkFields, viewer: Notification
   if (n.anchor && n.anchor.startsWith('/')) return n.anchor;
   const consent = n.anchor ? PLUGIN_SECRET_ANCHOR.exec(n.anchor) : null;
   if (consent) return `/secrets?grant=${encodeURIComponent(consent[2]!)}&plugin=${encodeURIComponent(consent[1]!)}`;
+  const proposal = n.anchor ? FORGE_PROPOSAL_ANCHOR.exec(n.anchor) : null;
+  if (proposal) return `/?forge-proposal=${encodeURIComponent(proposal[2]!)}&forge-project=${encodeURIComponent(proposal[1]!)}`;
   const launch = n.anchor ? PROVIDER_LAUNCH_ANCHOR.exec(n.anchor) : null;
   // The program to authorise is in the Program section, which only the full level is shown.
   if (launch && viewer.providers !== undefined && viewer.providers !== 'full') return null;
@@ -57,6 +59,14 @@ const EGRESS_ANCHOR = /^egress:(.+)$/;
  * re-authorisation and confirms it (`provider-common-sections.tsx`).
  */
 const PROVIDER_LAUNCH_ANCHOR = /^provider-launch:(.+)$/;
+
+/**
+ * A publication on GitHub waiting for approval (`forge-proposal:<project>:<id>`):
+ * the card opens the "Publish on GitHub" dialog on it, over the page it lands
+ * on (`ForgeProposalDialogHost`). `forge-project`, not `project`, which names
+ * the workspace of a view.
+ */
+const FORGE_PROPOSAL_ANCHOR = /^forge-proposal:([a-z0-9][a-z0-9._-]*):([0-9a-f-]{36})$/i;
 
 /**
  * Consent card of a plugin (`plugin-secret:<id>:<NAME>`, TODO #597): it opens

@@ -27,6 +27,7 @@ import { LogoCropDialog, type LogoCropSource } from '@/components/logo-crop-dial
 import type { PublicUser } from '@/lib/auth';
 import { t } from '@/lib/i18n';
 import { LicenseSection } from './license-section';
+import { ConfirmEmailRow } from './confirm-email-row';
 import { AgencyOfferRow } from '@/components/settings/agency-offer-row';
 
 /** Section chrome, so the three blocks below read as one page. */
@@ -212,7 +213,7 @@ function IdentitySection({ user }: { user: PublicUser }): ReactElement {
  * way. So the link is shown here to be copied and sent; nothing pretends an
  * email went out. Every superadmin is notified daemon-side.
  */
-function EmailSection({ user }: { user: PublicUser }): ReactElement {
+function EmailSection({ user, unverified }: { user: PublicUser; unverified: boolean }): ReactElement {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -245,6 +246,7 @@ function EmailSection({ user }: { user: PublicUser }): ReactElement {
 
   return (
     <Section title={t('profile.emailTitle')} description={t('profile.emailDescription')}>
+      {unverified && <div className="mb-4"><ConfirmEmailRow email={user.email} /></div>}
       <p className="text-xs text-muted-foreground">
         {t('profile.currentEmail')} <span className="font-medium text-foreground">{user.email}</span>
       </p>
@@ -336,7 +338,7 @@ export function ProfileClient(): ReactElement {
       </div>
       <div className="grid max-w-3xl gap-4">
         <IdentitySection user={user} />
-        <EmailSection user={user} />
+        <EmailSection user={user} unverified={me?.emailUnverified === true} />
         <PasswordSection />
         <LicenseSection canEdit={user.is_superadmin} />
         <AgencyOfferRow accountEmail={user.email} />

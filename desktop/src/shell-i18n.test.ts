@@ -1,3 +1,4 @@
+// french-ok-file: the language names and translations under test
 /**
  * The shell's languages (docs/I18N.md): the same core as the webview, the
  * same folders, the same rules for a contributor's `desktop.json`.
@@ -165,7 +166,7 @@ test('the shell follows the app\'s choice and rebuilds only when the language ch
   locale.changed({ name: LOCALE_COOKIE, value: 'fr-CA' }, false, 'explicit');
   locale.changed({ name: 'session', value: 'x' }, true, 'explicit');
   assert.deepEqual(changes, ['fr']);
-  // « System language » removes the cookie.
+  // "System language" removes the cookie.
   locale.changed({ name: LOCALE_COOKIE, value: 'fr' }, true, 'explicit');
   assert.equal(locale.current, 'en');
   assert.deepEqual(changes, ['fr', 'en']);

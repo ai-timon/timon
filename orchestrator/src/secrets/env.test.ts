@@ -62,7 +62,7 @@ test('the whitelist keeps the system, drops everything else', () => {
   assert.equal(env.TIMON_HOME, '/tmp/home', 'without it the agent CLI targets the wrong home');
   assert.equal(env.LC_ALL, 'fr_FR.UTF-8');
   assert.equal(env.NODE_OPTIONS, '--max-old-space-size=4096');
-  assert.equal(env.XDG_CONFIG_HOME, '/home/user/.config', 'sinon les CLI ne lisent pas la même config que le daemon');
+  assert.equal(env.XDG_CONFIG_HOME, '/home/user/.config', 'otherwise the CLIs do not read the same config as the daemon');
   assert.equal(env.npm_config_registry, 'https://registry.npmjs.org/');
 
   for (const leaked of ['TELEGRAM_BOT_TOKEN', 'TIMON_VAPID_PRIVATE_KEY', 'TIMON_REMOTE_MASTER',

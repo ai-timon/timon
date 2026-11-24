@@ -1,13 +1,13 @@
 /**
- * Clôture typée d'une task : `POST /api/tasks/close`.
+ * Typed closing of a task: `POST /api/tasks/close`.
  *
- * Ce que ces tests verrouillent, c'est le diagnostic du 2026-09-05 : selon le
- * backend LLM, les agents n'arrivaient pas à clore leur task et l'orchestrateur
- * ne recevait jamais leur retour. Les trois causes tenaient au geste lui-même —
- * un id à recopier depuis le texte du brief, un commentaire à faire survivre au
- * quoting shell, et un ordre sha→statut à respecter. La route les supprime :
- * résolution par la mission courante, commentaire obligatoire, sha posé avant
- * le statut.
+ * What these tests lock is the diagnosis of 2026-09-05: depending on the
+ * LLM backend, the agents could not close their task and the orchestrator
+ * never received their return. The three causes lay in the gesture itself:
+ * an id to copy from the text of the brief, a comment to keep alive through the
+ * shell quoting, and a sha→status order to respect. The route removes them:
+ * resolution by the current mission, mandatory comment, sha set before
+ * the status.
  *
  * `node --test --import tsx src/task-close.test.ts`
  */
@@ -22,6 +22,8 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import { getHost } from './host/index.js';
 
+// french-ok-file: French sample comments and reasons the test feeds in
+
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-task-close-test-'));
 
 const { dbApi } = await import('./db.js');
@@ -29,7 +31,7 @@ const { parseReviewVerdict } = await import('./review-verdict.js');
 const { registerRoutes, CLOSED_TASK_STOP_DELAY_MS } = await import('./plugins-bundled/kanban/routes.js');
 const { bus } = await import('./bus.js');
 
-/** Une task dispatchée : une mission qui tourne, la task qui lui est attachée. */
+/** A dispatched task: a running mission, the task attached to it. */
 function dispatched(type: 'code' | 'review' | 'merge' | 'chore' = 'chore') {
   const missionId = randomUUID();
   const taskId = randomUUID();
@@ -66,7 +68,7 @@ function close(base: string, body: Record<string, unknown>, missionId?: string) 
   });
 }
 
-test('la task se résout depuis la mission courante — aucun id à recopier', async () => {
+test('the task resolves from the current mission: no id to copy', async () => {
   const { missionId, taskId } = dispatched();
   await withApi(async (base) => {
     const r = await close(base, { outcome: 'done', comment: 'volet livré, 2 fichiers touchés' }, missionId);
@@ -77,26 +79,26 @@ test('la task se résout depuis la mission courante — aucun id à recopier', a
   });
 });
 
-test('sans mission ni id, la clôture est refusée plutôt que devinée', async () => {
+test('without a mission or an id, the closing is refused rather than guessed', async () => {
   await withApi(async (base) => {
     const r = await close(base, { outcome: 'done', comment: 'fini' });
     assert.equal(r.status, 400);
   });
 });
 
-test('un commentaire vide est refusé : c\'est la clôture muette qu\'on interdit', async () => {
+test('an empty comment is refused: the mute closing is what is forbidden', async () => {
   const { missionId, taskId } = dispatched();
   await withApi(async (base) => {
     for (const body of [{ outcome: 'done' }, { outcome: 'done', comment: '   ' }]) {
       const r = await close(base, body, missionId);
       assert.equal(r.status, 400);
     }
-    // La task n'a pas bougé : refuser ne clôt pas à moitié.
+    // The task did not move: refusing does not half-close.
     assert.equal(dbApi.getTask(taskId)?.status, 'IN_PROGRESS');
   });
 });
 
-test('le verdict d\'une review est rendu en 1re ligne, lisible par parseReviewVerdict', async () => {
+test("a review's verdict is put on the 1st line, readable by parseReviewVerdict", async () => {
   const { missionId, taskId } = dispatched('review');
   await withApi(async (base) => {
     const r = await close(base, {
@@ -111,7 +113,7 @@ test('le verdict d\'une review est rendu en 1re ligne, lisible par parseReviewVe
   });
 });
 
-test('un verdict déjà écrit par l\'agent n\'est pas redoublé', async () => {
+test('a verdict already written by the agent is not doubled', async () => {
   const { missionId, taskId } = dispatched('review');
   await withApi(async (base) => {
     await close(base, { outcome: 'done', verdict: 'pass', comment: 'verdict: pass\n\nRAS' }, missionId);
@@ -121,7 +123,7 @@ test('un verdict déjà écrit par l\'agent n\'est pas redoublé', async () => {
   });
 });
 
-test('un verdict hors enum est refusé', async () => {
+test('a verdict outside the enum is refused', async () => {
   const { missionId } = dispatched('review');
   await withApi(async (base) => {
     const r = await close(base, { outcome: 'done', verdict: 'peut-être', comment: 'bof' }, missionId);
@@ -129,7 +131,7 @@ test('un verdict hors enum est refusé', async () => {
   });
 });
 
-test('le sha de merge est posé AVANT le statut : la task merge passe DONE, pas BLOCKED', async () => {
+test('the merge sha is set BEFORE the status: the merge task goes DONE, not BLOCKED', async () => {
   const { missionId, taskId } = dispatched('merge');
   const sha = 'a'.repeat(40);
   await withApi(async (base) => {
@@ -141,7 +143,7 @@ test('le sha de merge est posé AVANT le statut : la task merge passe DONE, pas 
   });
 });
 
-test('un sha malformé est refusé, et la task reste ouverte', async () => {
+test('a malformed sha is refused, and the task stays open', async () => {
   const { missionId, taskId } = dispatched('merge');
   await withApi(async (base) => {
     const r = await close(base, { outcome: 'done', comment: 'mergé', merged_sha: 'HEAD~1' }, missionId);
@@ -150,7 +152,7 @@ test('un sha malformé est refusé, et la task reste ouverte', async () => {
   });
 });
 
-test('mark_as_failed pose BLOCKED avec sa raison, et exige cette raison', async () => {
+test('mark_as_failed sets BLOCKED with its reason, and requires that reason', async () => {
   const { missionId, taskId } = dispatched();
   await withApi(async (base) => {
     const refused = await close(base, { outcome: 'failed' }, missionId);
@@ -165,7 +167,7 @@ test('mark_as_failed pose BLOCKED avec sa raison, et exige cette raison', async 
   });
 });
 
-test('un id explicite permet de clore une AUTRE task que la sienne', async () => {
+test('an explicit id allows closing ANOTHER task than its own', async () => {
   const { missionId } = dispatched();
   const other = dispatched();
   await withApi(async (base) => {
@@ -175,7 +177,7 @@ test('un id explicite permet de clore une AUTRE task que la sienne', async () =>
   });
 });
 
-test('une mission sans task, ou un id inconnu, rend 404', async () => {
+test('a mission without a task, or an unknown id, returns 404', async () => {
   const orphan = randomUUID();
   dbApi.createMission(orphan, 'p.coder', 'mission de chat, sans task');
   await withApi(async (base) => {
@@ -231,7 +233,7 @@ for (const method of ['POST', 'PUT'] as const) {
   }
 }
 
-test('le résumé humain est stocké, plafonné, et effacé par une clôture qui n\'en donne pas', async () => {
+test('the human summary is stored, capped, and cleared by a closing that gives none', async () => {
   const { missionId, taskId } = dispatched();
   await withApi(async (base) => {
     const r = await close(base, { outcome: 'done', comment: 'rapport complet', summary: '  Le widget TO DO affiche les numéros.  ' }, missionId);
@@ -251,7 +253,7 @@ test('le résumé humain est stocké, plafonné, et effacé par une clôture qui
   });
 });
 
-test('mark_as_failed n\'hérite pas du résumé d\'une clôture précédente', async () => {
+test("mark_as_failed does not inherit the summary of a previous closing", async () => {
   const { missionId, taskId } = dispatched();
   await withApi(async (base) => {
     await close(base, { outcome: 'done', comment: 'livré', summary: 'Tout est livré.' }, missionId);

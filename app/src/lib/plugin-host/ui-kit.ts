@@ -87,6 +87,12 @@ import { DetailFrame } from '@/components/detail-frame';
 import { NavLink } from '@/components/nav-link';
 import { useKanbanCard } from '@/plugins-client/kanban/kanban-card-context';
 import { useTodoForm } from '@/plugins-client/kanban/todo-form-context';
+import { useJobDialog } from '@/plugins-client/kanban/job-dialog-context';
+import { usePublishDialog } from '@/plugins-client/kanban/publish-dialog-context';
+import { GitStackProjectPicker, useGitStackProject } from '@/plugins-client/kanban/git-stack-project';
+import { useTodoOpener } from '@/plugins-client/kanban/todo-opener';
+import { useProjectSettings } from '@/components/project-settings-slot';
+import { useWidgetAttention, useWidgetCount, useWidgetInFront, useWidgetMenu } from '@/components/widget-host/widget-self';
 
 /** What `@timon/ui` exposes. One object, so `platform-globals` and the served
  *  module cannot list different members. */
@@ -189,6 +195,23 @@ export const UI_KIT = {
   // The TO DO idea form (client API 15, `todo.form`), the twin of `useTaskForm`: the idea,
   // and the gestures (save, hand off to the orchestrator, finish, close).
   useTodoForm,
+  // A Kanban job's window (client API 19, `kanban.job.dialog`): the job, its links, and the
+  // way to its ideas and pilot mission.
+  useJobDialog,
+  // The "Publish on GitHub" window (client API 19, `forge.publish.dialog`): the text, where it
+  // goes, as which account, and the host's gestures, which go through the person's session.
+  usePublishDialog,
+  // The project a widget of the "Git" stack shows (client API 19): the chat's in a chat's
+  // rail, else the one picked once for the whole stack, and the picker that picks it.
+  useGitStackProject, GitStackProjectPicker,
+  // Opens a TO DO idea by its number in the product's form (client API 19); the caller
+  // paints `todoModal` where it stays mounted.
+  useTodoOpener,
+  // The project a `project.settings` row is painted for (client API 19).
+  useProjectSettings,
+  // What a widget hands its tab in a stack (client API 19): a count, a dot while something waits
+  // for the person, its header actions moved to the widget's menu, and whether it is in view.
+  useWidgetCount, useWidgetAttention, useWidgetMenu, useWidgetInFront,
   // The table of contents of a list page (client API 15, `page.toc`): its headings, the one
   // in view, and the jump to one.
   usePageToc,

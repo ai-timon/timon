@@ -16,7 +16,7 @@ function writeConfig(obj: unknown): string {
   return file;
 }
 
-test('fichier absent → défauts', () => {
+test('missing file → defaults', () => {
   const cfg = loadConfig(join(HOME, 'absent.json'));
   assert.equal(cfg.version, 1);
   assert.equal(cfg.profile, 'linux-desktop');
@@ -30,54 +30,54 @@ test('fichier absent → défauts', () => {
   assert.equal(cfg.developer.unsignedPlugins, undefined);
 });
 
-test('developer.unsignedPlugins est explicite et validé', () => {
+test('developer.unsignedPlugins is explicit and validated', () => {
   const cfg = loadConfig(writeConfig({ developer: { unsignedPlugins: true } }));
   assert.equal(cfg.developer.unsignedPlugins, true);
 });
 
-test('secrets.inheritEnv : faux par défaut, explicite quand demandé', () => {
-  // Le défaut est la propriété de sécurité : un fichier de config absent ne
-  // doit PAS rendre aux agents l'environnement complet du daemon.
+test('secrets.inheritEnv: false by default, explicit when asked for', () => {
+  // The default is the security property: a missing config file must
+  // NOT give the agents back the full environment of the daemon.
   assert.equal(loadConfig(join(HOME, 'absent.json')).secrets.inheritEnv, false);
   assert.equal(loadConfig(writeConfig({ secrets: { inheritEnv: true } })).secrets.inheritEnv, true);
 });
 
-test('edition "lite" → le preset désactive @timon/kanban-code', () => {
+test('edition "lite" → the preset disables @timon/kanban-code', () => {
   const cfg = loadConfig(writeConfig({ edition: 'lite' }));
   assert.equal(cfg.modules['@timon/kanban-code'], false);
   assert.ok(cfg.ui.hidden.includes('nav.git'));
 });
 
-test('le fichier utilisateur gagne sur le preset', () => {
+test('the user file wins over the preset', () => {
   const cfg = loadConfig(writeConfig({ edition: 'lite', modules: { '@timon/kanban-code': true } }));
   assert.equal(cfg.modules['@timon/kanban-code'], true);
   assert.equal(cfg.modules['@timon/grepai'], false);
 });
 
 /**
- * Le renommage `@timon/*` (§10.14) ne doit pas transformer une config déjà
- * écrite en clés mortes : `"grepai": false` désactive toujours le module, et
- * une décision de l'utilisateur portée par un id hérité gagne toujours sur le
- * preset, qui, lui, nomme les modules par leur id courant.
+ * The `@timon/*` rename (§10.14) must not turn an already written config
+ * into dead keys: `"grepai": false` still disables the module, and
+ * a user decision carried by a legacy id always wins over the
+ * preset, which names the modules by their current id.
  */
-test('les ids hérités activent toujours les bons modules', () => {
+test('legacy ids still enable the right modules', () => {
   const cfg = loadConfig(writeConfig({ modules: { grepai: false, 'core-secrets': { enabled: true, keyring: 'off' } } }));
   assert.equal(cfg.modules['@timon/grepai'], false);
   assert.deepEqual(cfg.modules['@timon/secrets-vault'], { enabled: true, keyring: 'off' });
-  assert.equal(cfg.modules['grepai'], undefined, 'la clé héritée est traduite, pas conservée en double');
+  assert.equal(cfg.modules['grepai'], undefined, 'the legacy key is translated, not kept twice');
 
   const lite = loadConfig(writeConfig({ edition: 'lite', modules: { 'kanban-code': true } }));
   assert.equal(lite.modules['@timon/kanban-code'], true);
 });
 
-test('clé invalide → erreur nommant la clé, jamais de défaut silencieux', () => {
+test('invalid key → error naming the key, never a silent default', () => {
   assert.throws(
     () => loadConfig(writeConfig({ profile: 'amiga' })),
     (e: unknown) => e instanceof ConfigError && /profile/.test((e as Error).message),
   );
 });
 
-test('~ est expansé dans workspacesRoot et les binaires', () => {
+test('~ is expanded in workspacesRoot and the binaries', () => {
   const cfg = loadConfig(writeConfig({
     workspacesRoot: '~/ailleurs',
     host: { binaries: { claude: '~/.local/bin/claude', git: null } },
@@ -87,33 +87,33 @@ test('~ est expansé dans workspacesRoot et les binaires', () => {
   assert.equal(cfg.host.binaries['git'], null);
 });
 
-test("workspacesRoot absent reste absent : plus de défaut ~/webdev", () => {
+test('a missing workspacesRoot stays missing: no more ~/webdev default', () => {
   const cfg = loadConfig(writeConfig({}));
   assert.equal(cfg.workspacesRoot, undefined);
 });
 
-test('écoute non-loopback sans auth → refus', () => {
+test('non-loopback listening without auth → refused', () => {
   assert.throws(
     () => loadConfig(writeConfig({ daemon: { listen: { host: '0.0.0.0' }, auth: 'off' } })),
     /non-loopback/,
   );
-  // La même écoute avec auth passe.
+  // The same listening with auth goes through.
   const ok = loadConfig(writeConfig({ daemon: { listen: { host: '0.0.0.0' }, auth: 'required' } }));
   assert.equal(ok.daemon.listen.host, '0.0.0.0');
 });
 
-test('migrateConfig : v(n) → v(n+1), en chaîne jusqu\'à la version courante', () => {
+test('migrateConfig: v(n) → v(n+1), chained up to the current version', () => {
   const migrated = migrateConfig({ profile: 'macos' }, 0);
   assert.equal(migrated.version, 1);
   assert.equal(migrated.profile, 'macos');
 });
 
-test('migrateConfig : déjà à jour → no-op sur le contenu', () => {
+test('migrateConfig: already up to date → no-op on the content', () => {
   const migrated = migrateConfig({ version: 1, profile: 'macos' }, 1);
   assert.deepEqual(migrated, { version: 1, profile: 'macos' });
 });
 
-test('loadConfig : fichier sans version (pré-Phase 6) → migré vers la version courante et réécrit', () => {
+test('loadConfig: file without a version (pre-Phase 6) → migrated to the current version and rewritten', () => {
   const file = writeConfig({ profile: 'macos' });
   const cfg = loadConfig(file);
   assert.equal(cfg.version, 1);
@@ -124,7 +124,7 @@ test('loadConfig : fichier sans version (pré-Phase 6) → migré vers la versio
   assert.equal(onDisk.profile, 'macos');
 });
 
-test('loadConfig : fichier déjà à la version courante → aucune réécriture', () => {
+test('loadConfig: file already at the current version → no rewrite', () => {
   const file = writeConfig({ version: 1, profile: 'macos' });
   const before = readFileSync(file, 'utf8');
   const cfg = loadConfig(file);
@@ -133,7 +133,7 @@ test('loadConfig : fichier déjà à la version courante → aucune réécriture
   assert.equal(after, before);
 });
 
-test('loadConfig : version future (supérieure au binaire) → refus explicite, pas de dégradation silencieuse', () => {
+test('loadConfig: future version (above the binary) → explicit refusal, no silent degradation', () => {
   const file = writeConfig({ version: 99, profile: 'macos' });
   assert.throws(
     () => loadConfig(file),
@@ -151,7 +151,7 @@ test('loadConfig : version future (supérieure au binaire) → refus explicite, 
  * passes it at spawn instead, and it must win over the file — which, on a
  * first launch, does not even exist.
  */
-test('TIMON_INSTALL_DIR gagne sur le fichier, pour un daemon empaqueté', () => {
+test('TIMON_INSTALL_DIR wins over the file, for a packaged daemon', () => {
   const file = writeConfig({ daemon: { installDir: '/opt/from-file/orchestrator' } });
   assert.equal(loadConfig(file).daemon.installDir, '/opt/from-file/orchestrator');
 
@@ -160,16 +160,16 @@ test('TIMON_INSTALL_DIR gagne sur le fichier, pour un daemon empaqueté', () => 
   assert.equal(cfg.daemon.installDir, '/tmp/.mount_abc/resources/orchestrator');
 });
 
-test("PORT déplace aussi le port de la config, pas seulement la socket", () => {
-  // `web-app` construit l'`ORCHESTRATOR_URL` de l'app Next depuis
-  // `daemon.listen.port` : un daemon déplacé par `PORT` seul donnait à l'UI
-  // l'adresse d'un daemon absent.
+test('PORT also moves the config port, not only the socket', () => {
+  // `web-app` builds the `ORCHESTRATOR_URL` of the Next app from
+  // `daemon.listen.port`: a daemon moved by `PORT` alone gave the UI
+  // the address of a missing daemon.
   const cfg = TimonConfigSchema.parse({});
   applyEnvOverrides(cfg, { PORT: '3010' });
   assert.equal(cfg.daemon.listen.port, 3010);
 });
 
-test('une valeur vide ou illisible laisse la config décider', () => {
+test('an empty or unreadable value lets the config decide', () => {
   const cfg = TimonConfigSchema.parse({ daemon: { installDir: '/opt/keep' } });
   applyEnvOverrides(cfg, { TIMON_INSTALL_DIR: '', PORT: 'tcp' });
   assert.equal(cfg.daemon.installDir, '/opt/keep');
@@ -182,9 +182,9 @@ test('une valeur vide ou illisible laisse la config décider', () => {
  * The shell decides that on a first launch and says so through the environment
  * (`desktop/src/config.ts`, `daemonEnvOverrides`).
  */
-test("le shell empaqueté peut allumer l'app et la déplacer", () => {
+test('the packaged shell can turn the app on and move it', () => {
   const cfg = TimonConfigSchema.parse({});
-  assert.equal(cfg.app.enabled, false, "défaut du schéma : l'app reste servie par Compose");
+  assert.equal(cfg.app.enabled, false, 'schema default: the app stays served by Compose');
   applyEnvOverrides(cfg, { TIMON_APP_ENABLED: '1', TIMON_APP_PORT: '3110', PORT: '3010' });
   assert.equal(cfg.app.enabled, true);
   assert.equal(cfg.app.listen.port, 3110);

@@ -137,7 +137,8 @@ test('detach: the agents survive without a project, even one inferred from their
   const agent = getAgent('beta.coder');
   assert.ok(agent, 'the agent is kept');
   assert.ok(!agent.project, `no project left, got ${agent.project}`);
-  assert.equal(loadConfig('beta.coder').cwd, undefined, 'the folder that implied the project is dropped');
+  // A Windows path carries no `…/projects/<slug>` marker: the folder implied nothing and stays.
+  if (process.platform !== 'win32') assert.equal(loadConfig('beta.coder').cwd, undefined, 'the folder that implied the project is dropped');
 });
 
 test('move: the agents join the other project and follow its folder', async () => {

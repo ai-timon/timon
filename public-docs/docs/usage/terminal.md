@@ -26,7 +26,7 @@ An agent never types in your terminal, and never opens it. When it needs a comma
 
 Leaving the page or locking your phone does not stop the shell: a long `apt upgrade` keeps going, and coming back shows the screen as it is now. Timon reconnects on its own when the connection drops, and as soon as you come back to the app.
 
-A shell that no tab has shown for **30 minutes** is stopped. Change the delay in **Settings → Terminal → Close a detached terminal after**.
+A shell that no tab has shown for **30 minutes** is stopped. Change the delay in **Settings → Interface → Terminal → Close a detached terminal after**.
 
 Restarting or updating Timon's service does not stop the shells either: they run in a separate process that stays up meanwhile, so a rebuild followed by a restart, typed in the terminal itself, goes through to the end, and the window reconnects on its own once the service is back. Only restarting the computer stops them — and, on Windows, installing a new version of the app. If that separate process cannot start on your machine, the shells run inside the service and stop when it restarts.
 
@@ -115,12 +115,12 @@ A terminal is a shell as the user account the daemon runs under: whoever has one
 - Only an account allowed to **open a terminal** can start or join one. The superadmin always can; for anyone else, add the permission *Open a shell on the host from the built-in terminal* to a permission set held by one of their groups — only for someone you would trust with your computer.
 - Each user only sees their own shells. Not even the superadmin can join another user's shell.
 - Agents cannot open one: a terminal is for a person signed in from a browser or the app.
-- **Settings → Terminal → Built-in terminal** turns it off for everyone.
+- **Settings → Interface → Terminal → Built-in terminal** turns it off for everyone.
 
 To use it from your phone away from home, reach Timon through a private network such as [Tailscale](https://tailscale.com/), never by publishing its port on the internet. [Remote access to the web interface](../installation/remote-access.md) explains how.
 
 ## Shell and platform
 
-The terminal starts your login shell (`bash`, `zsh`…) on Linux and macOS, and PowerShell on Windows (PowerShell 7 when it is installed, otherwise Windows PowerShell 5.1, where commands chain with `;` rather than `&&`). **Settings → Terminal → Built-in terminal shell** (advanced) starts another program instead.
+The terminal starts your login shell (`bash`, `zsh`…) on Linux and macOS, and PowerShell on Windows (PowerShell 7 when it is installed, otherwise Windows PowerShell 5.1, where commands chain with `;` rather than `&&`). **Settings → Interface → Terminal → Built-in terminal shell** (advanced) starts another program instead.
 
 The older **Host terminal** module is different: it opens your computer's own terminal application, in a window of your desktop, and needs a graphical session.

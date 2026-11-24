@@ -27,6 +27,7 @@ test('the superadmin is told once that accounts are suspended, and the card clos
   assert.equal(cards.length, 1);
   assert.equal(cards[0]!.owner_user_id, boss.id);
   assert.match(cards[0]!.body ?? '', /pro licence and the Multi-user plugin/);
+  assert.deepEqual(JSON.parse(cards[0]!.message_code ?? 'null'), { code: 'accounts_suspended', params: { count: 1 } });
   assert.equal(dbApi.getUserById(member.id)?.status, 'active', 'the account is suspended, not changed');
 
   assert.equal(noticeSuspendedAccounts(), 1);

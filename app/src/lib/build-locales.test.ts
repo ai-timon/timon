@@ -1,3 +1,4 @@
+// french-ok-file: language names and pseudo-localised text, the data under test
 /**
  * `scripts/build-locales.mjs`: a language is a folder, nothing else.
  */

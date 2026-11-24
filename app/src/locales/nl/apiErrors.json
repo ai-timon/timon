@@ -60,6 +60,20 @@
     "invalid_event_id": "De bericht-ID is ongeldig.",
     "message_not_found": "Geen bericht met die ID in dit gesprek.",
     "steer_unsupported": "Deze agent kan nu niet worden bijgestuurd: zet het bericht in de wachtrij.",
-    "no_turn_to_steer": "Er loopt geen beurt: stuur een gewoon bericht."
+    "no_turn_to_steer": "Er loopt geen beurt: stuur een gewoon bericht.",
+    "setup_main_agent_unavailable": "Er is geen hoofdagent gevonden op deze installatie. Ga door — je kunt er later een aanmaken.",
+    "setup_main_agent_invalid_name": "Deze naam bevat geen letter of cijfer die Timon kan gebruiken. Probeer een andere.",
+    "setup_main_agent_name_taken": "Er is al een agent met deze naam. Kies een andere.",
+    "setup_workspace_unavailable": "De werkmap is niet beschikbaar. Controleer de locatie en toegangsrechten en probeer het opnieuw.",
+    "setup_main_agent_rename_failed": "De agent kon niet worden hernoemd. Probeer het zo opnieuw.",
+    "setup_main_agent_invalid_avatar": "Deze foto is niet door Timon opgeslagen. Upload haar opnieuw.",
+    "setup_main_agent_failed": "Je agent kon niet worden opgeslagen. Probeer het opnieuw.",
+    "setup_invalid_identity": "Controleer de naam en probeer het opnieuw.",
+    "setup_team_backend_unavailable": "Er is geen agenttool beschikbaar. Installeer of koppel er een en probeer het opnieuw, of begin van nul.",
+    "setup_team_agent_conflict": "Een startagent is gewijzigd sinds het aanmaken begon. Je wijzigingen zijn behouden; los het conflict op voordat je het opnieuw probeert.",
+    "setup_team_unavailable": "Teamconfiguratie is niet beschikbaar op deze installatie.",
+    "setup_team_preset_locked": "Het aanmaken van het team is al begonnen. Hervat het gekozen team.",
+    "setup_team_instance_not_empty": "Timon bevat al eigen agents of werk. Kies Van nul beginnen om alles te laten zoals het is en de configuratie af te ronden.",
+    "setup_team_failed": "Je team kon niet volledig worden aangemaakt. Probeer het opnieuw om verder te gaan waar het stopte."
   }
 }

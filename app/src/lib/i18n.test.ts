@@ -10,7 +10,7 @@ import { useSourceLocaleLoader } from './i18n-sources';
 
 useSourceLocaleLoader();
 
-test('collecte les fragments de la locale anglaise', () => {
+test('collects the fragments of the English locale', () => {
   setLocale('en');
   assert.equal(t('agentsGrid.gitPush', { count: 2 }), 'git push — 2 commits');
   assert.equal(t('taskForm.create'), 'Create task');
@@ -21,24 +21,24 @@ test('collecte les fragments de la locale anglaise', () => {
   assert.equal(t('cockpit.accountUsage.disconnected'), 'Not signed in');
 });
 
-test('le français ne s\'active qu\'une fois chargé', async () => {
+test('French only turns on once loaded', async () => {
   setLocale('en');
   setLocale('fr');
-  assert.equal(getLocale(), 'en', 'pas encore chargé : on reste en anglais');
+  assert.equal(getLocale(), 'en', 'not loaded yet: we stay in English');
   await loadLocale('fr');
   assert.equal(getLocale(), 'fr');
   setLocale('en');
 });
 
-test('collecte les fragments de la locale française', async () => {
+test('collects the fragments of the French locale', async () => {
   await loadLocale('fr');
   assert.equal(t('projectsPage.projectCount', { count: 2 }), '2 projets');
-  assert.equal(t('taskForm.create'), 'Créer la tâche');
+  assert.equal(t('taskForm.create'), 'Créer la tâche'); // french-ok: the French locale under test
   assert.equal(t('browserPanel.native.profile'), 'Profil de navigateur');
   assert.equal(t('llm.confirmTitle'), 'Basculer de LLM ?');
   assert.equal(t('loginPage.title'), 'Connexion');
-  assert.equal(t('session.logout'), 'Se déconnecter');
-  assert.equal(t('cockpit.accountUsage.disconnected'), 'Non connecté');
+  assert.equal(t('session.logout'), 'Se déconnecter'); // french-ok: the French locale under test
+  assert.equal(t('cockpit.accountUsage.disconnected'), 'Non connecté'); // french-ok: the French locale under test
   setLocale('en');
 });
 
@@ -55,7 +55,7 @@ test('a key nobody has reads as itself; a language absent from the catalog loads
 test('the catalog lists the languages present, each in its own name', () => {
   const tags = availableLocales().map((info) => info.tag);
   assert.ok(tags.includes('en') && tags.includes('fr'), tags.join(', '));
-  assert.equal(availableLocales().find((info) => info.tag === 'fr')?.name, 'Français');
+  assert.equal(availableLocales().find((info) => info.tag === 'fr')?.name, 'Français'); // french-ok: the French locale under test
   assert.equal(localeDirection('fr'), 'ltr');
 });
 

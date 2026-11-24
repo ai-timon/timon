@@ -31,6 +31,7 @@ import { superviseChild, MAX_RESTARTS, RESTART_WINDOW_MS } from '../../kernel/ch
 // The app is in the same place for everyone (`<installDir>/../app`) and its
 // entry points launch the same way: reused rather than duplicated.
 import { appDirOf, appEntryArgs, appEntryRunnable, nodeRuntime, type NodeRuntime } from '../web-app/index.js';
+import { daemonMessage } from '../../daemon-message.js';
 
 export const manifest: ModuleManifest = {
   name: '@timon/telegram',
@@ -110,6 +111,7 @@ export function superviseWorkers(host: Host, cfg: TimonConfig, appDir: string, n
       alert: {
         title: `The Telegram worker ${worker} stopped starting`,
         body: (why) => `${MAX_RESTARTS} restarts without staying up ${RESTART_WINDOW_MS / 1000}s (${why}). Telegram messages are no longer picked up; check the bot tokens (\`~/.timon/secrets.env\`) and the daemon logs.`,
+        message: (why) => daemonMessage('telegram_worker_stopped', { worker, restarts: MAX_RESTARTS, seconds: RESTART_WINDOW_MS / 1000, why }),
       },
     });
   });

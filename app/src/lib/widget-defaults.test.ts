@@ -11,7 +11,9 @@ const ids = [
   MAIN_AGENT_WIDGET_ID,
   'plugin:@timon/agents:notifications', 'plugin:@timon/agents:tasks', 'plugin:@timon/ui-layout:clock',
   'plugin:@timon/missions:Missions', 'plugin:@timon/workflows:trace', 'plugin:@timon/files-widget:Files',
-  'plugin:@timon/kanban:project-todo', 'plugin:@timon/kanban:todo', 'plugin:@timon/git:repository',
+  'plugin:@timon/kanban:project-todo', 'plugin:@timon/kanban:todo',
+  'plugin:@timon/git:branches', 'plugin:@timon/git:graph', 'plugin:@timon/git:publish',
+  'plugin:@timon/kanban:pull-requests', 'plugin:@timon/kanban:landings', 'plugin:github-issues:issues',
   ...ADD_WIDGET_IDS,
   'plugin:@timon/docker-supervision:docker', 'plugin:@timon/skills-widget:skills', 'plugin:@timon/mcp-widget:mcp',
   'plugin:@timon/projects:overview', 'plugin:@timon/agents:team', 'plugin:@timon/video-factory:video',
@@ -31,7 +33,7 @@ test('a fresh install opens on the short arrangement the product ships (05/11/20
   const byRail = (rail: string) => column(cockpit, rail).map(w => w.id);
   const shares = (cards: typeof cockpit, rail: string) => column(cards, rail).map(w => w.fillPercent);
   assert.deepEqual(byRail('gauche'), ['plugin:@timon/agents:notifications', add]);
-  assert.deepEqual(shares(cockpit, 'gauche'), [66, 34], 'the notifications take two thirds, « Your widget here » the rest');
+  assert.deepEqual(shares(cockpit, 'gauche'), [66, 34], 'the notifications take two thirds, "Your widget here" the rest');
   assert.deepEqual(byRail('centre'), [MAIN_AGENT_WIDGET_ID]);
   assert.deepEqual(byRail('droite'), ['plugin:@timon/kanban:todo', 'plugin:@timon/agents:tasks']);
   assert.deepEqual(shares(cockpit, 'droite'), [50, 50]);
@@ -43,9 +45,15 @@ test('a fresh install opens on the short arrangement the product ships (05/11/20
   const short = (rail: string) => column(chat, rail).map(w => w.id.split(':').at(-1));
   assert.deepEqual(short('chat.left.widget'), ['Missions', 'Files']);
   assert.deepEqual(shares(chat, 'chat.left.widget'), [50, 50]);
-  assert.deepEqual(short('chat.right.widget'), ['repository', 'docker']);
-  assert.deepEqual(shares(chat, 'chat.right.widget'), [66, 34]);
-  assert.ok(chat.every(w => !w.group), 'no tab stacks on a fresh chat');
+  assert.deepEqual(short('chat.right.widget'), ['branches', 'graph', 'publish', 'pull-requests', 'landings', 'issues', 'docker']);
+  // The "Git" stack: one card of six tabs, Branches in front, then Docker.
+  const stack = column(chat, 'chat.right.widget').filter(w => w.group);
+  assert.equal(stack.length, 6);
+  assert.equal(new Set(stack.map(w => w.group)).size, 1, 'one stack');
+  assert.deepEqual(stack.filter(w => w.activeTab).map(w => short('chat.right.widget')[column(chat, 'chat.right.widget').indexOf(w)]), ['branches']);
+  assert.ok(stack.every(w => w.heightMode === 'fill' && w.fillPercent === 66), 'the stack takes two thirds');
+  assert.equal(column(chat, 'chat.right.widget').at(-1)?.fillPercent, 34, 'Docker the rest');
+  assert.ok(chat.filter(w => w.rail === 'chat.left.widget').every(w => !w.group), 'no stack on the left');
 
   const canvas = mergeWorkspaceWidgets(null, constraints, '/agents').filter(w => !w.removed);
   assert.deepEqual(canvas.map(w => [w.rail, w.id]).sort(), [['agents.left.widget', add], ['agents.right.widget', add2]].sort(),
@@ -72,10 +80,13 @@ test('a starter never places a widget this install does not have', () => {
   // without Docker, simply never registers. What is absent from the
   // catalogue is absent from the board — and the stack it belonged to keeps
   // its other tabs rather than breaking.
-  const partial = constraints.filter(c => c.id !== 'plugin:@timon/docker-supervision:docker');
+  const partial = constraints.filter(c => c.id !== 'plugin:@timon/docker-supervision:docker' && !c.id.startsWith('plugin:@timon/kanban:')
+    && c.id !== 'plugin:github-issues:issues');
   const chat = mergeWorkspaceWidgets(null, partial, '/chat').filter(w => !w.removed);
   assert.ok(chat.every(w => !w.id.includes('docker')));
-  assert.deepEqual(chat.filter(w => w.rail === 'chat.right.widget').map(w => w.id), ['plugin:@timon/git:repository']);
+  const right = chat.filter(w => w.rail === 'chat.right.widget');
+  assert.deepEqual(right.map(w => w.id), ['plugin:@timon/git:branches', 'plugin:@timon/git:graph', 'plugin:@timon/git:publish']);
+  assert.equal(right.filter(w => w.activeTab).length, 1, 'the Git stack keeps its front tab without the Kanban');
 });
 
 test('a scope that has not answered yet paints nothing, an answered empty one paints the starters', () => {
@@ -84,7 +95,7 @@ test('a scope that has not answered yet paints nothing, an answered empty one pa
   assert.deepEqual(workspaceWidgets(null, false, constraints, '/'), []);
   assert.deepEqual(workspaceWidgets([{ id: constraints[0]!.id, rail: 'droite', rang: 0, hauteur: 420 }], false, constraints, '/'), []);
   const fresh = workspaceWidgets(null, true, constraints, '/').filter(w => !w.removed);
-  assert.equal(fresh.length, 5, 'notifications and « Your widget here », the main agent, TODO and Tasks');
+  assert.equal(fresh.length, 5, 'notifications and "Your widget here", the main agent, TODO and Tasks');
   const stored = workspaceWidgets([{ id: constraints[0]!.id, rail: 'droite', rang: 0, hauteur: 420 }], true, constraints, '/');
   assert.equal(stored.find(w => w.id === constraints[0]!.id)?.hauteur, 420);
 });
@@ -140,15 +151,15 @@ test('a chat opened on another view starts from the places of /chat, then keeps 
   const withChat = mergeWorkspaceWidgets(stored, constraints, '/kanban', true).filter(w => !w.removed);
   assert.deepEqual(withChat.filter(w => w.rail === 'chat.left.widget').map(w => w.id.split(':').at(-1)),
     ['Missions', 'Files'], 'stored as taken out by default: placed like on /chat');
-  assert.equal(withChat.filter(w => w.rail === 'chat.right.widget').length, 2, 'absent from the row: placed too');
+  assert.equal(withChat.filter(w => w.rail === 'chat.right.widget').length, 7, 'absent from the row: placed too');
 });
 
 test('a card removed from a chat column of a view stays removed there (Q14)', () => {
   const kanban = mergeWorkspaceWidgets(null, constraints, '/kanban', true);
-  const removed = kanban.map(w => (w.id === 'plugin:@timon/git:repository' ? { ...w, removed: true } : w));
-  assert.equal(removed.find(w => w.id === 'plugin:@timon/git:repository')!.rail, 'chat.right.widget');
+  const removed = kanban.map(w => (w.id === 'plugin:@timon/docker-supervision:docker' ? { ...w, removed: true } : w));
+  assert.equal(removed.find(w => w.id === 'plugin:@timon/docker-supervision:docker')!.rail, 'chat.right.widget');
   const again = mergeWorkspaceWidgets(removed, constraints, '/kanban', true);
-  assert.equal(again.find(w => w.id === 'plugin:@timon/git:repository')!.removed, true);
+  assert.equal(again.find(w => w.id === 'plugin:@timon/docker-supervision:docker')!.removed, true);
   // A card the view shows elsewhere is not moved: one card, one place.
   const elsewhere = removed.map(w => (w.id === 'plugin:@timon/files-widget:Files' ? { ...w, rail: 'gauche', removed: undefined } : w));
   assert.equal(mergeWorkspaceWidgets(elsewhere, constraints, '/kanban', true).find(w => w.id === 'plugin:@timon/files-widget:Files')!.rail, 'gauche');
@@ -183,27 +194,98 @@ test('the Skills and MCP cards take over their places and their tab stack under 
   assert.ok(!s.removed && !m.removed);
 });
 
-test('TODO #278: the single Git card takes over the place of the former publication card, else of the Git panel', () => {
-  const git = constraints.find(c => c.id === 'plugin:@timon/git:repository')!;
-  const withFormer = constraints.map(c => c === git
-    ? { ...c, formerIds: ['plugin:@timon/git:git-remote', 'plugin:@timon/git:Git'] }
-    : c);
+test('TODO #278: the Git widgets take over the place of the former publication card, else of the Git panel', () => {
+  const former = ['plugin:@timon/git:repository', 'plugin:@timon/git:git-remote', 'plugin:@timon/git:Git'];
+  const parts = ['plugin:@timon/git:branches', 'plugin:@timon/git:graph', 'plugin:@timon/git:publish'];
+  const withFormer = constraints.map(c => parts.includes(c.id) ? { ...c, formerIds: former } : c);
   const both = [
     { id: 'plugin:@timon/git:Git', rail: 'chat.left.widget', rang: 3, hauteur: 300 },
     { id: 'plugin:@timon/git:git-remote', rail: 'chat.right.widget', rang: 1, hauteur: 250 },
   ];
-  const a = mergeWorkspaceWidgets(both, withFormer, '/chat').find(w => w.id === git.id);
-  assert.equal(a?.rail, 'chat.right.widget');
-  assert.equal(a?.removed, undefined);
+  const a = mergeWorkspaceWidgets(both, withFormer, '/chat').filter(w => parts.includes(w.id));
+  assert.ok(a.every(w => w.rail === 'chat.right.widget' && !w.removed));
   // The publication card had been taken off: the Git panel's place is used.
   const panelOnly = [both[0]!, { ...both[1]!, removed: true }];
-  const b = mergeWorkspaceWidgets(panelOnly, withFormer, '/chat').find(w => w.id === git.id);
-  assert.equal(b?.rail, 'chat.left.widget');
+  const b = mergeWorkspaceWidgets(panelOnly, withFormer, '/chat').filter(w => parts.includes(w.id));
+  assert.ok(b.every(w => w.rail === 'chat.left.widget' && !w.removed));
+});
+
+test('the Git card of a stored chat becomes the Git stack, at its place and height, with the pull requests and jobs', () => {
+  const former = ['plugin:@timon/git:repository', 'plugin:@timon/git:git-remote', 'plugin:@timon/git:Git'];
+  const parts = ['plugin:@timon/git:branches', 'plugin:@timon/git:graph', 'plugin:@timon/git:publish'];
+  const kanban = ['plugin:@timon/kanban:pull-requests', 'plugin:@timon/kanban:landings', 'plugin:github-issues:issues'];
+  const docker = 'plugin:@timon/docker-supervision:docker';
+  const withFormer = constraints.map(c => parts.includes(c.id) ? { ...c, formerIds: former } : c);
+  // A chat row stored before the split: the Git card under Docker, the
+  // pull request widgets never named (they shipped with the stack).
+  const stored = [
+    { id: 'plugin:@timon/missions:Missions', rail: 'chat.left.widget', rang: 0, hauteur: 300 },
+    { id: docker, rail: 'chat.right.widget', rang: 0, hauteur: 200 },
+    { id: 'plugin:@timon/git:repository', rail: 'chat.right.widget', rang: 1, hauteur: 410, heightMode: 'fill', fillPercent: 70 },
+  ];
+  const merged = mergeWorkspaceWidgets(stored, withFormer, '/chat');
+  const right = merged.filter(w => !w.removed && w.rail === 'chat.right.widget').sort((x, y) => x.rang - y.rang);
+  assert.deepEqual(right.map(w => w.id), [docker, ...parts, ...kanban], 'below Docker, where the card stood');
+  const stack = right.filter(w => w.id !== docker);
+  assert.equal(new Set(stack.map(w => w.group)).size, 1);
+  assert.ok(stack[0]!.group);
+  assert.deepEqual(stack.map(w => w.activeTab === true), [true, false, false, false, false, false], 'Branches in front');
+  assert.ok(stack.every(w => w.hauteur === 410 && w.heightMode === 'fill' && w.fillPercent === 70), 'at the card\'s height');
+  assert.equal(right[0]!.group, undefined, 'Docker stays a card of its own');
+
+  // Pull requests already placed or put away by the person: left as they are.
+  const placed = [...stored, { id: kanban[0]!, rail: 'gauche', rang: 0, hauteur: 300 }, { id: kanban[1]!, rail: 'droite', rang: 0, hauteur: 300, removed: true }];
+  const kept = mergeWorkspaceWidgets(placed, withFormer, '/chat');
+  assert.equal(kept.find(w => w.id === kanban[0])?.rail, 'gauche');
+  assert.equal(kept.find(w => w.id === kanban[1])?.removed, true);
+
+  // The Git card had been taken out: nothing comes back, and the pull
+  // requests have no stack to join.
+  const away = mergeWorkspaceWidgets([stored[0]!, stored[1]!, { ...stored[2]!, removed: true }], withFormer, '/chat');
+  assert.ok([...parts, ...kanban].every(id => away.find(w => w.id === id)?.removed === true));
+});
+
+test('a widget added to the Git stack later joins it where the person moved it', () => {
+  const docker = 'plugin:@timon/docker-supervision:docker';
+  const stack = 'stack:mine:4';
+  // The Git widgets moved into the left column, stacked there with Docker;
+  // the jobs widget unknown to the row.
+  const stored = mergeWorkspaceWidgets(null, constraints, '/chat')
+    .filter(w => w.id !== 'plugin:@timon/kanban:landings')
+    .map(w => (w.id.startsWith('plugin:@timon/git:') || w.id === 'plugin:@timon/kanban:pull-requests' || w.id === 'plugin:github-issues:issues' || w.id === docker
+      ? { ...w, rail: 'chat.left.widget', group: stack, activeTab: w.id === docker ? true : undefined, rang: 10 + w.rang }
+      : w));
+  const merged = mergeWorkspaceWidgets(stored, constraints, '/chat');
+  const jobs = merged.find(w => w.id === 'plugin:@timon/kanban:landings')!;
+  assert.equal(jobs.rail, 'chat.left.widget');
+  assert.equal(jobs.group, stack);
+  assert.ok(!jobs.activeTab && !jobs.removed);
+  const tabs = merged.filter(w => !w.removed && w.group === stack).sort((a, b) => a.rang - b.rang).map(w => w.id);
+  assert.equal(tabs.at(-1), 'plugin:@timon/kanban:landings', 'at the end of the stack');
+
+  // A sibling taken out of every stack makes no new stack around it.
+  const loose = stored.map(w => (w.group === stack ? { ...w, group: undefined, activeTab: undefined } : w));
+  assert.equal(mergeWorkspaceWidgets(loose, constraints, '/chat').find(w => w.id === 'plugin:@timon/kanban:landings')?.removed, true);
+});
+
+test('Issues joins a Git stack stored before it, as its last tab, behind the one in front', () => {
+  const issues = 'plugin:github-issues:issues';
+  // A view saved with the five-tab stack, the person having brought Pull requests to the front.
+  const stored = mergeWorkspaceWidgets(null, constraints, '/chat')
+    .filter(w => w.id !== issues)
+    .map(w => (w.group ? { ...w, activeTab: w.id === 'plugin:@timon/kanban:pull-requests' ? true : undefined } : w));
+  const merged = mergeWorkspaceWidgets(stored, constraints, '/chat');
+  const tabs = merged.filter(w => !w.removed && w.group === 'stack:git').sort((a, b) => a.rang - b.rang);
+  assert.deepEqual(tabs.map(w => w.id.split(':').at(-1)), ['branches', 'graph', 'publish', 'pull-requests', 'landings', 'issues']);
+  assert.deepEqual(tabs.filter(w => w.activeTab).map(w => w.id), ['plugin:@timon/kanban:pull-requests'], 'the tab in front stays in front');
+  // Without the plugin, the widget never registers: the stack keeps its five tabs.
+  const without = mergeWorkspaceWidgets(stored, constraints.filter(c => c.id !== issues), '/chat');
+  assert.equal(without.filter(w => !w.removed && w.group === 'stack:git').length, 5);
 });
 
 // TODO #479: the agent strip became the Working agents widget. It was on
 // screen on every view, so a view stored before it gets it in the middle of
-// the top bar, whatever it did with the former « Agents list » card. The
+// the top bar, whatever it did with the former "Agents list" card. The
 // marker is the id's absence from the row: it did not exist before #479, and a
 // row that names it was written since — a removal there is the user's.
 test('Working agents lands in the middle of the top bar on every view that never named it', () => {
@@ -236,4 +318,43 @@ test('Working agents lands in the middle of the top bar on every view that never
   assert.equal(placeOf([], '/chat')?.removed, undefined);
   // Moved by hand: it stays where it was put.
   assert.equal(placeOf([{ id: working, rail: 'sidebar.left.widget', rang: 0, hauteur: 300 }])?.rail, 'sidebar.left.widget');
+});
+
+test('a card split into several widgets hands its place to all of them, as one stack', () => {
+  const card = 'plugin:@acme/tools:card';
+  const parts = ['plugin:@acme/tools:a', 'plugin:@acme/tools:b', 'plugin:@acme/tools:c'];
+  const split: WidgetConstraints[] = [
+    ...constraints,
+    ...parts.map((id, i) => ({ id, defaultHeight: 200, minHeight: 100, defaultZone: 'droite', defaultRank: 10 + i, formerIds: [card] })),
+  ];
+  const docker = 'plugin:@timon/docker-supervision:docker';
+  const stored = [
+    { id: card, rail: 'chat.right.widget', rang: 0, hauteur: 340, heightMode: 'fill', fillPercent: 60 },
+    { id: docker, rail: 'chat.right.widget', rang: 1, hauteur: 260 },
+  ];
+  const merged = mergeWorkspaceWidgets(stored, split, '/chat');
+  const heirs = parts.map((id) => merged.find((w) => w.id === id)!);
+  assert.ok(heirs.every((w) => !w.removed && w.rail === 'chat.right.widget'), 'all three where the card stood');
+  assert.equal(new Set(heirs.map((w) => w.group)).size, 1, 'one stack');
+  assert.ok(heirs[0]!.group, 'a real stack, not three loose cards');
+  assert.deepEqual(heirs.map((w) => w.activeTab === true), [true, false, false], 'the first part in front');
+  assert.ok(heirs.every((w) => w.hauteur === 340 && w.heightMode === 'fill' && w.fillPercent === 60), 'at the card\'s height');
+  const column = merged.filter((w) => !w.removed && w.rail === 'chat.right.widget').sort((a, b) => a.rang - b.rang).map((w) => w.id);
+  assert.deepEqual(column, [...parts, docker], 'above the card that followed it');
+
+  // The card was a background tab of the person's own stack: the parts stay
+  // there, behind the tab that was in front.
+  const stack = 'stack:mine:1';
+  const tabbed = [
+    { ...stored[0]!, group: stack },
+    { ...stored[1]!, group: stack, activeTab: true },
+  ];
+  const kept = mergeWorkspaceWidgets(tabbed, split, '/chat');
+  assert.ok(parts.every((id) => kept.find((w) => w.id === id)?.group === stack));
+  assert.ok(parts.every((id) => !kept.find((w) => w.id === id)?.activeTab), 'Docker stays in front');
+  assert.equal(kept.find((w) => w.id === docker)?.activeTab, true);
+
+  // The card had been taken out: so are its parts, nothing comes back.
+  const away = mergeWorkspaceWidgets([{ ...stored[0]!, removed: true }, stored[1]!], split, '/chat');
+  assert.ok(parts.every((id) => away.find((w) => w.id === id)?.removed === true));
 });

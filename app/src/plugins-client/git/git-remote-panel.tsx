@@ -24,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { CloudUpload, GitBranch, Link2, RefreshCw, Settings2, Upload } from 'lucide-react';
+import { CloudDownload, CloudUpload, GitBranch, Link2, Settings2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -188,7 +188,9 @@ export function GitPublish({ g, repo = null, repoName = null }: {
 
   return (
     <div className="p-3">
-      <div className="grid grid-cols-[72px_1fr] gap-y-1.5 text-[12px]">
+      {/* `minmax(0, 1fr)`: a plain `1fr` grows to its longest value (a branch
+          and its "no upstream" tag), past a 300 px card. */}
+      <div className="grid grid-cols-[72px_minmax(0,1fr)] gap-y-1.5 text-[12px]">
         <span className="text-muted-foreground">{t('gitWidget.publish.remote')}</span>
         {g.remote ? (
           g.remote_web ? (
@@ -219,7 +221,7 @@ export function GitPublish({ g, repo = null, repoName = null }: {
                 onValueChange={setSelectedBranch}
                 disabled={busy !== null}
               >
-                <SelectTrigger className="h-6 gap-1 border-none bg-transparent px-0 text-[12px] shadow-none focus:ring-0 [&>svg]:size-3">
+                <SelectTrigger title={selectedBranch ?? undefined} className="h-6 min-w-0 gap-1 border-none bg-transparent px-0 text-[12px] shadow-none focus:ring-0 [&>span]:!block [&>span]:min-w-0 [&>span]:truncate [&>svg]:size-3">
                   <GitBranch className="size-3 shrink-0 text-muted-foreground/70" />
                   <SelectValue placeholder={t('gitWidget.detached')} />
                 </SelectTrigger>
@@ -379,13 +381,13 @@ export function GitPublish({ g, repo = null, repoName = null }: {
             <Button
               variant="outline"
               size="sm"
-              className="h-7 gap-1 px-2 text-[11px] tabular-nums"
+              className="h-7 min-w-0 max-w-full gap-1 px-2 text-[11px] tabular-nums"
               disabled={!canPush}
               title={manage.denied ?? undefined}
               onClick={() => { void push(); }}
             >
-              <Upload className="size-3" />
-              {busy === 'push'
+              <Upload className="size-3 shrink-0" />
+              <span className="truncate">{busy === 'push'
                 ? t('gitWidget.publish.pushing')
                 : elsewhere
                   ? there?.published && there.ahead === 0
@@ -401,29 +403,31 @@ export function GitPublish({ g, repo = null, repoName = null }: {
                       t(branchPublished || !target ? 'gitWidget.publish.push' : 'gitWidget.publish.publishBranch'),
                       onOther ? selectedBranch : null,
                       ahead ? `(${ahead})` : null,
-                    ].filter(Boolean).join(' ')}
+                    ].filter(Boolean).join(' ')}</span>
             </Button>
+            {/* Secondary gestures in icons, named by their tooltip: with their
+                labels the row ran past a 300 px card. */}
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 px-2 text-[11px]"
+              className="size-7 shrink-0 p-0"
               disabled={busy !== null || !manage.allowed}
               title={manage.denied ?? t('gitWidget.publish.fetchTitle')}
+              aria-label={t('gitWidget.publish.fetch')}
               onClick={() => act('fetch')}
             >
-              <RefreshCw className={cn('size-3', busy === 'fetch' && 'animate-spin')} />
-              {t('gitWidget.publish.fetch')}
+              <CloudDownload className={cn('size-3.5', busy === 'fetch' && 'animate-pulse')} />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 px-2 text-[11px]"
+              className="size-7 shrink-0 p-0"
               disabled={busy !== null}
               title={t('gitWidget.publish.remotesTitle')}
+              aria-label={t('gitWidget.publish.remotes')}
               onClick={() => setRemotesOpen(true)}
             >
-              <Settings2 className="size-3" />
-              {t('gitWidget.publish.remotes')}
+              <Settings2 className="size-3.5" />
             </Button>
           </>
         ) : null}

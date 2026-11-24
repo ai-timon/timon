@@ -1,21 +1,22 @@
 /**
- * Tests de la logique pure des navigateurs embarqués (browser-sessions.ts).
+ * Tests of the pure logic of the embedded browsers (browser-sessions.ts).
  *
- * `node --test --import tsx src/browser-sessions.test.ts` (ou `npm test`).
+ * `node --test --import tsx src/browser-sessions.test.ts` (or `npm test`).
  *
- * On ne teste PAS docker : ce qui casse en silence ici, ce sont l'allocation de
- * port (une collision ne se voit qu'au bind, par un message illisible), la
- * réconciliation (jamais exercée à la main) et surtout le bind CDP — un port de
- * debug publié sur 0.0.0.0 fonctionne parfaitement, il est juste ouvert à tout
- * le réseau.
+ * Docker is NOT tested: what breaks silently here is the port
+ * allocation (a collision only shows at bind time, with an unreadable message),
+ * the reconciliation (never exercised by hand) and above all the CDP bind: a
+ * debug port published on 0.0.0.0 works perfectly, it is just open to the whole
+ * network.
  *
  * Exception: the docker network check (`ensureBrowserNetwork`) takes an
  * injectable runner, so its docker calls are faked here.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import './test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { sep } from 'node:path';
 import {
   CDP_PORT_RANGE,
   GENERAL_BROWSER_SLUG,
@@ -49,14 +50,14 @@ import { dbApi } from './db.js';
 
 /* ── validation du slug ──────────────────────────────────────────────────── */
 
-test('slug : même grammaire que projects.ts', () => {
+test('slug: same grammar as projects.ts', () => {
   assert.ok(isValidSlug('timon'));
   assert.ok(isValidSlug('mail-watch'));
   assert.ok(isValidSlug('example-cms-php'));
   assert.ok(isValidSlug('a.b_c-1'));
 });
 
-test('slug : tout ce qui pourrait s’échapper dans un argument docker est refusé', () => {
+test('slug: anything that could escape into a docker argument is refused', () => {
   assert.ok(!isValidSlug(''));
   assert.ok(!isValidSlug('../../etc'));
   assert.ok(!isValidSlug('timon; rm -rf /'));
@@ -68,29 +69,29 @@ test('slug : tout ce qui pourrait s’échapper dans un argument docker est refu
 
 /* ── allocation de port ──────────────────────────────────────────────────── */
 
-test('port : premier libre de la plage quand rien n’est pris', () => {
+test('port: first free one of the range when nothing is taken', () => {
   assert.equal(allocatePort(CDP_PORT_RANGE, []), 9300);
 });
 
-test('port : saute les ports déjà pris', () => {
+test('port: skips the ports already taken', () => {
   assert.equal(allocatePort(CDP_PORT_RANGE, [9300, 9301, 9303]), 9302);
 });
 
-test('port : le port déjà attribué au projet est réutilisé s’il est libre', () => {
-  // C'est ce qui rend le port STABLE d'un stop/start à l'autre — un client CDP
-  // configuré une fois continue de viser le bon navigateur.
+test('port: the port already assigned to the project is reused if it is free', () => {
+  // That is what makes the port STABLE from one stop/start to the next: a CDP client
+  // configured once keeps targeting the right browser.
   assert.equal(allocatePort(CDP_PORT_RANGE, [9300, 9301], 9307), 9307);
 });
 
-test('port : un préféré occupé ne prime pas — sinon deux projets bindent le même', () => {
+test('port: a busy preferred port does not win, otherwise two projects bind the same one', () => {
   assert.equal(allocatePort(CDP_PORT_RANGE, [9300, 9307], 9307), 9301);
 });
 
-test('port : un préféré hors plage est ignoré', () => {
+test('port: a preferred port outside the range is ignored', () => {
   assert.equal(allocatePort(CDP_PORT_RANGE, [], 22), 9300);
 });
 
-test('port : plage saturée → erreur explicite plutôt qu’un port hors plage', () => {
+test('port: saturated range → explicit error rather than a port outside the range', () => {
   const all = Array.from({ length: 100 }, (_, i) => 9300 + i);
   assert.throws(() => allocatePort(CDP_PORT_RANGE, all), /no free port in range/);
 });
@@ -148,23 +149,23 @@ test('network: unusable → clear error naming the network, the setting and dock
   );
 });
 
-/* ── garde-fou d'exposition ──────────────────────────────────────────────── */
+/* ── exposure guard ──────────────────────────────────────────────── */
 
-test('CDP : publié sur 127.0.0.1 uniquement, jamais sur 0.0.0.0', () => {
+test('CDP: published on 127.0.0.1 only, never on 0.0.0.0', () => {
   const args = runArgs('timon', 9312);
   const publish = args[args.indexOf('-p') + 1];
-  // 9223 = le relais socat, pas Chromium : le débogueur n'écoute que sur la
-  // loopback du conteneur (cf. en-tête du module).
+  // 9223 = the socat relay, not Chromium: the debugger only listens on the
+  // container loopback (see the module header).
   assert.equal(publish, '127.0.0.1:9312:9223');
-  // Le garde-fou est le préfixe d'adresse : sans lui docker publie sur 0.0.0.0.
+  // The guard is the address prefix: without it docker publishes on 0.0.0.0.
   assert.ok(!args.some((a) => a.includes('0.0.0.0:')));
 });
 
-test('le relais CDP partage la pile réseau du navigateur et ne publie rien', () => {
+test('the CDP relay shares the network stack of the browser and publishes nothing', () => {
   const args = proxyArgs('timon');
   assert.equal(args[args.indexOf('--network') + 1], 'container:timon-browser-timon');
-  // Un `-p` sur le relais serait refusé par docker : les ports se publient sur
-  // le conteneur qui possède la pile réseau.
+  // A `-p` on the relay would be refused by docker: ports are published on
+  // the container that owns the network stack.
   assert.ok(!args.includes('-p'));
   assert.equal(proxyName('timon'), 'timon-cdp-timon');
   assert.ok(args.includes('tcp-listen:9223,fork,reuseaddr'));
@@ -172,7 +173,7 @@ test('le relais CDP partage la pile réseau du navigateur et ne publie rien', ()
   assert.ok(args.includes('timon.browser.proxy=1'));
 });
 
-test('le port web (noVNC) n’est PAS publié sur l’host — Traefik le joint par le réseau docker', () => {
+test('the web port (noVNC) is NOT published on the host: Traefik reaches it through the docker network', () => {
   const args = runArgs('timon', 9312);
   const published = args.filter((a, i) => args[i - 1] === '-p');
   assert.equal(published.length, 1);
@@ -180,21 +181,21 @@ test('le port web (noVNC) n’est PAS publié sur l’host — Traefik le joint 
   assert.ok(args.includes('--network'));
 });
 
-test('le conteneur ne ressuscite pas tout seul au reboot', () => {
+test('the container does not come back to life on its own at reboot', () => {
   const args = runArgs('timon', 9300);
   assert.equal(args[args.indexOf('--restart') + 1], 'no');
 });
 
-test('le profil du projet est monté sur /config', () => {
+test('the project profile is mounted on /config', () => {
   const args = runArgs('globex', 9300);
   const mount = args[args.indexOf('-v') + 1] ?? '';
-  assert.ok(mount.endsWith('/browser-profiles/globex:/config'), mount);
+  assert.match(mount, /[\\/]browser-profiles[\\/]globex:\/config$/, mount);
 });
 
-test('le relais web met Traefik au bout de la loopback du navigateur', () => {
+test('the web relay puts Traefik at the end of the browser loopback', () => {
   const args = webProxyArgs('timon');
-  // Même pile réseau que le navigateur : c'est ce qui fait de ce bind 127.0.0.1
-  // SA loopback — celle où atterrit tout `*.localhost` (RFC 6761).
+  // Same network stack as the browser: that is what makes this 127.0.0.1 bind
+  // ITS loopback, the one where every `*.localhost` lands (RFC 6761).
   assert.equal(args[args.indexOf('--network') + 1], 'container:timon-browser-timon');
   assert.equal(webProxyName('timon'), 'timon-web-timon');
   const script = args[args.length - 1] ?? '';
@@ -203,23 +204,24 @@ test('le relais web met Traefik au bout de la loopback du navigateur', () => {
       script.includes(`TCP-LISTEN:${port},fork,reuseaddr,bind=127.0.0.1`),
       `port ${port} absent : ${script}`,
     );
-    assert.ok(script.includes(`TCP:traefik:${port}`), `cible ${port} absente : ${script}`);
+    assert.ok(script.includes(`TCP:traefik:${port}`), `target ${port} missing: ${script}`);
   }
-  // Un relais ne publie jamais de port : docker le refuse quand la pile réseau
-  // appartient à un autre conteneur.
+  // A relay never publishes a port: docker refuses it when the network stack
+  // belongs to another container.
   assert.ok(!args.includes('-p'));
 });
 
-test('le projet est monté au MÊME chemin absolu, en lecture seule', () => {
-  // Le chemin identique des deux côtés est ce qui rend `upload_file` utilisable
-  // sous Linux et macOS : le chemin de l'agent vaut aussi dans le conteneur.
+// Under Windows the target is the POSIX form of the path: the TIM-0120 test below.
+test('the project is mounted at the SAME absolute path, read-only', { skip: process.platform === 'win32' }, () => {
+  // The identical path on both sides is what makes `upload_file` usable
+  // under Linux and macOS: the agent's path is valid in the container too.
   const args = runArgs('timon', 9300, process.cwd());
   const mounts = args.filter((a, i) => args[i - 1] === '--mount');
   assert.deepEqual(mounts, [`type=bind,source=${process.cwd()},target=${process.cwd()},readonly`]);
 });
 
-test('aucun montage projet quand le chemin est inconnu ou absent du disque', () => {
-  // Sans ce garde-fou, docker crée un dossier vide en root à la place du repo.
+test('no project mount when the path is unknown or missing from disk', () => {
+  // Without this guard, docker creates an empty root folder in place of the repository.
   for (const path of [null, undefined, '', '/n/existe/pas']) {
     const args = runArgs('timon', 9300, path);
     assert.ok(!args.includes('--mount'), `${path} → ${args.join(' ')}`);
@@ -227,23 +229,23 @@ test('aucun montage projet quand le chemin est inconnu ou absent du disque', () 
   }
 });
 
-test('TIM-0120 : sous Windows, source Windows et cible POSIX, sans `:` à découper', () => {
+test('TIM-0120: under Windows, Windows source and POSIX target, without a `:` to split', () => {
   const exists = () => true;
   assert.deepEqual(projectMountArgs('D:\\Projects\\SamothRAS', 'win32', exists),
     ['--mount', 'type=bind,source=D:\\Projects\\SamothRAS,target=/host/d/Projects/SamothRAS,readonly']);
   assert.deepEqual(projectMountArgs('\\\\nas\\work\\My Site', 'win32', exists),
     ['--mount', 'type=bind,source=\\\\nas\\work\\My Site,target=/host/unc/nas/work/My Site,readonly']);
-  // Un chemin qui ne se monte pas (pas de lecteur) ne casse pas le démarrage.
+  // A path that cannot be mounted (no drive) does not break the startup.
   assert.deepEqual(projectMountArgs('Projects\\X', 'win32', exists), []);
   assert.deepEqual(projectMountArgs('D:\\Projects\\X', 'win32', () => false), []);
 });
 
-test('--mount : un chemin contenant une virgule ou un guillemet est cité en CSV', () => {
+test('--mount: a path holding a comma or a quote is quoted as CSV', () => {
   assert.deepEqual(projectMountArgs('/srv/a,b "c"', 'linux', () => true),
     ['--mount', 'type=bind,"source=/srv/a,b ""c""","target=/srv/a,b ""c""",readonly']);
 });
 
-test('docker run en échec : son stderr remonte dans l’erreur, tronqué', () => {
+test('failing docker run: its stderr goes up into the error, truncated', () => {
   const warn = console.warn;
   const logged: string[] = [];
   console.warn = (...a: unknown[]) => { logged.push(a.join(' ')); };
@@ -258,30 +260,30 @@ test('docker run en échec : son stderr remonte dans l’erreur, tronqué', () =
   }
 });
 
-test('Chromium est lancé avec le debug distant ouvert dans le conteneur', () => {
+test('Chromium is launched with remote debugging open in the container', () => {
   const cli = runArgs('timon', 9300).find((a) => a.startsWith('CHROME_CLI='));
   assert.ok(cli?.includes('--remote-debugging-port=9222'));
-  // Pas de `--remote-debugging-address` : Chromium l'ignore depuis M111 (vérifié
-  // sur Chrome 151, il écoute sur 127.0.0.1 quoi qu'on lui passe). Le laisser
-  // laisserait croire que le port traverse le mapping alors que non.
+  // No `--remote-debugging-address`: Chromium ignores it since M111 (checked
+  // on Chrome 151, it listens on 127.0.0.1 whatever it is given). Leaving it
+  // would suggest the port crosses the mapping while it does not.
   assert.ok(!cli?.includes('--remote-debugging-address'));
 });
 
 /* ── nommage et labels Traefik ───────────────────────────────────────────── */
 
-test('nom de conteneur déterministe', () => {
+test('deterministic container name', () => {
   assert.equal(containerName('timon'), 'timon-browser-timon');
 });
 
-test('nom de routeur : les points du slug sont neutralisés', () => {
-  // Les clés de label Traefik se découpent sur le point : `routers.a.b.rule`
-  // serait interprété comme le routeur `a`, champ `b`, et ignoré.
+test('router name: the dots of the slug are neutralised', () => {
+  // Traefik label keys are split on the dot: `routers.a.b.rule`
+  // would be read as router `a`, field `b`, and ignored.
   assert.equal(routerName('mon.projet'), 'timon-browser-mon-projet');
   assert.equal(routerName('Mail_Watch'), 'timon-browser-mail-watch');
   assert.ok(/^[a-z0-9-]+$/.test(routerName('a.b_C')));
 });
 
-test('labels Traefik : règle sur le préfixe, strip du préfixe, port web interne', () => {
+test('Traefik labels: rule on the prefix, prefix strip, internal web port', () => {
   const labels = traefikLabels('timon');
   const rule = labels.find((l) => l.startsWith('traefik.http.routers.timon-browser-timon.rule='));
   assert.ok(rule?.includes('PathPrefix(`/browser/timon`)'), rule);
@@ -289,22 +291,22 @@ test('labels Traefik : règle sur le préfixe, strip du préfixe, port web inter
   assert.ok(labels.includes('traefik.enable=true'));
   assert.ok(labels.some((l) => l.endsWith('.stripprefix.prefixes=/browser/timon')));
   assert.ok(labels.some((l) => /loadbalancer\.server\.port=\d+$/.test(l)));
-  // Le marqueur d'appartenance : filtre de la réconciliation.
+  // The ownership marker: the reconciliation filter.
   assert.ok(labels.includes('timon.browser=1'));
 });
 
-test('labels Traefik : un routeur http et un routeur https, comme l’app', () => {
+test('Traefik labels: an http router and an https router, like the app', () => {
   const labels = traefikLabels('timon');
   assert.ok(labels.includes('traefik.http.routers.timon-browser-timon.entrypoints=web'));
   assert.ok(labels.includes('traefik.http.routers.timon-browser-timon-secure.entrypoints=websecure'));
   assert.ok(labels.includes('traefik.http.routers.timon-browser-timon-secure.tls=true'));
 });
 
-test('chemin HTTP dérivé du slug', () => {
+test('HTTP path derived from the slug', () => {
   assert.equal(browserPath('mail-watch'), '/browser/mail-watch');
 });
 
-/* ── réconciliation ──────────────────────────────────────────────────────── */
+/* ── reconciliation ──────────────────────────────────────────────────────── */
 
 const row = (project: string, status: 'running' | 'stopped') => ({
   project,
@@ -312,7 +314,7 @@ const row = (project: string, status: 'running' | 'stopped') => ({
   status,
 });
 
-test('réconciliation : aucun écart → aucune correction', () => {
+test('reconciliation: no gap → no correction', () => {
   const d = diffSessions(
     [row('timon', 'running'), row('globex', 'stopped')],
     new Set(['timon-browser-timon']),
@@ -320,26 +322,26 @@ test('réconciliation : aucun écart → aucune correction', () => {
   assert.deepEqual(d, { toStop: [], toStart: [] });
 });
 
-test('réconciliation : base "running" mais conteneur disparu → stopped', () => {
+test('reconciliation: database "running" but container gone → stopped', () => {
   const d = diffSessions([row('timon', 'running')], new Set());
   assert.deepEqual(d.toStop, ['timon']);
   assert.deepEqual(d.toStart, []);
 });
 
-test('réconciliation : conteneur vivant mais base "stopped" → running', () => {
-  // Le cas dangereux : sans ce sens-là, un `start` détruirait un navigateur
-  // bien vivant, session de travail comprise.
+test('reconciliation: container alive but database "stopped" → running', () => {
+  // The dangerous case: without this direction, a `start` would destroy a browser
+  // that is very much alive, work session included.
   const d = diffSessions([row('globex', 'stopped')], new Set(['timon-browser-globex']));
   assert.deepEqual(d.toStart, ['globex']);
   assert.deepEqual(d.toStop, []);
 });
 
-test('réconciliation : un conteneur d’un autre projet ne valide pas le mien', () => {
+test("reconciliation: another project's container does not validate mine", () => {
   const d = diffSessions([row('timon', 'running')], new Set(['timon-browser-globex']));
   assert.deepEqual(d.toStop, ['timon']);
 });
 
-test('réconciliation : idempotente — rejouée sur l’état corrigé, elle ne fait rien', () => {
+test('reconciliation: idempotent, replayed on the corrected state it does nothing', () => {
   const rows = [row('timon', 'running'), row('globex', 'stopped')];
   const live = new Set<string>();
   const first = diffSessions(rows, live);
@@ -351,8 +353,8 @@ test('réconciliation : idempotente — rejouée sur l’état corrigé, elle ne
 
 /* ── branchement de chrome-devtools-mcp ──────────────────────────────────── */
 
-/** Faux `getBrowserSession` : le branchement se teste sans docker ni base, ce
- *  qui est tout l'intérêt d'avoir sorti la résolution en fonction pure. */
+/** A fake `getBrowserSession`: the wiring is tested without docker or a database, which
+ *  is the whole point of having moved the resolution into a pure function. */
 function fakeLookup(sessions: Record<string, { status: string; cdp_url: string }>) {
   const calls: string[] = [];
   const lookup = (slug: string) => {
@@ -364,55 +366,55 @@ function fakeLookup(sessions: Record<string, { status: string; cdp_url: string }
 
 const RUNNING = { timon: { status: 'running', cdp_url: 'http://127.0.0.1:9300' } };
 
-test('mcp : navigateur debout → --browserUrl sur le CDP du projet', () => {
+test('mcp: browser up → --browserUrl on the project CDP', () => {
   const { lookup } = fakeLookup(RUNNING);
   const entry = chromeDevtoolsMcpEntry({ project: 'timon' }, lookup);
   assert.ok(entry);
   assert.equal(entry.command, 'npx');
-  // L'URL doit suivre IMMÉDIATEMENT le flag : c'est un argv, pas un objet.
+  // The URL must IMMEDIATELY follow the flag: it is an argv, not an object.
   const i = entry.args.indexOf('--browserUrl');
   assert.ok(i >= 0, '--browserUrl absent');
   assert.equal(entry.args[i + 1], 'http://127.0.0.1:9300');
   assert.ok(entry.args.some((a) => a.startsWith('chrome-devtools-mcp')));
 });
 
-test('mcp : la clé ne prend pas celle du chrome-devtools de l\'utilisateur', () => {
-  // Timon n'impose rien : `chrome-devtools` reste à l'utilisateur, secours si le
-  // navigateur intégré casse.
+test("mcp: the key does not take the one of the user's chrome-devtools", () => {
+  // Timon imposes nothing: `chrome-devtools` stays the user's, a fallback if the
+  // built-in browser breaks.
   assert.equal(CHROME_DEVTOOLS_MCP_KEY, 'timon-browser');
 });
 
-test('mcp : aucune session → null (repli sur le Chrome local du CLI)', () => {
+test('mcp: no session → null (fallback on the local Chrome of the CLI)', () => {
   const { lookup } = fakeLookup({});
   assert.equal(chromeDevtoolsMcpEntry({ project: 'timon' }, lookup), null);
 });
 
-test('mcp : session "stopped" → null, même si elle porte encore son port', () => {
-  // La ligne survit à l'arrêt du conteneur (elle porte le port attribué) :
-  // sans ce test, on brancherait le MCP sur un port fermé — panne muette.
+test('mcp: "stopped" session → null, even if it still carries its port', () => {
+  // The row survives the stop of the container (it carries the assigned port):
+  // without this test, the MCP would be wired to a closed port, a mute failure.
   const { lookup } = fakeLookup({
     timon: { status: 'stopped', cdp_url: 'http://127.0.0.1:9300' },
   });
   assert.equal(chromeDevtoolsMcpEntry({ project: 'timon' }, lookup), null);
 });
 
-test('mcp : le projet est déduit du cwd quand l’agent n’en déclare pas', () => {
+test('mcp: the project is inferred from the cwd when the agent declares none', () => {
   const { lookup, calls } = fakeLookup(RUNNING);
   assert.ok(chromeDevtoolsMcpEntry({ cwd: '/home/user/webdev/projects/timon' }, lookup));
   assert.deepEqual(calls, ['timon']);
 });
 
-test('mcp : le projet déclaré prime sur le cwd', () => {
-  // Cas des tasks : leur cwd est un worktree `~/.timon/worktrees/<id>`, d'où
-  // aucun slug ne se déduit — sans la précédence, aucune task n'aurait de
-  // navigateur.
+test('mcp: the declared project wins over the cwd', () => {
+  // The case of tasks: their cwd is a `~/.timon/worktrees/<id>` worktree, from which
+  // no slug can be inferred; without the precedence, no task would have a
+  // browser.
   const { lookup, calls } = fakeLookup(RUNNING);
   assert.ok(chromeDevtoolsMcpEntry(
     { project: 'timon', cwd: '/home/user/.timon/worktrees/abc-123' }, lookup));
   assert.deepEqual(calls, ['timon']);
 });
 
-test('mcp : les agents sans projet utilisent le navigateur général s’il tourne', () => {
+test('mcp: agents without a project use the general browser if it runs', () => {
   const { lookup, calls } = fakeLookup({ [GENERAL_BROWSER_SLUG]: RUNNING.timon });
   for (const ref of [null, {}, { cwd: '/home/user/.timon/worktrees/abc-123' }, { project: '', cwd: '' }]) {
     assert.ok(chromeDevtoolsMcpEntry(ref, lookup));
@@ -422,7 +424,7 @@ test('mcp : les agents sans projet utilisent le navigateur général s’il tour
   assert.equal(chromeDevtoolsMcpEntry({}, () => ({ ...RUNNING.timon, status: 'stopped' })), null);
 });
 
-test('mcp : sous Windows, le relais traduit les chemins d’upload_file (TIM-0120)', () => {
+test('mcp: under Windows, the relay translates the upload_file paths (TIM-0120)', () => {
   const lookup = () => ({ ...RUNNING.timon, status: 'running' as const, project_path: 'D:\\Projects\\X' });
   const entry = chromeDevtoolsMcpEntry({ project: 'timon' }, lookup, 'win32');
   assert.ok(entry);
@@ -435,7 +437,7 @@ test('mcp : sous Windows, le relais traduit les chemins d’upload_file (TIM-012
   assert.equal(spec.platform, 'win32');
 });
 
-test('mcp : Linux, macOS ou Windows sans projet monté → chrome-devtools-mcp en direct', () => {
+test('mcp: Linux, macOS or Windows without a mounted project → chrome-devtools-mcp directly', () => {
   const withPath = () => ({ ...RUNNING.timon, status: 'running' as const, project_path: '/home/user/x' });
   for (const platform of ['linux', 'darwin'] as const) {
     assert.equal(chromeDevtoolsMcpEntry({ project: 'timon' }, withPath, platform)?.command, 'npx');
@@ -444,46 +446,46 @@ test('mcp : Linux, macOS ou Windows sans projet monté → chrome-devtools-mcp e
   assert.equal(chromeDevtoolsMcpEntry({ project: 'timon' }, noPath, 'win32')?.command, 'npx');
 });
 
-test('le profil général persiste sous TIMON_HOME sans montage du cwd', () => {
+test('the general profile persists under TIMON_HOME without mounting the cwd', () => {
   const args = runArgs(GENERAL_BROWSER_SLUG, 9300);
   const mounts = args.filter((_, i) => args[i - 1] === '-v');
   assert.equal(mounts.length, 1);
-  assert.ok(mounts[0]?.endsWith(`/browser-profiles/${GENERAL_BROWSER_SLUG}:/config`));
+  assert.ok(mounts[0]?.endsWith(`${sep}browser-profiles${sep}${GENERAL_BROWSER_SLUG}:/config`), mounts[0]);
 });
 
-test('mcp : un slug hors grammaire est refusé avant toute résolution', () => {
-  // Le slug finit dans un argv : il ne doit jamais atteindre la base ni docker
-  // sans être passé par `isValidSlug`.
+test('mcp: a slug outside the grammar is refused before any resolution', () => {
+  // The slug ends up in an argv: it must never reach the database or docker
+  // without going through `isValidSlug`.
   const { lookup, calls } = fakeLookup(RUNNING);
   assert.equal(chromeDevtoolsMcpEntry({ project: 'timon; rm -rf /' }, lookup), null);
   assert.deepEqual(calls, []);
 });
 
-/* ── seuil d'inactivité (isIdleExpired) ──────────────────────────────────── */
+/* ── idle threshold (isIdleExpired) ──────────────────────────────────── */
 
-test('idle : désactivé (≤0) → jamais expiré, quelle que soit l’ancienneté', () => {
+test('idle: disabled (≤0) → never expired, whatever the age', () => {
   assert.equal(isIdleExpired({ last_used_at: 0, started_at: 0 }, Date.now(), 0), false);
   assert.equal(isIdleExpired({ last_used_at: 0, started_at: 0 }, Date.now(), -5), false);
 });
 
-test('idle : sous le seuil → pas expiré', () => {
+test('idle: under the threshold → not expired', () => {
   const now = 1_000_000_000_000;
   assert.equal(isIdleExpired({ last_used_at: now - 29 * 60_000, started_at: null }, now, 30), false);
 });
 
-test('idle : au-delà du seuil → expiré', () => {
+test('idle: beyond the threshold → expired', () => {
   const now = 1_000_000_000_000;
   assert.equal(isIdleExpired({ last_used_at: now - 31 * 60_000, started_at: null }, now, 30), true);
 });
 
-test('idle : pile au seuil → expiré (borne inclusive)', () => {
+test('idle: exactly at the threshold → expired (inclusive bound)', () => {
   const now = 1_000_000_000_000;
   assert.equal(isIdleExpired({ last_used_at: now - 30 * 60_000, started_at: null }, now, 30), true);
 });
 
-test('idle : session jamais touchée retombe sur started_at', () => {
-  // C'est le cas d'une session qui vient d'ouvrir : aucun signal ne l'a encore
-  // bumpée, elle ne doit pas paraître infiniment vieille pour autant.
+test('idle: a session never touched falls back on started_at', () => {
+  // That is the case of a session that just opened: no signal has bumped it
+  // yet, it must not look infinitely old for all that.
   const now = 1_000_000_000_000;
   assert.equal(
     isIdleExpired({ last_used_at: null, started_at: now - 2 * 60_000 }, now, 30),
@@ -493,16 +495,16 @@ test('idle : session jamais touchée retombe sur started_at', () => {
   assert.equal(
     isIdleExpired({ last_used_at: null, started_at: now - 45 * 60_000 }, now, 30),
     true,
-    'ouverte il y a 45 minutes, jamais touchée depuis : expirée',
+    'opened 45 minutes ago, never touched since: expired',
   );
 });
 
-test('idle : ni last_used_at ni started_at → on refuse de fermer plutôt que deviner', () => {
+test('idle: neither last_used_at nor started_at → refuse to close rather than guess', () => {
   const now = 1_000_000_000_000;
   assert.equal(isIdleExpired({ last_used_at: null, started_at: null }, now, 30), false);
 });
 
-/* ── activité (dbApi, table réelle isolée par test-home.js) ─────────────── */
+/* ── activity (dbApi, real table isolated by test-home.js) ─────────────── */
 
 function seedRunningSession(project: string, startedAt: number): void {
   dbApi.upsertBrowserSession({
@@ -516,54 +518,54 @@ function seedRunningSession(project: string, startedAt: number): void {
   });
 }
 
-test('activité : une session qui démarre est seedée sur started_at, pas NULL', () => {
+test('activity: a starting session is seeded on started_at, not NULL', () => {
   seedRunningSession('seed-a', 12345);
   const row = dbApi.getBrowserSession('seed-a');
   assert.equal(row?.last_used_at, 12345);
 });
 
-test('activité : touchBrowserSessionActivity bumpe last_used_at d’une session running', () => {
+test('activity: touchBrowserSessionActivity bumps last_used_at of a running session', () => {
   seedRunningSession('seed-b', 1000);
   touchBrowserSessionActivity('seed-b', 99999);
   assert.equal(dbApi.getBrowserSession('seed-b')?.last_used_at, 99999);
 });
 
-test('activité : touchBrowserSessionActivity est un no-op sur une session arrêtée', () => {
+test('activity: touchBrowserSessionActivity is a no-op on a stopped session', () => {
   seedRunningSession('seed-c', 1000);
   dbApi.setBrowserSessionStatus('seed-c', 'stopped', 2000);
   touchBrowserSessionActivity('seed-c', 99999);
-  // Un signal en retard ne doit pas ressusciter la fraîcheur d'une ligne
-  // éteinte : `last_used_at` reste celui d'avant l'arrêt.
+  // A late signal must not revive the freshness of a stopped
+  // row: `last_used_at` stays the one from before the stop.
   assert.equal(dbApi.getBrowserSession('seed-c')?.last_used_at, 1000);
 });
 
-test('activité : touchBrowserSessionActivity sur un projet sans session n’explose pas', () => {
+test('activity: touchBrowserSessionActivity on a project without a session does not blow up', () => {
   assert.doesNotThrow(() => touchBrowserSessionActivity('jamais-ouvert'));
 });
 
-test('noteBrowserSessionSpawned : bumpe le projet résolu, running seulement', () => {
+test('noteBrowserSessionSpawned: bumps the resolved project, running only', () => {
   seedRunningSession('seed-d', 1000);
   noteBrowserSessionSpawned({ project: 'seed-d' });
   assert.ok((dbApi.getBrowserSession('seed-d')?.last_used_at ?? 0) > 1000);
 });
 
-test('noteBrowserSessionSpawned : un agent orphelin maintient le navigateur général actif', () => {
+test('noteBrowserSessionSpawned: an orphan agent keeps the general browser active', () => {
   seedRunningSession(GENERAL_BROWSER_SLUG, 1000);
   noteBrowserSessionSpawned({});
   assert.ok((dbApi.getBrowserSession(GENERAL_BROWSER_SLUG)?.last_used_at ?? 0) > 1000);
 });
 
-test('noteBrowserSessionSpawned : un slug hors grammaire est refusé avant toute résolution', () => {
+test('noteBrowserSessionSpawned: a slug outside the grammar is refused before any resolution', () => {
   assert.doesNotThrow(() => noteBrowserSessionSpawned({ project: 'timon; rm -rf /' }));
 });
 
-/* ── pages CDP : filtrage, empreinte ─────────────────────────────────────── */
+/* ── CDP pages: filtering, fingerprint ─────────────────────────────────────── */
 
-test('isRestorablePage : garde une page http/https réelle', () => {
+test('isRestorablePage: keeps a real http/https page', () => {
   assert.ok(isRestorablePage({ type: 'page', url: 'https://example.com/dashboard' }));
 });
 
-test('isRestorablePage : écarte about:blank, les pages internes et les non-pages', () => {
+test('isRestorablePage: drops about:blank, internal pages and non-pages', () => {
   assert.ok(!isRestorablePage({ type: 'page', url: 'about:blank' }));
   assert.ok(!isRestorablePage({ type: 'page', url: '' }));
   assert.ok(!isRestorablePage({ type: 'page', url: 'chrome://settings' }));
@@ -573,41 +575,41 @@ test('isRestorablePage : écarte about:blank, les pages internes et les non-page
   assert.ok(!isRestorablePage({ type: 'service_worker', url: 'https://example.com/sw.js' }));
 });
 
-test('hashPages : insensible à l’ordre des onglets', () => {
+test('hashPages: insensitive to the order of tabs', () => {
   const a = [{ url: 'https://a.test', title: 'A' }, { url: 'https://b.test', title: 'B' }];
   const b = [{ url: 'https://b.test', title: 'B' }, { url: 'https://a.test', title: 'A' }];
   assert.equal(hashPages(a), hashPages(b));
 });
 
-test('hashPages : sensible à un changement de titre (navigation dans le même onglet)', () => {
+test('hashPages: sensitive to a title change (navigation in the same tab)', () => {
   const before = [{ url: 'https://a.test', title: 'Chargement…' }];
   const after = [{ url: 'https://a.test', title: 'Tableau de bord' }];
   assert.notEqual(hashPages(before), hashPages(after));
 });
 
-test('hashPages : sensible à un onglet en plus ou en moins', () => {
+test('hashPages: sensitive to one tab more or less', () => {
   const one = [{ url: 'https://a.test', title: 'A' }];
   const two = [{ url: 'https://a.test', title: 'A' }, { url: 'https://b.test', title: 'B' }];
   assert.notEqual(hashPages(one), hashPages(two));
 });
 
-/* ── restauration des onglets (parseStoredTabs, missingTabs — dédup) ────── */
+/* ── tab restoration (parseStoredTabs, missingTabs, dedup) ────── */
 
-test('parseStoredTabs : lit un JSON valide', () => {
+test('parseStoredTabs: reads a valid JSON', () => {
   const raw = JSON.stringify([{ url: 'https://a.test', title: 'A' }]);
   assert.deepEqual(parseStoredTabs(raw), [{ url: 'https://a.test', title: 'A' }]);
 });
 
-test('parseStoredTabs : null, JSON invalide, non-tableau ou entrées malformées → liste vide', () => {
+test('parseStoredTabs: null, invalid JSON, non-array or malformed entries → empty list', () => {
   assert.deepEqual(parseStoredTabs(null), []);
   assert.deepEqual(parseStoredTabs('{ pas du json'), []);
-  assert.deepEqual(parseStoredTabs('{"url":"https://a.test"}'), [], 'un objet, pas un tableau');
+  assert.deepEqual(parseStoredTabs('{"url":"https://a.test"}'), [], 'an object, not an array');
   assert.deepEqual(parseStoredTabs('[{"url":"https://a.test"}]'), [], 'title manquant');
   assert.deepEqual(parseStoredTabs('[{"title":"A"}]'), [], 'url manquante');
   assert.deepEqual(parseStoredTabs('[null, 42, "x"]'), []);
 });
 
-test('parseStoredTabs : filtre les entrées invalides sans jeter les valides', () => {
+test('parseStoredTabs: filters invalid entries without dropping the valid ones', () => {
   const raw = JSON.stringify([
     { url: 'https://a.test', title: 'A' },
     { url: 42, title: 'B' },
@@ -619,32 +621,32 @@ test('parseStoredTabs : filtre les entrées invalides sans jeter les valides', (
   ]);
 });
 
-test('dédup : un onglet déjà restauré par Chromium ne se rouvre pas', () => {
-  // C'est le bug explicitement à éviter : chemin naturel + filet actifs en
-  // même temps ne doivent jamais doubler un onglet.
+test('dedup: a tab already restored by Chromium is not reopened', () => {
+  // That is the bug explicitly to avoid: the natural path + the active safety net at
+  // the same time must never double a tab.
   const stored = [{ url: 'https://a.test', title: 'A' }, { url: 'https://b.test', title: 'B' }];
   const alreadyOpen = [{ url: 'https://a.test' }, { url: 'https://b.test' }];
   assert.deepEqual(missingTabs(stored, alreadyOpen), []);
 });
 
-test('dédup : seuls les onglets manquants sont retenus', () => {
+test('dedup: only the missing tabs are kept', () => {
   const stored = [{ url: 'https://a.test', title: 'A' }, { url: 'https://b.test', title: 'B' }];
   const alreadyOpen = [{ url: 'https://a.test' }];
   assert.deepEqual(missingTabs(stored, alreadyOpen), [{ url: 'https://b.test', title: 'B' }]);
 });
 
-test('dédup : rien de stocké ou rien d’ouvert → cas limites cohérents', () => {
+test('dedup: nothing stored or nothing open → consistent edge cases', () => {
   assert.deepEqual(missingTabs([], [{ url: 'https://a.test' }]), []);
   const stored = [{ url: 'https://a.test', title: 'A' }];
   assert.deepEqual(missingTabs(stored, []), stored);
 });
 
-test('dédup : comparaison sur l’URL EXACTE — un paramètre de plus n’est pas un doublon', () => {
-  // Documente le choix assumé : un `?utm=` de plus donnerait un faux
-  // "manquant" et ouvrirait un doublon quand même (cf. commentaire de
-  // `missingTabs`). Pas idéal, mais un faux "manquant" occasionnel est un
-  // bien moindre mal qu'une comparaison floue qui masquerait un vrai onglet
-  // disparu.
+test('dedup: comparison on the EXACT URL, one more parameter is not a duplicate', () => {
+  // Documents the deliberate choice: one more `?utm=` would give a false
+  // "missing" and would open a duplicate anyway (see the comment of
+  // `missingTabs`). Not ideal, but an occasional false "missing" is a
+  // much lesser evil than a fuzzy comparison that would hide a really
+  // vanished tab.
   const stored = [{ url: 'https://a.test/?utm=1', title: 'A' }];
   const alreadyOpen = [{ url: 'https://a.test/' }];
   assert.deepEqual(missingTabs(stored, alreadyOpen), stored);

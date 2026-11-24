@@ -1,17 +1,17 @@
 /**
- * Bout en bout du 402 : le payload de l'incident, et rien d'autre, doit
- * déplacer la série.
+ * End to end of the 402: the incident payload, and nothing else, must
+ * move the series.
  *
- * C'est LE test qui aurait attrapé la nuit du 2026-09-01. La chaîne complète
- * est rejouée avec le `result` de l'incident recopié tel quel — autopsie des
- * events (`finishMission`), cause d'interruption, bascule de série, remise en
- * file. Rien n'est simulé en cours de route : on publie `mission_complete` avec
- * la cause que `finishMission` a rendue, exactement comme `agent.ts` le fait à
- * la mort d'un process.
+ * It is THE test that would have caught the night of 2026-09-01. The full chain
+ * is replayed with the incident `result` copied as is: autopsy of the
+ * events (`finishMission`), interruption cause, series switch, requeue.
+ * Nothing is simulated along the way: `mission_complete` is published with
+ * the cause `finishMission` returned, exactly as `agent.ts` does at
+ * the death of a process.
  *
- * Le coupe-circuit de fb-2 est laissé HORS du test (aucun tour stérile n'est
- * compté ici) : s'il participait, la série bougerait pour la bonne raison sans
- * rien prouver du chemin 402.
+ * The fb-2 circuit breaker is left OUT of the test (no sterile turn is
+ * counted here): if it took part, the series would move for the right reason without
+ * proving anything about the 402 path.
  *
  * `node --test --import tsx src/exhausted-fallback-chain.test.ts`
  */
@@ -49,9 +49,9 @@ function countFallbackNotifications(): number {
 }
 
 /**
- * Le `result` reçu quatre fois cette nuit-là, copié depuis
- * `docs/INCIDENT-402-GROK-FALLBACK.md`. Le statut HTTP est enfoui dans une
- * chaîne de `errors[]` : aucun champ structuré ne dit 402.
+ * The `result` received four times that night, copied from
+ * `docs/INCIDENT-402-GROK-FALLBACK.md`. The HTTP status is buried in an
+ * `errors[]` string: no structured field says 402.
  */
 const EXHAUSTED_RESULT = {
   type: 'result',
@@ -67,7 +67,7 @@ const EXHAUSTED_RESULT = {
   ],
 };
 
-test('le 402 de l’incident déplace la série et remet ses tasks en file', async () => {
+test("the incident's 402 moves the series and requeues its tasks", async () => {
   clearBackendCooldown('grok');
   const stop = watchMissionComplete();
   try {
@@ -77,36 +77,36 @@ test('le 402 de l’incident déplace la série et remet ses tasks en file', asy
     const missionId = randomUUID();
     const blockedId = randomUUID();
 
-    dbApi.createMission(pilotId, 'p.main', 'pilote de la série');
+    dbApi.createMission(pilotId, 'p.main', 'pilote de la série'); // french-ok: free-text sample data
     dbApi.createTask(codeId, 'volet coder', 'p.coder', {
       type: 'code', seriesId, creatorMissionId: pilotId,
       backendOverride: 'grok', modelOverride: 'grok-4.6',
     });
-    // La task suivante du chantier, déjà bloquée par un 402 antérieur : c'est
-    // celle qui restait en rade quand seule la cause `rate_limit` était remise
-    // en file.
+    // The next task of the work, already blocked by an earlier 402: it is
+    // the one left stranded when only the `rate_limit` cause was
+    // requeued.
     dbApi.createTask(blockedId, 'volet suivant', 'p.coder', {
       type: 'code', seriesId, creatorMissionId: pilotId,
       backendOverride: 'grok', modelOverride: 'grok-4.6',
     });
-    dbApi.setTaskInterrupted(blockedId, 'exhausted', 'compte sans crédit (HTTP 402)');
+    dbApi.setTaskInterrupted(blockedId, 'exhausted', 'compte sans crédit (HTTP 402)'); // french-ok: free-text sample data
 
     dbApi.createMission(missionId, 'p.coder', 'volet coder');
     dbApi.assignTaskMission(codeId, missionId);
     dbApi.insertEvent(missionId, 'result', EXHAUSTED_RESULT);
 
-    // Ce que fait `agent.ts` en voyant passer l'event : reconnaître le hit et
-    // écarter le backend pour TOUT Timon, sans quoi la task remise en file
-    // repartirait sur le compte à sec au tick suivant.
+    // What `agent.ts` does on seeing the event go by: recognise the hit and
+    // set the backend aside for ALL of Timon, otherwise the requeued task
+    // would leave again on the dry account at the next tick.
     const rl = bestRateLimit([{ type: 'result', payload: EXHAUSTED_RESULT }], { includePending: true });
-    assert.ok(rl && rl.kind === 'exhausted', 'le 402 doit être lu comme un solde épuisé, pas un quota');
+    assert.ok(rl && rl.kind === 'exhausted', 'the 402 must be read as an exhausted balance, not a quota');
     noteBackendRateLimit('grok', rl);
 
-    // Ce que fait `agent.ts` à la sortie du process : finaliser, puis publier
-    // la cause EFFECTIVE — celle que l'autopsie des events a établie, pas le
-    // `crash` deviné par l'appelant.
+    // What `agent.ts` does at the exit of the process: finalise, then publish
+    // the EFFECTIVE cause, the one the autopsy of the events established, not the
+    // `crash` guessed by the caller.
     const effective = dbApi.finishMission(missionId, 'failed', 1, 'crash');
-    assert.equal(effective, 'exhausted', 'le 402 ne doit plus se lire « crash »');
+    assert.equal(effective, 'exhausted', 'the 402 must no longer read "crash"');
     bus.publish({
       kind: 'mission_complete', missionId, status: 'failed', exitCode: 1, reason: effective,
     });
@@ -114,41 +114,41 @@ test('le 402 de l’incident déplace la série et remet ses tasks en file', asy
     const blocked = dbApi.getTask(codeId);
     assert.equal(blocked?.status, 'BLOCKED');
     assert.equal(blocked?.interrupted_reason, 'exhausted');
-    // Un compte à sec n'annonce aucune réouverture : écrire une heure (ou même
-    // "heure non communiquée") ferait attendre un événement qui n'arrivera
-    // pas, seul un réapprovisionnement ramène le backend.
+    // A dry account announces no reopening: writing a time (or even
+    // "time not communicated") would make one wait for an event that will not
+    // come, only a top-up brings the backend back.
     const motif = blocked?.blocked_reason ?? '';
-    assert.ok(motif.includes('out of credit'), `motif inattendu : ${motif}`);
-    // Le libellé dit "nothing reopens on its own" : ce qu'on interdit, c'est
-    // d'ANNONCER une réouverture (heure donnée, ou heure manquante).
+    assert.ok(motif.includes('out of credit'), `unexpected reason: ${motif}`);
+    // The label says "nothing reopens on its own": what is forbidden is
+    // ANNOUNCING a reopening (a given time, or a missing time).
     assert.ok(
       !/reopens at|reopening time/.test(motif),
-      `le motif ne doit pas annoncer de réouverture : ${motif}`,
+      `the reason must not announce a reopening: ${motif}`,
     );
 
-    // La bascule de série est asynchrone (import paresseux d'agent.ts).
+    // The series switch is asynchronous (lazy import of agent.ts).
     await new Promise((r) => setTimeout(r, 200));
 
     for (const id of [codeId, blockedId]) {
       const moved = dbApi.getTask(id);
-      assert.equal(moved?.backend_override, 'codex', 'la série doit repartir sur son repli');
-      // Remise en file COMPLÈTE : une task qui garde son motif ou sa mission
-      // morte n'est pas reprenable, elle est seulement moins visible.
+      assert.equal(moved?.backend_override, 'codex', 'the series must restart on its fallback');
+      // A FULL requeue: a task that keeps its reason or its dead mission
+      // cannot be picked up, it is only less visible.
       assert.equal(moved?.status, 'PENDING');
       assert.equal(moved?.interrupted_reason, null);
       assert.equal(moved?.blocked_reason, null);
       assert.equal(moved?.mission_id, null);
     }
 
-    // Et le backend est écarté pour tout Timon : sans cela, la task remise en
-    // file repartirait sur le compte à sec au tick suivant.
+    // And the backend is set aside for all of Timon: without that, the requeued task
+    // would leave again on the dry account at the next tick.
     assert.equal(dbApi.getBackendCooldown('grok')?.kind, 'exhausted');
   } finally {
     stop();
   }
 });
 
-test('une portée sans repli n’est pas débloquée sur le backend mort', async () => {
+test('a scope without a fallback is not unblocked on the dead backend', async () => {
   clearBackendCooldown('grok');
   const stop = watchMissionComplete();
   try {
@@ -158,7 +158,7 @@ test('une portée sans repli n’est pas débloquée sur le backend mort', async
     const docId = randomUUID();
     const missionId = randomUUID();
 
-    dbApi.createMission(pilotId, 'p.main', 'pilote de la série');
+    dbApi.createMission(pilotId, 'p.main', 'pilote de la série'); // french-ok: free-text sample data
     dbApi.createTask(codeId, 'volet coder', 'p.coder', {
       type: 'code', seriesId, creatorMissionId: pilotId,
       backendOverride: 'grok', modelOverride: 'grok-4.6',
@@ -167,9 +167,9 @@ test('une portée sans repli n’est pas débloquée sur le backend mort', async
       type: 'doc', seriesId, creatorMissionId: pilotId,
       backendOverride: 'grok', modelOverride: 'grok-4.6',
     });
-    // "cette portée ne bascule pas" : un refus explicite, pas une omission.
+    // "this scope does not switch": an explicit refusal, not an omission.
     dbApi.setSeriesFallback(seriesId, 'doc', null, null);
-    dbApi.setTaskInterrupted(docId, 'exhausted', 'compte sans crédit (HTTP 402)');
+    dbApi.setTaskInterrupted(docId, 'exhausted', 'compte sans crédit (HTTP 402)'); // french-ok: free-text sample data
 
     dbApi.createMission(missionId, 'p.coder', 'volet coder');
     dbApi.assignTaskMission(codeId, missionId);
@@ -181,8 +181,8 @@ test('une portée sans repli n’est pas débloquée sur le backend mort', async
     await new Promise((r) => setTimeout(r, 200));
 
     assert.equal(dbApi.getTask(codeId)?.backend_override, 'codex');
-    // La doc n'a pas de repli : la remettre en file la relancerait sur le
-    // compte à sec — l'échec assumé vaut mieux que le mur rejoué.
+    // The doc has no fallback: requeuing it would relaunch it on the
+    // dry account; the accepted failure is better than the wall replayed.
     const doc = dbApi.getTask(docId);
     assert.equal(doc?.backend_override, 'grok');
     assert.equal(doc?.status, 'BLOCKED');
@@ -210,7 +210,7 @@ test('an orphan discovered at boot switches its series over and requeues its tas
   const missionId = randomUUID();
 
   // The pilot died with the daemon: `terminated`, not `running`.
-  dbApi.createMission(pilotId, 'p.main', 'pilote de la série');
+  dbApi.createMission(pilotId, 'p.main', 'pilote de la série'); // french-ok: free-text sample data
   dbApi.setMissionLlmOverrides(pilotId, 'grok', 'grok-4.6');
   dbApi.finishMission(pilotId, 'terminated', 0, 'killed');
 

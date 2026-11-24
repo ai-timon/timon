@@ -33,7 +33,7 @@ test('a page without a session goes to /login, on the same origin', () => {
   assert.equal(res.headers.get('location'), 'http://127.0.0.1:3110/login');
 });
 
-test('une session laisse passer', () => {
+test('a session is let through', () => {
   const req = new NextRequest('http://127.0.0.1:3110/dashboard');
   req.cookies.set('timon_session', 'abc');
   const res = middleware(req);
@@ -41,19 +41,19 @@ test('une session laisse passer', () => {
 });
 
 /**
- * Le second levier : même si un client tape `localhost` de lui-même — ce qui
- * est parfaitement légitime — il doit trouver quelqu'un à l'écoute.
+ * The second lever: even if a client types `localhost` by itself — which
+ * is perfectly legitimate — it must find someone listening.
  */
-test('un bind loopback écoute les deux familles', () => {
+test('a loopback bind listens on both families', () => {
   assert.deepEqual(listenHostsFor('127.0.0.1'), ['127.0.0.1', '::1']);
   assert.deepEqual(listenHostsFor('localhost'), ['127.0.0.1', '::1']);
-  // L'adresse demandée reste la principale : c'est elle qui doit échouer fort.
+  // The address asked for stays the main one: it is the one that must fail loudly.
   assert.deepEqual(listenHostsFor('::1'), ['::1', '127.0.0.1']);
 });
 
-test("une écoute publique n'est pas transformée en double pile", () => {
-  // `0.0.0.0` et une IP de machine sont des décisions d'exposition : les
-  // élargir à `::` publierait l'UI sur des interfaces que personne n'a demandées.
+test('a public listen is not turned into a dual stack', () => {
+  // `0.0.0.0` and a machine IP are exposure decisions: widening
+  // them to `::` would publish the UI on interfaces nobody asked for.
   assert.deepEqual(listenHostsFor('0.0.0.0'), ['0.0.0.0']);
   assert.deepEqual(listenHostsFor('192.168.1.10'), ['192.168.1.10']);
   assert.equal(isLoopbackHost('0.0.0.0'), false);

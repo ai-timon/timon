@@ -11,8 +11,8 @@ import { settingsPath } from './settings-path';
 
 const LOCALES = join(dirname(fileURLToPath(import.meta.url)), '..', 'locales');
 
-// "Settings → Voice", "Réglages › Backends": a path written by hand.
-const HAND_WRITTEN_PATH = /(Settings|Réglages|Paramètres)\s*(→|›|->|>)/;
+// "Settings → Voice", "Réglages › Backends": a path written by hand. french-ok: the French paths the pattern catches
+const HAND_WRITTEN_PATH = /(Settings|Réglages|Paramètres)\s*(→|›|->|>)/; // french-ok: the French settings names
 
 // Settings screens that are not Timon's: they cannot be composed from our tabs.
 const NOT_TIMON_SETTINGS: ReadonlySet<string> = new Set([
@@ -57,7 +57,7 @@ test('settingsPath composes the labels the Settings dialog shows', () => {
     assert.equal(settingsPath('models', 'backends'), 'Settings → AI models → Providers');
     assert.equal(settingsPath('models'), 'Settings → AI models');
     setLocale('fr');
-    assert.equal(settingsPath('interface', 'terminal'), 'Paramètres → Interface → Terminal');
+    assert.equal(settingsPath('interface', 'terminal'), 'Paramètres → Interface → Terminal'); // french-ok: the French locale under test
   } finally {
     setLocale('en');
   }

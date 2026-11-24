@@ -308,6 +308,10 @@ async function handleCodeDone(task: TaskRow): Promise<void> {
     // The base is part of the job too: the review carries it for the brief and
     // the merge that follows inherits it from the root.
     baseBranch: task.base_branch ?? root.base_branch,
+    // How the chain lands is frozen on its first task and travels with it: a
+    // project setting changed mid-way must not split one chain in two modes.
+    integrationMode: task.integration_mode ?? root.integration_mode ?? null,
+    baseRef: task.base_ref ?? root.base_ref ?? null,
     // Same for the job: a review belonging to no series would escape the
     // fallback plan and its returns would have no pilot.
     seriesId: root.series_id,
@@ -372,8 +376,9 @@ async function spawnMergeTask(review: TaskRow): Promise<void> {
     `2. Check that the typecheck passes (orchestrator/ and app/ if touched) before finishing: a package's`,
     `   own \`npm run typecheck\` when it has one (its pre-step generates files git ignores, missing from`,
     `   a fresh worktree), otherwise \`npx tsc --noEmit\`. A type error is never "pre-existing" without proof on the base.`,
-    `3. Advance \`${base}\` with the fast-forward given at the end of the brief, then take`,
-    `   the FULL sha (40 hex) for \`timon task done --merged-sha\`.`,
+    `3. Move \`${base}\` with the command given at the end of the brief (by reference, never a`,
+    `   fast-forward of the main repo's HEAD), read it back, then take the FULL sha (40 hex)`,
+    `   for \`timon task done --merged-sha\`.`,
     `4. Non-trivial conflict or broken build → do NOT force it: leave the task BLOCKED with the reason (the orchestrator will escalate).`,
     `5. Never delete a file your branch does not ask to delete: an automatic`,
     `   check detects it and will hand the task back to you for repair.`,
@@ -394,6 +399,8 @@ async function spawnMergeTask(review: TaskRow): Promise<void> {
     // Without it the merger advanced the repo's ACTIVE branch (18/10/2026: four
     // merges about to land on a feature branch instead of `main`).
     baseBranch: knownBase,
+    integrationMode: root.integration_mode ?? review.integration_mode ?? null,
+    baseRef: root.base_ref ?? review.base_ref ?? null,
     seriesId: root.series_id,
     planGroup: root.plan_group,
     groupId: root.group_id,
@@ -533,6 +540,8 @@ async function handleReviewDone(task: TaskRow): Promise<void> {
     planGroup: root.plan_group,
     pipeline: root.pipeline,
     baseBranch: root.base_branch,
+    integrationMode: root.integration_mode ?? null,
+    baseRef: root.base_ref ?? null,
   });
   dbApi.setTaskVerificationMeta(codeId, nextIter, rootId);
   // Pre-fills the worktree → the dispatcher sees the columns are already set

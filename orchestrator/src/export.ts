@@ -251,6 +251,7 @@ export type ImportResult = {
 const IMPORT_TODO = [
   'sign the backend CLIs in again (`claude`, `codex`): their tokens are not exported',
   'put `~/.timon/secrets.env` back (API keys): never included in an archive',
+  'copy the secrets vault key from the old machine (`~/.timon/secret-key`, or its OS keyring entry) or enter the vault values again (API keys, headers of remote MCP servers): the archive carries them sealed, never the key that opens them',
   'check `timon.config.json`: `daemon.installDir` and `workspacesRoot` may point elsewhere on this machine',
 ];
 

@@ -1,6 +1,6 @@
 /**
  * The device token of a remote machine, as the LOCAL daemon hands it to this
- * app's relay (TODO #329, palier P2d). Server side only.
+ * app's relay (TODO #329, step P2d). Server side only.
  *
  * The local daemon keeps the fleet (`GET /api/machines/:id/credential`,
  * `orchestrator/src/machines/http.ts`). It answers only:

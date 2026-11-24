@@ -1,14 +1,14 @@
 /**
- * Bouton STOP : couper le tour ne doit ni tuer la conversation, ni faire
- * repartir la task toute seule.
+ * STOP button: cutting the turn must neither kill the conversation nor make
+ * the task restart on its own.
  *
- * Ce que ces tests protègent :
- *   - `stopped` (geste humain) et `killed` (mort système) restent DEUX causes
- *     distinctes. Les confondre remettrait la task en file automatiquement —
- *     donc relancerait exactement le travail qu'on vient d'arrêter à la main.
- *   - `interruptAgent` dit toujours ce qu'il a fait ET si la reprise est
- *     possible : c'est cette réponse qui décide du discours de l'UI ("je
- *     reprends dans une seconde" vs "c'est définitif").
+ * What these tests protect:
+ *   - `stopped` (human gesture) and `killed` (system death) stay TWO distinct
+ *     causes. Mixing them up would requeue the task automatically,
+ *     hence relaunch exactly the work that was just stopped by hand.
+ *   - `interruptAgent` always says what it did AND whether resuming is
+ *     possible: that answer decides what the UI says ("I
+ *     resume in a second" vs "it is final").
  *
  * `node --test --import tsx src/interrupt.test.ts`
  */
@@ -26,7 +26,7 @@ const {
 } = await import('./interruption.js');
 const { interruptAgent } = await import('./agent.js');
 
-test("'stopped' est une cause connue, distincte de 'killed'", () => {
+test("'stopped' is a known cause, distinct from 'killed'", () => {
   assert.ok(isInterruptionReason('stopped'));
   assert.notEqual(describeInterruption('stopped'), describeInterruption('killed'));
   // A fragment SPECIFIC to the `stopped` label: matching the "Mission
@@ -34,14 +34,14 @@ test("'stopped' est une cause connue, distincte de 'killed'", () => {
   assert.match(describeInterruption('stopped'), /resumable/);
 });
 
-test("un tour interrompu à la main ne se rejoue PAS tout seul", () => {
+test('a turn interrupted by hand does NOT replay on its own', () => {
   assert.equal(isRequeueableInterruption('stopped'), false);
-  // Contraste explicite : le reap, lui, reste rejouable — c'est la
-  // différence que le geste humain introduit.
+  // Explicit contrast: the reap stays replayable; that is the
+  // difference the human gesture introduces.
   assert.equal(isRequeueableInterruption('killed'), true);
 });
 
-test('la task de la mission interrompue passe BLOCKED avec le bon motif', () => {
+test("the interrupted mission's task goes BLOCKED with the right reason", () => {
   const taskId = randomUUID();
   const missionId = randomUUID();
   dbApi.createTask(taskId, 'task interrompue', 'tester', { type: 'code' });
@@ -61,25 +61,25 @@ test('la task de la mission interrompue passe BLOCKED avec le bon motif', () => 
   assert.equal(t?.status, 'BLOCKED');
   assert.equal(t?.interrupted_reason, 'stopped');
   assert.match(t?.blocked_reason ?? '', /stopped by hand from the chat/);
-  // Le blocage doit réveiller le pilote : c'est lui qui décidera de la suite.
+  // The block must wake the pilot: it is the one that will decide what comes next.
   assert.equal(blocked, 1);
 });
 
-test('interruptAgent : mission inconnue → not_found, sans rien casser', () => {
+test('interruptAgent: unknown mission → not_found, without breaking anything', () => {
   const out = interruptAgent(randomUUID());
   assert.equal(out.status, 'not_found');
   assert.equal(out.resumable, false);
 });
 
-test('interruptAgent : mission sans process → not_running, reprise annoncée', () => {
+test('interruptAgent: mission without a process → not_running, resume announced', () => {
   const missionId = randomUUID();
   dbApi.createMission(missionId, 'tester', 'peu importe');
-  // Sans ancre de session, rien à reprendre : on ne le promet pas.
+  // Without a session anchor, nothing to resume: it is not promised.
   assert.deepEqual(
     { ...interruptAgent(missionId), backend: null },
     { status: 'not_running', resumable: false, backend: null, turnActive: false },
   );
-  // Avec une session sur un backend dont le store survit au process, si.
+  // With a session on a backend whose store outlives the process, yes.
   dbApi.setMissionSession(missionId, 'sess-42');
   assert.equal(interruptAgent(missionId).resumable, true);
 });

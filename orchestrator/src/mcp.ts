@@ -28,7 +28,7 @@ import { OAuthRefreshError, refreshTokens } from './oauth.js';
 import { mcpHostAddressRefusal } from './mcp-url-guard.js';
 import { pinnedLaunchTarget } from './mcp-launch-proxy.js';
 import { vaultEnabled } from './secrets/availability.js';
-import { deleteSecret, readSecretValue } from './secrets/store.js';
+import { SecretStoreError, createSecret, deleteSecret, readSecretValue } from './secrets/store.js';
 import { mcpRelayRoute } from './mcp-relay-route.js';
 import {
   McpOAuthVaultUnavailableError, forgetMcpOAuthTokens, mcpOAuthVaultAvailable, readMcpOAuthTokens, storeMcpOAuthTokens,
@@ -42,16 +42,26 @@ export type { McpServer, McpSummary, McpExternalConfig, McpHttpConfig, McpSource
 export type McpHeaderSecret = {
   secret_id: string;
   prefix?: string;
+  /** `true`: one of the server's own `headers` (typed in the editor, sent
+   *  through the API), moved to the vault. It reads back as `***` and is
+   *  replaced or removed like any header. Absent: a key the daemon set itself
+   *  (an Apps connector), which no reader is shown and only the daemon replaces. */
+  typed?: true;
 };
 
 /**
  * An http transport as its file holds it. `header_secrets` names, by header,
  * a secret of the vault that the launch reads (`prefix` + value). It is a
  * storage detail of the daemon, not part of the plugin contract: no reader
- * outside this module is handed it (`redactMcpServer` drops it), and only the
- * daemon's own code writes it — `upsertMcp` drops it from any incoming
- * transport — so no caller can point a stored secret at a url of its
- * choosing; a change of url drops it, and the secret with it.
+ * outside this module is handed it (`redactMcpServer` and `presentMcpServer`
+ * drop it), and only the daemon's own code writes it — `upsertMcp` drops it
+ * from any incoming transport — so no caller can point a stored secret at a
+ * url of its choosing; a change of url drops it, and the secret with it.
+ *
+ * `headers` holds only what the vault could not take: an empty value, or every
+ * value of a server written while the vault was off or locked (moved at the
+ * next boot, `migrateMcpHeadersToVault`). Such a server is not given to agents
+ * meanwhile: the relay it needs is keyed by the vault too.
  */
 export type McpStoredHttpConfig = McpHttpConfig & {
   header_secrets?: Record<string, McpHeaderSecret>;
@@ -205,7 +215,7 @@ function oauthStatus(s: McpServer): OAuthStatus {
   return 'authorized';
 }
 
-function summarise(s: McpServer): McpSummary {
+function summarise(s: McpStoredServer): McpSummary {
   // Strip the transport union to a plain enum + drop secrets from the summary.
   const { transport, ...rest } = s;
   return {
@@ -213,6 +223,9 @@ function summarise(s: McpServer): McpSummary {
     transport_type: transport.type,
     tools_count: s.tools_cache?.length ?? 0,
     oauth_status: oauthStatus(s),
+    // Said on the list, not only in the daemon's log: the page is where a user
+    // looks for why an agent did not get the server.
+    ...(relayedServer(s) && !vaultEnabled() ? { held_back: 'vault_off' as const } : {}),
   };
 }
 
@@ -298,6 +311,31 @@ function maskValues(map: Record<string, string>): Record<string, string> {
 }
 
 /**
+ * Every header of a server as a reader is shown it: the ones its file still
+ * holds and the ones the vault holds for it, each worth `***`. The keys the
+ * daemon set itself (an Apps connector's) are not among them.
+ */
+function maskedHeaders(transport: McpStoredHttpConfig): Record<string, string> | undefined {
+  const typed = Object.entries(transport.header_secrets ?? {}).filter(([, ref]) => ref.typed).map(([header]) => header);
+  const names = [...Object.keys(transport.headers ?? {}), ...typed];
+  return names.length ? Object.fromEntries(names.map((name) => [name, SECRET_MASK])) : undefined;
+}
+
+/**
+ * A server as a caller who manages MCP servers reads it (the editor): the
+ * stored record, with no header value — a value the vault holds is never read
+ * back, as for a connector's key, and one its file still holds is masked the
+ * same way, so that the form is the same whatever the vault could take. A save
+ * that sends `***` back keeps the stored value (`upsertMcp`).
+ */
+export function presentMcpServer(s: McpStoredServer): McpServer {
+  if (s.transport.type !== 'http') return s;
+  const { header_secrets: _vaultRefs, headers: _stored, ...rest } = s.transport;
+  const headers = maskedHeaders(s.transport);
+  return { ...s, transport: { ...rest, ...(headers ? { headers } : {}) } };
+}
+
+/**
  * A server with every secret scrubbed, for a caller who may not manage MCP
  * servers (audit CLI/MCP P1-4). `GET /api/mcp/:id` returns the full transport — headers,
  * OAuth tokens, stdio env — and an agent (through `mcp_server_get`) or an
@@ -313,7 +351,7 @@ export function redactMcpServer(s: McpStoredServer): McpServer {
     return { ...s, transport: { ...transport, ...(env ? { env } : {}) } };
   }
   if (transport.type === 'http') {
-    const headers = transport.headers ? maskValues(transport.headers) : transport.headers;
+    const headers = maskedHeaders(transport);
     let oauth = transport.oauth;
     if (oauth) {
       const tokens = oauth.tokens
@@ -333,7 +371,7 @@ export function redactMcpServer(s: McpStoredServer): McpServer {
       };
     }
     // Which vault secret holds a key is the daemon's business, not the reader's.
-    const { header_secrets: _vaultRefs, ...publicTransport } = transport;
+    const { header_secrets: _vaultRefs, headers: _stored, ...publicTransport } = transport;
     return {
       ...s,
       transport: { ...publicTransport, ...(headers ? { headers } : {}), ...(oauth ? { oauth } : {}) },
@@ -360,7 +398,7 @@ export function redactMcpServer(s: McpStoredServer): McpServer {
  * state is kept by `upsertMcp` while the url is unchanged.
  */
 export function missionTransport(
-  existing: McpServer | null,
+  existing: McpStoredServer | null,
   incoming: McpStdioConfig | McpHttpConfig,
 ): { transport: McpStdioConfig | McpHttpConfig } | { refusal: string } {
   const stored = existing?.transport;
@@ -381,17 +419,22 @@ export function missionTransport(
   }
   const rest: McpHttpConfig = { ...incoming };
   delete rest.oauth;
-  const headers = rest.headers;
-  if (!headers || !Object.values(headers).includes(SECRET_MASK)) return { transport: rest };
-  const sameUrl = stored?.type === 'http' && stored.url === rest.url;
-  const kept: Record<string, string> = {};
-  for (const [key, value] of Object.entries(headers)) {
-    if (value !== SECRET_MASK) { kept[key] = value; continue; }
-    const old = sameUrl && stored?.type === 'http' ? stored.headers?.[key] : undefined;
-    if (old === undefined) return { refusal: maskedRefusal('headers', key, sameUrl ? 'no stored value' : 'url changed') };
-    kept[key] = old;
+  // A masked header stays masked: `upsertMcp` carries the stored value over
+  // itself, from the vault or the file. Refused here first, so that the
+  // mission's refusal is audited and says why.
+  for (const [key, value] of Object.entries(rest.headers ?? {})) {
+    if (value !== SECRET_MASK) continue;
+    const why = maskedHeaderGap(stored ?? null, rest.url, key);
+    if (why) return { refusal: maskedRefusal('headers', key, why) };
   }
-  return { transport: { ...rest, headers: kept } };
+  return { transport: rest };
+}
+
+/** Why a masked header cannot keep its stored value at `url`; `null` when it can. */
+function maskedHeaderGap(stored: McpStoredServer['transport'] | null, url: string, header: string): string | null {
+  if (stored?.type !== 'http' || stored.url !== url) return stored?.type === 'http' ? 'url changed' : 'no stored value';
+  if (stored.headers?.[header] !== undefined || stored.header_secrets?.[header]?.typed) return null;
+  return 'no stored value';
 }
 
 function maskedRefusal(field: 'env' | 'headers', key: string, why: string): string {
@@ -441,12 +484,22 @@ export function upsertMcp(input: UpsertMcpInput): McpStoredServer {
   }
   const sameTarget = transport.type === 'http' && existing?.transport.type === 'http'
     && existing.transport.url === transport.url;
+  let sealed: Record<string, McpHeaderSecret> = {};
   if (transport.type === 'http') {
     // Same rule as oauth: a stored key keeps reaching the url it was given
     // for, and is never carried to another one.
-    const kept = input.headerSecrets
-      ?? (sameTarget && existing?.transport.type === 'http' ? existing.transport.header_secrets : undefined);
-    if (kept && Object.keys(kept).length) transport = { ...transport, header_secrets: kept };
+    const before = sameTarget && existing?.transport.type === 'http' ? existing.transport : undefined;
+    const daemonKeys = input.headerSecrets ?? daemonHeaderSecrets(before?.header_secrets);
+    const { kept, clear } = resolveHeaders(input.id, transport.headers, existing?.transport ?? null, transport.url);
+    const { refs, file } = sealOrKeep(input.id, clear);
+    sealed = refs;
+    const { headers: _incoming, ...rest } = transport;
+    const vaultHeld = { ...daemonKeys, ...kept, ...refs };
+    transport = {
+      ...rest,
+      ...(hasEntries(file) ? { headers: file } : {}),
+      ...(hasEntries(vaultHeld) ? { header_secrets: vaultHeld } : {}),
+    };
   }
   // The Apps provenance vouches for a reviewed endpoint: a server moved to
   // another url is no longer that app's connection, and Apps leaves it alone.
@@ -470,11 +523,153 @@ export function upsertMcp(input: UpsertMcpInput): McpStoredServer {
     ...(transport.type === 'http' && (input.publicOnly || input.createdBy) ? { public_only: !!input.publicOnly } : {}),
     ...(appSlug ? { app_slug: appSlug } : {}),
   };
-  writeRaw(merged);
+  try {
+    writeRaw(merged);
+  } catch (err) {
+    // Nothing names them: left in the vault, they would be keys nobody sees the use of.
+    deleteRefs(sealed);
+    throw err;
+  }
   // Only once the new record is written: a failed write leaves the server
   // as it was, keys included.
   forgetUnreferencedKeys(input.id, existing, merged);
   return merged;
+}
+
+/** The keys the daemon set itself (an Apps connector's): kept across a save that does not name them. */
+function daemonHeaderSecrets(refs: McpStoredHttpConfig['header_secrets']): Record<string, McpHeaderSecret> {
+  return Object.fromEntries(Object.entries(refs ?? {}).filter(([, ref]) => !ref.typed));
+}
+
+/**
+ * The headers a write asks for, split into the vault-held ones a masked value
+ * (`***`) keeps (`kept`) and the values to store (`clear`): typed, or carried
+ * over from the file for a masked one. A masked header whose stored value
+ * cannot be carried — none stored, or the server moved to another url — is an
+ * error: the stored credential never follows a server elsewhere.
+ */
+function resolveHeaders(
+  id: string,
+  headers: Record<string, string> | undefined,
+  stored: McpStoredServer['transport'] | null,
+  url: string,
+): { kept: Record<string, McpHeaderSecret>; clear: Record<string, string> } {
+  const kept: Record<string, McpHeaderSecret> = {};
+  const clear: Record<string, string> = {};
+  for (const [header, value] of Object.entries(headers ?? {})) {
+    if (value !== SECRET_MASK) { clear[header] = value; continue; }
+    const why = maskedHeaderGap(stored, url, header);
+    if (why || stored?.type !== 'http') throw new Error(`mcp ${id}: ${maskedRefusal('headers', header, why ?? 'no stored value')}`);
+    const ref = stored.header_secrets?.[header];
+    if (ref?.typed) kept[header] = ref;
+    else clear[header] = stored.headers?.[header] ?? '';
+  }
+  return { kept, clear };
+}
+
+/** `MCP_<ID>_<HEADER>`: the vault names secrets like environment variables. */
+function headerSecretName(id: string, header: string): string {
+  return `MCP_${`${id}_${header}`.toUpperCase().replace(/[^A-Z0-9]+/g, '_')}`;
+}
+
+/**
+ * Seals each non-empty header value into the vault, as a secret with no grant
+ * (no agent's environment receives it), and reads it back. On any failure the
+ * secrets already created are deleted and the reason is returned — never the
+ * value: the caller then keeps the headers in the file.
+ */
+function sealHeaders(id: string, headers: Record<string, string>): { refs: Record<string, McpHeaderSecret> } | { failure: string } {
+  if (!vaultEnabled()) return { failure: 'the secrets vault is switched off' };
+  const refs: Record<string, McpHeaderSecret> = {};
+  try {
+    for (const [header, value] of Object.entries(headers)) {
+      const secret = createSecret({ name: headerSecretName(id, header), value, note: `MCP server ${id}: header ${header}` });
+      refs[header] = { secret_id: secret.id, typed: true };
+      if (readSecretValue(secret.id) !== value) return abandon(refs, 'the vault did not give the value back');
+    }
+    return { refs };
+  } catch (err) {
+    // The code, not the message: a keyring error may quote more than it should.
+    return abandon(refs, err instanceof SecretStoreError ? `vault error: ${err.code}` : (err as Error).name);
+  }
+}
+
+function deleteRefs(refs: Record<string, McpHeaderSecret>): void {
+  for (const ref of Object.values(refs)) {
+    try { deleteSecret(ref.secret_id); } catch { /* nothing names it: an orphan row at worst */ }
+  }
+}
+
+function abandon(refs: Record<string, McpHeaderSecret>, failure: string): { failure: string } {
+  deleteRefs(refs);
+  return { failure };
+}
+
+// A read retries nothing, but a boot and each save do: one warning per server and process is enough.
+const headersKeptWarned = new Set<string>();
+
+function warnHeadersKept(id: string, why: string): void {
+  if (headersKeptWarned.has(id)) return;
+  headersKeptWarned.add(id);
+  console.warn(`[timon] mcp ${id}: its headers stay in its file, the secrets vault could not take them (${why}); agents do not get this server until it can`);
+}
+
+/**
+ * The headers to store, sealed into the vault when it can take them: `refs`
+ * for the vault, `file` for what stays in the server's file — an empty value
+ * (not a secret, and one the vault refuses), or every value when the vault is
+ * off or locked, as the server was written before the vault held headers.
+ */
+function sealOrKeep(id: string, clear: Record<string, string>): { refs: Record<string, McpHeaderSecret>; file: Record<string, string> } {
+  const values = Object.fromEntries(Object.entries(clear).filter(([, value]) => value !== ''));
+  if (!hasEntries(values)) return { refs: {}, file: clear };
+  const sealed = sealHeaders(id, values);
+  if ('failure' in sealed) {
+    warnHeadersKept(id, sealed.failure);
+    return { refs: {}, file: clear };
+  }
+  headersKeptWarned.delete(id);
+  return { refs: sealed.refs, file: Object.fromEntries(Object.entries(clear).filter(([, value]) => value === '')) };
+}
+
+/**
+ * Moves into the vault the headers a server's file still holds in clear
+ * (written before the vault held them, or while it was off or locked). Unlike
+ * OAuth tokens, nothing is dropped: when the vault cannot take them — switched
+ * off, its master key unreadable — the file is left as it is and a warning
+ * names the server, never a value; the server stays out of the launches as it
+ * already was. Idempotent, run at every boot.
+ */
+export function migrateMcpHeadersToVault(): { moved: string[]; kept: string[] } {
+  const moved: string[] = [];
+  const kept: string[] = [];
+  if (!existsSync(MCP_DIR)) return { moved, kept };
+  for (const f of readdirSync(MCP_DIR)) {
+    if (!f.endsWith('.json')) continue;
+    const id = f.slice(0, -'.json'.length);
+    if (!ID_RE.test(id)) continue;
+    const s = readFileRecord(id);
+    if (!s || s.transport.type !== 'http') continue;
+    if (!Object.values(s.transport.headers ?? {}).some((value) => value !== '')) continue;
+    const { refs, file } = sealOrKeep(id, s.transport.headers ?? {});
+    if (!hasEntries(refs)) { kept.push(id); continue; }
+    const { headers: _clear, ...rest } = s.transport;
+    const next: McpStoredServer = {
+      ...s,
+      transport: { ...rest, ...(hasEntries(file) ? { headers: file } : {}), header_secrets: { ...rest.header_secrets, ...refs } },
+    };
+    try {
+      writeFileRecord(next);
+    } catch (err) {
+      deleteRefs(refs);
+      warnHeadersKept(id, (err as Error).name);
+      kept.push(id);
+      continue;
+    }
+    forgetUnreferencedKeys(id, s, next);
+    moved.push(id);
+  }
+  return { moved, kept };
 }
 
 function headerSecretIds(s: McpStoredServer | null): string[] {

@@ -11,7 +11,7 @@ test('the tray is only named when it exists', () => {
 });
 
 test('the hint speaks the dialog\'s language', () => {
-  assert.equal(reopenHint('fr', true, 'Timon', 'moment'), 'rouvrez la fenêtre depuis l’icône Timon de la zone de notification dans un instant');
+  assert.equal(reopenHint('fr', true, 'Timon', 'moment'), 'rouvrez la fenêtre depuis l’icône Timon de la zone de notification dans un instant'); // french-ok: the French locale under test
   assert.equal(reopenHint('fr-CA', false, 'Timon'), 'quittez Timon puis relancez-le');
 });
 

@@ -1,3 +1,4 @@
+// french-ok-file: the French credit line speech engines hallucinate
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';

@@ -38,6 +38,18 @@ True while the user rests on the widget's title or a layout gesture is under way
 
 ***
 
+### handle?
+
+> `optional` **handle?**: `unknown`
+
+The host's layout controls (grip and settings gear): render them in the
+custom widget header, on the actions side. Given from apiVersion 17;
+declare 17 in the manifest to read it, since an older host only passes
+`poignee`. Optional in the type so that an object built before this
+name existed still type-checks; the host always passes it.
+
+***
+
 ### orientation?
 
 > `optional` **orientation?**: `"vertical"` \| `"horizontal"`
@@ -48,8 +60,14 @@ top bar, 36px tall; `vertical`, a column. Only a widget registered with
 
 ***
 
-### poignee
+### ~~poignee~~
 
 > **poignee**: `unknown`
 
-Render these host controls in the custom widget header.
+The same object as `handle`, under its former name. The host keeps
+passing it, so a widget written for an earlier apiVersion keeps its
+controls.
+
+#### Deprecated
+
+Read `handle` instead.

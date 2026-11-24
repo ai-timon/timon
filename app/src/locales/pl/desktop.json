@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "Nowe okno",
+      "view": "Widok",
+      "zoomReset": "Rzeczywisty rozmiar",
+      "zoomIn": "Powiększ",
+      "zoomOut": "Pomniejsz",
       "open": "Otwórz {appName}",
       "daemon": "Demon: {state, select, running {działa} other {nieosiągalny}} ({origin})",
       "quit": "Zakończ"
@@ -102,8 +106,8 @@
       "stopFailedDetail": "Timon pozostaje otwarty, a usługa nadal działa.",
       "startFailed": "Usługa w tle jest zatrzymana i nie udało się jej ponownie uruchomić.",
       "startFailedDetail": "Zatrzymałeś ją przez „Zakończ i zatrzymaj usługę w tle”. Otwórz ponownie Timon i zaakceptuj monit lub uruchom timon service start. Twoje dane w {home} są nienaruszone.",
-      "handoverKept": "Usługa w tle Timon nie odpowiedziała.",
-      "handoverKeptDetail": "Konfiguracja jest kontynuowana z Timon działającym w tym oknie. Po zakończeniu konfiguracji zamknij i ponownie otwórz Timon: spróbuje ponownie użyć usługi. Twoje dane pozostają w {home}.",
+      "handoverKept": "Usługa w tle Timon uruchamia się powoli.",
+      "handoverKeptDetail": "Konfiguracja jest kontynuowana z Timon działającym w tym oknie. Timon sam przekaże pracę usłudze, gdy tylko będzie gotowa, lub przy następnym uruchomieniu: nie musisz nic robić. Twoje dane pozostają w {home}.",
       "refused": "Windows nie uruchamia usługi w tle Timon dla tego konta.",
       "refusedDetail": "Zaplanowane zadanie TimonOrchestrator jest zarejestrowane, ale Windows nigdy go nie uruchomił. Dzieje się tak w przypadku kont służbowych lub szkolnych na komputerze dołączonym do Microsoft Entra ID. Timon uruchamia zamiast tego swój wbudowany demon: startuje z aplikacją i zatrzymuje się, gdy ją zamkniesz lub się wylogujesz. Aby usunąć nieużywane zadanie: timon service uninstall (Windows poprosi o zgodę).",
       "repair": "Usługa w tle Timon nie jest już zainstalowana.",

@@ -30,19 +30,19 @@ function gitInspection(overrides: Partial<GitInspection> = {}): GitInspection {
   };
 }
 
-test('branche avec commits : aucune annotation', () => {
+test('branch with commits: no annotation', () => {
   const annotation = evaluateCodeDone(codeTask(), gitInspection({ commitCount: 3 }));
   assert.equal(annotation, null);
 });
 
-test('branche vide sans diff : annotation sans mention de fichiers', () => {
+test('empty branch without a diff: annotation without mentioning files', () => {
   const annotation = evaluateCodeDone(codeTask(), gitInspection({ commitCount: 0, uncommittedFiles: [] }));
   assert(annotation !== null);
   assert.match(annotation!, /NO commits/);
   assert.doesNotMatch(annotation!, /Uncommitted/);
 });
 
-test('branche vide avec diff non committé : annotation mentionnant les fichiers', () => {
+test('empty branch with an uncommitted diff: annotation mentioning the files', () => {
   const annotation = evaluateCodeDone(
     codeTask(),
     gitInspection({ commitCount: 0, uncommittedFiles: [' M src/index.ts', '?? newfile.ts'] }),
@@ -56,7 +56,7 @@ test('branche vide avec diff non committé : annotation mentionnant les fichiers
   assert.ok(annotation.includes(`To recover the work: cd ${codeTask().worktree_path}`));
 });
 
-test('task non-code : aucun effet', () => {
+test('non-code task: no effect', () => {
   for (const type of ['merge', 'review', 'chore', 'doc'] as const) {
     const annotation = evaluateCodeDone(
       codeTask({ type }),
@@ -66,7 +66,7 @@ test('task non-code : aucun effet', () => {
   }
 });
 
-test('branch_name null : aucun effet, pas de crash', () => {
+test('branch_name null: no effect, no crash', () => {
   const annotation = evaluateCodeDone(
     codeTask({ branch_name: null }),
     gitInspection({ commitCount: 0 }),
@@ -75,7 +75,7 @@ test('branch_name null : aucun effet, pas de crash', () => {
 });
 
 // Failed inspections must not claim that work was lost.
-test('inspection ratée (commitCount null) : aucune annotation, même avec un worktree sale', () => {
+test('failed inspection (commitCount null): no annotation, even with a dirty worktree', () => {
   const annotation = evaluateCodeDone(
     codeTask(),
     gitInspection({ commitCount: null, uncommittedFiles: [' M src/index.ts'] }),

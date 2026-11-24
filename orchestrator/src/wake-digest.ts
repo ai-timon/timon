@@ -53,6 +53,8 @@ export type ReturnPayload = {
   /** Human summary the agent gave at close (`tasks.done_summary`). */
   summary?: string | null;
   blocked_reason?: string | null;
+  /** The code of `blocked_reason` when the daemon wrote it (`DaemonMessage`). */
+  blocked_reason_code?: { code: string; params: Record<string, string | number> } | null;
   merged_commit_sha?: string | null;
   group_id?: string | null;
   /** TO DO ideas this closure marks done (todo-closure.ts) — the pilot no
@@ -60,7 +62,9 @@ export type ReturnPayload = {
   todo_closed?: number[];
   /** Ideas it moves without closing (`analyzed`; `partial` with the count of
    *  root chains landed while sibling tasks of the idea are still open). */
-  todo_progress?: { id: number; progress: string; landed?: number; total?: number }[];
+  /** `integrating`: the integration branch the idea waits in (it closes when
+   *  that branch lands). */
+  todo_progress?: { id: number; progress: string; landed?: number; total?: number; integrating?: string }[];
   /** Landed ideas whose coder reported an OS test still owed (A-TESTER-MULTI-OS.md). */
   todo_os_test?: number[];
   /** Final report of a mission WITHOUT a task (`mission_spawn` delegation):
@@ -217,9 +221,12 @@ function returnBody(p: ReturnPayload, share = Infinity, missionId: string | null
     instruction(`TO DO closed automatically: ${p.todo_closed.map((id) => `#${id}`).join(', ')}`);
   }
   for (const t of p.todo_progress ?? []) {
-    instruction(t.total
+    const counted = t.total
       ? `TO DO #${t.id}: ${t.landed ?? 0}/${t.total} chains landed (stays open, ${t.progress})`
-      : `TO DO #${t.id} → ${t.progress} (stays open)`);
+      : `TO DO #${t.id} → ${t.progress} (stays open)`;
+    instruction(t.integrating
+      ? `${counted}; integrated into ${t.integrating}, it closes when that branch lands`
+      : counted);
   }
   if (p.todo_os_test?.length) {
     instruction(`Win/Mac test to run (docs/A-TESTER-MULTI-OS.md): ${p.todo_os_test.map((id) => `#${id}`).join(', ')}`);
@@ -281,7 +288,10 @@ export function returnCardOf(p: ReturnPayload): ReturnCard {
   if (p.todo_closed?.length) card.todo_closed = p.todo_closed;
   if (p.todo_progress?.length) card.todo_progress = p.todo_progress;
   if (p.summary?.trim()) card.summary = p.summary.trim();
-  if (p.task_status === 'BLOCKED') card.blocked_reason = p.blocked_reason?.trim() || '';
+  if (p.task_status === 'BLOCKED') {
+    card.blocked_reason = p.blocked_reason?.trim() || '';
+    if (card.blocked_reason && p.blocked_reason_code) card.blocked_reason_code = p.blocked_reason_code;
+  }
   if (!p.task_id && p.final_text?.trim()) card.report = p.final_text.trim();
   return card;
 }

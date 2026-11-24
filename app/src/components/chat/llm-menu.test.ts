@@ -157,7 +157,7 @@ test('the chip opens the picker on the account of the next turn, with the thinki
     assert.equal(m.row('Opus')?.getAttribute('aria-pressed'), 'true');
     const slider = m.$<HTMLInputElement>('input[type="range"]');
     assert.ok(slider, 'the thinking slider');
-    assert.equal(slider.value, '3', 'the stop of « high »');
+    assert.equal(slider.value, '3', 'the stop of "high"');
   });
 });
 

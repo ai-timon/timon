@@ -1,3 +1,4 @@
+// french-ok-file: an accented agent name, the folding under test
 /**
  * The agent search of the cockpit chat card: the one way to add an agent to a
  * card, from its config or from the "+" of its avatar row.

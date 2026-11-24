@@ -268,5 +268,8 @@ test('approving is vouching that it may run: an owner without scripts:run cannot
   const refused = await api('POST', `/api/workflows/${id}/approve-script`, undefined, 'bob');
   assert.equal(refused.status, 403);
   assert.match(String(refused.body.error), /needs scripts:run/);
+  // The webview words it from the code and quotes the reason.
+  assert.equal(refused.body.code, 'workflow_script_denied');
+  assert.deepEqual(refused.body.params, { detail: refused.body.error });
   assert.deepEqual(getWorkflowScriptPins(id), []);
 });

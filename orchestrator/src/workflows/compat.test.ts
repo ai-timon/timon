@@ -23,7 +23,7 @@ test('timon pipeline run feature-flow still materialises the same Kanban batch',
       definition: {
         steps: [
           { id: 'plan', agent: 'planner', type: 'research', prompt: 'Plan la feature suivante : {{input.feature}}' },
-          { id: 'code', agent: 'coder', type: 'code', prompt: 'Implémente {{input.feature}}', deps_on: ['plan'] },
+          { id: 'code', agent: 'coder', type: 'code', prompt: 'Implémente {{input.feature}}', deps_on: ['plan'] }, // french-ok: a sample prompt
           { id: 'review', agent: 'reviewer', type: 'review', prompt: 'Review.', deps_on: ['code'] },
           { id: 'merge', agent: 'merger', type: 'merge', prompt: 'Merge.', deps_on: ['review'] },
         ],

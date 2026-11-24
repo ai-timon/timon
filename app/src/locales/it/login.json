@@ -26,10 +26,8 @@
     "working": "In corso…",
     "failed": "Accesso non riuscito",
     "setupFailed": "La configurazione è stata rifiutata",
-    "freeUnavailable": "La registrazione Free non è ancora aperta per questa versione. Riprova più tardi o usa una chiave di licenza esistente.",
     "clientUpgradeRequired": "Aggiorna Timon a una release supportata, poi riprova.",
     "transferPending": "Il token della macchina precedente non è ancora scaduto. Attendi prima di attivare questa macchina.",
-    "freeIncompatible": "Free non può essere attivato con gli account o i plugin attuali. I tuoi dati sono stati conservati.",
-    "freeAccountRestricted": "Free consente solo il primo superadmin attivo. Il tuo account e i tuoi dati sono preservati. Chiedi a quell’amministratore di attivare una licenza per ripristinare l’accesso."
+    "freeIncompatible": "Questa licenza non può essere applicata con gli account o i plugin attuali. I tuoi dati sono stati conservati."
   }
 }

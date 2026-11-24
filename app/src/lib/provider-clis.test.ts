@@ -1,5 +1,5 @@
 /**
- * Where a provider card stands, and when the onboarding's « Your AIs » step
+ * Where a provider card stands, and when the onboarding's "Your AIs" step
  * lets the person on to the chat (TODO #251).
  */
 import { test } from 'node:test';

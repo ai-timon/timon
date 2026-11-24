@@ -5,10 +5,12 @@ import ts from 'typescript';
 import { APP_INFO_CHANNEL } from './app-info.js';
 import { ABOUT_CHANNEL } from './about.js';
 import { OPEN_LOGS_CHANNEL } from './diagnostic-dialog.js';
+import { UI_ZOOM_CHANNELS } from './ui-zoom.js';
 import {
   canRestartFromSetup, handoverKeptMessage, handoverRoute, relaunchOptions, serviceHandover, serviceHandoverNeeded, setupRestarter,
-  setupRestartPending, SETUP_HANDOVER_CHANNEL, SETUP_RESTART_CHANNEL, SETUP_RESTART_STATUS_CHANNEL,
+  setupRestartPending, SETUP_HANDOVER_CHANNEL, SETUP_RESTART_CHANNEL, SETUP_RESTART_STATUS_CHANNEL, waitWhileBooting, lateHandover, type WaitClock,
 } from './restart.js';
+import type { HealthResult } from './health.js';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -118,6 +120,14 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
     windowMachine: { set: (...args: unknown[]) => Promise<unknown> };
     openWindow: (...args: unknown[]) => Promise<unknown>;
     windowScheme: (...args: unknown[]) => Promise<unknown>;
+    dockIcon: { get: (...args: unknown[]) => Promise<unknown>; set: (...args: unknown[]) => Promise<unknown> };
+    zoom: {
+      current: () => number;
+      get: (...args: unknown[]) => Promise<unknown>;
+      set: (...args: unknown[]) => Promise<unknown>;
+      step: (...args: unknown[]) => Promise<unknown>;
+      onChange: (listener: (factor: number) => void) => () => void;
+    };
     tailscale: { openInstaller: (...args: unknown[]) => Promise<unknown>; openApp: (...args: unknown[]) => Promise<unknown> };
     updates: {
       state: (...args: unknown[]) => Promise<unknown>;
@@ -142,6 +152,7 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
   const calls: unknown[][] = [];
   const sent: unknown[][] = [];
   const listeners = new Map<string, (event: unknown, payload: unknown) => void>();
+  let blinkZoom = 1.25;
   runInNewContext(compiled, {
     exports: {},
     require: (name: string) => {
@@ -156,10 +167,11 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
           on: (channel: string, fn: (event: unknown, payload: unknown) => void) => { listeners.set(channel, fn); },
           removeListener: (channel: string, fn: unknown) => { if (listeners.get(channel) === fn) listeners.delete(channel); },
         },
+        webFrame: { getZoomFactor: () => blinkZoom },
       };
     },
   });
-  assert.deepEqual(Object.keys(bridge), ['selectDirectory', 'selectPluginSource', 'selectExecutable', 'revealPath', 'setupRestartPending', 'restartAfterSetup', 'handOverToService', 'appInfo', 'openLogsFolder', 'openAbout', 'uninstall', 'speech', 'windowMachine', 'windowScheme', 'openWindow', 'browser', 'updates', 'tailscale']);
+  assert.deepEqual(Object.keys(bridge), ['selectDirectory', 'selectPluginSource', 'selectExecutable', 'revealPath', 'setupRestartPending', 'restartAfterSetup', 'handOverToService', 'appInfo', 'openLogsFolder', 'openAbout', 'uninstall', 'speech', 'windowMachine', 'windowScheme', 'dockIcon', 'zoom', 'openWindow', 'browser', 'updates', 'tailscale']);
   assert.deepEqual(Object.keys(bridge.browser), ['attach', 'detach']);
   // Multi-window V3: an id crosses, nothing else; the main process checks it is one.
   assert.deepEqual(Object.keys(bridge.windowMachine), ['set']);
@@ -173,6 +185,34 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
   // Multi-window V5: one object crosses, as given; the main process checks it is { route, machineId? }.
   await bridge.openWindow({ route: '/kanban', machineId: 'vps' }, 'https://evil.example');
   assert.deepEqual(calls.pop(), ['timon:open-window', { route: '/kanban', machineId: 'vps' }]);
+  // The Dock icon: a name crosses, never a path; the main process checks it is one it knows.
+  assert.deepEqual(Object.keys(bridge.dockIcon), ['get', 'set']);
+  await bridge.dockIcon.get('untrusted extra option');
+  assert.deepEqual(calls.pop(), ['timon:dock-icon-get']);
+  await bridge.dockIcon.set('dark', '/Users/example/evil.png');
+  assert.equal(JSON.stringify(calls.pop()), '["timon:dock-icon-set",{"icon":"dark"}]');
+  // The interface size: a number or a direction crosses, nothing else; the main process snaps and checks it.
+  const callsBefore = calls.length;
+  assert.deepEqual(Object.keys(bridge.zoom), ['current', 'get', 'set', 'step', 'onChange']);
+  // The factor Blink lays the page out at, read synchronously: no IPC, so a measure never waits or races.
+  assert.equal(bridge.zoom.current(), 1.25);
+  blinkZoom = 0.9;
+  assert.equal(bridge.zoom.current(), 0.9, 'read live, not cached');
+  assert.equal(calls.length, callsBefore, 'current() calls nothing in the main process');
+  await bridge.zoom.get('untrusted extra option');
+  assert.deepEqual(calls.pop(), [UI_ZOOM_CHANNELS.get]);
+  await bridge.zoom.set(1.25, { factor: 9 });
+  assert.equal(JSON.stringify(calls.pop()), `["${UI_ZOOM_CHANNELS.set}",{"factor":1.25}]`);
+  await bridge.zoom.step('in', 'untrusted extra option');
+  assert.equal(JSON.stringify(calls.pop()), `["${UI_ZOOM_CHANNELS.step}",{"direction":"in"}]`);
+  const factors: number[] = [];
+  const stopZoom = bridge.zoom.onChange((factor) => factors.push(factor));
+  listeners.get(UI_ZOOM_CHANNELS.changed)?.({}, { factor: 1.5 });
+  listeners.get(UI_ZOOM_CHANNELS.changed)?.({}, { factor: 'huge' });
+  listeners.get(UI_ZOOM_CHANNELS.changed)?.({}, null);
+  assert.deepEqual(factors, [1.5], 'only a number reaches the page');
+  stopZoom();
+  assert.equal(listeners.has(UI_ZOOM_CHANNELS.changed), false);
   assert.deepEqual(Object.keys(bridge.tailscale), ['openInstaller', 'openApp']);
   await bridge.restartAfterSetup('untrusted executable', 'another home');
   await bridge.selectDirectory('/Users/example/My Project', 'untrusted extra option');
@@ -409,12 +449,181 @@ test('a double click hands over once, and a later call finds nothing left to do'
   assert.equal(calls.filter((c) => c === 'stop').length, 1);
 });
 
+test('a service that answers too late is let go before the embedded daemon serves again', async () => {
+  const late = handover({
+    waitService: async () => { late.calls.push('wait'); return false; },
+    releaseService: async () => { late.calls.push('release'); },
+  });
+  assert.equal(await late.run('/setup/agent'), 'kept-embedded');
+  assert.deepEqual(late.calls, ['needed', 'waiting /setup/agent', 'stop', 'kick', 'wait', 'release', 'embedded again', 'kept']);
+  // A release that fails never keeps the setup from going on.
+  const failing = handover({
+    waitService: async () => false,
+    releaseService: async () => { throw new Error('taskkill refused'); },
+  });
+  assert.equal(await failing.run('/'), 'kept-embedded');
+  assert.deepEqual(failing.calls.slice(-2), ['embedded again', 'kept']);
+});
+
+test('a service found answering as the embedded daemon restarts is a handover, with no notice and no watch', async () => {
+  const caught = handover({
+    waitService: async () => false,
+    resumeEmbedded: async () => { caught.calls.push('embedded again'); return 'service'; },
+  });
+  assert.equal(await caught.run('/setup/agent'), 'handed-over');
+  assert.deepEqual(caught.calls, ['needed', 'waiting /setup/agent', 'stop', 'kick', 'embedded again']);
+  const kept = handover({
+    waitService: async () => false,
+    resumeEmbedded: async () => { kept.calls.push('embedded again'); return 'embedded'; },
+  });
+  assert.equal(await kept.run('/'), 'kept-embedded');
+  assert.equal(kept.calls.at(-1), 'kept');
+});
+
+/** A clock that only moves when the wait sleeps: no real timer in these tests. */
+function fakeClock(): WaitClock & { slept: number } {
+  let t = 0;
+  const clock = { slept: 0, now: () => t, sleep: async (ms: number) => { t += ms; clock.slept += ms; } };
+  return clock;
+}
+const down: HealthResult = { ok: false, status: null, error: 'connection refused: nothing listens on the port' };
+const up: HealthResult = { ok: true, status: 200, identity: 'timon', instance: 'abc' };
+
+test('the handover wait ends at its first budget when the service\'s process is gone', async () => {
+  const clock = fakeClock();
+  let asked = 0;
+  const result = await waitWhileBooting({
+    probe: async () => down, stillBooting: async () => { asked += 1; return false; },
+    baseMs: 90_000, maxMs: 300_000, intervalMs: 1_000, clock,
+  });
+  assert.equal(result.health, down);
+  assert.equal(result.extended, false);
+  assert.ok(result.waitedMs >= 89_000 && result.waitedMs <= 90_000, String(result.waitedMs));
+  assert.equal(asked, 1, 'asked once, at the end of the first budget');
+});
+
+test('the handover wait goes on while the task runs, and sees a service answering after 90 s (TIM-0158)', async () => {
+  const clock = fakeClock();
+  let asked = 0;
+  const result = await waitWhileBooting({
+    probe: async () => (clock.now() >= 150_000 ? up : down),
+    stillBooting: async () => { asked += 1; return true; },
+    baseMs: 90_000, maxMs: 300_000, intervalMs: 1_000, recheckMs: 10_000, clock,
+  });
+  assert.equal(result.health, up);
+  assert.equal(result.extended, true);
+  assert.equal(result.waitedMs, 150_000);
+  // One query every ten seconds past the budget, never one per probe.
+  assert.ok(asked >= 6 && asked <= 7, String(asked));
+});
+
+test('the handover wait never passes its cap, even with a task that keeps running', async () => {
+  const clock = fakeClock();
+  const result = await waitWhileBooting({
+    probe: async () => down, stillBooting: async () => true,
+    baseMs: 90_000, maxMs: 300_000, intervalMs: 1_000, clock,
+  });
+  assert.equal(result.health, down);
+  assert.equal(result.extended, true);
+  assert.ok(result.waitedMs < 300_000 && result.waitedMs >= 299_000, String(result.waitedMs));
+});
+
+test('the handover wait stops extending once the task ends, and a failed query counts as ended', async () => {
+  const clock = fakeClock();
+  const ended = await waitWhileBooting({
+    probe: async () => down, stillBooting: async () => clock.now() < 120_000,
+    baseMs: 90_000, maxMs: 300_000, intervalMs: 1_000, recheckMs: 10_000, clock,
+  });
+  assert.ok(ended.waitedMs >= 120_000 && ended.waitedMs < 131_000, String(ended.waitedMs));
+  const unreadable = await waitWhileBooting({
+    probe: async () => down, stillBooting: async () => { throw new Error('powershell missing'); },
+    baseMs: 10_000, maxMs: 300_000, intervalMs: 1_000, clock: fakeClock(),
+  });
+  assert.equal(unreadable.extended, false);
+  assert.ok(unreadable.waitedMs < 10_000);
+});
+
+test('the handover wait returns at once on an answer, foreign ones included', async () => {
+  const foreign: HealthResult = { ok: true, status: 404, identity: 'foreign' };
+  const clock = fakeClock();
+  const result = await waitWhileBooting({
+    probe: async () => foreign, stillBooting: async () => true, baseMs: 90_000, maxMs: 300_000, clock,
+  });
+  assert.equal(result.health, foreign);
+  assert.equal(clock.slept, 0);
+});
+
+test('a service that shows up after the fallback gets the home, through the same handover (TIM-0158)', async () => {
+  const clock = fakeClock();
+  // The fake service: started by its supervisor 4 minutes after the fallback, refused the home.
+  const refusedAt = 240_000;
+  let embedded = true;
+  const { run, calls } = handover({
+    needed: () => { calls.push('needed'); return embedded; },
+    stopEmbedded: async () => { calls.push('stop'); embedded = false; },
+  });
+  const late = lateHandover({
+    serviceWaiting: (since) => clock.now() >= refusedAt && refusedAt >= since,
+    handover: () => run('/setup/agent'),
+    clock, intervalMs: 30_000, maxMs: 30 * 60_000,
+  });
+  assert.equal(await late.start(0), 'handed-over');
+  assert.deepEqual(calls, ['needed', 'waiting /setup/agent', 'stop', 'kick', 'wait', 'resume']);
+  assert.equal(clock.now(), 240_000);
+});
+
+test('the late watch hands nothing over without a sign of the service, and ends at its cap', async () => {
+  const clock = fakeClock();
+  let handovers = 0;
+  let reads = 0;
+  const late = lateHandover({
+    serviceWaiting: () => { reads += 1; return false; },
+    handover: async () => { handovers += 1; return 'handed-over'; },
+    clock, intervalMs: 30_000, maxMs: 30 * 60_000,
+  });
+  assert.equal(await late.start(0), 'gave-up');
+  assert.equal(handovers, 0);
+  assert.equal(clock.now(), 30 * 60_000);
+  assert.equal(reads, 59);
+});
+
+test('a refusal older than the fallback is not a sign, and a late fallback is retried once more at most', async () => {
+  const clock = fakeClock();
+  const refusals = [10_000, 100_000];
+  const since: number[] = [];
+  let handovers = 0;
+  const late = lateHandover({
+    serviceWaiting: (from) => { since.push(from); return refusals.some((at) => at >= from && at <= clock.now()); },
+    handover: async () => { handovers += 1; refusals.push(clock.now() + 60_000); return 'kept-embedded'; },
+    clock, intervalMs: 30_000, maxMs: 30 * 60_000, attempts: 2,
+  });
+  assert.equal(await late.start(20_000), 'gave-up');
+  assert.equal(handovers, 2, 'two late handovers, then the embedded daemon keeps the home');
+  assert.ok(since.every((from) => from >= 20_000));
+  assert.equal(late.start(0), null, 'no third watch');
+});
+
+test('the late watch stops on quit, runs once, and a failed handover ends it', async () => {
+  const clock = fakeClock();
+  const late = lateHandover({ serviceWaiting: () => false, handover: async () => 'handed-over', clock });
+  const watching = late.start(0);
+  assert.ok(watching);
+  assert.equal(late.start(0), null, 'one watch at a time');
+  late.stop();
+  assert.equal(await watching, 'stopped');
+  const failing = lateHandover({
+    serviceWaiting: () => true, handover: async () => { throw new Error('still running'); }, clock: fakeClock(),
+  });
+  assert.equal(await failing.start(0), 'failed');
+});
+
 test('the kept-embedded notice names the home and the reason, in the user\'s language', () => {
   const en = handoverKeptMessage('en-US', '/home/me/.timon', 'timeout');
-  assert.match(en.message, /did not answer/);
+  assert.match(en.message, /slow to start/);
+  assert.doesNotMatch(en.detail, /reopen/, 'the service is taken over on its own');
   assert.match(en.detail, /\/home\/me\/\.timon/);
   assert.match(en.detail, /timeout/);
-  assert.match(handoverKeptMessage('fr', 'C:\\Users\\me\\.timon', null).message, /n’a pas répondu/);
+  assert.match(handoverKeptMessage('fr', 'C:\\Users\\me\\.timon', null).message, /tarde à démarrer/); // french-ok: the French locale under test
 });
 
 test('the configuration the wizard writes keeps the origins the window opened on', () => {

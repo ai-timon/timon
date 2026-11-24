@@ -35,13 +35,13 @@ const LEFT = 'chat.left.widget';
 const RIGHT = 'chat.right.widget';
 const KNOWN = [LEFT, RIGHT] as const;
 
-test('rien de stocké : les colonnes sont dans leur ordre déclaré', () => {
+test('nothing stored: the columns are in their declared order', () => {
   const c = readColumns(null, KNOWN);
   assert.deepEqual(c, { ordre: [LEFT, RIGHT], masquees: [] });
   assert.deepEqual(c, defaultColumns(KNOWN));
 });
 
-test('inverser change le côté des deux colonnes', () => {
+test('swapping changes the side of the two columns', () => {
   const c = swapColumns(defaultColumns(KNOWN));
   assert.equal(sideOf(c, LEFT), 'right');
   assert.equal(sideOf(c, RIGHT), 'left');
@@ -49,64 +49,64 @@ test('inverser change le côté des deux colonnes', () => {
   assert.equal(zoneOfSide(c, 'right'), LEFT);
 });
 
-test('inverser deux fois revient à l’ordre d’origine', () => {
+test('swapping twice returns to the original order', () => {
   const c = defaultColumns(KNOWN);
   assert.deepEqual(swapColumns(swapColumns(c)), c);
 });
 
-test('le repli suit la zone, pas le côté : inverser ne déplie rien', () => {
+test('collapsing follows the zone, not the side: swapping expands nothing', () => {
   const folded = toggleCollapsed(defaultColumns(KNOWN), LEFT);
   const inverse = swapColumns(folded);
   assert.equal(isCollapsed(inverse, LEFT), true);
   assert.equal(isCollapsed(inverse, RIGHT), false);
-  // La colonne repliée est maintenant celle de droite.
+  // The collapsed column is now the right one.
   assert.equal(sideOf(inverse, LEFT), 'right');
 });
 
-test('masquer puis démasquer rend l’état d’origine', () => {
+test('hiding then showing gives back the original state', () => {
   const c = defaultColumns(KNOWN);
   assert.deepEqual(toggleCollapsed(toggleCollapsed(c, RIGHT), RIGHT), c);
 });
 
-test('une colonne repliée garde sa place dans l’ordre', () => {
+test('a collapsed column keeps its place in the order', () => {
   const c = toggleCollapsed(defaultColumns(KNOWN), LEFT);
   assert.deepEqual(c.ordre, [LEFT, RIGHT]);
 });
 
-test('un ordre inversé se relit tel quel', () => {
+test('a swapped order reads back as is', () => {
   const stored = swapColumns(toggleCollapsed(defaultColumns(KNOWN), RIGHT));
   const reread = readColumns(JSON.parse(JSON.stringify(stored)), KNOWN);
   assert.deepEqual(reread, stored);
 });
 
-test('une zone inconnue du stockage est ignorée', () => {
+test('a zone unknown to the storage is ignored', () => {
   const c = readColumns({ ordre: ['chat.disparue', RIGHT], masquees: ['chat.disparue'] }, KNOWN);
   assert.deepEqual(c.ordre, [RIGHT, LEFT]);
   assert.deepEqual(c.masquees, []);
 });
 
-test('une zone connue absente du stockage revient à sa place déclarée', () => {
+test('a known zone missing from the storage goes back to its declared place', () => {
   const c = readColumns({ ordre: [RIGHT] }, KNOWN);
   assert.deepEqual(c.ordre, [RIGHT, LEFT]);
 });
 
-test('un doublon de stockage ne compte qu’une fois', () => {
+test('a duplicate in the storage counts once', () => {
   const c = readColumns({ ordre: [RIGHT, RIGHT, LEFT], masquees: [LEFT, LEFT] }, KNOWN);
   assert.deepEqual(c.ordre, [RIGHT, LEFT]);
   assert.deepEqual(c.masquees, [LEFT]);
 });
 
-test('une valeur illisible retombe sur les défauts au lieu de casser', () => {
+test('an unreadable value falls back to the defaults instead of breaking', () => {
   for (const raw of [undefined, 42, 'nope', [], { ordre: 'gauche', masquees: 7 }]) {
     assert.deepEqual(readColumns(raw, KNOWN), defaultColumns(KNOWN));
   }
 });
 
-test('une zone hors colonnes n’a pas de côté : le chrome ne réserve rien', () => {
+test('a zone outside the columns has no side: the chrome reserves nothing', () => {
   assert.equal(sideOf(defaultColumns(KNOWN), 'cockpit.widget'), null);
 });
 
-test('les mutations ne modifient pas la valeur reçue', () => {
+test('the mutations do not change the value they receive', () => {
   const c: ChatColumns = defaultColumns(KNOWN);
   const copy = JSON.parse(JSON.stringify(c)) as ChatColumns;
   swapColumns(c);
@@ -114,21 +114,21 @@ test('les mutations ne modifient pas la valeur reçue', () => {
   assert.deepEqual(c, copy);
 });
 
-test('une seule colonne déclarée : elle est à gauche, rien à droite', () => {
+test('a single declared column: it is on the left, nothing on the right', () => {
   const c = defaultColumns([LEFT]);
   assert.equal(sideOf(c, LEFT), 'left');
   assert.equal(zoneOfSide(c, 'right'), null);
 });
 
-// ── Onglets : une colonne alterne entre plusieurs zones de widgets.
+// ── Tabs: a column switches between several widget zones.
 
-test('sans onglet, une colonne affiche sa propre zone', () => {
+test('without a tab, a column shows its own zone', () => {
   const c = defaultColumns(KNOWN);
   assert.deepEqual(tabsOf(c, RIGHT), [RIGHT]);
   assert.equal(activeTab(c, RIGHT), RIGHT);
 });
 
-test('ouvrir un onglet l’affiche, sous la colonne qui l’a ouvert', () => {
+test('opening a tab shows it, under the column that opened it', () => {
   const c = addTab(defaultColumns(KNOWN), RIGHT, 'a');
   assert.deepEqual(tabsOf(c, RIGHT), [RIGHT, `${RIGHT}#a`]);
   assert.equal(activeTab(c, RIGHT), `${RIGHT}#a`);
@@ -137,40 +137,40 @@ test('ouvrir un onglet l’affiche, sous la colonne qui l’a ouvert', () => {
   assert.equal(columnZoneOf(RIGHT), RIGHT);
 });
 
-test('un suffixe déjà pris, vide ou une colonne inconnue ne créent rien', () => {
+test('a suffix already taken, an empty one or an unknown column create nothing', () => {
   const c = addTab(defaultColumns(KNOWN), RIGHT, 'a');
   assert.deepEqual(addTab(c, RIGHT, 'a'), c);
   assert.deepEqual(addTab(c, RIGHT, ''), c);
   assert.deepEqual(addTab(c, 'chat.ailleurs', 'b'), c);
 });
 
-test('choisir un onglet le montre, revenir au premier efface le choix', () => {
+test('choosing a tab shows it, going back to the first clears the choice', () => {
   const opened = addTab(defaultColumns(KNOWN), RIGHT, 'a');
   const first = selectTab(opened, RIGHT, RIGHT);
   assert.equal(activeTab(first, RIGHT), RIGHT);
   assert.equal(first.actifs, undefined);
   assert.equal(activeTab(selectTab(first, RIGHT, `${RIGHT}#a`), RIGHT), `${RIGHT}#a`);
-  // L'onglet d'une autre colonne n'est pas un choix possible ici.
+  // The tab of another column is not a possible choice here.
   assert.equal(activeTab(selectTab(first, RIGHT, `${LEFT}#a`), RIGHT), RIGHT);
 });
 
-test('fermer l’onglet affiché montre celui qui le précédait', () => {
+test('closing the shown tab shows the one before it', () => {
   let c = addTab(defaultColumns(KNOWN), RIGHT, 'a');
   c = addTab(c, RIGHT, 'b');
   c = removeTab(c, RIGHT, `${RIGHT}#b`);
   assert.equal(activeTab(c, RIGHT), `${RIGHT}#a`);
   c = removeTab(c, RIGHT, `${RIGHT}#a`);
   assert.equal(activeTab(c, RIGHT), RIGHT);
-  // Revenue à un seul onglet, la colonne retrouve sa forme d'avant les onglets.
+  // Back to a single tab, the column gets back its shape from before the tabs.
   assert.deepEqual(c, defaultColumns(KNOWN));
 });
 
-test('le premier onglet ne se ferme pas : il est la colonne', () => {
+test('the first tab does not close: it is the column', () => {
   const c = addTab(defaultColumns(KNOWN), RIGHT, 'a');
   assert.deepEqual(removeTab(c, RIGHT, RIGHT), c);
 });
 
-test('inverser et replier gardent les onglets de chaque colonne', () => {
+test('swapping and collapsing keep the tabs of each column', () => {
   let c = addTab(defaultColumns(KNOWN), RIGHT, 'a');
   c = addTab(c, LEFT, 'b');
   c = selectTab(c, LEFT, LEFT);
@@ -180,14 +180,14 @@ test('inverser et replier gardent les onglets de chaque colonne', () => {
   assert.equal(activeTab(after, RIGHT), `${RIGHT}#a`);
 });
 
-test('des onglets se relisent tels quels', () => {
+test('tabs read back as is', () => {
   let c = addTab(defaultColumns(KNOWN), RIGHT, 'a');
   c = addTab(c, RIGHT, 'b');
   c = selectTab(c, RIGHT, `${RIGHT}#a`);
   assert.deepEqual(readColumns(JSON.parse(JSON.stringify(c)), KNOWN), c);
 });
 
-test('un onglet stocké sous la mauvaise colonne ou illisible est ignoré', () => {
+test('a tab stored under the wrong column or unreadable is ignored', () => {
   const c = readColumns({
     ordre: [LEFT, RIGHT],
     onglets: { [RIGHT]: [`${LEFT}#x`, `${RIGHT}#`, 7, `${RIGHT}#ok`, `${RIGHT}#ok`], 'chat.disparue': ['chat.disparue#a'] },
@@ -199,9 +199,9 @@ test('un onglet stocké sous la mauvaise colonne ou illisible est ignoré', () =
   assert.deepEqual(Object.keys(c.onglets ?? {}), [RIGHT]);
 });
 
-// ── Persistance : les colonnes voyagent par `ui_layout`, sur leur propre scope.
+// ── Persistence: the columns travel through `ui_layout`, on their own scope.
 
-/** Un daemon en mémoire, une valeur par scope. */
+/** An in-memory daemon, one value per scope. */
 function fakeDaemon() {
   const store = new Map<string, unknown>();
   const fetchImpl = async (url: string, init?: RequestInit): Promise<Response> => {
@@ -218,7 +218,7 @@ function fakeDaemon() {
   return { fetchImpl, store };
 }
 
-test('un ordre inversé survit à l’aller-retour par le daemon', async () => {
+test('a swapped order survives the round trip through the daemon', async () => {
   const daemon = fakeDaemon();
   const inverse = swapColumns(defaultColumns(KNOWN));
 
@@ -227,33 +227,33 @@ test('un ordre inversé survit à l’aller-retour par le daemon', async () => {
 
   assert.equal(out.ok, true);
   assert.deepEqual(readColumns(out.raw, KNOWN), inverse);
-  assert.deepEqual([...daemon.store.keys()], [CHAT_COLUMNS_SCOPE], 'le cockpit n’est pas touché');
+  assert.deepEqual([...daemon.store.keys()], [CHAT_COLUMNS_SCOPE], 'the cockpit is not touched');
 });
 
-test('le layout laissé au navigateur n’est jamais repris comme ordre de colonnes', async () => {
+test('the layout left in the browser is never taken as a column order', async () => {
   const daemon = fakeDaemon();
   const cockpit = [{ id: 'agenda', rail: 'gauche', rang: 0, hauteur: 200 }];
   const storage = {
     getItem: (k: string) => (k === LEGACY_LAYOUT_KEY ? JSON.stringify(cockpit) : null),
-    removeItem: () => { throw new Error('la migration du cockpit ne doit pas courir ici'); },
+    removeItem: () => { throw new Error('the cockpit migration must not run here'); },
   };
 
   const out = await loadLayout(columnsIo({ fetchImpl: daemon.fetchImpl, storage }));
 
   assert.deepEqual(out, { raw: null, ok: true, migrated: false });
-  assert.equal(daemon.store.size, 0, 'rien n’a été écrit sur le scope des colonnes');
+  assert.equal(daemon.store.size, 0, 'nothing was written on the column scope');
 });
 
-test('daemon injoignable : la lecture le dit, et rien n’est écrit', async () => {
-  const fetchImpl = async () => { throw new Error('réseau coupé'); };
+test('daemon unreachable: the read says so, and nothing is written', async () => {
+  const fetchImpl = async () => { throw new Error('network down'); };
   const out = await loadLayout(columnsIo({ fetchImpl }));
   assert.deepEqual(out, { raw: null, ok: false, migrated: false });
-  // C’est ce `ok: false` que le hook garde : sans lui, les défauts seraient
-  // sauvés par-dessus un ordre qu’on a seulement échoué à lire.
+  // That `ok: false` is what the hook keeps: without it, the defaults would be
+  // saved over an order we only failed to read.
   assert.deepEqual(readColumns(out.raw, KNOWN), defaultColumns(KNOWN));
 });
 
-test('largeur : absente = défaut, posée = bornée, null = retour au défaut', () => {
+test('width: missing = default, set = clamped, null = back to the default', () => {
   const c = readColumns(null, KNOWN);
   assert.equal(widthOf(c, RIGHT, 300), 300);
   const large = setWidth(c, RIGHT, 455.4);
@@ -264,22 +264,22 @@ test('largeur : absente = défaut, posée = bornée, null = retour au défaut', 
   assert.equal(reset.largeurs, undefined, 'back to the default, the stored value regains its old shape');
 });
 
-test('largeur : une valeur stockée illisible ou hors colonnes est ignorée', () => {
+test('width: an unreadable stored value or one outside the columns is ignored', () => {
   const c = readColumns({ largeurs: { [RIGHT]: 'large', [LEFT]: 5000, 'chat.disparue': 400 } }, KNOWN);
   assert.deepEqual(c.largeurs, { [LEFT]: WIDTH_MAX });
 });
 
-test('deuxième colonne : un onglet montré à côté, sans changer l’onglet affiché', () => {
+test('second column: a tab shown alongside, without changing the shown tab', () => {
   const c = selectTab(addTab(readColumns(null, KNOWN), RIGHT, 'a'), RIGHT, RIGHT);
   const s = addSecond(c, RIGHT, 'b');
   assert.equal(secondOf(s, RIGHT), `${RIGHT}#b`);
-  assert.deepEqual(tabsOf(s, RIGHT), [RIGHT, `${RIGHT}#a`, `${RIGHT}#b`], 'une entrée d’onglet par colonne');
+  assert.deepEqual(tabsOf(s, RIGHT), [RIGHT, `${RIGHT}#a`, `${RIGHT}#b`], 'one tab entry per column');
   assert.equal(activeTab(s, RIGHT), RIGHT);
   assert.equal(secondOf(s, LEFT), null);
-  assert.deepEqual(addSecond(s, RIGHT, 'c'), s, 'une seule deuxième colonne par côté');
+  assert.deepEqual(addSecond(s, RIGHT, 'c'), s, 'a single second column per side');
 });
 
-test('deuxième colonne : la détacher la laisse en onglet, la fermer l’oublie avec sa largeur', () => {
+test('second column: detaching it leaves it as a tab, closing it forgets it with its width', () => {
   const s = setWidth(addSecond(readColumns(null, KNOWN), LEFT, 'b'), `${LEFT}#b`, 400);
   const detached = detachSecond(s, LEFT);
   assert.equal(secondOf(detached, LEFT), null);
@@ -289,28 +289,28 @@ test('deuxième colonne : la détacher la laisse en onglet, la fermer l’oublie
   assert.equal(closed.largeurs, undefined);
 });
 
-test('deuxième colonne : relue telle quelle, ignorée si elle ne nomme pas un onglet', () => {
+test('second column: read back as is, ignored if it does not name a tab', () => {
   const s = addSecond(readColumns(null, KNOWN), RIGHT, 'b');
   assert.deepEqual(readColumns(JSON.parse(JSON.stringify(s)), KNOWN), s);
   const forged = readColumns({ ...s, secondes: { [RIGHT]: `${LEFT}#b`, [LEFT]: 4 } }, KNOWN);
   assert.equal(forged.secondes, undefined);
 });
 
-test('inverser garde la deuxième colonne et les largeurs de chaque zone', () => {
+test('swapping keeps the second column and the widths of each zone', () => {
   const s = setWidth(addSecond(readColumns(null, KNOWN), RIGHT, 'b'), RIGHT, 500);
   const inv = swapColumns(s);
   assert.deepEqual(inv.secondes, s.secondes);
   assert.deepEqual(inv.largeurs, s.largeurs);
 });
 
-test('plan : gouttière d’origine à gauche, poignée dégagée à droite, aux largeurs par défaut', () => {
+test('plan: original gutter on the left, handle kept clear on the right, at the default widths', () => {
   const plan = planRails(1400, { width: 280, first: true, second: null }, { width: 300, first: true, second: null });
   assert.equal(plan.left?.gutter, 312);
   assert.equal(plan.right?.gutter, 328, 'clears the handle past the column edge');
   assert.equal(plan.slack, 1400 - THREAD_MIN - 640);
 });
 
-test('plan : assez de place, les deux colonnes de chaque côté sont posées', () => {
+test('plan: enough room, both columns of each side are laid out', () => {
   const plan = planRails(3000, { width: 300, first: true, second: 300 }, { width: 300, first: true, second: 400 });
   assert.equal(plan.right?.second, 400);
   assert.equal(plan.right?.secondOffset, 312);
@@ -318,7 +318,7 @@ test('plan : assez de place, les deux colonnes de chaque côté sont posées', (
   assert.equal(plan.left?.secondFolded, false);
 });
 
-test('plan : trop étroit, la deuxième colonne du côté le plus large se replie d’abord', () => {
+test('plan: too narrow, the second column of the widest side collapses first', () => {
   const g = { width: 300, first: true, second: 300 };
   const d = { width: 300, first: true, second: 400 };
   // Room for one second column, not two.
@@ -328,7 +328,7 @@ test('plan : trop étroit, la deuxième colonne du côté le plus large se repli
   assert.equal(plan.left?.second, 300);
 });
 
-test('plan : une deuxième colonne seule (la colonne vide) prend le bord, et se replie dans la colonne', () => {
+test('plan: a second column alone (the empty column) takes the edge, and collapses into the column', () => {
   const alone = planRails(3000, null, { width: 300, first: false, second: 350 });
   assert.equal(alone.right?.first, null);
   assert.equal(alone.right?.secondOffset, 0);
@@ -338,7 +338,7 @@ test('plan : une deuxième colonne seule (la colonne vide) prend le bord, et se 
   assert.equal(foldedBack.right?.second, null);
 });
 
-test('plan : plus étroit encore, les largeurs rétrécissent sans passer sous le minimum', () => {
+test('plan: narrower still, the widths shrink without going under the minimum', () => {
   const plan = planRails(THREAD_MIN + 700, { width: 500, first: true, second: null }, { width: 500, first: true, second: null });
   assert.ok((plan.left?.first ?? 0) < 500);
   assert.ok((plan.left?.first ?? 0) >= WIDTH_MIN);
@@ -348,7 +348,7 @@ test('plan : plus étroit encore, les largeurs rétrécissent sans passer sous l
   assert.equal(minuscule.slack, 0);
 });
 
-test('plan : largeur pas encore mesurée, tout est posé tel que demandé', () => {
+test('plan: width not measured yet, everything is laid out as asked', () => {
   const plan = planRails(0, { width: 300, first: true, second: 300 }, null);
   assert.equal(plan.left?.second, 300);
   assert.equal(plan.slack, Number.POSITIVE_INFINITY);
@@ -369,8 +369,8 @@ test('a tab name survives every mutation, leaves with its tab, and is bounded', 
   assert.equal(readColumns({ noms: { 'chat.left.widget#ghost': 'x' } }, zones).noms, undefined);
 });
 
-// TODO #647 : un clic rejoué sur l’écriture d’une autre fenêtre garde son sens.
-test('replier une colonne déjà repliée ailleurs la laisse repliée', () => {
+// TODO #647: a click replayed on another window's write keeps its meaning.
+test('collapsing a column already collapsed elsewhere leaves it collapsed', () => {
   const c = defaultColumns(KNOWN);
   const folded = setCollapsed(c, LEFT, true);
   assert.equal(isCollapsed(folded, LEFT), true);

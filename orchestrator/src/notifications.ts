@@ -16,7 +16,7 @@ import { bus, type BusEvent } from './bus.js';
 import { moduleActive } from './kernel/module-state.js';
 import { isMirrorTask } from './task-mirror.js';
 import { sandboxCascadeNotice } from './sandbox-cascade.js';
-import type { DaemonMessage } from './daemon-message.js';
+import { daemonMessage, decodeDaemonMessage, withDaemonMessageBody, type DaemonMessage } from './daemon-message.js';
 
 /**
  * Outcome of a Web Push fan-out, returned to the caller so that it can REASON
@@ -271,14 +271,23 @@ export function startNotificationResolver(): () => void {
       const task = dbApi.getTask(ev.taskId);
       // A blocked ticket mirrored from another system is that system's news.
       if (isMirrorTask(task)) return;
+      const shortTitle = task ? (task.title.length > 60 ? task.title.slice(0, 59) + '…' : task.title) : null;
+      // TIM-0121: a review or merge stuck on the sandbox the coder was moved away from.
+      const cascade = task ? sandboxCascadeNotice(task, ev.reason) : '';
+      // The body is the reason alone: it reads in the reader's language when the
+      // daemon wrote it with a code. With the sandbox notice beside it, it stays English.
+      const reasonCode = task && !cascade && ev.reason === task.blocked_reason
+        ? decodeDaemonMessage(task.blocked_reason_code)
+        : null;
       createNotification({
         type: 'alert',
         urgent: true,
-        title: task
-          ? `Task blocked: ${task.title.length > 60 ? task.title.slice(0, 59) + '…' : task.title}`
-          : `Task blocked (${ev.taskId.slice(0, 8)})`,
-        // TIM-0121: a review or merge stuck on the sandbox the coder was moved away from.
-        body: [ev.reason, task ? sandboxCascadeNotice(task, ev.reason) : ''].filter(Boolean).join('\n\n') || null,
+        title: shortTitle !== null ? `Task blocked: ${shortTitle}` : `Task blocked (${ev.taskId.slice(0, 8)})`,
+        body: [ev.reason, cascade].filter(Boolean).join('\n\n') || null,
+        message: withDaemonMessageBody(
+          daemonMessage('task_blocked', { title: shortTitle ?? 'none', taskId: ev.taskId.slice(0, 8) }),
+          reasonCode,
+        ),
         taskId: ev.taskId,
         missionId: task?.mission_id ?? null,
       });

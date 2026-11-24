@@ -175,7 +175,7 @@ test('a group name with a control character is refused on every entry: rule body
   assert.deepEqual(dbApi.listSeriesGroupFallbacks(series), []);
   assert.equal(dbApi.listTasks().length, before);
   // Accented letters and inner spaces are a name like any other.
-  assert.equal((await call('PUT', `/api/series/${series}/roles`, 'daemon', { scope: 'review', group: 'très simple', backend: 'codex' })).status, 200);
+  assert.equal((await call('PUT', `/api/series/${series}/roles`, 'daemon', { scope: 'review', group: 'très simple', backend: 'codex' })).status, 200); // french-ok: an accented group label
 });
 
 test('group rules are refused to an anonymous caller and hidden from a stranger, fallbacks included', async () => {

@@ -47,7 +47,7 @@ export function useBotPick(after?: () => void): (name: string) => void {
   }, [router, pathname, bus, inIsland, after]);
 }
 
-export function BotsRailWidget({ poignee, className }: WidgetProps): ReactElement {
+export function BotsRailWidget({ handle, className }: WidgetProps): ReactElement {
   const pathname = usePathname();
   const params = useSearchParams();
   const { bots, teams, refresh } = useBots();
@@ -64,7 +64,7 @@ export function BotsRailWidget({ poignee, className }: WidgetProps): ReactElemen
         states={states}
         onSelect={pick}
         onChanged={refresh}
-        headerActions={poignee}
+        headerActions={handle}
       />
     </div>
   );

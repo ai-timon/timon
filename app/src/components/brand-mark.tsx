@@ -57,6 +57,34 @@ export function isPicture(icon: string): boolean {
   return icon.startsWith('/api/uploads/') || icon.startsWith('data:image/svg+xml;base64,');
 }
 
+/** Clean base64 only: the URL ends up in a CSS `url("…")`, which a quote could close. */
+const SVG_DATA_URL = /^data:image\/svg\+xml;base64,([A-Za-z0-9+/]+={0,2})$/;
+/** Every paint value of an SVG, as an attribute or a style: `fill`, `stroke`, `stop-color`, `color`. */
+const PAINT = /(?:fill|stroke|color)\s*(?:=\s*["']|:)\s*([^"';>}]+)/gi;
+const NEUTRAL_PAINT = new Set(['currentcolor', 'none', 'transparent', 'inherit']);
+
+/**
+ * True for a provider logo drawn in one colour, `currentColor`, as the ACP
+ * registry icons and some C9 logos are. Through `<img>`, `currentColor`
+ * resolves to black, invisible on the dark theme; such a logo is painted as a
+ * mask instead, so it takes the surrounding text colour. A logo that names a
+ * colour of its own (or a gradient) is multi-colour and keeps its colours. The
+ * markup is only read here, never put in the DOM.
+ */
+export function isSingleColourSvg(icon: string): boolean {
+  const base64 = SVG_DATA_URL.exec(icon)?.[1];
+  if (!base64) return false;
+  let svg: string;
+  try { svg = atob(base64); } catch { return false; }
+  let tinted = false;
+  for (const [, raw] of svg.matchAll(PAINT)) {
+    const value = (raw ?? '').trim().toLowerCase();
+    if (!NEUTRAL_PAINT.has(value)) return false;
+    if (value === 'currentcolor') tinted = true;
+  }
+  return tinted;
+}
+
 /**
  * Brand guessed from the model SLUG.
  *
@@ -104,6 +132,21 @@ function Logo(
   { guessed, slug, brand, icon, fallbackIcon, fallbackBrand, className }: BrandMarkProps & { guessed: string | null },
 ): React.ReactElement {
   const picture = icon ?? (guessed ? null : fallbackIcon) ?? null;
+  if (picture && isSingleColourSvg(picture)) {
+    const mask = `url("${picture}")`;
+    return (
+      <span
+        aria-hidden
+        className={cn('inline-block shrink-0 bg-current', className)}
+        style={{
+          maskImage: mask, WebkitMaskImage: mask,
+          maskSize: 'contain', WebkitMaskSize: 'contain',
+          maskRepeat: 'no-repeat', WebkitMaskRepeat: 'no-repeat',
+          maskPosition: 'center', WebkitMaskPosition: 'center',
+        }}
+      />
+    );
+  }
   if (picture && isPicture(picture)) {
     // eslint-disable-next-line @next/next/no-img-element -- a file served by
     // the daemon, of unknown size: `next/image` would require a loader for a

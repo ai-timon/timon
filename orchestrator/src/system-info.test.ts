@@ -61,6 +61,22 @@ test('windowsTaskStale: the current revision marked is current; unmarked or olde
   assert.equal(windowsTaskStale({ revision: null, launcherMarked: null, packagedRuntime: true }), true);
 });
 
+test('windowsTaskStale (#116): a current task switched to a console is stale; the shapes Timon writes are not', () => {
+  const current = WINDOWS_SERVICE_REVISION;
+  const consoleTask = { logon: 'InteractiveToken' as const, program: 'cmd.exe', triggers: ['Logon' as const], consoleVisible: true };
+  // Revision and marker look right: only the definition shows the console.
+  assert.equal(windowsTaskStale({ revision: current, launcherMarked: true, packagedRuntime: true, shape: consoleTask }), true);
+  assert.equal(windowsTaskStale({ revision: current, launcherMarked: null, packagedRuntime: false, shape: consoleTask }), true);
+  // The off-session task: node.exe under S4U shows no window.
+  const s4u = { logon: 'S4U' as const, program: 'node.exe', triggers: ['Boot' as const, 'Time' as const], consoleVisible: false };
+  assert.equal(windowsTaskStale({ revision: current, launcherMarked: true, packagedRuntime: true, shape: s4u }), false);
+  // A source checkout's session task is a hidden PowerShell by design: reinstalling writes the same.
+  const checkout = { logon: 'InteractiveToken' as const, program: 'powershell.exe', triggers: ['Logon' as const], consoleVisible: true };
+  assert.equal(windowsTaskStale({ revision: current, launcherMarked: null, packagedRuntime: false, shape: checkout }), false);
+  // Unreadable definition: nothing claimed beyond revision and marker.
+  assert.equal(windowsTaskStale({ revision: current, launcherMarked: true, packagedRuntime: true, shape: null }), false);
+});
+
 test('serviceAction: offered from the UI only when this daemon is not the service', () => {
   assert.deepEqual(serviceAction({ supervisor: null, installed: false, stale: false, mode: 'process', refused: false }), { action: null, actionHere: false });
   assert.deepEqual(serviceAction({ supervisor: 'windows', installed: false, stale: false, mode: 'embedded', refused: false }), { action: 'install', actionHere: true });
@@ -77,7 +93,7 @@ test('importCommands: the home is named explicitly and quoted for the shell of t
     "timon import ARCHIVE.tar.gz --to '/home/o'\\''neil/.timon' --force",
     'timon service install',
   ]);
-  assert.deepEqual(importCommands('win32', 'C:\\Users\\Zoé\\.timon', false), [
-    'timon import ARCHIVE.tar.gz --to "C:\\Users\\Zoé\\.timon" --force',
+  assert.deepEqual(importCommands('win32', 'C:\\Users\\Zoé\\.timon', false), [ // french-ok: an accented user folder
+    'timon import ARCHIVE.tar.gz --to "C:\\Users\\Zoé\\.timon" --force', // french-ok: an accented user folder
   ]);
 });

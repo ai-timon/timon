@@ -7,12 +7,18 @@
  * importing it: the app is built on its own, like `dictation/contract.ts`.
  * `app/sdk-guards/sdk-mirrors.ts` holds the copies to the SDK.
  *
- * A part is data, never code: a skull is four numbers, a fur a colour, eyes
- * are outlines, an accessory is SVG markup. The markup is read by the strict
+ * A part is data: a skull is four numbers, a fur a colour, eyes are
+ * outlines, an accessory is SVG markup. The markup is read by the strict
  * reader below, which keeps a short list of shapes and presentation
  * attributes and refuses everything else — scripts, event handlers, links,
  * styles, external references. What it keeps becomes React elements: no
  * markup string is ever put in the page as HTML.
+ *
+ * One exception is code: a shape may carry a `head` component instead of a
+ * skull. It is the pack's own browser code, which already runs in the page
+ * (like an `agent.mascot` occupant), so there is nothing to sanitise: the
+ * host only draws it for the agents that wear that shape, inside an error
+ * boundary, and Timon's head comes back when it throws or its pack leaves.
  */
 
 export const MASCOT_PARTS_SLOT = 'mascot.parts';
@@ -53,12 +59,23 @@ export const MAX_ACC_ELEMENTS = 200;
 export const MAX_ACC_DEPTH = 12;
 export const MAX_LABEL_LENGTH = 40;
 
+/** A head a pack draws itself: no props, it reads `useAgentMascot()` like an `agent.mascot` occupant. */
+export type MascotHeadComponent = (props: Record<string, never>) => unknown;
+
 export type MascotPart =
   | {
     type: 'shape';
     label: MascotPartLabel;
     /** Top width, bottom width, height and corner radius, in the 100×100 box whose head sits on y = 92. */
     skull: { top: number; bottom: number; height: number; radius: number };
+    head?: never;
+  }
+  | {
+    type: 'shape';
+    label: MascotPartLabel;
+    /** The whole head of an agent wearing this shape, drawn by the pack instead of Timon. */
+    head: MascotHeadComponent;
+    skull?: never;
   }
   | {
     type: 'color';
@@ -245,6 +262,11 @@ export function mascotPartProblem(part: unknown): string | null {
   if (label) return label;
   switch (p.type) {
     case 'shape': {
+      // Either the pack draws the head itself, or Timon draws it from four numbers: never both, so what shows is never ambiguous.
+      if (p.head !== undefined) {
+        if (typeof p.head !== 'function') return 'head must be a component (a function)';
+        return p.skull === undefined ? null : 'a shape has either skull or head, not both';
+      }
       const skull = p.skull as Record<string, unknown> | undefined;
       if (typeof skull !== 'object' || skull === null) return 'a shape needs skull { top, bottom, height, radius }';
       for (const [key, [min, max]] of Object.entries(SKULL_BOUNDS)) {

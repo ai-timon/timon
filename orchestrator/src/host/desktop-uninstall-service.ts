@@ -1,9 +1,10 @@
 /** Desktop removal is stricter than `service uninstall`: never claim success
  * after a failed stop, and never unregister another TIMON_HOME's supervisor. */
 import { existsSync, readFileSync, rmSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, win32 } from 'node:path';
+import { homeOfTask } from './orphan-services.js';
 import {
-  MACOS_LABEL, WINDOWS_TASK, launchDaemonPath, plistPath, stopInstallationProcessesStep, unitPath, uninstallService, type ServiceOpts,
+  MACOS_LABEL, WINDOWS_TASK, launchDaemonPath, plistPath, stopInstallationProcessesStep, stopLauncherStep, unitPath, uninstallService, type ServiceOpts,
 } from './service-install.js';
 
 function sameHome(actual: string, expected: string): void {
@@ -74,13 +75,20 @@ export function removeDesktopService(opts: ServiceOpts): void {
     if (!task) return;
     const actions = JSON.parse(task) as { Arguments?: string } | { Arguments?: string }[];
     const action = Array.isArray(actions) ? actions.length === 1 ? actions[0] : undefined : actions;
-    if (!action?.Arguments?.includes(`set TIMON_HOME=${opts.timonHome}&&`)) {
+    // The home the action names: the launcher configuration of revision 6, the
+    // batch of revisions 2 to 5 (`homeOfTask`), or `set TIMON_HOME=…&&` of revision 1.
+    const args = action?.Arguments ?? '';
+    const owner = homeOfTask(args) ?? (args.includes(`set TIMON_HOME=${opts.timonHome}&&`) ? opts.timonHome : null);
+    if (owner === null || win32.resolve(owner).toLowerCase() !== win32.resolve(opts.timonHome).toLowerCase()) {
       throw new Error('The Windows task belongs to another data directory.');
     }
     checked('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `$ErrorActionPreference='Stop'; Stop-ScheduledTask -TaskName '${WINDOWS_TASK}' -TaskPath '\\'; Unregister-ScheduledTask -TaskName '${WINDOWS_TASK}' -TaskPath '\\' -Confirm:$false; if (@(Get-ScheduledTask | Where-Object { $_.TaskName -eq '${WINDOWS_TASK}' -and $_.TaskPath -eq '\\' }).Count) { throw 'Task still registered' }`]);
     // The daemon the launcher held outlives `Stop-ScheduledTask` (TIM-0115).
     // Best effort and not elevated: a daemon this process cannot reach is left
-    // to `timon service uninstall`, and the uninstaller's own sweep.
+    // to `timon service uninstall`, and the uninstaller's own sweep. The
+    // launcher first (`Timon.exe --timon-service` in the session holds one),
+    // then whatever of the installation is left.
+    opts.exec('powershell.exe', stopLauncherStep(opts.timonHome).args);
     const sweep = stopInstallationProcessesStep(opts);
     opts.exec('powershell.exe', sweep.args);
     return;

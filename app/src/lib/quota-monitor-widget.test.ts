@@ -56,19 +56,19 @@ test('the quota monitor is one widget: ring on the top bar, tile in a rail', asy
     );
 
     const grip = React.createElement('button', { type: 'button' }, 'grip');
-    const flat = renderToStaticMarkup(React.createElement(widget.Component, { orientation: 'horizontal', poignee: grip }));
+    const flat = renderToStaticMarkup(React.createElement(widget.Component, { orientation: 'horizontal', handle: grip }));
     assert.match(flat, /aria-label="Open LLM quotas"/, 'the ring and its menu');
     assert.doesNotMatch(flat, /<section/, 'no tile on the line');
     assert.match(flat, /grip/);
 
     // A sidebar: the same rings, stacked, without the tile.
-    const stacked = renderToStaticMarkup(React.createElement(widget.Component, { orientation: 'vertical', compact: true, poignee: grip }));
+    const stacked = renderToStaticMarkup(React.createElement(widget.Component, { orientation: 'vertical', compact: true, handle: grip }));
     assert.match(stacked, /data-quota-rings="vertical"/);
     assert.match(stacked, /aria-label="Open LLM quotas"/);
     assert.doesNotMatch(stacked, /<section/, 'no tile in a sidebar');
     assert.match(stacked, /grip/);
 
-    const tile = renderToStaticMarkup(React.createElement(widget.Component, { orientation: 'vertical', poignee: grip }));
+    const tile = renderToStaticMarkup(React.createElement(widget.Component, { orientation: 'vertical', handle: grip }));
     assert.match(tile, /<section/);
     assert.match(tile, /LLM quotas/);
     assert.doesNotMatch(tile, /Open LLM quotas/, 'a wide zone gets the tile, not the rings');
@@ -115,7 +115,7 @@ test('the rings open their detail on click, under them on the line and beside th
 
     for (const [orientation, side] of [['vertical', 'right'], ['horizontal', 'below']] as const) {
       await React.act(async () => {
-        root.render(React.createElement(widget.Component, { orientation, compact: true, poignee: null }));
+        root.render(React.createElement(widget.Component, { orientation, compact: true, handle: null }));
       });
       await waitUntil(React.act, () => (rings(orientation)?.querySelectorAll('[role="img"]').length ?? 0) > 0, `the ${orientation} rings`);
       const shown = rings(orientation)!;

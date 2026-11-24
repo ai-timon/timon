@@ -424,7 +424,7 @@ test('records are split on LF only, whatever the chunking, multi-byte characters
   await peer.start();
   const turn = peer.driver.prompt('hi');
   const prompt = await peer.waitSent('prompt');
-  const text = 'é € 🙂';
+  const text = 'é € 🙂'; // french-ok: a multi-byte sample
   const bytes = Buffer.from([
     JSON.stringify({ id: prompt.id, type: 'response', command: 'prompt', success: true, data: { disposition: 'started' } }),
     JSON.stringify({ type: 'agent_start' }),

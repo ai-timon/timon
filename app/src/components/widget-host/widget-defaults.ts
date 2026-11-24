@@ -1,6 +1,6 @@
 import { MAIN_AGENT_WIDGET_ID } from '@/lib/main-agent-card';
 import { ADD_WIDGET_IDS } from './add-widget';
-import { mergeLayout, inheritedPlacement, type WidgetConstraints, type WidgetLayout } from './widget-layout';
+import { mergeLayout, inheritedPlacement, inheritedSource, type WidgetConstraints, type WidgetLayout } from './widget-layout';
 
 /**
  * What a view looks like before anyone has touched it.
@@ -13,10 +13,39 @@ import { mergeLayout, inheritedPlacement, type WidgetConstraints, type WidgetLay
  * Only VISIBLE cards belong here. Absence IS removal below, so a starter
  * table that listed every widget would put back on screen the ones the
  * arrangement deliberately leaves in the palette.
+ *
+ * Starters sharing a `group` open as one stack of tabs, the one marked
+ * `activeTab` in front. The group also names the stack for the views stored
+ * before one of its widgets existed: that widget joins the stack wherever
+ * the person moved it (`joinedStarterStack`).
  */
 type Starter = Omit<WidgetLayout, 'id' | 'removed'>;
 
 const [ADD_WIDGET, ADD_WIDGET_2] = ADD_WIDGET_IDS as [string, string];
+
+/**
+ * The "Git" stack: one card, one tab per widget, Branches in front. Each
+ * widget stays its plugin's own (`@timon/git`, `@timon/kanban`, and Issues,
+ * the browser half of the built-in `github-issues` plugin, which any plugin's
+ * widget could be): the stack is an arrangement, not a merge, and any of them
+ * can be moved out or removed like any widget. A widget added to this list
+ * later joins the stack as its last tab on the views stored before it
+ * (`joinedStarterStack`); one whose plugin is off simply never registers.
+ */
+const GIT_STACK = [
+  'plugin:@timon/git:branches',
+  'plugin:@timon/git:graph',
+  'plugin:@timon/git:publish',
+  'plugin:@timon/kanban:pull-requests',
+  'plugin:@timon/kanban:landings',
+  'plugin:github-issues:issues',
+] as const;
+
+function gitStack(rail: string, from: number): Record<string, Starter> {
+  return Object.fromEntries(GIT_STACK.map((id, i) => [id, {
+    rail, rang: from + i, hauteur: 320, heightMode: 'fill', fillPercent: 66, group: 'stack:git', ...(i === 0 ? { activeTab: true } : {}),
+  } satisfies Starter]));
+}
 
 /**
  * A fresh install's arrangements, kept short on purpose (the maintainer's request of
@@ -37,14 +66,15 @@ const STARTERS: Record<string, Record<string, Starter>> = {
     [ADD_WIDGET]: { rail: 'agents.left.widget', rang: 0, hauteur: 160 },
     [ADD_WIDGET_2]: { rail: 'agents.right.widget', rang: 0, hauteur: 160 },
   },
-  // A project's chat: its missions and files on the left, its repository and
-  // containers on the right. A card whose module is off on this install
-  // simply never registers, and the column shares its height among the rest.
+  // A project's chat: its missions and files on the left; on the right, the
+  // "Git" stack and the containers. A card whose module is off on this
+  // install simply never registers, and the column shares its height among
+  // the rest; a stack left with one widget shows it as a lone card.
   '/chat': {
     'plugin:@timon/missions:Missions': { rail: 'chat.left.widget', rang: 0, hauteur: 300, heightMode: 'fill', fillPercent: 50 },
     'plugin:@timon/files-widget:Files': { rail: 'chat.left.widget', rang: 1, hauteur: 300, heightMode: 'fill', fillPercent: 50 },
-    'plugin:@timon/git:repository': { rail: 'chat.right.widget', rang: 0, hauteur: 320, heightMode: 'fill', fillPercent: 66 },
-    'plugin:@timon/docker-supervision:docker': { rail: 'chat.right.widget', rang: 1, hauteur: 260, heightMode: 'fill', fillPercent: 34 },
+    ...gitStack('chat.right.widget', 0),
+    'plugin:@timon/docker-supervision:docker': { rail: 'chat.right.widget', rang: GIT_STACK.length, hauteur: 260, heightMode: 'fill', fillPercent: 34 },
   },
 };
 
@@ -103,11 +133,83 @@ function reseedFromChat(item: unknown, chatStarters: Record<string, Starter>): u
 }
 
 /**
+ * The places handed down by former ids (`formerIds`), one per heir.
+ *
+ * A card split into several widgets hands its place to each of them: they
+ * open as ONE stack where the card stood, at its height, rather than as cards
+ * piled on the same rank. The stack is the card's own when it was a tab of
+ * one (its siblings keep it), else the group the starters give the heirs,
+ * else a group named after the card. Only one heir is in front: the first,
+ * or none when the card was a background tab of its stack.
+ */
+function inheritedPlaces(
+  raw: unknown,
+  fresh: readonly WidgetLayout[],
+  byId: ReadonlyMap<string, WidgetConstraints>,
+  templates: Readonly<Record<string, Starter>>,
+): Map<string, WidgetLayout> {
+  const bySource = new Map<string, WidgetLayout[]>();
+  for (const widget of fresh) {
+    const hit = inheritedSource(raw, byId.get(widget.id)?.formerIds ?? [], widget.id);
+    if (!hit) continue;
+    const heirs = bySource.get(hit.from) ?? [];
+    heirs.push(hit.entry);
+    bySource.set(hit.from, heirs);
+  }
+  const places = new Map<string, WidgetLayout>();
+  for (const [from, heirs] of bySource) {
+    if (heirs.length === 1) { places.set(heirs[0]!.id, heirs[0]!); continue; }
+    const order = (w: WidgetLayout) => templates[w.id]?.rang ?? Number.MAX_SAFE_INTEGER;
+    heirs.sort((a, b) => order(a) - order(b));
+    const source = heirs[0]!;
+    const group = source.group ?? templates[source.id]?.group ?? `stack:${encodeURIComponent(from)}:1`;
+    const front = source.group ? source.activeTab === true : true;
+    heirs.forEach((heir, i) => {
+      const { activeTab: _activeTab, ...rest } = heir;
+      places.set(heir.id, { ...rest, group, ...(i === 0 && front ? { activeTab: true } : {}) });
+    });
+  }
+  return places;
+}
+
+/**
+ * A widget the stored row never named, whose starter puts it in a stack that
+ * the row already shows (a sibling placed in a stack): it joins that stack as
+ * a background tab, at its end, wherever the person moved it. A sibling taken
+ * out of every stack is the person's choice of a lone card, and makes no new
+ * stack around it.
+ */
+function joinedStarterStack(
+  widget: WidgetLayout,
+  templates: Readonly<Record<string, Starter>>,
+  placed: readonly WidgetLayout[],
+): WidgetLayout | null {
+  const group = templates[widget.id]?.group;
+  if (!group) return null;
+  const siblings = new Set(Object.entries(templates).filter(([id, s]) => id !== widget.id && s.group === group).map(([id]) => id));
+  const anchor = placed.find((w) => siblings.has(w.id) && !w.removed && w.group);
+  if (!anchor) return null;
+  const members = placed.filter((w) => !w.removed && w.rail === anchor.rail && w.group === anchor.group);
+  const last = Math.max(...members.map((w) => w.rang));
+  return {
+    ...widget,
+    rail: anchor.rail,
+    group: anchor.group,
+    rang: last + 0.5,
+    hauteur: anchor.hauteur,
+    ...(anchor.heightMode ? { heightMode: anchor.heightMode } : {}),
+    ...(anchor.fillPercent !== undefined ? { fillPercent: anchor.fillPercent } : {}),
+  };
+}
+
+/**
  * Existing placements win. New registrations remain available in the palette,
  * except a widget `placedByDefault`: it was on screen before it was a widget
  * (the top bar's bell), so it lands in its zone on every view that has not
  * placed or removed it yet — stored layout or not, starter or not. A widget
- * renamed since takes over the place its former id had.
+ * renamed since takes over the place its former id had; several widgets split
+ * out of one card take it over together, as a stack. A widget its starter
+ * stacks with others joins that stack when the stored row already shows it.
  */
 export function mergeWorkspaceWidgets(
   raw: unknown,
@@ -120,14 +222,24 @@ export function mergeWorkspaceWidgets(
   const existing = Array.isArray(raw);
   const known = new Set(existing ? (raw as unknown[]).map(item => (item as { id?: unknown } | null)?.id) : []);
   const starters = STARTERS[view] ?? {};
+  const templates = { ...chatStarters, ...starters };
   const byId = new Map(constraints.map(c => [c.id, c]));
-  const additions = mergeLayout(null, constraints).filter(widget => !known.has(widget.id)).map(widget => {
-    const constraint = byId.get(widget.id);
-    const inherited = inheritedPlacement(raw, constraint?.formerIds ?? [], widget.id);
+  const fresh = mergeLayout(null, constraints).filter(widget => !known.has(widget.id));
+  const heirs = inheritedPlaces(raw, fresh, byId, templates);
+  // What the row shows, before the newcomers: its own places, read back
+  // through the registry, then the places just handed down.
+  const shown = existing
+    ? [...[...known].flatMap((id) => (typeof id === 'string' ? [inheritedPlacement(raw, [id], id)] : [])).filter((w): w is WidgetLayout => w !== null), ...heirs.values()]
+    : [];
+  const additions = fresh.map(widget => {
+    const inherited = heirs.get(widget.id);
     if (inherited) return inherited;
+    const joined = existing ? joinedStarterStack(widget, templates, shown) : null;
+    if (joined) return joined;
     const initial = (!existing ? starters[widget.id] : undefined) ?? chatStarters[widget.id];
+    const constraint = byId.get(widget.id);
     if (!initial) return constraint?.placedByDefault ? widget : { ...widget, removed: true };
-    return { ...widget, ...initial, hauteur: Math.max(initial.hauteur, constraints.find(c => c.id === widget.id)?.minHeight ?? 0) };
+    return { ...widget, ...initial, hauteur: Math.max(initial.hauteur, constraint?.minHeight ?? 0) };
   });
   return mergeLayout(existing ? [...(raw as unknown[]), ...additions] : additions, constraints);
 }

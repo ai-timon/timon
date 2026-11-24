@@ -1,3 +1,4 @@
+import { daemonMessage } from '../daemon-message.js';
 import { randomUUID } from 'node:crypto';
 import { db, dbApi, type WorkflowRow, type WorkflowRunNodeRow } from '../db.js';
 import { bus } from '../bus.js';
@@ -63,6 +64,7 @@ function alertUnapprovedScript(workflow: WorkflowRow, runId: string, nodeId: str
     const run = dbApi.getWorkflowRun(runId);
     createNotification({
       type: 'alert', title: `Script not run: ${workflow.name}`, body: `${nodeId}: ${reason}`,
+      message: daemonMessage('workflow_script_not_run', { name: workflow.name }),
       ownerUserId: run?.owner_user_id ?? workflow.owner_user_id, source: `workflow:${workflow.slug}`, anchor: runPageAnchor(runId),
     });
   } catch (err) {
@@ -163,13 +165,38 @@ function load(runId: string) {
   return { run, definition: parseStoredWorkflowDefinition(parseJson(version.definition)), context: parseJson(run.context) as RunContext };
 }
 
+/**
+ * Whether an entry node starts this run. An automatic start (schedule,
+ * webhook, event, a native trigger) names its node; a person's run (the Run
+ * button, a draft test, the API) names none and starts the manual triggers.
+ * Any other entry node stays put, so a pause after a schedule is not
+ * bypassed by a manual trigger beside it.
+ */
+function startsRun(nodeId: string, definition: WorkflowDefinition, context: RunContext): boolean {
+  const named = (context.trigger as { node_id?: unknown } | null | undefined)?.node_id;
+  if (typeof named === 'string') return named === nodeId;
+  return definition.nodes.find((item) => item.id === nodeId)?.type === 'trigger.manual';
+}
+
+/**
+ * The non-loop edges into a node, without those leaving a trigger that did
+ * not start the run: "schedule → X ← manual" must run X from either trigger,
+ * not wait for the one that will never fire.
+ */
+function liveIncoming(nodeId: string, definition: WorkflowDefinition, context: RunContext) {
+  return definition.edges.filter((edge) => {
+    if (edge.to !== nodeId || edge.loop) return false;
+    const source = definition.nodes.find((node) => node.id === edge.from);
+    if (!source?.type.startsWith('trigger.')) return true;
+    const entry = !definition.edges.some((other) => other.to === source.id && !other.loop);
+    return !entry || startsRun(source.id, definition, context);
+  });
+}
+
 function incomingSatisfied(nodeId: string, definition: WorkflowDefinition, rows: WorkflowRunNodeRow[], context: RunContext) {
-  const incoming = definition.edges.filter((edge) => edge.to === nodeId && !edge.loop);
-  if (!incoming.length) {
-    const node = definition.nodes.find((item) => item.id === nodeId);
-    if (node?.type === 'trigger.manual') return true;
-    return (context.trigger as { node_id?: unknown }).node_id === nodeId;
-  }
+  if (!definition.edges.some((edge) => edge.to === nodeId && !edge.loop)) return startsRun(nodeId, definition, context);
+  const incoming = liveIncoming(nodeId, definition, context);
+  if (!incoming.length) return false;
   const target = definition.nodes.find((node) => node.id === nodeId)!;
   const satisfied = incoming.filter((edge) => {
     const source = rows.find((row) => row.node_id === edge.from);
@@ -205,8 +232,9 @@ function skipUnreachable(runId: string, definition: WorkflowDefinition, context:
 
 /** Whether a pending node can still be satisfied once its open sources settle. */
 function reachable(nodeId: string, definition: WorkflowDefinition, rows: WorkflowRunNodeRow[], context: RunContext): boolean {
-  const incoming = definition.edges.filter((edge) => edge.to === nodeId && !edge.loop);
   // An entry node only runs when its own trigger started the run, decided at creation.
+  if (!definition.edges.some((edge) => edge.to === nodeId && !edge.loop)) return false;
+  const incoming = liveIncoming(nodeId, definition, context);
   if (!incoming.length) return false;
   const open = incoming.filter((edge) => {
     const source = rows.find((row) => row.node_id === edge.from);

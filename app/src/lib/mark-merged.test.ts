@@ -39,12 +39,19 @@ test('the request posts the trimmed sha to the task route and reads the verdict'
   assert.deepEqual(calls, [{ url: '/api/ui/tasks/t%2F1/mark-merged', body: { sha: 'bcd02520' } }]);
 });
 
-test('a refusal keeps its code and message; a network failure has neither', async () => {
+test('a refusal keeps its code and a readable message, its params or the daemon English; a network failure has neither', async () => {
   const refused = (async () => new Response(
     JSON.stringify({ error: 'Commit x is not in main', code: 'sha_not_in_base' }), { status: 409 },
   )) as typeof fetch;
   assert.deepEqual(await markTaskMerged('t', 'abcdef1', refused),
     { ok: false, code: 'sha_not_in_base', message: 'Commit x is not in main' });
+  const worded = (async () => new Response(JSON.stringify({
+    error: 'Commit abcdef1 is not in main', code: 'sha_not_in_base', params: { sha: 'abcdef1', base: 'main' },
+  }), { status: 409 })) as typeof fetch;
+  assert.deepEqual(await markTaskMerged('t', 'abcdef1', worded), {
+    ok: false, code: 'sha_not_in_base',
+    message: 'Commit abcdef1 is not in main of this repository. Check the sha of the merge.',
+  });
   const down = (async () => { throw new Error('offline'); }) as typeof fetch;
   assert.deepEqual(await markTaskMerged('t', 'abcdef1', down), { ok: false, code: null, message: null });
 });

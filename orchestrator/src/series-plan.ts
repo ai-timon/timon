@@ -27,11 +27,13 @@
 
 import { PIPELINES, isTaskType, type FallbackScope, type TaskType } from './db.js';
 import type {
-  SeriesPlanAnswer, SeriesPlanGroupRole as ContractGroupRole, SeriesPlanMode as ContractMode,
-  SeriesPlanRole as ContractRole, SeriesPlanRoleConfig,
+  SeriesPlanAnswer, SeriesPlanBranch, SeriesPlanFinish, SeriesPlanGroupRole as ContractGroupRole,
+  SeriesPlanMode as ContractMode, SeriesPlanRole as ContractRole, SeriesPlanRoleConfig,
 } from './plugins/contract/questions.js';
 import type { Assert, Equals } from './type-equality.js';
-export type { SeriesPlanAnswer, SeriesPlanGroupConfig, SeriesPlanRoleConfig } from './plugins/contract/questions.js';
+export type {
+  SeriesPlanAnswer, SeriesPlanBranch, SeriesPlanFinish, SeriesPlanGroupConfig, SeriesPlanRoleConfig,
+} from './plugins/contract/questions.js';
 
 /** An execution mode = a tile of the grid, on the UI side. */
 export const SERIES_PLAN_MODES = [
@@ -109,7 +111,58 @@ export type SeriesPlanForm = {
   chantier: string;
   /** Proposed split. One Kanban task per slice in the Kanban modes. */
   volets: SeriesPlanVolet[];
+  /** The job's integration branch the agent proposes (`feat/topic` or
+   *  `topic`), for a project that lands through pull requests. Ignored by any
+   *  other project; the person answering may change it. */
+  branch?: string;
 };
+
+/** A proposed branch name is a ref, not a paragraph (`plan-landing.ts`). */
+export const MAX_PLAN_BRANCH_FIELD_CHARS = 200;
+
+/** Defect of a branch field (form or answer), or null. Whether the name is a
+ *  usable branch depends on the project, so it is checked where it is read. */
+function branchFieldDefect(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (typeof value !== 'string') return 'field `branch` is not a string';
+  if (value.length > MAX_PLAN_BRANCH_FIELD_CHARS) {
+    return `field \`branch\` of ${value.length} characters (maximum ${MAX_PLAN_BRANCH_FIELD_CHARS})`;
+  }
+  if (GROUP_NAME_CONTROL_CHARS.test(value)) return 'field `branch` holds a control character';
+  return null;
+}
+
+export const SERIES_PLAN_BRANCH_KINDS = ['new', 'existing'] as const;
+export const SERIES_PLAN_FINISHES = ['merge', 'keep'] as const;
+type _SeriesPlanBranchKindsMatchContract = Assert<Equals<(typeof SERIES_PLAN_BRANCH_KINDS)[number], SeriesPlanBranch['kind']>>;
+type _SeriesPlanFinishesMatchContract = Assert<Equals<(typeof SERIES_PLAN_FINISHES)[number], SeriesPlanFinish>>;
+
+/** Defect of the answer's `branch`: the earlier string, or `{ kind, name }`. */
+function answerBranchDefect(value: unknown): string | null {
+  if (value === undefined || typeof value === 'string') return branchFieldDefect(value);
+  if (!isRecord(value)) return 'field `branch` is neither a string nor an object';
+  if (!(SERIES_PLAN_BRANCH_KINDS as readonly unknown[]).includes(value.kind)) {
+    return `field \`branch.kind\` must be one of ${SERIES_PLAN_BRANCH_KINDS.join(', ')}`;
+  }
+  for (const key of Object.keys(value)) {
+    if (key !== 'kind' && key !== 'name') return `field \`branch.${key}\` is unknown`;
+  }
+  if (typeof value.name !== 'string' || value.name.trim() === '') return 'field `branch.name` missing or empty';
+  return branchFieldDefect(value.name)?.replace('`branch`', '`branch.name`') ?? null;
+}
+
+/**
+ * The branch the answer chose, in one shape. The earlier bare string is a new
+ * branch; `legacy` says so, since that form only ever applied to a project
+ * that lands through pull requests.
+ */
+export function planBranchChoice(
+  branch: SeriesPlanAnswer['branch'],
+): (SeriesPlanBranch & { legacy: boolean }) | null {
+  if (branch === undefined) return null;
+  if (typeof branch === 'string') return branch.trim() ? { kind: 'new', name: branch, legacy: true } : null;
+  return { kind: branch.kind, name: branch.name, legacy: false };
+}
 
 const MAX_VOLETS = 12;
 /** A group name is a tab label and a command flag: short. */
@@ -168,7 +221,7 @@ export function validateSeriesPlanForm(form: unknown): string | null {
   }
   const groups = planGroupNames(volets as SeriesPlanVolet[]);
   if (groups.length > MAX_GROUPS) return `${groups.length} part groups (maximum ${MAX_GROUPS})`;
-  return null;
+  return branchFieldDefect(form.branch);
 }
 
 /** Distinct group names, in the order of first appearance of the slices.
@@ -246,7 +299,13 @@ export function validateSeriesPlanAnswer(answer: unknown, knownGroups: Iterable<
   if (answer.note !== undefined && typeof answer.note !== 'string') {
     return 'field `note` is not a string';
   }
-  return null;
+  if (answer.resolves_issues !== undefined && typeof answer.resolves_issues !== 'boolean') {
+    return 'field `resolves_issues` is not a boolean';
+  }
+  if (answer.finish !== undefined && !(SERIES_PLAN_FINISHES as readonly unknown[]).includes(answer.finish)) {
+    return `field \`finish\` must be one of ${SERIES_PLAN_FINISHES.join(', ')}`;
+  }
+  return answerBranchDefect(answer.branch);
 }
 
 /** Roles of the form whose main model is set for the series: those that
@@ -290,6 +349,40 @@ function roleSetCommand(scope: TaskType, cfg: SeriesPlanRoleConfig, group?: stri
 }
 
 /**
+ * A job whose project lands through a pull request (`plan-landing.ts`): every
+ * task of the plan starts from `branch`, and a last task opens the pull request.
+ */
+export type SeriesPlanLanding = {
+  /** The job's integration branch, `feat/<topic>`. */
+  branch: string;
+  /** Title of the job, for the pull request task's title. */
+  chantier: string;
+  /** The job's project, given to every task (`--project`) when the agent
+   *  creating them is not in it. */
+  taskProject?: string | null;
+  /** The job's last task: `pr` (absent) opens the pull request, `local`
+   *  merges the branch into `target` on this machine, `none` leaves the work
+   *  on the branch. */
+  last?: 'pr' | 'local' | 'none';
+  /** The local branch a `local` last task merges into. */
+  target?: string;
+};
+
+/** The task that ends the job, or null when the work stays on its branch. */
+function lastTaskCommand(landing: SeriesPlanLanding, flags: string, deps: string | null): string | null {
+  const last = landing.last ?? 'pr';
+  if (last === 'none') return null;
+  const after = deps ? ` --deps ${deps}` : '';
+  if (last === 'local') {
+    const into = landing.target ?? '<target>';
+    return `timon task create --type merge --landing local${flags}${after} `
+      + `--title ${shellQuote(`Merge into ${into} — ${landing.chantier}`)} --description '<what the job carries>'`;
+  }
+  return `timon task create --type merge --landing pr${flags}${after} `
+    + `--title ${shellQuote(`Pull request — ${landing.chantier}`)} --description '<what the pull request carries>'`;
+}
+
+/**
  * Translates the plan into `timon` commands ready to run, in order.
  *
  * The model choices per role become `timon series role set`, set
@@ -307,8 +400,25 @@ function roleSetCommand(scope: TaskType, cfg: SeriesPlanRoleConfig, group?: stri
  * `--group '<name>'` (`series role set`, `series fallback set`); the code task
  * of a grouped slice carries `--plan-group '<name>'`, which review, merge, doc and
  * iterations inherit. Without a group, the output is the previous one, to the byte.
+ *
+ * With `landing` (the project lands through a pull request), every task created
+ * carries `--base <branch>` (and `--project <slug>` when the planning agent is
+ * not in that project), and a last `merge` task with `--landing pr`, which
+ * depends on the code tasks (or on the grouped merge), opens the pull request.
+ * A sequential mode creates no task but that last one: its pilot first asks
+ * the daemon for the branch and a worktree on it (`timon pr branch`), codes
+ * there, and creates the pull request task, with no deps, once the work is in
+ * the branch. Without `landing`, the output is the previous one, to the byte.
+ *
+ * `landing.last` changes only that last task: `local` merges the branch into
+ * the project's local target (`--landing local`), `none` creates none and the
+ * work stays on the branch.
  */
-export function seriesPlanCommands(answer: SeriesPlanAnswer, volets: SeriesPlanVolet[] = []): string[] {
+export function seriesPlanCommands(
+  answer: SeriesPlanAnswer,
+  volets: SeriesPlanVolet[] = [],
+  landing: SeriesPlanLanding | null = null,
+): string[] {
   const cmds: string[] = [];
   for (const role of ROLES_BY_MODE[answer.mode]) {
     const cfg = answer.roles[role];
@@ -340,22 +450,35 @@ export function seriesPlanCommands(answer: SeriesPlanAnswer, volets: SeriesPlanV
   }
 
   const pipeline = PIPELINE_BY_MODE[answer.mode];
+  if (!pipeline && landing) {
+    const project = landing.taskProject ? ` --project ${shellQuote(landing.taskProject)}` : '';
+    cmds.push(`timon pr branch ${shellQuote(landing.branch)}`);
+    const last = lastTaskCommand(landing, ` --base ${shellQuote(landing.branch)}${project}`, null);
+    if (last) cmds.push(last);
+  }
   if (pipeline) {
     const group = answer.mode === 'kanban-code-group' ? ' --group-id <GROUP>' : '';
+    const base = (landing ? ` --base ${shellQuote(landing.branch)}` : '')
+      + (landing?.taskProject ? ` --project ${shellQuote(landing.taskProject)}` : '');
     const count = volets.length || 1;
     for (let i = 0; i < count; i++) {
       const title = volets[i]?.title ?? '<part title>';
       const planGroup = volets[i]?.group ? ` --plan-group ${shellQuote(volets[i]!.group!)}` : '';
       cmds.push(
-        `timon task create --type code --pipeline ${pipeline}${group}${planGroup} `
+        `timon task create --type code --pipeline ${pipeline}${group}${planGroup}${base} `
         + `--title ${shellQuote(title)} --description '<part brief>'`,
       );
     }
     if (answer.mode === 'kanban-code-group') {
       cmds.push(
-        'timon task create --type merge --group-id <GROUP> --deps <IDS of the code tasks> '
+        `timon task create --type merge --group-id <GROUP>${base} --deps <IDS of the code tasks> `
         + `--title ${shellQuote(`Grouped merge — <chantier>`)} --description '<consolidation>'`,
       );
+    }
+    if (landing) {
+      const deps = answer.mode === 'kanban-code-group' ? '<ID of the grouped merge>' : '<IDS of the code tasks>';
+      const last = lastTaskCommand(landing, `${group}${base}`, deps);
+      if (last) cmds.push(last);
     }
   }
   return cmds;

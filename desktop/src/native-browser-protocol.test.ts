@@ -13,7 +13,7 @@ test('profile IDs cannot escape or alias another persistent profile directory', 
 });
 
 test('transferred files cannot name host paths, reserved devices or alternate streams', () => {
-  assert.equal(browserFileName('résumé final.pdf'), 'résumé final.pdf');
+  assert.equal(browserFileName('résumé final.pdf'), 'résumé final.pdf'); // french-ok: an accented file name, kept as is
   for (const invalid of ['../secret', '/etc/passwd', 'a\\b', 'C:secret', 'file.txt:stream', 'NUL', 'con.txt', 'a.', 'a ', '', '\0']) {
     assert.throws(() => browserFileName(invalid));
   }

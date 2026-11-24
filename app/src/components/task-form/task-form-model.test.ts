@@ -41,7 +41,7 @@ test('the pipeline is sent at creation of a code task only, never on an edition'
 test('the body carries the overrides as the daemon reads them', () => {
   const body = buildBody({ ...buildInitial(TASK, null, []), permission_mode_override: 'default', title: '  Ship it  ' }, 'edit');
   assert.equal(body.title, 'Ship it');
-  assert.equal(body.permission_mode_override, null, '« default » is no override');
+  assert.equal(body.permission_mode_override, null, '"default" is no override');
   assert.equal(body.clear_permission_mode, true);
   assert.equal('clear_fallback' in body, false, 'a stored fallback stays unchanged');
   assert.deepEqual(body.extra_allowed_tools, ['Bash(git:*)', 'Read']);
@@ -51,7 +51,7 @@ test('the body carries the overrides as the daemon reads them', () => {
   assert.equal(body.fallback_model_override, 'gpt-5.5');
   const never = buildBody({ ...buildInitial(TASK, null, []), fallback_backend_override: 'none' }, 'edit');
   assert.equal(never.fallback_backend_override, 'none');
-  assert.equal(never.fallback_model_override, null, 'no model rides with « never »');
+  assert.equal(never.fallback_model_override, null, 'no model rides with "never"');
   assert.equal(buildBody({ ...buildInitial(TASK, null, []), todo_id: '' }, 'edit').todo_id, null);
   assert.equal(buildBody({ ...buildInitial(TASK, null, []), scheduled_at: '' }, 'edit').scheduled_at, null);
 });
@@ -101,7 +101,7 @@ test('each tab counts what it holds', () => {
 });
 
 test('a filter ignores case and accents', () => {
-  assert.equal(matchesFilter('ECHEANCE', 'Échéance du lot'), true);
+  assert.equal(matchesFilter('ECHEANCE', 'Échéance du lot'), true); // french-ok: an accented label, the folding under test
   assert.equal(matchesFilter('', 'anything'), true);
   assert.equal(matchesFilter('zz', 'abc', null), false);
 });

@@ -74,7 +74,7 @@ test('step 3 seeds the cockpit card with the agent that was just named', () => {
 test('a typed display name becomes a valid agent name', () => {
   assert.equal(toAgentName('Nova'), 'Nova');
   assert.equal(toAgentName('Nova, mon assistante'), 'Nova-mon-assistante');
-  assert.equal(toAgentName('  Éléa  '), 'Éléa', 'accents stay');
+  assert.equal(toAgentName('  Éléa  '), 'Éléa', 'accents stay'); // french-ok: an accented agent name
   assert.equal(toAgentName('马斯克'), '马斯克', 'every script stays');
   assert.equal(toAgentName('***'), 'agent', 'nothing usable left falls back to a name, never an empty one');
 });
@@ -133,7 +133,7 @@ test('skipping keeps the seeded agent and closes the step', () => {
 });
 
 /**
- * « Skip » is now on every screen of the step, so the route behind it is worth
+ * "Skip" is now on every screen of the step, so the route behind it is worth
  * a refusal test: an anonymous caller or a restricted token must not be able to
  * close someone else's onboarding — and the refusal must leave the step open.
  */

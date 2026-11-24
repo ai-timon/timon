@@ -138,7 +138,7 @@ function reset(): void {
   await mountOfficialProviders();
 }
 
-test('OAuth expirée : écartée au premier rebond, mission finalisée sans reaper, task relancée sur codex', async () => {
+test('expired OAuth: set aside at the first bounce, mission finalised without the reaper, task restarted on codex', async () => {
   reset();
   const stop = watchMissionComplete();
   try {
@@ -181,7 +181,7 @@ test('OAuth expirée : écartée au premier rebond, mission finalisée sans reap
   }
 });
 
-test('un result is_error qui a consommé des tokens ne déclenche rien', async () => {
+test('an is_error result that consumed tokens triggers nothing', async () => {
   reset();
   const { missionId, child } = await spawnTaskMission();
   emit(child, {
@@ -199,7 +199,7 @@ test('un result is_error qui a consommé des tokens ne déclenche rien', async (
   await tick();
 });
 
-test('un rebond muet isolé finalise la mission en crash, sans écarter le backend', async () => {
+test('an isolated mute bounce finalises the mission as a crash, without setting the backend aside', async () => {
   reset();
   const { missionId, child } = await spawnTaskMission();
   // Same shape, no authentication code: one shapeless bounce is a fluke.
@@ -209,7 +209,7 @@ test('un rebond muet isolé finalise la mission en crash, sans écarter le backe
   assert.equal(dbApi.getMission(missionId)?.interrupted_reason, 'crash');
 });
 
-test('le reaper d’une mission réellement idle reste un kill', async () => {
+test('the reaper of a really idle mission stays a kill', async () => {
   reset();
   const { missionId, child } = await spawnTaskMission();
   emit(child, {

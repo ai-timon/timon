@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PAGE_POLL_MS, USAGE_EVENT_ROUTE, reportUsage, startUsageReporting, usageSurface, type ReporterHost } from './usage-events';
+import {
+  PAGE_POLL_MS, USAGE_EVENT_ROUTE, reportOnboardingScreen, reportUsage, startUsageReporting, usageSurface, type ReporterHost,
+} from './usage-events';
 
 function fakeHost(path: string, desktop = false) {
   const sent: Record<string, unknown>[] = [];
@@ -80,4 +82,21 @@ test('the load time rides on the opening; UI errors are counted per section, wit
   assert.equal(fire, null, 'stopping removes the error listeners');
   assert.deepEqual(h.sent[0], { name: 'app_opened', surface: 'web', setupCompleted: true, loadMs: 2413 });
   assert.deepEqual(h.sent.filter((e) => e.name === 'ui_error').map((e) => e.path), ['/agents/acme', '/agents/acme', '/settings']);
+});
+
+test('an onboarding screen is one closed event to the usage route', () => {
+  const posted: Array<{ url: string; body: unknown }> = [];
+  const fetcher = (url: string, init: RequestInit): Promise<unknown> => {
+    posted.push({ url, body: JSON.parse(String(init.body)) });
+    return Promise.resolve();
+  };
+  reportOnboardingScreen('account', 'viewed', {}, fetcher);
+  reportOnboardingScreen('llm', 'completed', { llmChoice: 'plan', backend: 'claude', connection: 'ok' }, fetcher);
+  assert.deepEqual(posted, [
+    { url: USAGE_EVENT_ROUTE, body: { name: 'onboarding_screen', surface: 'web', screen: 'account', action: 'viewed' } },
+    {
+      url: USAGE_EVENT_ROUTE,
+      body: { name: 'onboarding_screen', surface: 'web', screen: 'llm', action: 'completed', llmChoice: 'plan', backend: 'claude', connection: 'ok' },
+    },
+  ]);
 });

@@ -15,7 +15,7 @@
 // The `scripts` of each package.json are read too: portability-npm-scripts.mjs.
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, join, relative, sep, extname } from 'node:path';
+import { basename, join, relative, resolve, sep, extname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { checkedManifests, isCheckedManifest, npmScriptProblem } from './portability-npm-scripts.mjs';
@@ -93,7 +93,9 @@ function changedFiles() {
 function collect(argv) {
   if (argv.includes('--changed')) return changedFiles();
   const explicit = argv.filter((a) => !a.startsWith('--'));
-  if (explicit.length) return explicit.map((p) => join(ROOT, p));
+  // `resolve`, not `join`: a path on another Windows drive than the checkout
+  // stays absolute (`relative` cannot reach it from the root).
+  if (explicit.length) return explicit.map((p) => resolve(ROOT, p));
   const out = [];
   for (const t of TREES) {
     try { walk(join(ROOT, t), out); } catch { /* tree absent in this checkout */ }

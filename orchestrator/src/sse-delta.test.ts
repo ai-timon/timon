@@ -1,13 +1,13 @@
 /**
- * Acheminement SSE des deltas de texte.
+ * SSE routing of text deltas.
  *
- * `sseHandler` n'a pas eu besoin d'être modifié pour le streaming : la dédup
- * (`seen` / `replayHighWater`) est gardée par `ev.kind === 'event'`, donc un
- * `event_delta` tombe directement sur `writeEvent`. Ce test verrouille ce
- * comportement de bord — si quelqu'un élargissait la garde à tous les kinds,
- * les deltas entreraient dans `seen` (croissance non bornée : un tour de 3 min
- * en produit des milliers) et se feraient dédupliquer entre eux, puisqu'ils
- * n'ont pas de timestamp.
+ * `sseHandler` did not need changing for streaming: the dedup
+ * (`seen` / `replayHighWater`) is guarded by `ev.kind === 'event'`, so an
+ * `event_delta` falls straight on `writeEvent`. This test locks this
+ * edge behaviour: if someone widened the guard to all kinds,
+ * the deltas would enter `seen` (unbounded growth: a 3 min turn
+ * produces thousands of them) and would be deduplicated against each other, since they
+ * have no timestamp.
  */
 
 import { test } from 'node:test';
@@ -28,7 +28,7 @@ const { bus } = await import('./bus.js');
 
 const MISSION = 'mission-sse-delta-0001';
 
-/** Faux couple req/res : on ne garde que ce qui part sur le fil. */
+/** A fake req/res pair: only what goes on the wire is kept. */
 function fakeStream(missionId: string): { chunks: string[]; close: () => void } {
   const chunks: string[] = [];
   const res = new EventEmitter() as unknown as Response & EventEmitter;
@@ -43,7 +43,7 @@ function fakeStream(missionId: string): { chunks: string[]; close: () => void } 
   return { chunks, close: () => { (req as unknown as EventEmitter).emit('close'); } };
 }
 
-test('un event_delta est écrit sur le fil SSE de sa mission', () => {
+test('an event_delta is written on the SSE wire of its mission', () => {
   const s = fakeStream(MISSION);
   bus.publish({
     kind: 'event_delta',
@@ -57,9 +57,9 @@ test('un event_delta est écrit sur le fil SSE de sa mission', () => {
   s.close();
 });
 
-test('deux deltas identiques passent tous les deux (aucune dédup)', () => {
-  // Sans timestamp, deux fragments identiques ("le", "le") auraient la même
-  // clé de dédup : les avaler mangerait du texte de la réponse.
+test('two identical deltas both go through (no dedup)', () => {
+  // Without a timestamp, two identical fragments ("le", "le") would have the same
+  // dedup key: swallowing them would eat text of the answer.
   const s = fakeStream(MISSION);
   const before = s.chunks.length;
   for (let i = 0; i < 2; i++) {
@@ -75,9 +75,9 @@ test('deux deltas identiques passent tous les deux (aucune dédup)', () => {
   s.close();
 });
 
-test('le flux global ne reçoit aucun delta', () => {
-  // `/api/stream` alimente la page events et la colonne notifications :
-  // aucune n'affiche de texte partiel, mais toutes paieraient le débit.
+test('the global stream receives no delta', () => {
+  // `/api/stream` feeds the events page and the notifications column:
+  // none of them shows partial text, but all would pay for the throughput.
   const globalStream = fakeStream('');
   const before = globalStream.chunks.length;
   bus.publish({
@@ -90,7 +90,7 @@ test('le flux global ne reçoit aucun delta', () => {
   globalStream.close();
 });
 
-test("un delta d'une autre mission ne traverse pas le filtre", () => {
+test('a delta from another mission does not cross the filter', () => {
   const s = fakeStream(MISSION);
   const before = s.chunks.length;
   bus.publish({

@@ -41,15 +41,15 @@ async function mountZones(stored: unknown[]) {
   const { WorkspaceLayoutProvider } = await import('../components/workspace-layout-provider');
   const { WidgetHost, useWidgetHost } = await import('../components/widget-host/widget-host');
   const { WidgetZone } = await import('../components/widget-host/widget-zone');
-  type Props = { orientation?: string; compact?: boolean; poignee?: unknown };
+  type Props = { orientation?: string; compact?: boolean; handle?: unknown };
 
   resetSlotsForTests();
   declareSlot('cockpit.widget', 'list');
   // A widget with a compact form, which says which form it was asked for:
   // its icons on a line, its icons stacked, or its card.
-  const Bell = ({ orientation, compact, poignee }: Props) => React.createElement('span', {
+  const Bell = ({ orientation, compact, handle }: Props) => React.createElement('span', {
     'data-form': compact ? orientation : 'card', 'data-orientation-prop': orientation,
-  }, 'bell', poignee as never);
+  }, 'bell', handle as never);
   register({ slot: 'cockpit.widget', pluginId: 'fixture', key: 'bell', widget: { title: 'Bell', frame: 'none', bar: true, zone: 'topbar.widget' } }, Bell as never);
   // An ordinary card: no flat form, so the bar must refuse it.
   register({ slot: 'cockpit.widget', pluginId: 'fixture', key: 'card', widget: { title: 'Card' } }, () => React.createElement('p', null, 'card'));

@@ -24,11 +24,16 @@ import {
   type IsolationTarget, type LauncherKind,
 } from './isolation.js';
 import { hasSystemd, systemctl } from './systemd.js';
+import { ownLinuxUnit } from './packaged-service.js';
+import { TIMON_HOME } from '../paths.js';
 import type { Capability, Host, Keyring, RevealVia } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
-const SERVICE = 'timon-orchestrator.service';
+/** The unit `self()` and `selfRestart()` act on: a package's own, or the source checkout's. */
+function ownService(): string {
+  return `${ownLinuxUnit('timon-orchestrator', TIMON_HOME)}.service`;
+}
 
 /**
  * Unit kind a mission is launched in. A scope is what keeps `proc.pid` on the
@@ -252,7 +257,7 @@ export function createLinuxHost(config: TimonConfig, pins?: BinaryPins): Host {
       stop(unit) { systemctl(['stop', unit]); },
       status(unit) { return systemctl(['is-active', '--quiet', unit]).ok ? 'running' : 'stopped'; },
       self() {
-        const r = systemctl(['show', SERVICE, '-p', 'ActiveState', '-p', 'ActiveEnterTimestamp']);
+        const r = systemctl(['show', ownService(), '-p', 'ActiveState', '-p', 'ActiveEnterTimestamp']);
         const props = new Map<string, string>();
         for (const line of r.out.split('\n')) {
           const i = line.indexOf('=');
@@ -265,7 +270,7 @@ export function createLinuxHost(config: TimonConfig, pins?: BinaryPins): Host {
         };
       },
       selfRestart() {
-        const child = spawn('systemctl', ['--user', 'restart', SERVICE], { stdio: 'ignore', detached: true });
+        const child = spawn('systemctl', ['--user', 'restart', ownService()], { stdio: 'ignore', detached: true });
         child.unref();
       },
     },

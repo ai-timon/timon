@@ -9,7 +9,7 @@ import { apiErrorMessage } from '@/lib/api-error';
  * Mirrors `publicState()` in `orchestrator/src/kernel/routes/license.ts`, field
  * for field. There is no local grace period any more: a token that no longer
  * verifies is `unlicensed` on the spot, and a late subscription stays `valid`
- * with `paymentStatus: 'past_due'` — a banner, never a gate.
+ * with `paymentStatus: 'past_due'` — a notice card, never a gate.
  */
 export type PublicLicense = {
   localFree?: boolean;
@@ -30,8 +30,13 @@ export type PublicLicense = {
   subscriptionExpiresAt: string | null;
   paymentStatus: 'active' | 'past_due';
   /** The licence server has been unreachable since this instant and the token
-   *  is kept on the offline tolerance. `null` when everything is fine. */
+   *  is kept on the offline tolerance. `null` when everything is fine. Never
+   *  shown: a passing outage is not the person's doing. */
   offlineSince: string | null;
+  /** Paid rights really lost on a build that fell back to Free: the tolerance
+   *  ran out (`offline`) or the server refused the licence (`refused`).
+   *  `since` (last server contact) marks the episode. Older daemons do not say. */
+  lapse?: { cause: 'offline' | 'refused'; since: string | null } | null;
   /** The build this daemon is (older daemons do not say). `expiresAt` is the
    *  end date of a build that stops running, `null` when it never does. */
   build?: { channel: 'beta' | 'stable' | 'dev'; expiresAt: string | null };
@@ -44,19 +49,47 @@ export type PublicLicense = {
   machineNameLocked?: boolean;
 };
 
-/** What the banner has to say, if anything. Pure, so it can be tested. */
-export type LicenseNotice =
-  | { kind: 'unlicensed' }
-  | { kind: 'pastDue'; until: string | null }
-  | { kind: 'offline'; since: string };
+/**
+ * A bottom-left card the licence asks for (docs/NOTICES.md). `id` is the
+ * card's key within its plugin: it changes with the episode, so a card the
+ * account closed comes back only when the state changes.
+ */
+export type LicenseCard =
+  | { kind: 'paused'; id: string }
+  | { kind: 'refused'; id: string }
+  | { kind: 'pastDue'; id: string; until: string | null }
+  | { kind: 'ends'; id: string; at: string; urgent: boolean };
 
-export function licenseNotice(license: PublicLicense | null): LicenseNotice | null {
-  if (!license) return null;
-  if (license.localFree && (license.reason === 'missing' || license.reason === null)) return null;
-  if (license.status === 'unlicensed') return { kind: 'unlicensed' };
-  if (license.paymentStatus === 'past_due') return { kind: 'pastDue', until: license.subscriptionExpiresAt };
-  if (license.offlineSince) return { kind: 'offline', since: license.offlineSince };
-  return null;
+/**
+ * What the licence has to say, as cards. Pure, so it can be tested.
+ *
+ * - Paid rights really lost (`lapse`): paused until the server answers, or
+ *   refused for good. Only a daemon that fell back to Free says so.
+ * - A licence in force: a late payment (quiet during the beta, as it always
+ *   was) and its end, 14 days ahead, insisted on at 3.
+ * - Nothing else. An unreachable server within the offline tolerance is not
+ *   the person's doing; Free has nothing to warn about, whatever happened to
+ *   the licence before it; a locked beta build gets its lock screen.
+ */
+export function licenseCards(license: PublicLicense | null, nowMs: number, { beta = false }: { beta?: boolean } = {}): LicenseCard[] {
+  if (!license) return [];
+  if (license.status !== 'valid') {
+    const lapse = license.lapse;
+    if (!lapse) return [];
+    const parsed = lapse.since ? Date.parse(lapse.since) : Number.NaN;
+    const episode = Number.isNaN(parsed) ? 'unknown' : String(Math.floor(parsed / 1000));
+    return [lapse.cause === 'refused' ? { kind: 'refused', id: `license-refused-${episode}` } : { kind: 'paused', id: `license-paused-${episode}` }];
+  }
+  const cards: LicenseCard[] = [];
+  if (license.paymentStatus === 'past_due' && !beta) {
+    const until = license.subscriptionExpiresAt;
+    cards.push({ kind: 'pastDue', id: `license-past-due-${until ? until.slice(0, 10) : 'open'}`, until });
+  }
+  for (const ending of expiryNotices(license, nowMs)) {
+    if (ending.kind !== 'license') continue;
+    cards.push({ kind: 'ends', id: `license-ends-${ending.at.slice(0, 10)}${ending.urgent ? '-urgent' : ''}`, at: ending.at, urgent: ending.urgent });
+  }
+  return cards;
 }
 
 /** Why a beta build is locked, as far as the person has to act on it. */
@@ -116,7 +149,7 @@ export function useLicense(): PublicLicense | null {
     };
     load();
     // The refresh loop publishes `license_changed` on the global stream: a
-    // revocation or an offline episode reaches the banner without a reload.
+    // revocation or rights coming back reach the cards without a reload.
     return sseOn('license_changed', load);
   }, []);
   return license;
@@ -155,7 +188,7 @@ export function activationErrorMessage(
   if (code === 'transfer_pending' && typeof body.body?.retry_at === 'number') {
     return translate('freeLicense.transfer_pending_until', { until: formatDateTime(body.body.retry_at * 1000) });
   }
-  if (code && ['plugin_composition_fixed', 'single_superadmin_required', 'free_incompatible', 'license_changed', 'activation_key_missing', 'local_free', 'transfer_pending', 'free_unavailable', 'client_upgrade_required'].includes(code)) {
+  if (code && ['plugin_composition_fixed', 'single_superadmin_required', 'free_incompatible', 'license_changed', 'activation_key_missing', 'local_free', 'transfer_pending', 'client_upgrade_required'].includes(code)) {
     return translate(`freeLicense.${code}`);
   }
   const base = apiErrorMessage(body, translate('activate.rejected'));

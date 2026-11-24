@@ -137,7 +137,7 @@ test('the arguments of a message, plural and select included', () => {
 test('the lookup chain: the language, its declared fallbacks, then English', () => {
   const catalog: LocaleInfo[] = [
     { tag: 'en', name: 'English', dir: 'ltr', coverage: 1, hash: 'a' },
-    { tag: 'pt-BR', name: 'Português (Brasil)', dir: 'ltr', coverage: 1, hash: 'b', fallback: ['pt'] },
+    { tag: 'pt-BR', name: 'Português (Brasil)', dir: 'ltr', coverage: 1, hash: 'b', fallback: ['pt'] }, // french-ok: a language name, the catalogue under test
   ];
   assert.deepEqual(localeChain('pt-BR', catalog), ['pt-BR', 'pt', 'en']);
   assert.deepEqual(localeChain('en', catalog), ['en']);

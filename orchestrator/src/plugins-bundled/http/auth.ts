@@ -157,13 +157,13 @@ function authenticateDevice(req: Request, res: Response, given: string): boolean
     return false;
   }
   if (!freeAccountAllowed(found.user.id)) {
-    res.status(403).json({ error: 'free_account_restricted', message: FREE_ACCOUNT_RESTRICTED_MESSAGE });
+    res.status(403).json(apiError('free_account_restricted', FREE_ACCOUNT_RESTRICTED_MESSAGE));
     return false;
   }
   // The relay is the first CSRF barrier; when it forwards the browser's
   // origin headers, the daemon checks them too, as for a cookie.
   if (isCrossSiteMutation(req)) {
-    res.status(403).json({ error: 'cross-site request refused' });
+    res.status(403).json(apiError('cross_site_refused', 'cross-site request refused'));
     return false;
   }
   req.auth = {
@@ -265,7 +265,7 @@ export function createDaemonAuthMiddleware(opts: {
       const live = dbApi.getLiveApiToken(hashSessionToken(given));
       if (live) {
         if (live.user && !freeAccountAllowed(live.user.id)) {
-          res.status(403).json({ error: 'free_account_restricted', message: FREE_ACCOUNT_RESTRICTED_MESSAGE });
+          res.status(403).json(apiError('free_account_restricted', FREE_ACCOUNT_RESTRICTED_MESSAGE));
           return;
         }
         req.auth = {
@@ -293,7 +293,7 @@ export function createDaemonAuthMiddleware(opts: {
     // gets for reaching this address (first-run setup, public paths). A page
     // that rebound its own domain onto the loopback must not be that caller.
     if (!hostAllowed(req.headers.host, hostPolicy())) {
-      res.status(421).json({ error: 'misdirected request' });
+      res.status(421).json(apiError('misdirected_request', 'misdirected request'));
       return;
     }
     const raw = readCookie(
@@ -304,14 +304,14 @@ export function createDaemonAuthMiddleware(opts: {
       const live = dbApi.getLiveSession(hashSessionToken(raw));
       if (live) {
         if (!freeAccountAllowed(live.user.id) && req.path !== '/api/auth/logout') {
-          res.status(403).json({ error: 'free_account_restricted', message: FREE_ACCOUNT_RESTRICTED_MESSAGE });
+          res.status(403).json(apiError('free_account_restricted', FREE_ACCOUNT_RESTRICTED_MESSAGE));
           return;
         }
         // A cookie is sent by the browser on its own: a mutation must come
         // from our own origin, or a page elsewhere drives the daemon with the
         // user's session (SECU-USERS U-10, defence in depth over SameSite).
         if (isCrossSiteMutation(req)) {
-          res.status(403).json({ error: 'cross-site request refused' });
+          res.status(403).json(apiError('cross_site_refused', 'cross-site request refused'));
           return;
         }
         req.auth = {

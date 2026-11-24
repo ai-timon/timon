@@ -95,6 +95,23 @@ test('only the daemon token reaches the recovery routes: a session, even superad
   assert.equal((await call('POST', `/api/users/${adaId}/reset-password`)).status, 401, 'anonymous');
 });
 
+test('the directory names the accounts to a superadmin only, without an e-mail', async () => {
+  assert.equal((await call('GET', '/api/users/directory')).status, 401, 'anonymous');
+  const login = await call('POST', '/api/auth/login', {
+    body: { email: 'ada@example.com', password: 'employee-secret' },
+  });
+  const member = sessionCookie(login.res);
+  assert.ok(member);
+  assert.equal((await call('GET', '/api/users/directory', { cookie: member })).status, 403, 'member');
+  for (const auth of [{ cookie: adminCookie }, { bearer: TOKEN }]) {
+    const list = await call('GET', '/api/users/directory', auth);
+    assert.equal(list.status, 200);
+    const users = (list.json as { users: Record<string, unknown>[] }).users;
+    assert.deepEqual(users.map((u) => u.name).sort(), ['Ada', 'Robin']);
+    assert.ok(users.every((u) => Object.keys(u).sort().join() === 'id,name'), 'id and name only');
+  }
+});
+
 test('the administration routes are gone from the core', async () => {
   for (const [method, path] of [
     ['POST', '/api/users'], ['GET', `/api/users/${adaId}`], ['PATCH', `/api/users/${adaId}`],

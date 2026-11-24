@@ -29,14 +29,14 @@ ID_LIKE="ubuntu debian"
 VERSION_CODENAME=noble
 `;
 
-test('les valeurs citées, les commentaires et les lignes vides sont gérés', () => {
+test('quoted values, comments and empty lines are handled', () => {
   const parsed = parseOsRelease(`# a comment\n\nID=fedora\nPRETTY_NAME="Fedora Linux 41"\nEMPTY=\n`);
   assert.equal(parsed['ID'], 'fedora');
   assert.equal(parsed['PRETTY_NAME'], 'Fedora Linux 41');
   assert.equal(parsed['EMPTY'], '');
 });
 
-test('une distro connue donne son gestionnaire', () => {
+test('a known distro gives its manager', () => {
   assert.equal(linuxRelease(parseOsRelease('ID=fedora\n'))?.packageManager, 'dnf');
   assert.equal(linuxRelease(parseOsRelease('ID=arch\n'))?.packageManager, 'pacman');
   assert.equal(linuxRelease(parseOsRelease('ID=alpine\n'))?.packageManager, 'apk');
@@ -46,7 +46,7 @@ test('une distro connue donne son gestionnaire', () => {
  * The case that matters: `exampleos` is in no list of distributions, and yet
  * `apt` is the right answer. That is exactly what `ID_LIKE` is for.
  */
-test("une distro dérivée inconnue tombe sur le gestionnaire de sa base", () => {
+test('an unknown derived distro falls back on the manager of its base', () => {
   const derived = linuxRelease(parseOsRelease(DERIVED));
   assert.equal(derived?.id, 'exampleos');
   assert.deepEqual(derived?.idLike, ['ubuntu', 'debian']);
@@ -57,18 +57,18 @@ test("une distro dérivée inconnue tombe sur le gestionnaire de sa base", () =>
   assert.equal(exotic?.packageManager, 'apt');
 });
 
-test("l'ordre d'ID_LIKE est respecté", () => {
+test('the order of ID_LIKE is respected', () => {
   const r = linuxRelease(parseOsRelease('ID=x\nID_LIKE="ubuntu fedora"\n'));
   assert.equal(r?.packageManager, 'apt');
 });
 
-test('une distro totalement inconnue le dit, elle ne devine pas', () => {
+test('a totally unknown distro says so, it does not guess', () => {
   const r = linuxRelease(parseOsRelease('ID=mystery\n'));
   assert.equal(r?.id, 'mystery');
-  assert.equal(r?.packageManager, null, "mieux vaut aucune commande qu'une fausse");
+  assert.equal(r?.packageManager, null, 'better no command than a wrong one');
 });
 
-test('sans /etc/os-release, la détection rend null sans lever', () => {
+test('without /etc/os-release, detection returns null without throwing', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-osrelease-'));
   assert.equal(readOsRelease(join(dir, 'absent')), null);
   assert.equal(linuxRelease(null), null);
@@ -79,28 +79,28 @@ test('sans /etc/os-release, la détection rend null sans lever', () => {
 });
 
 /**
- * Deux axes indépendants : Alpine a un gestionnaire de paquets (`apk`) et
- * AUCUN superviseur que Timon sache installer (OpenRC, hors v1). Confondre les
- * deux ferait proposer une installation de service qui ne peut pas aboutir.
+ * Two independent axes: Alpine has a package manager (`apk`) and
+ * NO supervisor Timon can install (OpenRC, outside v1). Mixing up the
+ * two would offer a service install that cannot succeed.
  */
-test('paquet et superviseur sont deux axes distincts', () => {
+test('package and supervisor are two distinct axes', () => {
   assert.equal(linuxRelease(parseOsRelease('ID=alpine\n'))?.packageManager, 'apk');
   assert.equal(supervisorFor('linux', { systemd: false }), null);
   assert.equal(supervisorFor('linux', { systemd: true }), 'systemd-user');
   assert.equal(supervisorFor('darwin', { systemd: false }), 'launchd');
   assert.equal(supervisorFor('win32', { systemd: false }), 'windows');
-  // TODO #342 : Windows ne lance pas la tâche pour ce compte → mode portable.
+  // TODO #342: Windows does not launch the task for this account → portable mode.
   assert.equal(supervisorFor('win32', { systemd: false, windowsTaskRefused: true }), null);
   assert.equal(supervisorFor('darwin', { systemd: false, windowsTaskRefused: true }), 'launchd');
 });
 
-test('chaque binaire manquant vient avec la commande de CETTE machine', () => {
+test('each missing binary comes with the command of THIS machine', () => {
   const apt = { platform: 'linux' as NodeJS.Platform, packageManager: 'apt' as const };
   assert.equal(installCommandFor('git', apt), 'sudo apt-get install -y git');
   assert.equal(installCommandFor('node', apt), 'sudo apt-get install -y nodejs');
   assert.equal(installCommandFor('docker', apt), 'sudo apt-get install -y docker.io');
 
-  // Les backends LLM sont des paquets npm : même commande partout.
+  // The LLM backends are npm packages: same command everywhere.
   for (const machine of [apt, { platform: 'win32' as NodeJS.Platform, packageManager: null }]) {
     assert.equal(installCommandFor('claude', machine), 'npm install -g @anthropic-ai/claude-code');
     assert.equal(installCommandFor('copilot', machine), 'npm install -g @github/copilot');
@@ -119,19 +119,19 @@ test('chaque binaire manquant vient avec la commande de CETTE machine', () => {
 });
 
 /**
- * Tailscale n'est dans les dépôts par défaut d'aucune distribution : la branche
- * générique produirait `sudo apt-get install -y tailscale`, une commande qui
- * échoue sur une machine neuve. Son installateur officiel ajoute le dépôt
- * éditeur d'abord — l'étape que le nom de paquet suppose en silence.
+ * Tailscale is in the default repositories of no distribution: the generic
+ * branch would produce `sudo apt-get install -y tailscale`, a command that
+ * fails on a fresh machine. Its official installer adds the vendor
+ * repository first: the step the package name silently assumes.
  */
-test('tailscale passe par son installateur officiel, jamais par le dépôt de la distribution', () => {
+test('tailscale goes through its official installer, never through the distribution repository', () => {
   for (const packageManager of ['apt', 'dnf', 'pacman', 'zypper', 'apk', null] as const) {
     assert.equal(
       installCommandFor('tailscale', { platform: 'linux', packageManager }),
       'curl -fsSL https://tailscale.com/install.sh | sudo sh',
     );
   }
-  // Le script tourne sous `sudo` : la commande se montre, elle ne s'exécute pas.
+  // The script runs under `sudo`: the command is shown, it is not run.
   assert.equal(installPlanFor('tailscale', { platform: 'linux', packageManager: 'apt' })?.elevated, true);
 
   assert.equal(

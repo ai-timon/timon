@@ -30,7 +30,6 @@ import {
 import {
   ArrowUp,
   AudioLines,
-  Folder,
   Loader2,
   Mic,
   MicOff,
@@ -72,6 +71,7 @@ import { ThinkingLevelMenu } from './thinking-level-menu';
 import { useComposerReply } from './message-actions';
 import { ReplyStrip } from './reply-quote';
 import { NewMissionMenu, type NewMissionOptions } from './new-mission-menu';
+import { ComposerProjectMenu } from './composer-project-menu';
 import { isModuleOn, isWidgetSurfaceAllowed, isZoneVisible, useCapabilities, type Capabilities } from '@/lib/capabilities';
 import { fetchTerminalStatus, openConversationTerminal } from '@/lib/terminal-web';
 import { backendLabel, capabilitiesFor, isAccountInstance, nativeCompactFor, useBackendCatalog, type BackendName } from '@/lib/backends';
@@ -85,7 +85,6 @@ import { useProviderAccess } from '@/hooks/use-me';
 import { useAfterConversation } from '@/lib/load-priority';
 import { agentGitId, useGit } from '@/lib/git-store';
 import { projectSlugOf } from '@/lib/project-slug';
-import { useProjectMeta } from '@/hooks/use-project-meta';
 import { GitBranchPicker } from '@/plugins-client/git/git-branch-picker';
 import { COMPOSER_MAX_HEIGHT, observeTextareaWidth } from '@/lib/textarea-autosize';
 import { canRecallPrompt, isTextareaWrapped, usePromptHistory } from '@/lib/prompt-history';
@@ -985,17 +984,18 @@ export function SendButton({ onClick, disabled, label }: { onClick: () => void; 
 }
 
 /**
- * The composer's branch bar is part of the Git card: a role without the card is
+ * The composer's branch bar is part of the Git widgets: a role without them is
  * refused the read (TODO #689), so it shows no bar rather than a broken one.
  */
 export function composerGitAllowed(caps: Capabilities | null): boolean {
-  return isModuleOn(caps, '@timon/git') && isWidgetSurfaceAllowed(caps, '@timon/git', 'repository');
+  return isModuleOn(caps, '@timon/git') && isWidgetSurfaceAllowed(caps, '@timon/git', 'branches');
 }
 
 /**
  * The strip tucked behind the top of the composer: where the conversation
  * runs, and the gestures about that place rather than about the message.
- * — Left: the project, behind a folder icon, when the agent belongs to one.
+ * — Left: the project, behind a folder icon, when the agent belongs to one;
+ *   its menu opens the project's settings (`composer-project-menu.tsx`).
  * — Right: the cwd's Git branch, then the terminal and the new conversation —
  *   moved out of the toolbar so that the toolbar keeps the message's own
  *   actions beside the send.
@@ -1018,7 +1018,6 @@ function ComposerHeader({
   newMission?: NewMissionOptions | null;
 }) {
   const appearance = useChatAppearance();
-  const projects = useProjectMeta();
   // The cwd's branch comes from the shared Git store: a checkout in the Git
   // panel, a push or the end of a turn refreshes it with the panels. Nothing
   // is asked while `@timon/git` is off (step 5.9.5: the route belongs to that
@@ -1030,10 +1029,6 @@ function ComposerHeader({
   // Read with the project: the picker must know whether the agent's folder
   // is that project's repository before it offers to switch its branches.
   const g = useGit('agent', gitOn && later ? agentGitId(agent.name, gitSlug) : null).data;
-  // Only a project the agent declares: the name prefix guess is good enough
-  // for a Git key, not for a title shown to the user.
-  const project = agent.project ?? null;
-  const projectName = project ? projects.get(project)?.name || project : null;
 
   return (
     <div className={cn(!compact && !narrow && 'mx-auto max-w-[calc(var(--chat-col,780px)+48px)]')}>
@@ -1049,15 +1044,9 @@ function ComposerHeader({
             ),
       )}>
         <div className="flex min-w-0 items-center gap-1.5">
-          {projectName && (
-            <span
-              className="flex min-w-0 items-center gap-1.5"
-              title={i18n('chatPage.composerProject', { name: projectName })}
-            >
-              <Folder className="size-3.5 shrink-0" aria-hidden />
-              <span className="truncate text-foreground">{projectName}</span>
-            </span>
-          )}
+          {/* Only a project the agent declares: the name prefix guess is good
+            * enough for a Git key, not for a title shown to the user. */}
+          <ComposerProjectMenu project={agent.project ?? null} />
         </div>
         <div className="flex min-w-0 shrink items-center gap-1">
           {/* Shown under the pointer, and always while the layout is being

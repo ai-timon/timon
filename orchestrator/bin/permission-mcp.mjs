@@ -302,7 +302,7 @@ const KANBAN_PLAN_TOOL = {
     + 'The human picks how the work runs — sequentially in this mission, sequentially in one fresh mission, or as Kanban tasks (full pipeline, code-self, code-group) — so it covers the sequential modes too, not only the Kanban ones. '
     + "DO NOT ENUMERATE backends or models yourself, and do not ask about them with `question`: the UI builds its menus from the live catalog, your values would be stale. Send only the chantier's title and its volets. "
     + 'When the volets differ in difficulty, give each a short `group` name (e.g. "simple" / "complex", 6 groups max): the human can then pick models per group, the general settings staying the default. Still no model names from you. '
-    + 'Returns {plan:{mode, roles:{<role>:{backend,model,fallbackBackend,fallbackModel}}, groups?:{<group>:{<role>:{…}}}}, commands:[...], note?} — `commands` being the exact `timon` commands to run, in order, to materialize the plan. If the human cancels, the tool errors. '
+    + 'Returns {plan:{mode, roles:{<role>:{backend,model,fallbackBackend,fallbackModel}}, groups?:{<group>:{<role>:{…}}}}, commands:[...], note?, integration?:{mode,branch,base_ref,note}} — `commands` being the exact `timon` commands to run, in order, to materialize the plan; `integration` is there when the project lands through a pull request. If the human cancels, the tool errors. '
     + MESSAGE_HINT
     + '(Formerly `ask_series_plan`.)',
   inputSchema: {
@@ -329,6 +329,11 @@ const KANBAN_PLAN_TOOL = {
           },
           required: ['title'],
         },
+      },
+      branch: {
+        type: 'string',
+        maxLength: 200,
+        description: "Optional integration branch for the chantier, as a short English topic (`kanban-branch-field`) or with the project's prefix (`feat/kanban-branch-field`): no id, no `timon/`. Only read when the project lands through pull requests; the human may change it, and the daemon numbers it (`-2`) when an earlier job holds it. Omit it to derive the name from the title.",
       },
     },
     required: ['chantier', 'volets'],
@@ -442,11 +447,15 @@ rl.on('line', async (line) => {
         // card's name, it did not follow the tool's rename.
         const tuid = 'ask_series_plan_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
         const form = { kind: 'series_plan', chantier: args.chantier, volets: args.volets };
+        if (typeof args.branch === 'string' && args.branch.trim()) form.branch = args.branch;
         const decision = await callOrchestrator(FORM_CARD_TOOL, withMessage({ form }, args), tuid, signal);
         if (decision?.behavior === 'allow') {
           const u = decision.updatedInput ?? {};
           const payload = { plan: u.plan, commands: u.commands ?? [] };
           if (u.note) payload.note = u.note;
+          // The job's integration branch and what it implies: without it the
+          // agent only sees the branch inside the commands.
+          if (u.integration) payload.integration = u.integration;
           return send({
             jsonrpc: '2.0', id,
             result: { content: [{ type: 'text', text: JSON.stringify(payload) }] },

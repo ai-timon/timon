@@ -1,3 +1,4 @@
+// french-ok-file: a French voice conversation, the language the bridge was tried in
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 

@@ -38,7 +38,7 @@ const buttons = (label: RegExp) => Array.from(document.querySelectorAll('button'
 
 test('without Chrome the dialog gives the reason and opens nothing', async () => {
   await withDom(async ({ React, root, install }) => {
-    install('fetch', async () => Response.json({ available: true, chrome: { available: false, reason: 'none', message: 'No Google Chrome, Microsoft Edge or Chromium was found on this computer.' } }));
+    install('fetch', async () => Response.json({ available: true, chrome: { available: false, reason: 'none', message: 'daemon english' } }));
     const sent: string[] = [];
     const { BrowserChromeSignin } = await import('./browser-chrome-signin');
     await React.act(async () => {
@@ -47,6 +47,7 @@ test('without Chrome the dialog gives the reason and opens nothing', async () =>
         command: (async (action: string) => { sent.push(action); return { state: 'idle' }; }) as never,
       }));
     });
+    // Read from the reader's dictionary by its reason, not the daemon's English.
     assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /No Google Chrome, Microsoft Edge or Chromium was found/);
     const open = buttons(/Open Chrome/)[0]!;
     assert.equal(open.disabled, true);

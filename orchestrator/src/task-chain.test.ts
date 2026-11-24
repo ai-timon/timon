@@ -1,16 +1,16 @@
 /**
- * Le chaînage part de la CLÔTURE de la task, pas de la mort du process.
+ * Chaining starts from the CLOSING of the task, not from the death of the process.
  *
- * Ce que ces tests protègent (incident du 2026-08-21) : la review `98e28f1a`
- * close à 09:47:28 avec `changes_requested` n'a vu naître son itération code
- * qu'à 09:58 — 11 min, soit le `TIMON_REAP_IDLE_MS` de 600 000 ms qui sépare la
- * clôture d'une task du `mission_complete` de sa mission. Sont vérifiés ici :
- * le déclenchement immédiat sur `task_done`, le silence du `mission_complete`
- * tardif, l'ordre verification → doc (sans quoi une task `code` reçoit sa doc
- * avant que sa review existe), et l'intégrité du chemin "mission morte SANS
- * clôture de task".
+ * What these tests protect (incident of 2026-08-21): review `98e28f1a`,
+ * closed at 09:47:28 with `changes_requested`, only saw its code iteration born
+ * at 09:58: 11 min, the 600,000 ms `TIMON_REAP_IDLE_MS` that separates the
+ * closing of a task from the `mission_complete` of its mission. Checked here:
+ * the immediate trigger on `task_done`, the silence of the late `mission_complete`,
+ * the verification → doc order (otherwise a `code` task receives its doc
+ * before its review exists), and the integrity of the "mission dead WITHOUT
+ * task closing" path.
  *
- * `node --test --import tsx src/task-chain.test.ts` (ou `npm test`).
+ * `node --test --import tsx src/task-chain.test.ts` (or `npm test`).
  */
 import '../tests/helpers/no-load-gate.js';
 import { test } from 'node:test';
@@ -51,7 +51,7 @@ function mkTask(type: Type, opts: {
   return id;
 }
 
-/** Chaîne de vérification minimale : une task code root + une review dessus. */
+/** Minimal verification chain: a root code task + a review on it. */
 function mkReviewChain(comment: string): { rootId: string; reviewId: string } {
   const rootId = mkTask('code');
   dbApi.updateTaskStatus(rootId, 'DONE', { doneComment: 'code fait' });
@@ -61,8 +61,8 @@ function mkReviewChain(comment: string): { rootId: string; reviewId: string } {
   return { rootId, reviewId };
 }
 
-/** Worktree git réel avec un commit d'écart sur la base : `handleCodeDone` ne
- *  crée une review que sur un diff non vide (`git diff --stat base...HEAD`). */
+/** A real git worktree with one commit ahead of the base: `handleCodeDone` only
+ *  creates a review on a non-empty diff (`git diff --stat base...HEAD`). */
 function mkGitRepo(): string {
   const repo = mkdtempSync(join(tmpdir(), 'timon-task-chain-repo-'));
   const git = (...args: string[]): void => {
@@ -88,23 +88,23 @@ function childrenOf(taskId: string, type: Type): string[] {
     .map((t) => t.id);
 }
 
-test('review changes_requested → itération code créée à la clôture, sans mission_complete', async () => {
+test('review changes_requested → code iteration created at closing, without mission_complete', async () => {
   const { reviewId } = mkReviewChain('verdict: changes_requested\n{"suggested_fixes":"corrige X"}');
   await runTaskChain(reviewId);
   const next = childrenOf(reviewId, 'code');
-  assert.equal(next.length, 1, 'une task code iter+1 doit exister immédiatement');
+  assert.equal(next.length, 1, 'a code task iter+1 must exist immediately');
   assert.equal(dbApi.getTask(next[0])?.iteration, 2);
 });
 
-test('rejouer la chaîne ne crée pas de doublon (garde chain_ran)', async () => {
+test('replaying the chain creates no duplicate (chain_ran guard)', async () => {
   const { reviewId } = mkReviewChain('verdict: changes_requested\n{"suggested_fixes":"corrige Y"}');
   await runTaskChain(reviewId);
-  await runTaskChain(reviewId); // ex. re-clôture, reconcile, mission_complete tardif
+  await runTaskChain(reviewId); // e.g. re-closing, reconcile, late mission_complete
   assert.equal(childrenOf(reviewId, 'code').length, 1);
   assert.equal(dbApi.isTaskChainRan(reviewId), true);
 });
 
-test('re-dispatcher une task ré-arme son chaînage', () => {
+test('re-dispatching a task rearms its chaining', () => {
   const id = mkTask('code');
   dbApi.setTaskChainState(id, CHAIN_DONE);
   const missionId = randomUUID();
@@ -113,25 +113,25 @@ test('re-dispatcher une task ré-arme son chaînage', () => {
   assert.equal(dbApi.isTaskChainRan(id), false);
 });
 
-test('review pass → merge créé immédiatement', async () => {
+test('review pass → merge created immediately', async () => {
   const { reviewId } = mkReviewChain('verdict: pass');
   await runTaskChain(reviewId);
   assert.equal(childrenOf(reviewId, 'merge').length, 1);
 });
 
-test('task terminale → doc créée immédiatement', async () => {
-  // Le librarian doit exister, sinon doc-task skippe (garde volontaire).
+test('terminal task → doc created immediately', async () => {
+  // The librarian must exist, otherwise doc-task skips (a deliberate guard).
   mkdirSync(join(HOME, 'agents', 'TIMON.librarian'), { recursive: true });
-  // `chore` et pas `merge` : une task merge sans `merged_commit_sha` est
-  // retournée BLOCKED par le garde de clôture (merge-sha-guard), donc elle ne
-  // passerait jamais DONE ici.
+  // `chore` and not `merge`: a merge task without `merged_commit_sha` is
+  // sent back BLOCKED by the closing guard (merge-sha-guard), so it would
+  // never go DONE here.
   const choreId = mkTask('chore');
   dbApi.updateTaskStatus(choreId, 'DONE', { doneComment: 'ops fait' });
   await runTaskChain(choreId);
   assert.equal(childrenOf(choreId, 'doc').length, 1);
 });
 
-test('task non terminale → pas de doc (la suite existe déjà)', async () => {
+test('non-terminal task → no doc (the rest already exists)', async () => {
   mkdirSync(join(HOME, 'agents', 'TIMON.librarian'), { recursive: true });
   const codeId = mkTask('code');
   mkTask('review', { deps: [codeId] });
@@ -140,12 +140,12 @@ test('task non terminale → pas de doc (la suite existe déjà)', async () => {
   assert.equal(childrenOf(codeId, 'doc').length, 0);
 });
 
-test('ordre : la doc d\'une task code attend que la review soit chaînée', async () => {
+test('order: the doc of a code task waits for the review to be chained', async () => {
   mkdirSync(join(HOME, 'agents', 'TIMON.librarian'), { recursive: true });
-  // Worktree git réel : `handleCodeDone` ne crée une review que sur un diff
-  // non vide (git diff --stat base...HEAD), et c'est CET await qui, avant
-  // task-chain.ts, laissait doc-task gagner la course et documenter une task
-  // code qui allait pourtant recevoir une review (doublon mesuré le 2026-08-21).
+  // Real git worktree: `handleCodeDone` only creates a review on a
+  // non-empty diff (git diff --stat base...HEAD), and it is THIS await that, before
+  // task-chain.ts, let doc-task win the race and document a code task
+  // that was nevertheless going to receive a review (duplicate measured on 2026-08-21).
   const repo = mkGitRepo();
 
   const codeId = mkTask('code', { project: 'demo' });
@@ -153,18 +153,18 @@ test('ordre : la doc d\'une task code attend que la review soit chaînée', asyn
   dbApi.updateTaskStatus(codeId, 'DONE', { doneComment: 'code fait' });
   await runTaskChain(codeId);
 
-  assert.equal(childrenOf(codeId, 'review').length, 1, 'la review doit être créée');
-  assert.equal(childrenOf(codeId, 'doc').length, 0, 'pas de doc sur une task qui a une review');
+  assert.equal(childrenOf(codeId, 'review').length, 1, 'the review must be created');
+  assert.equal(childrenOf(codeId, 'doc').length, 0, 'no doc on a task that has a review');
 });
 
-test('le mission_complete tardif ne crée rien et ne ré-émet pas task_done', async () => {
+test('the late mission_complete creates nothing and does not re-emit task_done', async () => {
   const rootId = mkTask('code');
   dbApi.updateTaskStatus(rootId, 'DONE', { doneComment: 'code fait' });
   const reviewId = mkTask('review', { deps: [rootId] });
   dbApi.setTaskVerificationMeta(reviewId, 1, rootId);
   const missionId = randomUUID();
   dbApi.createMission(missionId, 'p.reviewer', 'exec', { channel: 'dispatcher' });
-  dbApi.assignTaskMission(reviewId, missionId); // → IN_PROGRESS, comme au dispatch
+  dbApi.assignTaskMission(reviewId, missionId); // → IN_PROGRESS, as at dispatch
   dbApi.updateTaskStatus(reviewId, 'DONE', { doneComment: 'verdict: pass' });
   await runTaskChain(reviewId);
   const before = dbApi.listTasks().length;
@@ -174,22 +174,22 @@ test('le mission_complete tardif ne crée rien et ne ré-émet pas task_done', a
   let taskDone = 0;
   const spy = (ev: { kind: string }): void => { if (ev.kind === 'task_done') taskDone++; };
   bus.on('event', spy);
-  // Dix minutes plus tard : le reaper tue le process idle du reviewer.
+  // Ten minutes later: the reaper kills the idle process of the reviewer.
   bus.publish({ kind: 'mission_complete', missionId, status: 'terminated', exitCode: 0 });
   await new Promise((r) => setImmediate(r));
   await new Promise((r) => setImmediate(r));
   bus.off('event', spy);
 
-  assert.equal(taskDone, 0, 'une task déjà DONE ne ré-émet pas task_done');
-  assert.equal(dbApi.listTasks().length, before, 'aucune task de suivi supplémentaire');
+  assert.equal(taskDone, 0, 'a task already DONE does not re-emit task_done');
+  assert.equal(dbApi.listTasks().length, before, 'no extra follow-up task');
   assert.equal(dbApi.getTask(reviewId)?.status, 'DONE');
 });
 
-test('mission morte SANS clôture de task : le filet mission_complete reste intact', () => {
-  // Les listeners sont déjà branchés par le test précédent (watchMissionComplete
-  // + startTaskChain). Rattraper cette mission-là est le SEUL rôle qui reste à
-  // `mission_complete` : sans clôture d'agent, aucun `task_done` n'a été émis,
-  // donc rien d'autre ne peut sortir la task de IN_PROGRESS.
+test('mission dead WITHOUT task closing: the mission_complete safety net stays intact', () => {
+  // The listeners are already wired by the previous test (watchMissionComplete
+  // + startTaskChain). Catching up that mission is the ONLY role left to
+  // `mission_complete`: without an agent closing, no `task_done` was emitted,
+  // so nothing else can get the task out of IN_PROGRESS.
   const id = mkTask('code');
   const missionId = randomUUID();
   dbApi.createMission(missionId, 'p.coder', 'exec', { channel: 'dispatcher' });
@@ -197,13 +197,13 @@ test('mission morte SANS clôture de task : le filet mission_complete reste inta
 
   bus.publish({ kind: 'mission_complete', missionId, status: 'failed', exitCode: 1, reason: 'crash' });
 
-  // Un crash est une mort SUBIE et requeueable : la task repart en PENDING avec sa
-  // cause qualifiée, au lieu de rester IN_PROGRESS pour toujours.
+  // A crash is a death SUFFERED and requeueable: the task goes back to PENDING with its
+  // qualified cause, instead of staying IN_PROGRESS forever.
   const after = dbApi.getTask(id);
   assert.equal(after?.status, 'PENDING');
   assert.equal(after?.requeue_count, 1);
 
-  // Le même chemin sur une task déjà close ne la fait PAS régresser.
+  // The same path on an already closed task does NOT make it regress.
   const closed = mkTask('code');
   const m2 = randomUUID();
   dbApi.createMission(m2, 'p.coder', 'exec', { channel: 'dispatcher' });
@@ -213,23 +213,23 @@ test('mission morte SANS clôture de task : le filet mission_complete reste inta
   assert.equal(dbApi.getTask(closed)?.status, 'DONE');
 });
 
-test('le listener suffit : clore la review chaîne sans autre event', async () => {
+test('the listener is enough: closing the review chains without any other event', async () => {
   startTaskChain();
   const { reviewId } = mkReviewChain('verdict: changes_requested\n{"suggested_fixes":"corrige Z"}');
-  // La chaîne part sur `setImmediate` (cf. task-chain.ts : `task_done` est
-  // publié À L'INTÉRIEUR de l'écriture DB qui pose DONE). Un tick suffit —
-  // à comparer aux 600 000 ms du reap idle.
+  // The chain starts on `setImmediate` (see task-chain.ts: `task_done` is
+  // published INSIDE the DB write that sets DONE). One tick is enough,
+  // compared with the 600,000 ms of the idle reap.
   await new Promise((r) => setImmediate(r));
   await new Promise((r) => setImmediate(r));
   assert.equal(childrenOf(reviewId, 'code').length, 1);
 });
 
-test('fin de lot : le recap consolidé part à la clôture de la dernière task', async () => {
+test('end of batch: the consolidated recap leaves at the closing of the last task', async () => {
   const gid = randomUUID();
   const a = mkTask('chore', { groupId: gid });
   const b = mkTask('chore', { groupId: gid });
-  // Sans `parent_agent` sur la mission, le recap va au manager singleton
-  // (cf. orchestratorForTask / managerAgent).
+  // Without `parent_agent` on the mission, the recap goes to the singleton manager
+  // (see orchestratorForTask / managerAgent).
   const pilot = '_main';
   const recaps = (): number => dbApi
     .listInbox(pilot, { status: 'pending', limit: 20 })
@@ -237,19 +237,19 @@ test('fin de lot : le recap consolidé part à la clôture de la dernière task'
 
   dbApi.updateTaskStatus(a, 'DONE', { doneComment: 'volet A' });
   await runTaskChain(a);
-  assert.equal(dbApi.isGroupNotified(gid), false, 'le lot a encore une task active');
+  assert.equal(dbApi.isGroupNotified(gid), false, 'the batch still has an active task');
 
   dbApi.updateTaskStatus(b, 'DONE', { doneComment: 'volet B' });
   await runTaskChain(b);
-  assert.equal(dbApi.isGroupNotified(gid), true, 'recap consolidé émis sans attendre le reap');
+  assert.equal(dbApi.isGroupNotified(gid), true, 'consolidated recap sent without waiting for the reap');
   assert.equal(recaps(), 1);
 
-  // Le `mission_complete` tardif retombe sur le même chemin : no-op.
+  // The late `mission_complete` falls back on the same path: no-op.
   evaluateGroupCompleteForTask(b);
   assert.equal(recaps(), 1);
 });
 
-test('fin de lot : la review et le merge restent dans le lot, le recap attend le merge (TODO #521)', async () => {
+test('end of batch: the review and the merge stay in the batch, the recap waits for the merge (TODO #521)', async () => {
   const gid = randomUUID();
   const pilot = '_main';
   const recap = (): string | undefined => dbApi
@@ -262,46 +262,46 @@ test('fin de lot : la review et le merge restent dans le lot, le recap attend le
   dbApi.updateTaskStatus(codeId, 'DONE', { doneComment: 'code fait' });
   await runTaskChain(codeId);
 
-  // Avant le correctif : la review naissait hors lot, le lot paraissait fini et
-  // le recap partait ici, avant toute relecture.
+  // Before the fix: the review was born outside the batch, the batch looked finished and
+  // the recap left here, before any review.
   const [reviewId] = childrenOf(codeId, 'review');
-  assert.equal(dbApi.getTask(reviewId)?.group_id, gid, 'la review hérite du lot');
-  assert.equal(dbApi.isGroupNotified(gid), false, 'le lot attend sa review');
+  assert.equal(dbApi.getTask(reviewId)?.group_id, gid, 'the review inherits the batch');
+  assert.equal(dbApi.isGroupNotified(gid), false, 'the batch waits for its review');
 
   dbApi.updateTaskStatus(reviewId, 'DONE', { doneComment: 'verdict: pass' });
   await runTaskChain(reviewId);
   const [mergeId] = childrenOf(reviewId, 'merge');
-  assert.equal(dbApi.getTask(mergeId)?.group_id, gid, 'le merge hérite du lot');
-  assert.equal(dbApi.isGroupNotified(gid), false, 'le lot attend son merge');
+  assert.equal(dbApi.getTask(mergeId)?.group_id, gid, 'the merge inherits the batch');
+  assert.equal(dbApi.isGroupNotified(gid), false, 'the batch waits for its merge');
   assert.equal(recap(), undefined);
 
   dbApi.setTaskMergedSha(mergeId, 'b'.repeat(40));
   dbApi.updateTaskStatus(mergeId, 'DONE', { doneComment: 'merged' });
   await runTaskChain(mergeId);
-  assert.equal(dbApi.isGroupNotified(gid), true, 'le recap part au merge');
+  assert.equal(dbApi.isGroupNotified(gid), true, 'the recap leaves at the merge');
   assert.match(recap() ?? '', /3 done \/ 0 blocked of 3 tasks/);
 });
 
-test('reconcile : une chaîne perdue (restart en plein vol) est rejouée', async () => {
-  // Task close alors qu'aucun listener n'écoutait : `task_done` s'est perdu,
-  // `chain_ran` est resté à 0. Le balayage zombie du boot ne la rattrape plus
-  // (le dispatcher sort tôt sur une task déjà DONE, donc aucun task_done).
+test('reconcile: a lost chain (restart mid-flight) is replayed', async () => {
+  // Task closed while no listener was listening: `task_done` got lost,
+  // `chain_ran` stayed at 0. The zombie sweep at boot no longer catches it
+  // (the dispatcher exits early on a task already DONE, hence no task_done).
   const { reviewId } = mkReviewChain('verdict: pass');
   assert.equal(dbApi.isTaskChainRan(reviewId), false);
 
   await reconcileUnchainedTasks();
   assert.equal(childrenOf(reviewId, 'merge').length, 1);
 
-  // Rejeu sur un système sain : les gardes de second rideau absorbent tout.
+  // Replay on a healthy system: the second-curtain guards absorb everything.
   dbApi.setTaskChainState(reviewId, CHAIN_NEVER);
   await reconcileUnchainedTasks();
-  assert.equal(childrenOf(reviewId, 'merge').length, 1, 'toujours exactement un merge');
+  assert.equal(childrenOf(reviewId, 'merge').length, 1, 'still exactly one merge');
 });
 
-test('reconcile : les tasks closes hors fenêtre ne sont pas rechaînées', async () => {
-  // Toutes les tasks closes AVANT la migration `chain_ran` ont le flag à 0 :
-  // sans borne d'âge, le premier boot après déploiement rechaînerait tout
-  // l'historique.
+test('reconcile: tasks closed outside the window are not chained again', async () => {
+  // All the tasks closed BEFORE the `chain_ran` migration have the flag at 0:
+  // without an age bound, the first boot after deployment would chain again the whole
+  // history.
   const { reviewId } = mkReviewChain('verdict: pass');
   db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?')
     .run(Date.now() - 7 * 60 * 60 * 1000, reviewId);
@@ -309,25 +309,25 @@ test('reconcile : les tasks closes hors fenêtre ne sont pas rechaînées', asyn
   assert.equal(childrenOf(reviewId, 'merge').length, 0);
 });
 
-test('reconcile : une chaîne TUÉE EN VOL (flag posé, jamais finie) est rejouée', async () => {
-  // Le cas que la version booléenne du flag condamnait définitivement : le flag
-  // était posé avant le premier await et n'était relevé que par un `catch` JS.
-  // Un SIGTERM, un OOM (cap heap V8 à 4 Go, chronique ici) ou un restart entre
-  // la pose et la fin laissait `chain_ran = 1` sur une chaîne qui n'avait rien
-  // produit — et le reconcile ne reprenait que les `0`.
-  // On simule l'ÉTAT laissé par une telle mort, pas la mort elle-même.
+test('reconcile: a chain KILLED MID-FLIGHT (flag set, never finished) is replayed', async () => {
+  // The case the boolean version of the flag condemned for good: the flag
+  // was set before the first await and only lowered by a JS `catch`.
+  // A SIGTERM, an OOM (V8 heap cap at 4 GB, chronic here) or a restart between
+  // setting and finishing left `chain_ran = 1` on a chain that had produced
+  // nothing, and the reconcile only picked up the `0`s.
+  // The STATE left by such a death is simulated, not the death itself.
   const { reviewId } = mkReviewChain('verdict: pass');
   db.prepare('UPDATE tasks SET chain_ran = ?, chain_started_at = ? WHERE id = ?')
     .run(CHAIN_RUNNING, Date.now() - CHAIN_STALE_MS - 1_000, reviewId);
 
   await reconcileUnchainedTasks();
-  assert.equal(childrenOf(reviewId, 'merge').length, 1, 'le merge perdu doit être rattrapé');
-  assert.equal(dbApi.isTaskChainRan(reviewId), true, 'la chaîne rejouée va jusqu\'au bout');
+  assert.equal(childrenOf(reviewId, 'merge').length, 1, 'the lost merge must be caught up');
+  assert.equal(dbApi.isTaskChainRan(reviewId), true, 'the replayed chain goes all the way');
 });
 
-test('reconcile : une chaîne RÉELLEMENT en cours n\'est pas doublée', async () => {
-  // Un `CHAIN_RUNNING` récent est une chaîne vivante : la reprendre créerait la
-  // task de suivi en double. Seule son ancienneté le disqualifie.
+test('reconcile: a chain REALLY in progress is not doubled', async () => {
+  // A recent `CHAIN_RUNNING` is a live chain: picking it up would create the
+  // follow-up task twice. Only its age disqualifies it.
   const { reviewId } = mkReviewChain('verdict: pass');
   db.prepare('UPDATE tasks SET chain_ran = ?, chain_started_at = ? WHERE id = ?')
     .run(CHAIN_RUNNING, Date.now(), reviewId);
@@ -335,17 +335,17 @@ test('reconcile : une chaîne RÉELLEMENT en cours n\'est pas doublée', async (
   assert.equal(
     dbApi.listTasksNeedingChain(0, Date.now() - CHAIN_STALE_MS).some((t) => t.id === reviewId),
     false,
-    'une chaîne partie il y a une seconde n\'est pas une chaîne morte',
+    'a chain started a second ago is not a dead chain',
   );
   await reconcileUnchainedTasks();
   assert.equal(childrenOf(reviewId, 'merge').length, 0);
 });
 
-test('listTasksNeedingChain filtre EN SQL : ni les chaînes finies, ni le hors-fenêtre', () => {
-  // Mesure du 2026-08-21 : 1290 tasks DONE en base, 1262 à chain_ran = 0 et
-  // ZÉRO dans la fenêtre de 6 h. Le filtre JS matérialisait les 1290 toutes les
-  // 120 s pour n'en retenir aucune — churn de heap pur sur un process qui a un
-  // OOM chronique.
+test('listTasksNeedingChain filters IN SQL: neither finished chains nor outside the window', () => {
+  // Measure of 2026-08-21: 1290 DONE tasks in the database, 1262 at chain_ran = 0 and
+  // ZERO in the 6 h window. The JS filter materialised all 1290 every
+  // 120 s to keep none of them: pure heap churn on a process that has a
+  // chronic OOM.
   const fini = mkTask('chore');
   dbApi.updateTaskStatus(fini, 'DONE', { doneComment: 'ok' });
   dbApi.setTaskChainState(fini, CHAIN_DONE);
@@ -361,94 +361,94 @@ test('listTasksNeedingChain filtre EN SQL : ni les chaînes finies, ni le hors-f
   const ids = dbApi
     .listTasksNeedingChain(Date.now() - 6 * 60 * 60 * 1000, Date.now() - CHAIN_STALE_MS)
     .map((t) => t.id);
-  assert.ok(ids.includes(frais), 'une task close et non chaînée doit sortir');
-  assert.ok(!ids.includes(fini), 'une chaîne terminée ne revient jamais');
-  assert.ok(!ids.includes(vieux), 'hors fenêtre de rattrapage');
+  assert.ok(ids.includes(frais), 'a closed and unchained task must come out');
+  assert.ok(!ids.includes(fini), 'a finished chain never comes back');
+  assert.ok(!ids.includes(vieux), 'outside the catch-up window');
 });
 
-test('reconcile code-without-review : la review manquante est créée, une seule fois', async () => {
-  // L'invariant qui manquait : rien ne surveillait l'AMONT de la chaîne. Une
-  // task code close dont la review n'est jamais partie sortait du radar sans
-  // aucun signal (le wake-loop présumait "pipeline full ⇒ la review suit").
+test('reconcile code-without-review: the missing review is created, only once', async () => {
+  // The invariant that was missing: nothing watched the UPSTREAM of the chain. A
+  // closed code task whose review never left went off the radar without
+  // any signal (the wake-loop assumed "full pipeline ⇒ the review follows").
   const codeId = mkTask('code', { project: 'demo' });
   dbApi.setTaskWorktree(codeId, mkGitRepo(), 'feat', 'main');
   dbApi.updateTaskStatus(codeId, 'DONE', { doneComment: 'code fait' });
-  // Chaîne réputée jouée : seul l'invariant de reconcile peut encore rattraper.
+  // Chain deemed played: only the reconcile invariant can still catch up.
   dbApi.setTaskChainState(codeId, CHAIN_DONE);
   assert.equal(childrenOf(codeId, 'review').length, 0);
 
   await reconcileMissingReviews();
-  assert.equal(childrenOf(codeId, 'review').length, 1, 'la review manquante doit être créée');
+  assert.equal(childrenOf(codeId, 'review').length, 1, 'the missing review must be created');
 
-  // Idempotence : sur un système sain, la règle ne fait RIEN.
+  // Idempotence: on a healthy system, the rule does NOTHING.
   await reconcileMissingReviews();
-  assert.equal(childrenOf(codeId, 'review').length, 1, 'toujours exactement une review');
+  assert.equal(childrenOf(codeId, 'review').length, 1, 'still exactly one review');
 });
 
-test('reconcile code-without-review : muet sur un pipeline code-seul et sans diff', async () => {
-  // `code-self` / `code-group` : L'utilisateur a explicitement demandé ni review ni boucle
-  // de vérification. La règle ne doit pas la réintroduire par la bande.
+test('reconcile code-without-review: silent on a code-only pipeline and without a diff', async () => {
+  // `code-self` / `code-group`: the user explicitly asked for neither review nor verification
+  // loop. The rule must not bring it back through the back door.
   const codeOnly = mkTask('code', { project: 'demo' });
   dbApi.setTaskWorktree(codeOnly, mkGitRepo(), 'feat', 'main');
   dbApi.updateTaskStatus(codeOnly, 'DONE', { doneComment: 'volet' });
   db.prepare("UPDATE tasks SET pipeline = 'code-self' WHERE id = ?").run(codeOnly);
 
-  // Diff vide : rien à relire, donc rien à créer (même garde qu'en live).
+  // Empty diff: nothing to review, so nothing to create (same guard as live).
   const sansDiff = mkTask('code', { project: 'demo' });
-  dbApi.updateTaskStatus(sansDiff, 'DONE', { doneComment: 'rien à committer' });
+  dbApi.updateTaskStatus(sansDiff, 'DONE', { doneComment: 'rien à committer' }); // french-ok: free-text sample data
 
   await reconcileMissingReviews();
   assert.equal(childrenOf(codeOnly, 'review').length, 0);
   assert.equal(childrenOf(sansDiff, 'review').length, 0);
 });
 
-test('barrière : ouverte SYNCHRONEMENT à la réception de task_done', async () => {
-  // Le cœur du fix du pari sur la latence de git : entre `task_done` et la fin
-  // de la chaîne, le wake-loop doit avoir de quoi ATTENDRE. Si la barrière
-  // n'était ouverte qu'à l'intérieur du `setImmediate`, la fenêtre qu'on
-  // prétend fermer se rouvrirait.
+test('barrier: opened SYNCHRONOUSLY on receiving task_done', async () => {
+  // The heart of the fix of the bet on git latency: between `task_done` and the end
+  // of the chain, the wake-loop must have something to WAIT for. If the barrier
+  // were only opened inside the `setImmediate`, the window we
+  // claim to close would open again.
   startTaskChain();
   const codeId = mkTask('code', { project: 'demo' });
   dbApi.setTaskWorktree(codeId, mkGitRepo(), 'feat', 'main');
   dbApi.updateTaskStatus(codeId, 'DONE', { doneComment: 'code fait' });
-  // Aucun tick n'a encore été rendu : la chaîne n'a même pas démarré.
-  assert.equal(hasOpenChainBarrier(codeId), true, 'la barrière doit être posée dès l\'event');
-  assert.equal(childrenOf(codeId, 'review').length, 0, 'la chaîne, elle, n\'a pas encore tourné');
+  // No tick has been yielded yet: the chain has not even started.
+  assert.equal(hasOpenChainBarrier(codeId), true, 'the barrier must be set as soon as the event arrives');
+  assert.equal(childrenOf(codeId, 'review').length, 0, 'the chain, for its part, has not run yet');
 
-  // …et l'attendre suffit à voir la review, sans parier sur un quelconque délai.
+  // …and waiting for it is enough to see the review, without betting on any delay.
   assert.equal(await awaitChainBarriers([codeId], 15_000), true);
   assert.equal(hasOpenChainBarrier(codeId), false);
   assert.equal(childrenOf(codeId, 'review').length, 1);
 });
 
-test('barrière : plafonnée, jamais bloquante, et sans effet sur les ids inconnus', async () => {
-  // Dégradation contrôlée : si une chaîne ne se lève pas, le wake-loop décide
-  // avec l'état courant du Kanban — il ne se fige jamais.
-  // Le plafond est un timer `unref()` : seul, il laisse la boucle d'événements
-  // se vider et node annule le reste du fichier ("Promise resolution is still
-  // pending"). Ce handle tient la boucle le temps du test.
+test('barrier: capped, never blocking, and without effect on unknown ids', async () => {
+  // Controlled degradation: if a chain does not lift, the wake-loop decides
+  // with the current state of the Kanban; it never freezes.
+  // The cap is an `unref()` timer: alone, it lets the event loop
+  // drain and node cancels the rest of the file ("Promise resolution is still
+  // pending"). This handle holds the loop for the length of the test.
   const keepAlive = setInterval(() => {}, 1_000);
   try {
     const bloquee = randomUUID();
     const settle = openChainBarrier(bloquee);
-    assert.equal(await awaitChainBarriers([bloquee], 20), false, 'le plafond doit rendre la main');
+    assert.equal(await awaitChainBarriers([bloquee], 20), false, 'the cap must return');
     settle();
-    assert.equal(await awaitChainBarriers([bloquee], 20), true, 'barrière levée → plus d\'attente');
-    // Un id sans barrière n'attend rien (chaîne déjà finie, ou jamais lancée).
+    assert.equal(await awaitChainBarriers([bloquee], 20), true, 'barrier lifted → no more waiting');
+    // An id without a barrier waits for nothing (chain already finished, or never started).
     assert.equal(await awaitChainBarriers([randomUUID()], 20), true);
   } finally {
     clearInterval(keepAlive);
   }
 });
 
-test('migration : un `chain_ran = 1` hérité du booléen n\'est PAS rejoué', () => {
-  // `chain_ran` a changé de SÉMANTIQUE, pas seulement de type : 1 valait
-  // "chaîne terminée" sous le booléen, il vaut "partie et jamais finie"
-  // sous le tri-état. 36 tasks portaient cet héritage en base au 2026-08-21 ;
-  // sans migration elles se faisaient toutes rejouer au premier boot, en
-  // annonçant "chaîne partie à 1970-01-01" sur des chaînes saines.
-  // Discriminant exact : l'ancien 1 n'a jamais de `chain_started_at`, la
-  // colonne n'existant pas quand il a été écrit.
+test('migration: a `chain_ran = 1` inherited from the boolean is NOT replayed', () => {
+  // `chain_ran` changed SEMANTICS, not only type: 1 meant
+  // "chain finished" under the boolean, it means "started and never finished"
+  // under the tri-state. 36 tasks carried this legacy in the database on 2026-08-21;
+  // without a migration they would all have been replayed at the first boot,
+  // announcing "chain started at 1970-01-01" on healthy chains.
+  // Exact discriminant: the old 1 never has a `chain_started_at`, the
+  // column not existing when it was written.
   const legacy = mkTask('review');
   dbApi.updateTaskStatus(legacy, 'DONE', { doneComment: 'verdict: pass' });
   db.prepare('UPDATE tasks SET chain_ran = 1, chain_started_at = NULL WHERE id = ?').run(legacy);
@@ -458,34 +458,34 @@ test('migration : un `chain_ran = 1` hérité du booléen n\'est PAS rejoué', (
   const row = dbApi.getTask(legacy);
   assert.equal(row?.chain_ran, CHAIN_DONE, 'l\'ancien 1 devient CHAIN_DONE');
   const candidates = dbApi.listTasksNeedingChain(0, Date.now());
-  assert.equal(candidates.some((t) => t.id === legacy), false, 'plus candidat au rejeu');
+  assert.equal(candidates.some((t) => t.id === legacy), false, 'no longer a replay candidate');
 });
 
-test('cap : une chaîne qui échoue en boucle est abandonnée explicitement, pas rejouée sans fin', async () => {
-  // Sans plafond, une panne DÉTERMINISTE repartait toutes les 120 s pendant les
-  // 6 h de la fenêtre de rattrapage (~180 tentatives muettes). Tout le reste du
-  // système est borné à 3 ; le chaînage était le seul rejeu sans limite.
+test('cap: a chain that fails in a loop is abandoned explicitly, not replayed endlessly', async () => {
+  // Without a cap, a DETERMINISTIC failure restarted every 120 s for the
+  // 6 h of the catch-up window (~180 mute attempts). The whole rest of the
+  // system is bounded at 3; chaining was the only unlimited replay.
   const { reviewId } = mkReviewChain('verdict: pass');
   db.prepare('UPDATE tasks SET chain_attempts = ? WHERE id = ?').run(MAX_CHAIN_ATTEMPTS, reviewId);
 
   await runTaskChain(reviewId);
 
   assert.equal(dbApi.getTask(reviewId)?.chain_ran, CHAIN_FAILED, 'abandon explicite');
-  assert.equal(childrenOf(reviewId, 'merge').length, 0, 'la chaîne n\'a pas retenté');
+  assert.equal(childrenOf(reviewId, 'merge').length, 0, 'the chain did not retry');
   const candidates = dbApi.listTasksNeedingChain(0, Date.now());
   assert.equal(candidates.some((t) => t.id === reviewId), false, 'CHAIN_FAILED sort du rejeu');
 });
 
-test('cap : le compteur repart à zéro au re-dispatch et sur une chaîne réussie', async () => {
+test('cap: the counter goes back to zero on re-dispatch and on a successful chain', async () => {
   const { reviewId } = mkReviewChain('verdict: pass');
   db.prepare('UPDATE tasks SET chain_attempts = 2 WHERE id = ?').run(reviewId);
 
-  // Sous le plafond : la chaîne tourne, aboutit, et solde le compteur.
+  // Under the cap: the chain runs, succeeds, and clears the counter.
   await runTaskChain(reviewId);
   assert.equal(dbApi.getTask(reviewId)?.chain_ran, CHAIN_DONE);
-  assert.equal(dbApi.taskChainAttempts(reviewId), 0, 'une chaîne réussie ne traîne pas ses échecs');
+  assert.equal(dbApi.taskChainAttempts(reviewId), 0, 'a successful chain does not drag its failures along');
 
-  // Re-dispatch : chaînage ré-armé, y compris après un abandon définitif.
+  // Re-dispatch: chaining rearmed, even after a definitive abandon.
   dbApi.setTaskChainState(reviewId, CHAIN_FAILED);
   db.prepare('UPDATE tasks SET chain_attempts = ? WHERE id = ?').run(MAX_CHAIN_ATTEMPTS, reviewId);
   const missionId = randomUUID();
@@ -495,7 +495,7 @@ test('cap : le compteur repart à zéro au re-dispatch et sur une chaîne réuss
   assert.equal(dbApi.taskChainAttempts(reviewId), 0);
 });
 
-test('itération code : reprend le LLM de l\'itération relue (backend, modèle, repli, permissions)', async () => {
+test('code iteration: takes over the LLM of the reviewed iteration (backend, model, fallback, permissions)', async () => {
   const rootId = randomUUID();
   dbApi.createTask(rootId, 'code — volet', 'p.coder', {
     type: 'code',
@@ -519,7 +519,7 @@ test('itération code : reprend le LLM de l\'itération relue (backend, modèle,
   assert.equal(iter2?.fallback_model_override, 'opus');
   assert.equal(iter2?.permission_mode_override, 'auto');
 
-  // Le pilote re-route iter:2 à la main : iter:3 garde ce choix, pas celui de la racine.
+  // The pilot reroutes iter:2 by hand: iter:3 keeps that choice, not the root one.
   dbApi.updateTask(iter2Id, { backendOverride: 'claude', modelOverride: 'sonnet' });
   dbApi.updateTaskStatus(iter2Id, 'DONE', { doneComment: 'code fait' });
   const review2 = mkTask('review', { deps: [iter2Id] });
@@ -531,14 +531,14 @@ test('itération code : reprend le LLM de l\'itération relue (backend, modèle,
   assert.equal(iter3?.iteration, 3);
   assert.equal(iter3?.backend_override, 'claude');
   assert.equal(iter3?.model_override, 'sonnet');
-  // La review et le merge ne recopient rien : ils se résolvent sur leur rôle.
+  // The review and the merge copy nothing: they resolve on their role.
   assert.equal(dbApi.getTask(review1)?.backend_override, null);
 });
 
-test('itération code : reste dans le lot et garde le pipeline de la racine', async () => {
+test('code iteration: stays in the batch and keeps the pipeline of the root', async () => {
   const groupId = randomUUID();
   const rootId = randomUUID();
-  dbApi.createTask(rootId, 'code — volet groupé', 'p.coder', { type: 'code', groupId, pipeline: 'full' });
+  dbApi.createTask(rootId, 'code — volet groupé', 'p.coder', { type: 'code', groupId, pipeline: 'full' }); // french-ok: free-text sample data
   dbApi.updateTaskStatus(rootId, 'DONE', { doneComment: 'code fait' });
   const review = mkTask('review', { deps: [rootId] });
   dbApi.setTaskVerificationMeta(review, 1, rootId);
@@ -546,7 +546,7 @@ test('itération code : reste dans le lot et garde le pipeline de la racine', as
   await runTaskChain(review);
 
   const iter2 = dbApi.getTask(childrenOf(review, 'code')[0]);
-  assert.equal(iter2?.group_id, groupId, 'hors lot, la fin de lot partirait sans elle');
+  assert.equal(iter2?.group_id, groupId, 'outside the batch, the end of batch would leave without it');
   assert.equal(iter2?.pipeline, 'full');
-  assert.equal(dbApi.groupHasActiveTasks(groupId), true, 'le lot attend l\'itération');
+  assert.equal(dbApi.groupHasActiveTasks(groupId), true, 'the batch waits for the iteration');
 });

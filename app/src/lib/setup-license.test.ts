@@ -9,7 +9,7 @@ test('onboarding errors have actionable translations and never reflect raw servi
   for (const locale of [en, fr]) {
     const messages = locale.loginPage as Record<string, string>;
     const t = (key: string) => messages[key.replace('loginPage.', '')]!;
-    for (const code of ['license_required', 'license_invalid', 'revoked', 'expired', 'seat_limit', 'device_mismatch', 'license_unavailable', 'rate_limited', 'setup_in_progress', 'user_limit', 'free_unavailable', 'client_upgrade_required', 'transfer_pending', 'free_incompatible', 'build_expired']) {
+    for (const code of ['license_required', 'license_invalid', 'revoked', 'expired', 'seat_limit', 'device_mismatch', 'license_unavailable', 'rate_limited', 'setup_in_progress', 'user_limit', 'client_upgrade_required', 'transfer_pending', 'free_incompatible', 'build_expired']) {
       assert.ok(setupErrorMessage(code, t));
       assert.notEqual(setupErrorMessage(code, t), messages.setupFailed);
     }
@@ -30,5 +30,5 @@ test('the login form receives the release policy from the daemon, defaulting to 
   }
 });
 
-// The first-account screen is the onboarding's account step: its « never a licence
-// field, whatever the policy » test lives with it (components/onboarding/steps/account.test.ts).
+// The first-account screen is the onboarding's account step: its "never a licence
+// field, whatever the policy" test lives with it (components/onboarding/steps/account.test.ts).

@@ -1,15 +1,15 @@
 /**
- * Remontée du retour de travail au pilote, à la CLÔTURE de la task.
+ * Sending the work return up to the pilot, at the CLOSING of the task.
  *
- * `handleTaskDone` sortait sur `if (!mission?.parent_agent) return` : une task
- * close hors dispatch — clôture typée par un agent que le dispatcher n'a pas
- * lancé, reprise manuelle, rejeu — ne remontait rien du tout. L'orchestrateur
- * voyait la colonne bouger au Kanban et n'apprenait jamais ce que le travail
- * avait produit.
+ * `handleTaskDone` exited on `if (!mission?.parent_agent) return`: a task
+ * closed outside dispatch (a typed closing by an agent the dispatcher did not
+ * launch, a manual takeover, a replay) sent nothing up at all. The orchestrator
+ * saw the column move on the Kanban and never learnt what the work
+ * had produced.
  *
- * `mark_as_done` ET `mark_as_failed` doivent tous deux remonter sans geste
- * supplémentaire : le premier par ce retour, le second par l'événement
- * `task_blocked` que la clôture publie et que la boucle de réveil traite déjà.
+ * `mark_as_done` AND `mark_as_failed` must both go up without an extra
+ * gesture: the first through this return, the second through the
+ * `task_blocked` event the closing publishes and the wake loop already handles.
  *
  * `node --test --import tsx src/task-return.test.ts`
  */
@@ -23,6 +23,8 @@ import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
 
+// french-ok-file: French sample comments and reasons the test feeds in
+
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-task-return-test-'));
 
 const { dbApi } = await import('./db.js');
@@ -31,7 +33,7 @@ type BusEvent = import('./bus.js').BusEvent;
 const { handleTaskDone } = await import('./wake.js');
 const { registerRoutes } = await import('./plugins-bundled/kanban/routes.js');
 
-/** Retours `task_closed` déposés dans la boîte d'un agent. */
+/** `task_closed` returns dropped in an agent's inbox. */
 function returnsTo(agent: string) {
   return dbApi.listInbox(agent, { limit: 50 })
     .map((m) => JSON.parse(m.payload) as { kind?: string; task_id?: string; done_comment?: string })
@@ -50,11 +52,11 @@ async function withApi<T>(fn: (base: string) => Promise<T>): Promise<T> {
   try { return await fn(`http://127.0.0.1:${port}`); } finally { server.close(); }
 }
 
-test('une task close SANS parent_agent remonte quand même au pilote', () => {
+test('a task closed WITHOUT parent_agent still goes up to the pilot', () => {
   const taskId = randomUUID();
   const missionId = randomUUID();
   dbApi.createTask(taskId, 'volet hors dispatch', 'p.coder', { type: 'code' });
-  // Mission sans `parent_agent` : c'est le cas qui ne remontait rien.
+  // A mission without `parent_agent`: the case that sent nothing up.
   dbApi.createMission(missionId, 'p.coder', 'volet hors dispatch');
   dbApi.assignTaskMission(taskId, missionId);
   dbApi.updateTaskStatus(taskId, 'DONE', { doneComment: 'branche intégrée, sha en commentaire' });
@@ -67,7 +69,7 @@ test('une task close SANS parent_agent remonte quand même au pilote', () => {
   assert.equal(dbApi.isTaskReturnNotified(taskId), true);
 });
 
-test('la remontée reste idempotente : jamais deux fois le même retour', () => {
+test('sending up stays idempotent: never the same return twice', () => {
   const taskId = randomUUID();
   const missionId = randomUUID();
   dbApi.createTask(taskId, 'volet idempotent', 'p.coder', { type: 'code' });
@@ -81,7 +83,7 @@ test('la remontée reste idempotente : jamais deux fois le même retour', () => 
   assert.equal(returnsTo('_main').filter((p) => p.task_id === taskId).length, 1);
 });
 
-test('un orchestrateur qui clôt sa propre task ne se réveille pas lui-même', () => {
+test('an orchestrator closing its own task does not wake itself up', () => {
   const taskId = randomUUID();
   const missionId = randomUUID();
   dbApi.createTask(taskId, 'task du pilote', '_main', { type: 'chore' });
@@ -94,7 +96,7 @@ test('un orchestrateur qui clôt sa propre task ne se réveille pas lui-même', 
   assert.equal(returnsTo('_main').filter((p) => p.task_id === taskId).length, 0);
 });
 
-test('mark_as_failed publie task_blocked : le pilote est prévenu sans geste de plus', async () => {
+test('mark_as_failed publishes task_blocked: the pilot is warned without an extra gesture', async () => {
   const taskId = randomUUID();
   const missionId = randomUUID();
   dbApi.createTask(taskId, 'volet bloqué', 'p.coder', { type: 'code' });
@@ -116,11 +118,11 @@ test('mark_as_failed publie task_blocked : le pilote est prévenu sans geste de 
   } finally { bus.off('event', listen); }
 
   const ev = seen.find((e) => e.kind === 'task_blocked' && e.taskId === taskId);
-  assert.ok(ev, 'aucun task_blocked publié pour cette task');
+  assert.ok(ev, 'no task_blocked published for this task');
   assert.equal(ev.kind === 'task_blocked' ? ev.reason : null, 'clé API absente du coffre');
 });
 
-test('mark_as_done publie task_done : c\'est ce qui déclenche la remontée', async () => {
+test('mark_as_done publishes task_done: that is what triggers the sending up', async () => {
   const taskId = randomUUID();
   const missionId = randomUUID();
   dbApi.createTask(taskId, 'volet livré', 'p.coder', { type: 'chore' });
@@ -143,7 +145,7 @@ test('mark_as_done publie task_done : c\'est ce qui déclenche la remontée', as
   assert.ok(seen.includes(taskId));
 });
 
-test('le résumé humain voyage dans le retour task_closed', async () => {
+test('the human summary travels in the task_closed return', async () => {
   const taskId = randomUUID();
   const missionId = randomUUID();
   dbApi.createTask(taskId, 'volet résumé', 'p.coder', { type: 'chore' });

@@ -192,7 +192,7 @@ const shutdown = (pi: FakePi): void => { for (const h of pi.handlers.get('sessio
 
 /* ── The configuration ────────────────────────────────────────────────── */
 
-const AWKWARD = 'C:\\Users\\Jean "JP" Doe\\tok\nen \u2028 é 🙂 \\u0000';
+const AWKWARD = 'C:\\Users\\Jean "JP" Doe\\tok\nen \u2028 é 🙂 \\u0000'; // french-ok: an awkward multi-byte value
 
 test('the configuration round-trips, values that would break a nested JSON string included', () => {
   const servers: BridgeServer[] = [
@@ -324,6 +324,12 @@ test('on Windows an .exe found on PATH is spawned directly; a .cmd shim goes thr
   assert.equal(bridge.quoteCmdArgument('say "hi"\\'), '^^^"say^^^ \\^^^"hi\\^^^"\\\\^^^"');
 });
 
+test('on Windows a command found nowhere is spawned as is: Node says it could not start, cmd.exe would not', () => {
+  const env = { PATH: 'C:\\node', PATHEXT: '.EXE;.CMD', ComSpec: 'C:\\Windows\\system32\\cmd.exe' };
+  assert.deepEqual(bridge.resolveSpawn('ghost', ['--x'], { platform: 'win32', env, isFile: () => false }),
+    { file: 'ghost', args: ['--x'], verbatim: false });
+});
+
 /* ── The stdio client ─────────────────────────────────────────────────── */
 
 test('the stdio client: handshake, paged tool list, calls, the server\'s own requests answered', async () => {
@@ -333,7 +339,7 @@ test('the stdio client: handshake, paged tool list, calls, the server\'s own req
   await client.initialize();
   const tools = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name), ['whoami', 'echo', 'slow', 'crash', 'fail', 'picture']);
-  assert.deepEqual(await client.callTool('echo', { text: 'hé' }), { content: [{ type: 'text', text: '{"text":"hé"}' }] });
+  assert.deepEqual(await client.callTool('echo', { text: 'hé' }), { content: [{ type: 'text', text: '{"text":"hé"}' }] }); // french-ok: a multi-byte sample
   const seen = log();
   assert.equal(seen[0]!.extra, 'declared', 'the server gets the variables Timon declared for it');
   assert.ok(seen.some((l) => l.notification === 'notifications/initialized'));

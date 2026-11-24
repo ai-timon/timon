@@ -212,10 +212,26 @@ test('HTTP requires operator auth, validates the preset and handles concurrent r
     assert.equal((await fetch(base, { headers: { ...headers, 'x-test-restricted': '1' } })).status, 403);
     assert.equal((await fetch(base, { method: 'POST', headers: { ...headers, 'x-test-restricted': '1' }, body: '{"preset":"scratch"}' })).status, 403);
     assert.equal((await fetch(base, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"preset":"scratch"}' })).status, 401);
-    assert.equal((await fetch(base, { method: 'POST', headers, body: '{"preset":"custom","force":true}' })).status, 400);
+    const invalid = await fetch(base, { method: 'POST', headers, body: '{"preset":"custom","force":true}' });
+    assert.equal(invalid.status, 400);
+    assert.equal(((await invalid.json()) as { code?: string }).code, 'setup_team_invalid_preset');
     const results = await Promise.all([1, 2].map(() => fetch(base, { method: 'POST', headers, body: '{"preset":"scratch"}' })));
     assert.deepEqual(results.map((r) => r.status), [200, 200]);
     assert.equal(listAgents().length, 1);
     assert.equal(teamOnboardingPending(), false);
   } finally { server.close(); }
+});
+
+test('the wizard answers every team and identity refusal with a translatable code', async () => {
+  const { teamErrorBody, mainAgentErrorBody, resumeErrorBody } = await import('./plugins-bundled/http/setup-errors.js');
+  const { TeamSetupError } = await import('./onboarding-team.js');
+  const { MainAgentSetupError } = await import('./onboarding-main-agent.js');
+  const { ResumeError } = await import('./onboarding-resume.js');
+  assert.equal(teamErrorBody(new TeamSetupError('instance_not_empty')).code, 'setup_team_instance_not_empty');
+  assert.equal(teamErrorBody(new TeamSetupError('workspace_unavailable')).code, 'setup_workspace_unavailable');
+  assert.equal(teamErrorBody(new Error('disk full')).code, 'setup_team_failed', 'an unexpected failure never leaks its text');
+  assert.equal(mainAgentErrorBody(new MainAgentSetupError('name_taken')).code, 'setup_main_agent_name_taken');
+  assert.equal(mainAgentErrorBody(new Error('boom')).code, 'setup_main_agent_failed');
+  assert.equal(resumeErrorBody(new ResumeError('setup_complete')).code, 'setup_already_complete');
+  assert.equal(resumeErrorBody(new Error('boom')).code, 'setup_resume_failed');
 });

@@ -7,8 +7,8 @@ import { join } from 'node:path';
 const HOME = mkdtempSync(join(tmpdir(), 'timon-settings-test-'));
 process.env.TIMON_HOME = HOME;
 
-// La clé témoin est posée dans timon.config.json AVANT le premier import :
-// le registre lit la config au premier accès.
+// The witness key is set in timon.config.json BEFORE the first import:
+// the registry reads the config on first access.
 writeFileSync(
   join(HOME, 'timon.config.json'),
   JSON.stringify({ settings: { TIMON_MAX_PARALLEL: 3, TIMON_MAX_LIVE_MISSIONS: 7 } }),
@@ -23,10 +23,10 @@ test('config gagne contre la table settings', () => {
   const r = resolve('TIMON_MAX_PARALLEL');
   assert.equal(r?.value, 3);
   assert.equal(r?.source, 'config');
-  assert.equal(r?.dbValue, '5', 'la valeur en base reste visible pour l’UI');
+  assert.equal(r?.dbValue, '5', 'the database value stays visible to the UI');
 });
 
-test('config perd contre l’environnement', () => {
+test('config loses against the environment', () => {
   process.env.TIMON_MAX_LIVE_MISSIONS = '99';
   invalidateSettingsCache();
   const r = resolve('TIMON_MAX_LIVE_MISSIONS');
@@ -37,7 +37,7 @@ test('config perd contre l’environnement', () => {
   assert.equal(settingInt('TIMON_MAX_LIVE_MISSIONS'), 7);
 });
 
-test('une clé absente de la config garde sa source habituelle', () => {
+test('a key missing from the config keeps its usual source', () => {
   invalidateSettingsCache();
   const r = resolve('TIMON_LOAD_THRESHOLD');
   assert.equal(r?.source, 'default');

@@ -149,7 +149,7 @@ test('TODO #788: the page a switch left, restored by Back from the back/forward 
   assert.deepEqual(await switchToMachine('vps'), { ok: true, kept: false });
   assert.deepEqual(run.reloads, [], 'nothing reloads before the page comes back');
   run.pageshow(true);
-  assert.deepEqual(run.reloads, [1], 'not left on « Switching to… », rendered for the machine it left');
+  assert.deepEqual(run.reloads, [1], 'not left on "Switching to…", rendered for the machine it left');
   run.pageshow(true);
   assert.deepEqual(run.reloads, [1], 'once: the document loaded again has no such listener');
 });

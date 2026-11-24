@@ -66,4 +66,4 @@ A coding task's worktree has its own branch and files. The final merge integrate
 
 Databases, credentials and services outside the repository remain shared. Coordinate changes to those resources separately from Git changes.
 
-The chat's [Git widget](git.md) shows a project's branches, its commit graph with every worktree, and its remotes.
+The chat's [Git stack](git.md) shows a project's branches, its commit graph with every worktree, its remotes, its pull requests and the Kanban jobs that land through them.

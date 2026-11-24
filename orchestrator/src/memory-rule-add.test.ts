@@ -1,9 +1,9 @@
 /**
- * Tests de l'écriture directe d'une règle mémoire (memory-rule-add.ts).
+ * Tests of the direct write of a memory rule (memory-rule-add.ts).
  *
- * `import './test-home.js'` EN PREMIER : ce module touche la base via dbApi,
- * qui ouvre le fichier SQLite au chargement. Sans ça, la suite écrirait dans
- * `~/.timon/timon.db` — la vraie.
+ * `import './test-home.js'` FIRST: this module touches the database through dbApi,
+ * which opens the SQLite file on load. Without it, the suite would write into
+ * `~/.timon/timon.db`, the real one.
  */
 import './test-home.js';
 import { test } from 'node:test';
@@ -11,25 +11,25 @@ import assert from 'node:assert/strict';
 import { addMemoryRule, MemoryRuleError } from './memory-rule-add.js';
 import { dbApi } from './db.js';
 
-/** Texte unique par test : la base de test est partagée par tout le fichier. */
+/** A unique text per test: the test database is shared by the whole file. */
 let n = 0;
-const uniq = () => `règle de test #${++n} — ${Math.random().toString(36).slice(2)}`;
+const uniq = () => `règle de test #${++n} — ${Math.random().toString(36).slice(2)}`; // french-ok: free-text sample data
 
-test('insère une règle scope=agent et la rend listable', () => {
+test('inserts a scope=agent rule and makes it listable', () => {
   const text = uniq();
   const rule = addMemoryRule({ scope: 'agent', agent: 'alice.main', text });
   assert.equal(rule.scope, 'agent');
   assert.equal(rule.agent, 'alice.main');
-  assert.equal(rule.kind, 'pitfall');       // défaut
-  assert.equal(rule.tier, 'normal');        // défaut
+  assert.equal(rule.kind, 'pitfall');       // default
+  assert.equal(rule.tier, 'normal');        // default
   assert.equal(rule.status, 'active');
   assert.equal(rule.source, 'manual');
   assert.equal(rule.text, text);
   const found = dbApi.listRules({ agent: 'alice.main' }).find((r) => r.id === rule.id);
-  assert.ok(found, 'la règle doit apparaître dans listRules');
+  assert.ok(found, 'the rule must appear in listRules');
 });
 
-test('refuse un doublon exact sur le même scope', () => {
+test('refuses an exact duplicate on the same scope', () => {
   const text = uniq();
   const first = addMemoryRule({ scope: 'agent', agent: 'dup.main', text });
   assert.throws(
@@ -39,7 +39,7 @@ test('refuse un doublon exact sur le même scope', () => {
   assert.equal(dbApi.listRules({ agent: 'dup.main' }).length, 1);
 });
 
-test('le doublon est détecté malgré casse et espaces différents', () => {
+test('the duplicate is detected despite different case and spaces', () => {
   const text = uniq();
   addMemoryRule({ scope: 'agent', agent: 'norm.main', text });
   assert.throws(
@@ -48,7 +48,7 @@ test('le doublon est détecté malgré casse et espaces différents', () => {
   );
 });
 
-test('le même texte sur un AUTRE scope passe', () => {
+test('the same text on ANOTHER scope passes', () => {
   const text = uniq();
   addMemoryRule({ scope: 'agent', agent: 'a.main', text });
   const other = addMemoryRule({ scope: 'agent', agent: 'b.main', text });
@@ -57,7 +57,7 @@ test('le même texte sur un AUTRE scope passe', () => {
   assert.equal(proj.scope, 'project');
 });
 
-test('un scope sans sa cible est refusé (règle orpheline, jamais injectée)', () => {
+test('a scope without its target is refused (orphan rule, never injected)', () => {
   for (const bad of [
     { scope: 'agent' },
     { scope: 'project' },
@@ -66,7 +66,7 @@ test('un scope sans sa cible est refusé (règle orpheline, jamais injectée)', 
     assert.throws(
       () => addMemoryRule({ ...bad, text: uniq() }),
       (err: unknown) => err instanceof MemoryRuleError && err.status === 400,
-      `scope=${bad.scope} sans cible doit être refusé`,
+      `scope=${bad.scope} without a target must be refused`,
     );
   }
 });
@@ -78,7 +78,7 @@ test('scope=global n\'exige aucune cible', () => {
   assert.equal(rule.project, null);
 });
 
-test('valeurs invalides refusées en 400', () => {
+test('invalid values refused with 400', () => {
   assert.throws(() => addMemoryRule({ scope: 'nimportequoi', text: uniq() }),
     (e: unknown) => e instanceof MemoryRuleError && e.status === 400);
   assert.throws(() => addMemoryRule({ scope: 'global', kind: 'lubie', text: uniq() }),
@@ -89,27 +89,27 @@ test('valeurs invalides refusées en 400', () => {
     (e: unknown) => e instanceof MemoryRuleError && e.status === 400);
 });
 
-test('tier=core est conservé (règle toujours injectée sur son scope)', () => {
+test('tier=core is kept (a rule always injected on its scope)', () => {
   const rule = addMemoryRule({ scope: 'project', project: 'timon', tier: 'core', kind: 'decision', text: uniq() });
   assert.equal(rule.tier, 'core');
   assert.ok(dbApi.coreRulesForProject('timon').some((r) => r.id === rule.id));
 });
 
-test('une règle ajoutée est immédiatement visible au recall de son agent', () => {
-  // Le point de la feature : ce que `timon memory rule add` écrit doit ressortir
-  // du MÊME chemin que le spawn d'une mission emprunte (searchRules), sans
-  // rebuild ni passage par une proposal.
+test('an added rule is immediately visible in the recall of its agent', () => {
+  // The point of the feature: what `timon memory rule add` writes must come out
+  // of the SAME path a mission spawn takes (searchRules), without a
+  // rebuild or going through a proposal.
   const text = 'les RDV pro sont sur le calendrier Google Working, jamais sur le primary Perso';
   const rule = addMemoryRule({ scope: 'agent', agent: 'recall.main', text });
 
-  // Chemin FTS : la mission parle du sujet.
+  // FTS path: the mission talks about the subject.
   const parFts = dbApi.searchRules('calendrier Google agenda', { agent: 'recall.main' });
-  assert.ok(parFts.some((r) => r.id === rule.id), 'la règle doit sortir du recall FTS');
+  assert.ok(parFts.some((r) => r.id === rule.id), 'the rule must come out of the FTS recall');
 
-  // Chemin fallback récence : la mission ne mentionne rien de proche.
+  // Recency fallback path: the mission mentions nothing close.
   const parRecence = dbApi.searchRules('', { agent: 'recall.main' });
-  assert.ok(parRecence.some((r) => r.id === rule.id), 'la règle doit sortir du recall par récence');
+  assert.ok(parRecence.some((r) => r.id === rule.id), 'the rule must come out of the recency recall');
 
-  // Et elle reste cloisonnée à son agent.
+  // And it stays partitioned to its agent.
   assert.equal(dbApi.searchRules('calendrier', { agent: 'autre.main' }).length, 0);
 });

@@ -1,3 +1,4 @@
+// french-ok-file: the French locale of the waiting page under test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { waitingPage, waitingUrl } from './waiting-page.js';

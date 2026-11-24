@@ -186,3 +186,19 @@ test('TODO #485: disposing an old supervisor keeps the newer one under the same 
     assert.equal(wakeSupervisor('wake-twice'), 'running');
   } finally { stopSecond(); restore(); t.mock.timers.reset(); }
 });
+
+test('giving up hands the alert its coded message, built from the same cause as its English', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const restore = quiet();
+  const { host, children } = fakeSpawner();
+  const causes: string[] = [];
+  const stop = superviseChild(host as never, {
+    label: 'coded-alert', command: 'x', args: [], spawn: {}, cleanExit: 'stop',
+    alert: { title: 'stopped', body: (why) => why, message: (why) => { causes.push(why); return { code: 'web_app_clean_exit', params: { why } }; } },
+  });
+  try {
+    children.at(-1)!.emit('exit', 0, null);
+    assert.equal(causes.length, 1);
+    assert.match(causes[0]!, /clean exit/);
+  } finally { stop(); restore(); t.mock.timers.reset(); }
+});

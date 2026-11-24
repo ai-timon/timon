@@ -1,10 +1,10 @@
 /**
- * Le manifeste est la porte d'entrée du produit : ces tests décrivent ce qui
- * passe et ce qui est refusé, avec quel code. Trois d'entre eux sont des
- * critères de sortie de la Phase P (§10.9) — `apiVersion` inconnue refusée avec
- * un message clair, et `inject` qui nomme `db` refusé en `forbidden-inject`.
+ * The manifest is the front door of the product: these tests describe what
+ * gets through and what is refused, with which code. Three of them are
+ * exit criteria of Phase P (§10.9): unknown `apiVersion` refused with
+ * a clear message, and an `inject` naming `db` refused as `forbidden-inject`.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +17,7 @@ import {
   dictationEgressLines, PluginManifestSchema, PLUGIN_KINDS,
 } from './manifest.js';
 
-/** Un `package.json` de plugin, dont on ne surcharge que ce que le test observe. */
+/** A plugin `package.json`, overriding only what the test observes. */
 function pkg(manifest: Record<string, unknown>): Record<string, unknown> {
   return {
     name: 'acme-crm-sync',
@@ -33,7 +33,7 @@ test('users:read is a valid manifesto permission (M.7)', () => {
   assert.deepEqual(res.manifest.permissions, ['users:read']);
 });
 
-test('un manifeste complet est accepté tel quel', () => {
+test('a complete manifest is accepted as is', () => {
   const res = readManifest(
     pkg({
       permissions: ['missions:spawn', 'kanban:write', 'http:outbound'],
@@ -47,20 +47,20 @@ test('un manifeste complet est accepté tel quel', () => {
   assert.equal(res.manifest.id, 'acme-crm-sync');
   assert.deepEqual(res.manifest.permissions, ['missions:spawn', 'kanban:write', 'http:outbound']);
   assert.equal(res.manifest.license.required, true);
-  assert.equal(res.manifest.client?.mode, 'esm', 'iframe ne peut jamais être le défaut');
+  assert.equal(res.manifest.client?.mode, 'esm', 'iframe can never be the default');
   assert.deepEqual(res.manifest.client?.external, []);
 });
 
-test('un manifeste minimal reçoit des défauts sûrs', () => {
+test('a minimal manifest gets safe defaults', () => {
   const res = readManifest(pkg({}));
   assert.ok(res.ok);
-  assert.deepEqual(res.manifest.permissions, [], 'aucune permission par défaut');
+  assert.deepEqual(res.manifest.permissions, [], 'no permission by default');
   assert.deepEqual(res.manifest.settings, []);
   assert.equal(res.manifest.license.required, false);
-  assert.equal(res.manifest.client, undefined, 'pas de moitié navigateur sans `client`');
+  assert.equal(res.manifest.client, undefined, 'no browser half without `client`');
 });
 
-test('la clé lue est celle de la marque, jamais une autre', () => {
+test('the key read is the brand one, never another', () => {
   // The former internal identifier is not the public contract: the manifest
   // is read under `timon` (BRAND.manifestKey). public-name-ok: refused by name
   const res = readManifest({ name: 'x', pkos: { id: 'acme-crm-sync', apiVersion: PLUGIN_API_VERSION } });
@@ -69,13 +69,13 @@ test('la clé lue est celle de la marque, jamais une autre', () => {
   assert.match(res.message, new RegExp(BRAND.manifestKey));
 });
 
-test('un paquet sans champ de manifeste est refusé, pas ignoré', () => {
+test('a package without a manifest field is refused, not ignored', () => {
   const res = readManifest({ name: 'lodash', version: '4.0.0' });
   assert.ok(!res.ok);
   assert.equal(res.code, 'manifest');
 });
 
-test("une apiVersion trop récente est refusée avec un message qui nomme les deux versions", () => {
+test('a too-recent apiVersion is refused with a message naming both versions', () => {
   const res = readManifest(pkg({ apiVersion: PLUGIN_API_VERSION + 1 }));
   assert.ok(!res.ok);
   assert.equal(res.code, 'api-version');
@@ -83,45 +83,45 @@ test("une apiVersion trop récente est refusée avec un message qui nomme les de
   assert.match(res.message, new RegExp(`contract ${PLUGIN_API_VERSION}`));
 });
 
-test("une apiVersion plus ANCIENNE est acceptée : la surface ne fait que grandir", () => {
-  // La promesse open-core (§10.15) : élargir le SDK n'invalide pas ce qui est
-  // déjà installé. Un plugin écrit pour le contrat 1 tourne sur un daemon 2.
+test('an OLDER apiVersion is accepted: the surface only grows', () => {
+  // The open-core promise (§10.15): widening the SDK does not invalidate what is
+  // already installed. A plugin written for contract 1 runs on a daemon 2.
   for (let version = 1; version <= PLUGIN_API_VERSION; version += 1) {
     const res = readManifest(pkg({ apiVersion: version }));
-    assert.ok(res.ok, `apiVersion ${version} aurait dû être acceptée`);
+    assert.ok(res.ok, `apiVersion ${version} should have been accepted`);
   }
 });
 
-test('un `inject` qui nomme une capacité interdite est refusé en forbidden-inject', () => {
+test('an `inject` naming a forbidden capability is refused as forbidden-inject', () => {
   const res = readManifest(pkg({}), { inject: ['http', 'db', 'bus'] });
   assert.ok(!res.ok);
   assert.equal(res.code, 'forbidden-inject');
-  assert.match(res.message, /capability \(db, bus\)/, 'le message nomme les capacités fautives, et elles seules');
+  assert.match(res.message, /capability \(db, bus\)/, 'the message names the faulty capabilities, and them alone');
 });
 
-test('toute la liste blanche est injectable', () => {
+test('the whole allowlist is injectable', () => {
   const res = readManifest(pkg({}), { inject: ALLOWED_INJECT });
   assert.ok(res.ok, res.ok ? '' : res.message);
 });
 
-test('une apiVersion trop récente prime sur un inject interdit', () => {
-  // Le message doit désigner la vraie cause : un plugin écrit pour un contrat
-  // futur peut légitimement injecter des services qui n'existent pas encore.
+test('a too-recent apiVersion wins over a forbidden inject', () => {
+  // The message must point at the real cause: a plugin written for a future
+  // contract can legitimately inject services that do not exist yet.
   const res = readManifest(pkg({ apiVersion: PLUGIN_API_VERSION + 1 }), { inject: ['db'] });
   assert.ok(!res.ok);
   assert.equal(res.code, 'api-version');
 });
 
-test('un id hors format est refusé en nommant la clé fautive', () => {
+test('an id out of format is refused, naming the faulty key', () => {
   for (const id of ['AB', 'ac', 'acme_crm', 'Acme-Crm', 'a'.repeat(41)]) {
     const res = readManifest({ [BRAND.manifestKey]: { id, apiVersion: PLUGIN_API_VERSION } });
-    assert.ok(!res.ok, `id \`${id}\` aurait dû être refusé`);
+    assert.ok(!res.ok, `id \`${id}\` should have been refused`);
     assert.equal(res.code, 'manifest');
     assert.match(res.message, /^invalid .* field — id: /);
   }
 });
 
-test('une permission inconnue est refusée — pas de permission tacite', () => {
+test('an unknown permission is refused: no tacit permission', () => {
   const res = readManifest(pkg({ permissions: ['db:write'] }));
   assert.ok(!res.ok);
   assert.equal(res.code, 'manifest');
@@ -144,21 +144,21 @@ test('secrets:read is a declared permission, not a tacit grant', () => {
   assert.deepEqual(res.manifest.permissions, ['secrets:read']);
 });
 
-test('un slot inconnu du runtime est accepté — un layout tiers déclare les siens', () => {
+test('a slot unknown to the runtime is accepted: a third-party layout declares its own', () => {
   const res = readManifest(pkg({ client: { slots: ['acme.sidebar.widget'] } }));
   assert.ok(res.ok, res.ok ? '' : res.message);
   assert.deepEqual(res.manifest.client?.slots, ['acme.sidebar.widget']);
 });
 
-test('une clé inconnue du manifeste est ignorée, pas fatale', () => {
-  // Forward-compat : un champ ajouté par une version future du contrat ne doit
-  // pas produire un refus qui envoie le tiers chercher au mauvais endroit.
+test('an unknown manifest key is ignored, not fatal', () => {
+  // Forward-compat: a field added by a future version of the contract must
+  // not produce a refusal that sends the third party looking in the wrong place.
   const res = readManifest(pkg({ futureKey: { anything: true } }));
   assert.ok(res.ok, res.ok ? '' : res.message);
   assert.equal((res.manifest as Record<string, unknown>)['futureKey'], undefined);
 });
 
-test('un manifeste qui n\'est pas un objet est refusé sans throw', () => {
+test('a manifest that is not an object is refused without throwing', () => {
   for (const bad of [null, undefined, 42, 'plugin', [], { [BRAND.manifestKey]: 'oui' }]) {
     const res = readManifest(bad);
     assert.ok(!res.ok);
@@ -167,16 +167,16 @@ test('un manifeste qui n\'est pas un objet est refusé sans throw', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Phase U — ce qu'un plugin déclare être (§10.12).
+// Phase U: what a plugin declares itself to be (§10.12).
 // ---------------------------------------------------------------------------
 
-test('`kind` string est du sucre : la forme lue est toujours une liste', () => {
+test('`kind` as a string is sugar: the form read is always a list', () => {
   const res = readManifest(pkg({ kind: 'widget', client: { slots: ['cockpit.widget'] } }));
   assert.ok(res.ok, res.ok ? '' : res.message);
   assert.deepEqual(res.manifest.kind, ['widget']);
 });
 
-test('un plugin peut être widget ET overlay — deux insertions, une identité', () => {
+test('a plugin can be widget AND overlay: two insertions, one identity', () => {
   const res = readManifest(
     pkg({ kind: ['widget', 'overlay'], client: { slots: ['cockpit.widget', 'overlay'] } }),
   );
@@ -184,16 +184,16 @@ test('un plugin peut être widget ET overlay — deux insertions, une identité'
   assert.deepEqual(res.manifest.kind, ['widget', 'overlay']);
 });
 
-test('`kind: overlay` exige le slot `overlay` — une zone `*.widget` ne le remplace pas', () => {
-  // L'admission d'`overlay` est exacte (slot-compat.ts) : une mascotte ne se
-  // glisse pas dans un rail parce qu'elle sait être une carte ailleurs.
+test('`kind: overlay` requires the `overlay` slot: a `*.widget` zone does not replace it', () => {
+  // The admission of `overlay` is exact (slot-compat.ts): a mascot does not
+  // slip into a rail because it can be a card elsewhere.
   const res = readManifest(pkg({ kind: 'overlay', client: { slots: ['cockpit.widget'] } }));
   assert.ok(!res.ok);
   assert.equal(res.code, 'manifest');
   assert.match(res.message, /overlay/);
 });
 
-test('`kind: widget` sans zone `*.widget` est refusé', () => {
+test('`kind: widget` without a `*.widget` zone is refused', () => {
   const res = readManifest(pkg({ kind: 'widget', client: { slots: ['nav.item'] } }));
   assert.ok(!res.ok);
   assert.match(res.message, /\*\.widget/);
@@ -229,7 +229,7 @@ test('`island.content` without `kind` infers `island` instead of `behavior`', ()
   assert.deepEqual(inferred.manifest.kind, ['island']);
 });
 
-test('`kind` absent est déduit des slots — les manifestes de la Phase P restent valides', () => {
+test('a missing `kind` is inferred from the slots: the Phase P manifests stay valid', () => {
   const hello = readManifest(pkg({ client: { slots: ['nav.item', 'cockpit.widget'] } }));
   assert.ok(hello.ok, hello.ok ? '' : hello.message);
   assert.deepEqual(hello.manifest.kind, ['widget']);
@@ -240,17 +240,17 @@ test('`kind` absent est déduit des slots — les manifestes de la Phase P reste
 
   const headless = readManifest(pkg({}));
   assert.ok(headless.ok, headless.ok ? '' : headless.message);
-  assert.deepEqual(headless.manifest.kind, ['behavior'], 'un plugin sans UI est un comportement, pas une erreur');
+  assert.deepEqual(headless.manifest.kind, ['behavior'], 'a plugin without UI is a behavior, not an error');
 });
 
-test('un bundle installe `contains` et n\'occupe rien', () => {
+test('a bundle installs `contains` and occupies nothing', () => {
   const res = readManifest(pkg({ kind: 'bundle', contains: ['example-page', 'example-widget'] }));
   assert.ok(res.ok, res.ok ? '' : res.message);
   assert.deepEqual(res.manifest.contains, ['example-page', 'example-widget']);
   assert.deepEqual(res.manifest.kind, ['bundle']);
 });
 
-test('`bundle` est exclusif et ne se mélange à aucune autre nature', () => {
+test('`bundle` is exclusive and mixes with no other nature', () => {
   const mixed = readManifest(
     pkg({ kind: ['bundle', 'widget'], contains: ['example-widget'], client: { slots: ['cockpit.widget'] } }),
   );
@@ -260,10 +260,10 @@ test('`bundle` est exclusif et ne se mélange à aucune autre nature', () => {
   const slotted = readManifest(
     pkg({ kind: 'bundle', contains: ['example-widget'], client: { slots: ['cockpit.widget'] } }),
   );
-  assert.ok(!slotted.ok, 'un bundle n\'a pas de moitié navigateur');
+  assert.ok(!slotted.ok, 'a bundle has no browser half');
 });
 
-test('un bundle vide et un `contains` hors bundle sont refusés', () => {
+test('an empty bundle and a `contains` outside a bundle are refused', () => {
   const empty = readManifest(pkg({ kind: 'bundle' }));
   assert.ok(!empty.ok);
   assert.match(empty.message, /contains/);
@@ -273,7 +273,7 @@ test('un bundle vide et un `contains` hors bundle sont refusés', () => {
   assert.match(stray.message, /contains/);
 });
 
-test('une page porte sa route, et la route ne vit que sur une page', () => {
+test('a page carries its route, and the route only lives on a page', () => {
   const page = readManifest(
     pkg({ kind: 'page', route: '/example', declares: { 'example.widget': 'list' }, client: { slots: ['page'] } }),
   );
@@ -290,19 +290,19 @@ test('une page porte sa route, et la route ne vit que sur une page', () => {
   assert.match(stray.message, /route/);
 });
 
-test('une route ou une cover hors format est refusée', () => {
+test('a route or a cover out of format is refused', () => {
   for (const route of ['example', '/Example', '/example?x=1', '//example']) {
     const res = readManifest(pkg({ kind: 'page', route, client: { slots: ['page'] } }));
-    assert.ok(!res.ok, `route \`${route}\` aurait dû être refusée`);
+    assert.ok(!res.ok, `route \`${route}\` should have been refused`);
   }
   for (const cover of ['https://acme.test/cover.png', '/etc/passwd', '../../secret.png', 'cover.exe']) {
     const res = readManifest(pkg({ cover }));
-    assert.ok(!res.ok, `cover \`${cover}\` aurait dû être refusée`);
+    assert.ok(!res.ok, `cover \`${cover}\` should have been refused`);
     assert.match(res.message, /cover/);
   }
 });
 
-test("les champs d'identité de la galerie sont lus tels quels", () => {
+test('the gallery identity fields are read as is', () => {
   const res = readManifest(
     pkg({ label: 'Mascotte', description: 'Un calque in-app.', cover: 'assets/cover.webp', modifies: ['theme'] }),
   );
@@ -313,7 +313,7 @@ test("les champs d'identité de la galerie sont lus tels quels", () => {
   assert.deepEqual(res.manifest.modifies, ['theme']);
 });
 
-test('screenshots sont des fichiers du paquet, comme cover', () => {
+test('screenshots are package files, like cover', () => {
   const ok = readManifest(pkg({ cover: 'cover.jpg', screenshots: ['still-1.jpg', 'still-2.jpg'] }));
   assert.ok(ok.ok, ok.ok ? '' : ok.message);
   assert.deepEqual(ok.manifest.screenshots, ['still-1.jpg', 'still-2.jpg']);
@@ -332,19 +332,19 @@ test('icon is an SVG of the package, never a URL nor a raster', () => {
   }
 });
 
-test('les gabarits `examples/plugin-*` sont acceptés par le schéma', async () => {
-  // Ils sont la documentation exécutable du contrat : si le schéma les refuse,
-  // c'est le schéma qui a tort, pas le gabarit.
+test('the `examples/plugin-*` templates are accepted by the schema', async () => {
+  // They are the executable documentation of the contract: if the schema refuses them,
+  // the schema is wrong, not the template.
   const { readdirSync, readFileSync } = await import('node:fs');
   const { join, dirname } = await import('node:path');
   const { fileURLToPath } = await import('node:url');
   const examples = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'examples');
   const dirs = readdirSync(examples).filter((d) => d.startsWith('plugin-'));
-  assert.ok(dirs.length >= 5, 'les gabarits doivent être là');
+  assert.ok(dirs.length >= 5, 'the templates must be there');
   for (const dir of dirs) {
     const json = JSON.parse(readFileSync(join(examples, dir, 'package.json'), 'utf8')) as unknown;
     const res = readManifest(json);
-    assert.ok(res.ok, `${dir} : ${res.ok ? '' : res.message}`);
+    assert.ok(res.ok, `${dir}: ${res.ok ? '' : res.message}`);
   }
 });
 
@@ -750,7 +750,39 @@ test('a slot opened by API 17 needs a manifest that declares it', () => {
     const res = readManifest(pkg({ apiVersion: 17, client: { slots: [slot] } }));
     assert.ok(res.ok, res.ok ? '' : res.message);
   }
-  assert.equal(SLOT_API_VERSIONS['updates.dialog'], PLUGIN_API_VERSION);
+  assert.equal(SLOT_API_VERSIONS['updates.dialog'], 17);
+});
+
+test('a slot opened by API 19 needs a manifest that declares it', () => {
+  // A host 18 has no `kanban.todo.landing`: the registration would be refused
+  // there, and the badge never painted, without a word to the plugin's author.
+  assert.match(refusal(pkg({ apiVersion: 18, client: { slots: ['kanban.todo.landing'] } })),
+    /names `kanban\.todo\.landing`, which needs `apiVersion: 19`/);
+  const res = readManifest(pkg({ apiVersion: 19, client: { slots: ['kanban.todo.landing'] } }));
+  assert.ok(res.ok, res.ok ? '' : res.message);
+  assert.equal(SLOT_API_VERSIONS['kanban.todo.landing'], 19);
+});
+
+test('the job and Publish on GitHub dialogs join wave 19', () => {
+  // Their hooks are missing from a host 18: a manifest naming either slot must
+  // declare 19, or its browser half would die there on a missing import.
+  for (const slot of ['kanban.job.dialog', 'forge.publish.dialog']) {
+    const message = refusal(pkg({ apiVersion: 18, client: { slots: [slot] } }));
+    assert.ok(message.includes(`names \`${slot}\`, which needs \`apiVersion: 19\``), message);
+    const res = readManifest(pkg({ apiVersion: 19, client: { slots: [slot] } }));
+    assert.ok(res.ok, res.ok ? '' : res.message);
+    assert.equal(SLOT_API_VERSIONS[slot], 19);
+  }
+});
+
+test('the project settings slot joins wave 19', () => {
+  // `useProjectSettings` is missing from a host 18: a manifest naming the slot
+  // must declare 19, or its browser half would die there on a missing import.
+  const message = refusal(pkg({ apiVersion: 18, client: { slots: ['project.settings'] } }));
+  assert.ok(message.includes('names `project.settings`, which needs `apiVersion: 19`'), message);
+  const res = readManifest(pkg({ apiVersion: 19, client: { slots: ['project.settings'] } }));
+  assert.ok(res.ok, res.ok ? '' : res.message);
+  assert.equal(SLOT_API_VERSIONS['project.settings'], 19);
 });
 
 test('`root` outside a layout is refused, whatever the other kind', () => {

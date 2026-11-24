@@ -9,7 +9,8 @@ import {
   repairSessionWitness, restartDesktopService, sealSessionWitnessArgs, serviceStoppedByUser, serviceStoppedMarkerFile, startDesktopService,
   startStoppedServiceFailureMessage, stopServiceCopy, stopServiceFailureMessage,
   WINDOWS_SERVICE_REVISION, WINDOWS_TASK, windowsLauncher, windowsRepairDeclinedFile, windowsRestartRunner, windowsTaskNeverRan,
-  windowsRestartSeams, windowsServiceRevisionFile, windowsSessionWitnessFile, windowsTaskState,
+  windowsRestartSeams, windowsServiceRevisionFile, windowsSessionWitnessFile, windowsTaskState, windowsTaskRunning, endWindowsLauncher, serviceHeldOutFile, serviceHeldOutSince,
+  readWindowsTaskShape, disableWindowsTask,
 } from './service.js';
 import type { DesktopConfig } from './config.js';
 
@@ -194,9 +195,9 @@ test('the setup restart replaces the running service on macOS and Linux', async 
  * port — the task may be holding its daemon until the user's first logon.
  */
 /**
- * TODO #342: on a PC joined to Microsoft Entra ID, `/Run` answered « SUCCESS:
- * Attempted » and Windows never started the task (`LastTaskResult` 0x41303,
- * `LastRunTime` 30/11/1999). The desktop waited 30 s, then « does not answer »
+ * TODO #342: on a PC joined to Microsoft Entra ID, `/Run` answered "SUCCESS:
+ * Attempted" and Windows never started the task (`LastTaskResult` 0x41303,
+ * `LastRunTime` 30/11/1999). The desktop waited 30 s, then "does not answer"
  * with no log to read. It now reads the task state and says so.
  */
 test('windows: a task Windows never starts is reported as never-ran, not waited on', async () => {
@@ -205,7 +206,9 @@ test('windows: a task Windows never starts is reported as never-ran, not waited 
   assert.equal(windowsTaskNeverRan('LastTaskResult=267011\r\nLastRunTime=\r\n'), true);
   assert.equal(windowsTaskNeverRan('LastTaskResult=267011\r\nLastRunTime=2026-10-14T09:12:00\r\n'), false, 'both signals are required');
   assert.equal(windowsTaskNeverRan('LastTaskResult=267009\r\nLastRunTime=1999-11-30T00:00:00\r\n'), false);
-  assert.equal(windowsTaskNeverRan(''), false, 'unreadable is not « never »');
+  // 0x800710e0: Task Scheduler refused a second instance while one ran (TIM-0158). Started, not failed.
+  assert.equal(windowsTaskNeverRan('LastTaskResult=2147946720\r\nLastRunTime=2026-11-18T19:05:05\r\n'), false);
+  assert.equal(windowsTaskNeverRan(''), false, 'unreadable is not "never"');
   assert.equal(windowsTaskNeverRan('LastTaskResult=\r\n'), false);
 
   const run = async () => ({ stdout: '' });
@@ -228,10 +231,54 @@ test('windows: a task Windows never starts is reported as never-ran, not waited 
   }), 'started');
   assert.equal(reads, 2);
 
-  // No PowerShell, no ScheduledTasks module: nothing proves « never ».
+  // No PowerShell, no ScheduledTasks module: nothing proves "never".
   assert.equal(await startDesktopService('/tmp/timon-home', false, run, 'win32', 0, {}, {
     query: async () => { throw new Error('powershell not found'); },
   }), 'started');
+});
+
+test('windows: a /Run refused because an instance already runs (0x800710e0) is a started service (TIM-0158)', async () => {
+  const run = async () => ({ stdout: '' });
+  assert.equal(await startDesktopService('/tmp/timon-home', false, run, 'win32', 0, {}, {
+    query: async () => ({ stdout: 'LastTaskResult=2147946720\r\nLastRunTime=2026-11-18T19:05:05\r\n' }),
+    pause: async () => undefined,
+  }), 'started');
+});
+
+test('windows: the handover reads whether the task still runs, and unreadable is not running', async () => {
+  const asked: string[][] = [];
+  assert.equal(await windowsTaskRunning(async (args) => { asked.push(args); return { stdout: 'State=Running\r\n' }; }), true);
+  assert.match(asked[0]!.at(-1)!, new RegExp(`Get-ScheduledTask -TaskName '${WINDOWS_TASK}' -TaskPath '\\\\'`));
+  assert.equal(await windowsTaskRunning(async () => ({ stdout: 'State=Ready\r\n' })), false);
+  assert.equal(await windowsTaskRunning(async () => ({ stdout: 'State=Queued\r\n' })), false);
+  assert.equal(await windowsTaskRunning(async () => { throw new Error('no ScheduledTasks module'); }), false);
+});
+
+test('windows: the handover ends only the launcher of this home, and its tree', async () => {
+  const commands: string[] = [];
+  await endWindowsLauncher("C:\\Users\\O'Neil\\.timon", async (args) => { commands.push(args.at(-1)!); return { stdout: '' }; });
+  assert.equal(commands.length, 1);
+  assert.ok(commands[0]!.includes("c:\\users\\o''neil\\.timon"), commands[0]);
+  // Revision 6 names its configuration; a revision-5 task still runs the batch until it is rewritten.
+  assert.ok(commands[0]!.includes('timon-service.json'), commands[0]);
+  assert.ok(commands[0]!.includes('timon-service.cmd'), commands[0]);
+  for (const program of ['cmd.exe', 'node.exe', 'timon.exe']) assert.ok(commands[0]!.includes(`'${program}'`), program);
+  assert.match(commands[0]!, /\$_\.ProcessId -ne \$PID/);
+  assert.match(commands[0]!, /taskkill\.exe \/F \/T \/PID/);
+});
+
+test('the service refused the home is read from its marker, only from the time asked', () => {
+  const home = mkdtempSync(join(tmpdir(), 'timon-held-out-'));
+  assert.equal(serviceHeldOutSince(home, 0), false, 'no marker');
+  mkdirSync(join(home, 'run'), { recursive: true });
+  writeFileSync(serviceHeldOutFile(home), '{"at":1000,"pid":7}\n');
+  assert.equal(serviceHeldOutSince(home, 1000), true);
+  assert.equal(serviceHeldOutSince(home, 999), true);
+  assert.equal(serviceHeldOutSince(home, 1001), false, 'a refusal before the fallback says nothing');
+  writeFileSync(serviceHeldOutFile(home), 'not json');
+  assert.equal(serviceHeldOutSince(home, 0), false);
+  writeFileSync(serviceHeldOutFile(home), '{"at":"1000"}');
+  assert.equal(serviceHeldOutSince(home, 0), false);
 });
 
 test('windows: the boot task is detected by its revision, started, and restarted by its launcher tree', async () => {
@@ -370,7 +417,7 @@ test('the witness commands run without profile, prompt or execution policy surpr
   }
 });
 
-test('TIM-0108: the boot task is confirmed gone only when both lookups agree, and a failed lookup is never « gone »', async () => {
+test('TIM-0108: the boot task is confirmed gone only when both lookups agree, and a failed lookup is never "gone"', async () => {
   const fail = async () => { throw new Error('boom'); };
   const says = (word: string) => async () => ({ stdout: `${word}\r\n` });
   assert.deepEqual(await windowsTaskState(says(''), says('absent')), { schtasks: true, lookup: 'absent', exists: true, confirmedAbsent: false });
@@ -381,7 +428,7 @@ test('TIM-0108: the boot task is confirmed gone only when both lookups agree, an
   assert.equal((await windowsTaskState(fail, says('garbage'))).lookup, 'unknown');
 });
 
-test('TIM-0108: forgetting a deleted task drops its revision and the « not now », and only when a revision was there', () => {
+test('TIM-0108: forgetting a deleted task drops its revision and the "not now", and only when a revision was there', () => {
   const home = windowsHome(false);
   writeFileSync(windowsRepairDeclinedFile(home), '0.1.5\n');
   assert.deepEqual(forgetMissingWindowsService(home), [], 'no revision: the task was already gone, the answer stands');
@@ -392,7 +439,7 @@ test('TIM-0108: forgetting a deleted task drops its revision and the « not now 
   assert.equal(existsSync(windowsRepairDeclinedFile(home)), false);
 });
 
-// « Quit and stop the background service » (decision of 22/10/2026): plain Quit
+// "Quit and stop the background service" (decision of 22/10/2026): plain Quit
 // leaves the service's daemon on purpose; this one ends it through the host
 // adapter, and the marker it leaves is what the next launch reads to start it.
 test('quit and stop: stop and start go through the host adapter runner, and the marker follows', async () => {
@@ -423,7 +470,7 @@ test('quit and stop: stop and start go through the host adapter runner, and the 
 
 test('quit and stop: the prompt names the permission step of the OS, in the user\'s language', () => {
   const win = stopServiceCopy('fr-FR', 'win32');
-  assert.match(win.trayItem, /Quitter et arrêter/);
+  assert.match(win.trayItem, /Quitter et arrêter/); // french-ok: the French locale under test
   assert.match(win.detail, /Windows demande une autorisation/);
   assert.equal(win.buttons.length, 2);
   const mac = stopServiceCopy('en-US', 'darwin');
@@ -432,4 +479,23 @@ test('quit and stop: the prompt names the permission step of the OS, in the user
   assert.doesNotMatch(stopServiceCopy('en', 'linux').detail, /permission|password/, 'systemd asks nothing');
   assert.match(stopServiceFailureMessage(new Error('boom'), 'en').detail, /keeps running[\s\S]*boom/);
   assert.match(startStoppedServiceFailureMessage(new Error('refused'), '/h', 'fr').detail, /timon service start[\s\S]*\/h[\s\S]*refused/);
+});
+
+test('windows #116: the task\'s shape is read with schtasks /XML, and an unreadable one is null', async () => {
+  const calls: string[][] = [];
+  const xml = '<Task><Triggers><BootTrigger/></Triggers><Principals><Principal><LogonType>InteractiveToken</LogonType></Principal></Principals>'
+    + '<Actions><Exec><Command>cmd.exe</Command></Exec></Actions></Task>';
+  const shape = await readWindowsTaskShape(async (args) => { calls.push(args); return { stdout: xml }; });
+  assert.deepEqual(calls, [['/Query', '/TN', WINDOWS_TASK, '/XML', 'ONE']]);
+  assert.equal(shape?.consoleVisible, true);
+  assert.deepEqual(shape?.triggers, ['Boot']);
+  assert.equal(await readWindowsTaskShape(async () => { throw new Error('ERROR: The system cannot find the file specified.'); }), null);
+  assert.equal(await readWindowsTaskShape(async () => ({ stdout: '' })), null);
+});
+
+test('windows #116: a task Windows never starts is disabled with schtasks, and a refusal is reported', async () => {
+  const calls: string[][] = [];
+  await disableWindowsTask(async (args) => { calls.push(args); return { stdout: 'SUCCESS' }; });
+  assert.deepEqual(calls, [['/Change', '/TN', WINDOWS_TASK, '/DISABLE']]);
+  await assert.rejects(disableWindowsTask(async () => { throw new Error('ERROR: Access is denied.'); }), /Access is denied/);
 });

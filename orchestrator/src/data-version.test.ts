@@ -189,7 +189,8 @@ test('without a copy, a pending destructive migration stops the start and leaves
     assert.ok(error instanceof DataSnapshotError);
     assert.deepEqual(error.migrations, ['drop-notes-legacy']);
     assert.match(error.message, /Timon 0\.1\.1 did not start/);
-    assert.match(error.message, /EISDIR|directory/);
+    // The copy of a folder fails with EISDIR on Linux, ENOTSUP on macOS, EPERM on Windows.
+    assert.match(error.message, /EISDIR|ENOTSUP|EPERM|directory/);
     assert.match(error.message, /Nothing was changed/);
     return true;
   });

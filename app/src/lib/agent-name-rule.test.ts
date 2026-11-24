@@ -15,6 +15,6 @@ test('the copy is the daemon file, byte for byte', () => {
 });
 
 test('the copy accepts every script and refuses what a folder cannot hold', () => {
-  for (const name of ['马斯克', 'Нова', 'مرحبا', 'Zoë', '_main']) assert.equal(isValidAgentName(name), true, name);
+  for (const name of ['马斯克', 'Нова', 'مرحبا', 'Zoë', '_main']) assert.equal(isValidAgentName(name), true, name); // french-ok: non-Latin names, all valid
   for (const name of ['..', '.x', '-x', 'a b', '😀', 'CON', 'foo.', '马'.repeat(27)]) assert.equal(isValidAgentName(name), false, name);
 });

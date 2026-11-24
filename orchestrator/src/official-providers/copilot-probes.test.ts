@@ -138,12 +138,12 @@ test('an answer without a readable premium quota is not a zero', () => {
 
 test('frames are cut on bytes, across chunks, past stray lines', () => {
   const reader = new FrameReader();
-  const frame = encodeFrame({ id: 1, result: { note: 'quota épuisé — 日本' } });
+  const frame = encodeFrame({ id: 1, result: { note: 'quota épuisé — 日本' } }); // french-ok: a multi-byte sample
   const stream = Buffer.concat([Buffer.from('warming up\r\n\r\n'), frame, encodeFrame({ id: 2 })]);
   const got: unknown[] = [];
   // One byte at a time: every multi-byte character is split at least once.
   for (const byte of stream) got.push(...reader.push(Buffer.from([byte])));
-  assert.deepEqual(got, [{ id: 1, result: { note: 'quota épuisé — 日本' } }, { id: 2 }]);
+  assert.deepEqual(got, [{ id: 1, result: { note: 'quota épuisé — 日本' } }, { id: 2 }]); // french-ok: a multi-byte sample
 });
 
 /* ── The quota, through the daemon's conversation service ─────────────────── */

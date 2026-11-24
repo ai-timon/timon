@@ -1,3 +1,4 @@
+import './test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -197,5 +198,58 @@ test('a declared folder that git does not ignore, or ignores only as a directory
   } finally {
     if (worktree) await disposeWorktree(worktree, true);
     rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('a declared folder under an untracked ignored parent gets that parent, never one git would commit or one outside', async (t) => {
+  const repo = mkdtempSync(join(tmpdir(), 'timon-worktree-links-parents-'));
+  const outside = mkdtempSync(join(tmpdir(), 'timon-worktree-links-outside-'));
+  const git = (...args: string[]) => execFileSync('git', ['-C', repo, ...args], { stdio: 'pipe' });
+  const warnings: string[] = [];
+  t.mock.method(console, 'warn', (message: string) => warnings.push(message));
+  let worktree: Awaited<ReturnType<typeof createWorktree>> | undefined;
+  try {
+    git('init', '-b', 'main');
+    git('config', 'user.name', 'Test');
+    git('config', 'user.email', 'test@example.invalid');
+    // Every hidden folder is ignored, as directories only: `.claude/` is never tracked.
+    writeFileSync(join(repo, '.gitignore'), '.*/\n/notes\n');
+    writeFileSync(join(repo, '.worktreelinks'), '.claude/skills\nplain/skills\n');
+    git('add', '.');
+    git('commit', '-m', 'Initial');
+    // As in a real checkout: `.claude/skills` is itself a link to skills kept in a notes folder.
+    mkdirSync(join(repo, 'notes', 'skills', 'demo'), { recursive: true });
+    writeFileSync(join(repo, 'notes', 'skills', 'demo', 'SKILL.md'), '# demo\n');
+    mkdirSync(join(repo, '.claude'));
+    linkDirectory(join(repo, 'notes', 'skills'), join(repo, '.claude', 'skills'));
+    mkdirSync(join(repo, 'plain', 'skills'), { recursive: true });
+
+    worktree = await createWorktree(randomUUID(), repo, 'main');
+    const linked = join(worktree.path, '.claude', 'skills');
+    assert.ok(lstatSync(linked).isSymbolicLink());
+    assert.equal(realpathSync(linked), realpathSync(join(repo, 'notes', 'skills')));
+    assert.equal(readFileSync(join(linked, 'demo', 'SKILL.md'), 'utf8'), '# demo\n');
+    // `plain/` is not ignored: creating it would let `git add -A` commit the link.
+    assert.equal(lstatSync(join(worktree.path, 'plain'), { throwIfNoEntry: false }), undefined);
+    assert.ok(warnings.some((message) => message.includes('plain/ is missing from the worktree and git does not ignore it')));
+    assert.equal(execFileSync('git', ['-C', worktree.path, 'status', '--porcelain'], { encoding: 'utf8' }), '');
+
+    // An existing ignored ancestor that leads outside the worktree must not receive the parents.
+    linkDirectory(outside, join(worktree.path, '.escape'));
+    mkdirSync(join(repo, '.escape', 'deep', 'skills'), { recursive: true });
+    writeFileSync(join(worktree.path, '.worktreelinks'), '.escape/deep/skills\n');
+    await prepareWorktreeDependencies(repo, worktree.path);
+    assert.equal(existsSync(join(outside, 'deep')), false);
+    assert.ok(warnings.some((message) => message.includes('its parent folder resolves outside the worktree')));
+
+    await disposeWorktree(worktree, true);
+    worktree = undefined;
+    // Removing the worktree removes the link; the skills stay in the main clone.
+    assert.equal(readFileSync(join(repo, '.claude', 'skills', 'demo', 'SKILL.md'), 'utf8'), '# demo\n');
+    assert.equal(existsSync(outside), true);
+  } finally {
+    if (worktree) await disposeWorktree(worktree, true);
+    rmSync(repo, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });

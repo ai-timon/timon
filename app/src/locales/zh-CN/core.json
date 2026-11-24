@@ -875,15 +875,6 @@
     "doneBody": "现在请使用 {email} 登录。",
     "signIn": "登录"
   },
-  "license": {
-    "pastDue": "付款已逾期，请续订",
-    "pastDueUntil": "付款已逾期，订阅将于 {date} 到期",
-    "notActivated": "当前使用免费版，添加账号需要许可证",
-    "activate": "激活",
-    "offlineSince": "自 {date} 起无法连接许可证服务器。离线宽限期内仍可使用付费权益，宽限期结束后 Timon 将恢复为免费版。",
-    "licenseEndsSoon": "你的许可证将于 {date} 到期。请在此之前输入新密钥。",
-    "licenseEndsUrgent": "你的许可证将于 {date} 到期。请立即输入新密钥。"
-  },
   "betaLock": {
     "eyebrow": "测试版",
     "build_expired_title": "此版本已过期",
@@ -1014,6 +1005,12 @@
   },
   "appearance": {
     "title": "外观",
+    "zoomTitle": "界面大小",
+    "zoomHint": "放大或缩小此电脑上所有 Timon 窗口中的文字和控件。快捷键：Ctrl 和 +、Ctrl 和 −、Ctrl 和 0 恢复默认（在 macOS 上，这三个快捷键均用 Cmd 代替 Ctrl）。在 Windows 和 Linux 上，也可以用 Ctrl 加鼠标滚轮。",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "zoomReset": "重置",
+    "zoomError": "无法更改界面大小。",
     "theme": "主题",
     "layout": "布局",
     "themeHint": "此账号使用的界面配色。",
@@ -1106,6 +1103,13 @@
     "mascotsStyle2dHint": "平面绘制，对较旧的电脑更轻量。",
     "mascotsStyleNoWebgl": "此浏览器无法进行 3D 绘制（WebGL2 已关闭或不可用）：吉祥物将以 2D 显示。",
     "mascotsStyleShared": "适用于所有吉祥物。之后可以在“{settingsPath}”中更改。",
+    "dockIconTitle": "程序坞图标",
+    "dockIconHint": "Timon 运行时 macOS 在程序坞中显示的图标。访达和启动前的程序坞仍显示经典图标。",
+    "dockIconClassic": "经典",
+    "dockIconClassicHint": "Timon 的配色。",
+    "dockIconDark": "深色",
+    "dockIconDarkHint": "黑白。",
+    "dockIconError": "无法更改程序坞图标。",
     "variants": {
       "coral": {
         "name": "珊瑚色",
@@ -1325,12 +1329,10 @@
     "categories": "类别",
     "selectCategory": "类别",
     "modified": "已修改",
+    "defaultValue": "默认值：{value}",
     "definedInConfig": "由 timon.config.json 指定",
     "forcedByEnv": "由环境变量强制指定",
-    "default": "默认值",
     "empty": "（空）",
-    "enabled": "已启用",
-    "disabled": "已停用",
     "save": "保存",
     "defaultBtn": "默认值",
     "outOfRange": "应介于 {min} 和 {max} 之间",
@@ -1571,6 +1573,10 @@
   },
   "settingsDialog": {
     "backToSettings": "返回设置",
+    "navGroup": {
+      "agents": "智能体",
+      "machine": "这台电脑"
+    },
     "close": "关闭",
     "unsavedKept": "上次更改尚未保存。请保存，或点击 × 或按 Esc 关闭并放弃更改。",
     "category": {
@@ -1631,7 +1637,7 @@
         "installation": "安装",
         "updates": "更新",
         "backup": "备份与回收站",
-        "diagnostics": "诊断",
+        "diagnostics": "日志与保留",
         "desktop": "桌面应用",
         "privacy": "隐私"
       },
@@ -1695,7 +1701,7 @@
         "installation": "版本 关于 安装 服务 守护进程 任务 launchagent systemd 路径 数据 文件夹 日志 端口 导出 导入 备份 更新",
         "updates": "更新 升级 新版本 检查 下载 安装程序 发行说明 自动 update",
         "backup": "备份 归档 每晚 恢复 保留 保留期 天数 回收站 已删除 智能体 找回 撤销 彻底删除",
-        "diagnostics": "日志 调试 杂项 基础设施 故障排查",
+        "diagnostics": "诊断 日志 调试 杂项 基础设施 故障排查",
         "desktop": "卸载 移除 删除 electron 应用",
         "privacy": "隐私 遥测 分析 用量 统计 匿名 跟踪 退出"
       },
@@ -2622,9 +2628,17 @@
       "title": "文件",
       "description": "浏览和编辑项目工作目录中的文件。"
     },
-    "git": {
-      "title": "Git",
-      "description": "查看项目的分支、提交关系图和发布状态；可切换分支、查看历史和工作树，以及推送更改。"
+    "gitBranches": {
+      "title": "分支",
+      "description": "仓库的工作区和分支：查看更改，切换分支。"
+    },
+    "gitGraph": {
+      "title": "提交图",
+      "description": "仓库的提交关系图，以及其分支和工作树。"
+    },
+    "gitPublish": {
+      "title": "发布",
+      "description": "仓库的发布状态：远程、待推送的提交、推送和拉取。"
     },
     "agentTasks": {
       "title": "智能体任务清单",
@@ -3145,14 +3159,11 @@
   },
   "freeLicense": {
     "restrictedAccounts": "已暂停 {count} 个额外账号。首个处于启用状态的超级管理员账号仍可访问；未删除任何账号或数据。",
-    "retainedData": "切回免费版后，额外账号仍会保留，但无法使用。所有功能和插件仍可使用。有效的许可证可恢复其涵盖的账号。",
-    "local_free": "免费版在本地运行，无需管理设备激活。",
-    "free_unavailable": "此版本尚未开放免费注册。请稍后重试，或使用现有的许可证密钥。",
+    "local_free": "此设备上没有需要管理的许可证。",
     "client_upgrade_required": "请将 Timon 更新到受支持的版本后重试。",
-    "summary": "免费版在本地运行，无需密钥或续期。一名处于启用状态的超级管理员可使用所有功能和插件。",
     "plugin_composition_fixed": "此方案的插件组合是固定的。你可以配置其中的插件，或升级方案以更改组合。",
-    "single_superadmin_required": "免费版仅允许启用一个账号，且该账号必须是超级管理员。",
-    "free_incompatible": "无法激活免费版。请仅保留一个处于启用状态的超级管理员账号，停用其他账号后重试。你的数据和当前许可证已保留。",
+    "single_superadmin_required": "此许可证仅允许启用一个账号，且该账号必须是超级管理员。",
+    "free_incompatible": "此许可证无法应用于当前安装。请仅保留一个处于启用状态的超级管理员账号，停用其他账号后重试。你的数据和当前许可证已保留。",
     "license_changed": "处理此请求期间，许可证发生了变化。请重新加载后重试。",
     "activation_key_missing": "此设备未保存激活密钥。请使用你的许可证账号，或联系技术支持释放设备名额。",
     "deactivate": "停用此设备",
@@ -3654,6 +3665,9 @@
     "cron": "Cron 表达式 *",
     "project": "项目（标识符，可选）",
     "enabled": "已启用",
+    "mcpServers": "每个任务的 MCP 服务器",
+    "mcpServersHint": "任务启动时没有 MCP 服务器：请选择智能体每次运行所需的服务器。",
+    "noMcpServers": "未配置 MCP 服务器",
     "cancel": "取消",
     "saving": "正在保存…",
     "creating": "正在创建…",
@@ -4418,18 +4432,14 @@
   "telemetrySettings": {
     "tab": "隐私",
     "title": "匿名使用统计",
-    "description": "Timon 可以向开发团队报告应用的使用情况，包括使用了哪些功能、对话轮次的成功率，以及设置流程在哪一步中断，帮助我们确定优先改进的事项。统计数据是匿名的，仅使用在本机随机生成的标识符，不会标识你的账户或设备。",
     "share": "共享匿名使用统计",
-    "shareDescription": "默认开启。关闭后会立即停止发送统计数据，仅会再发送一条消息记录关闭操作。",
     "lockedEnv": "此设置由 TIMON_TELEMETRY 环境变量控制，请修改该变量。",
     "lockedEnvMalformed": "TIMON_TELEMETRY 的值不是 yes 或 no，已关闭共享。",
     "lockedConfig": "此设置由 timon.config.json 中的 telemetry.enabled 控制，请在该文件中修改。",
     "lockedConfigMalformed": "timon.config.json 中 telemetry.enabled 的值不是 true 或 false，已关闭共享。",
     "inactiveBuild": "无论此设置如何，当前 Timon 构建均不会发送统计数据。",
     "sentTitle": "会发送哪些信息",
-    "sent": "应用版本、操作系统和许可证级别；应用启动和更新事件；设置步骤；对话轮次及其耗时、结果和词元数；使用了哪些内置工具和提供商；以及任务、插件、许可证和浏览器相关操作的次数。",
     "neverTitle": "绝不会发送哪些信息",
-    "never": "你的提示词、回答或文件；项目、智能体、技能、例行任务或 MCP 服务器的名称；路径、URL 和命令；错误消息；你的电子邮件地址、用户名、计算机名或地址。",
     "learnMore": "阅读隐私声明",
     "loadFailed": "无法读取此设置。",
     "saveFailed": "无法保存此设置。",

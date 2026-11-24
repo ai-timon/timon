@@ -205,7 +205,7 @@ test('the agent\'s other .md files are sent after SOUL.md, in name order, each e
 test('the preamble is English, holds no user-specific path or convention, and gates optional sections', () => {
   seed('inj-pre', { project: 'inj-proj-pre' });
   const preamble = buildInjections('inj-pre').blocks.find((b) => b.id === 'preamble')!.content;
-  assert.doesNotMatch(preamble, /[éèêàâûîôçÉÈÀ]/, 'no French left');
+  assert.doesNotMatch(preamble, /[éèêàâûîôçÉÈÀ]/, 'no French left'); // french-ok: the letters that betray French
   assert.doesNotMatch(preamble, /webdev|agentic-os|Rom\b|brain²|TIMON_BRAIN_VAULT|npm test|Co-Authored-By/, 'nothing that belongs to one user');
   assert.doesNotMatch(preamble, /Knowledge vault|Code index/, 'optional sections absent without a vault or an index');
 

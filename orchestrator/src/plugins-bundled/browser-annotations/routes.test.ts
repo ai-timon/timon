@@ -176,7 +176,11 @@ test('requests are validated before anything runs', async () => {
   const before = reached.length;
   assert.equal((await http('POST', `${profile.id}/annotation/pins`, 'alice', { ids: ['../x'] })).status, 400);
   assert.equal((await http('POST', `${profile.id}/annotation/pins`, 'alice', { ids: Array.from({ length: 22 }, () => ids[0]) })).status, 400, 'bounded');
-  assert.equal((await http('POST', `${profile.id}/annotation/pins`, 'alice', {})).status, 400);
+  const missing = await http('POST', `${profile.id}/annotation/pins`, 'alice', {});
+  assert.equal(missing.status, 400);
+  // The webview translates the code and quotes the schema's reason.
+  assert.equal(missing.json.code, 'invalid_detail');
+  assert.deepEqual(missing.json.params, { detail: missing.json.error });
   assert.equal(reached.length, before, 'nothing reached the desktop');
   assert.equal((await http('POST', `${profile.id}/annotation/pick`, 'alice', { x: -1, y: 1 })).status, 400);
   assert.equal((await http('POST', `${profile.id}/annotation/start`, 'alice', { action: 'navigate' })).status, 400);

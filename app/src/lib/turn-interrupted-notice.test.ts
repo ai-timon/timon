@@ -36,7 +36,7 @@ test('a steered turn says the agent goes on with the instruction, never that it 
 test('the restart notice follows the locale', async () => {
   await loadLocale('fr');
   try {
-    assert.match(turnInterruptedNotice({ resumable: true, reason: 'daemon_restarted' }), /redémarré/);
+    assert.match(turnInterruptedNotice({ resumable: true, reason: 'daemon_restarted' }), /redémarré/); // french-ok: the French locale under test
   } finally {
     setLocale('en');
   }

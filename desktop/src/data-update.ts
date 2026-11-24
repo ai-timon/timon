@@ -104,6 +104,14 @@ export function updateCopy(locale: string) {
     intact: t('update.intact'),
     quitDetail: t('update.quitDetail'),
     approve: t('update.approve'), quit: t('update.quit'),
+    /** A refused AppImage update: the replaced AppImage is still beside it, one click puts it back. */
+    rollback: (o: UpdateOffer) => t('update.rollback', { from: o.from }),
+    quitDetailRollback: (o: UpdateOffer) => t('update.quitDetailRollback', { from: o.from }),
+    rollbackRestarting: (o: UpdateOffer) => t('update.rollbackRestarting', { from: o.from }),
+    rolledBack: (o: UpdateOffer) => t('update.rolledBack', { from: o.from }),
+    rolledBackDetail: t('update.rolledBackDetail'),
+    rollbackFailed: (o: UpdateOffer) => t('update.rollbackFailed', { from: o.from }),
+    rollbackFailedDetail: t('update.rollbackFailedDetail'),
     /** Running missions on the version being replaced (P3): the approval would stop them. */
     missions: (count: number, from: string) => t('update.missions', { count, from }),
     wait: t('update.wait'), approveAnyway: t('update.approveAnyway'), notes: t('update.notes'), changelog: t('update.changelog'), downgrade: t('update.downgrade'),
@@ -167,7 +175,11 @@ export function renderNotes(markdown: string): string {
   flushParagraph(); flushList();
   return html.join('');
 }
-export function updatePage(offer: UpdateOffer, notesPath: string, locale: string, scheme: 'light' | 'dark' = 'dark'): { html: string; links: string[] } {
+/**
+ * `rollback`: the AppImage this update replaced is still beside it, so the
+ * screen offers to go back to it (`update-install.ts`, `rollBackAppImage`).
+ */
+export function updatePage(offer: UpdateOffer, notesPath: string, locale: string, scheme: 'light' | 'dark' = 'dark', rollback = false): { html: string; links: string[] } {
   const THEME = themeFor(scheme);
   const copy = updateCopy(locale);
   const catalog = readReleaseNotes(notesPath);
@@ -177,13 +189,13 @@ export function updatePage(offer: UpdateOffer, notesPath: string, locale: string
   return { links, html: `<!doctype html><html lang="${tag}" dir="${dir}"><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'">
 <title>${escape(copy.title(offer))}</title><style>
-:root{color-scheme:${scheme}}*{box-sizing:border-box}body{margin:0;background:${THEME.background};color:${THEME.foreground};font:15px/1.6 system-ui,sans-serif}main{max-width:760px;margin:auto;padding:32px}h1{font-size:24px;line-height:1.3;margin:0 0 20px}h2{font-size:18px}p{max-width:70ch}.muted{color:${THEME.muted};font-size:13px}a{color:${THEME.primary}}a:focus-visible{outline:3px solid ${THEME.primary};outline-offset:4px}.notes{overflow-wrap:anywhere}h4{font-size:15px;margin:16px 0 4px}ul{margin:4px 0;padding-left:22px}li{margin:4px 0}code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:${THEME.chip};padding:1px 5px;border-radius:4px}section{border-top:1px solid ${THEME.border};margin-top:24px}footer{display:flex;gap:12px;justify-content:flex-end;margin-top:28px}.button{padding:9px 20px;border:1px solid ${THEME.border};border-radius:6px;text-decoration:none;color:${THEME.foreground}}.primary{background:${THEME.primary};border-color:${THEME.primary};color:${THEME.primaryForeground}}.button:hover{filter:brightness(1.2)}.button[aria-disabled=true]{opacity:.55;pointer-events:none}progress{width:100%;accent-color:${THEME.primary}}#status{white-space:pre-wrap}#progress-area:empty{display:none}.missions{background:${THEME.chip};padding:12px 16px;border-radius:6px}
-</style><main><h1>${escape(copy.title(offer))}</h1><div id="intro"><p>${escape(copy.detail)}</p><p class="muted">${escape(copy.intact)}</p><p>${escape(copy.quitDetail)}</p></div>
+:root{color-scheme:${scheme}}*{box-sizing:border-box}body{margin:0;background:${THEME.background};color:${THEME.foreground};font:15px/1.6 system-ui,sans-serif}main{max-width:760px;margin:auto;padding:32px}h1{font-size:24px;line-height:1.3;margin:0 0 20px}h2{font-size:18px}p{max-width:70ch}.muted{color:${THEME.muted};font-size:13px}a{color:${THEME.primary}}a:focus-visible{outline:3px solid ${THEME.primary};outline-offset:4px}.notes{overflow-wrap:anywhere}h4{font-size:15px;margin:16px 0 4px}ul{margin:4px 0;padding-left:22px}li{margin:4px 0}code{font:13px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:${THEME.chip};padding:1px 5px;border-radius:4px}section{border-top:1px solid ${THEME.border};margin-top:24px}footer{display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-end;margin-top:28px}.button{padding:9px 20px;border:1px solid ${THEME.border};border-radius:6px;text-decoration:none;color:${THEME.foreground}}.primary{background:${THEME.primary};border-color:${THEME.primary};color:${THEME.primaryForeground}}.button:hover{filter:brightness(1.2)}.button[aria-disabled=true]{opacity:.55;pointer-events:none}progress{width:100%;accent-color:${THEME.primary}}#status{white-space:pre-wrap}#progress-area:empty{display:none}.missions{background:${THEME.chip};padding:12px 16px;border-radius:6px}
+</style><main><h1>${escape(copy.title(offer))}</h1><div id="intro"><p>${escape(copy.detail)}</p><p class="muted">${escape(copy.intact)}</p><p>${escape(rollback ? copy.quitDetailRollback(offer) : copy.quitDetail)}</p></div>
 <p id="missions" class="missions" role="alert" hidden></p>
 <p><a href="${DOWNGRADE_URL}">${escape(copy.downgrade)}</a>${catalog ? ` · <a href="${escape(catalog.changelogUrl)}">${escape(copy.changelog)}</a>` : ''}</p>
 ${entries.length ? `<section><h2>${escape(copy.notes)}</h2>${entries.map(n => `<h3>${escape(n.version)}${n.date ? ` · ${escape(n.date)}` : ''}</h3><div class="notes">${renderNotes(n.content)}</div>`).join('')}</section>` : ''}
 <div id="progress-area"><p id="status" role="status" aria-live="polite"></p><progress id="progress" hidden></progress></div>
-<footer><a class="button" id="quit" role="button" href="timon-update:quit">${escape(copy.quit)}</a><a class="button primary" id="approve" role="button" href="timon-update:approve">${escape(copy.approve)}</a></footer></main></html>` };
+<footer><a class="button" id="quit" role="button" href="timon-update:quit">${escape(copy.quit)}</a>${rollback ? `<a class="button" id="rollback" role="button" href="timon-update:rollback">${escape(copy.rollback(offer))}</a>` : ''}<a class="button primary" id="approve" role="button" href="timon-update:approve">${escape(copy.approve)}</a></footer></main></html>` };
 }
 
 /**

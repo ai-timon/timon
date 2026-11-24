@@ -1,10 +1,10 @@
 /**
- * `ctx.usage` côté daemon : la vue agrégée des quotas et les sondes qu'un
- * plugin peut fournir (§10.15).
+ * `ctx.usage` on the daemon side: the aggregated view of quotas and the probes a
+ * plugin can provide (§10.15).
  *
- * Le calcul de risque, lui, n'est plus ici : il appartient au plugin qui
- * l'affiche (`examples/plugin-quota-monitor`), avec ses seuils. Le daemon rend
- * des mesures, pas un jugement.
+ * The risk computation is no longer here: it belongs to the plugin that
+ * shows it (`examples/plugin-quota-monitor`), with its thresholds. The daemon returns
+ * measures, not a judgement.
  */
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
@@ -30,12 +30,12 @@ function pluginProvider(id: string) {
   };
 }
 
-test('une sonde de plugin couvre un backend que le produit ne mesure pas', async () => {
+test('a plugin probe covers a backend the product does not measure', async () => {
   const item = pluginProvider('acme-llm');
   assert.deepEqual(await collectUsageFor(item), {
     backend: 'acme-llm', label: 'acme-llm', vendor: 'acme-llm', brand: null,
     available: false, usage: null,
-  }, 'sans sonde : indisponible et SANS chiffre, jamais un zéro');
+  }, 'without a probe: unavailable and WITHOUT a figure, never a zero');
 
   const remove = registerUsageCollector('acme-plugin', 'acme-llm', async () => ({
     windows: { week: { utilization: 42, resets_at: null } },
@@ -46,13 +46,13 @@ test('une sonde de plugin couvre un backend que le produit ne mesure pas', async
   assert.equal(measured.available, true);
   assert.equal(measured.usage?.windows.week?.utilization, 42);
 
-  // Deux sondes pour le même compte diraient deux vérités : la seconde est
-  // refusée en nommant le propriétaire de la première.
+  // Two probes for the same account would tell two truths: the second is
+  // refused, naming the owner of the first.
   assert.throws(() => registerUsageCollector('other-plugin', 'acme-llm', async () => null), /acme-plugin/);
 
   remove();
   assert.deepEqual(usageCollectorBackends(), []);
-  assert.equal((await collectUsageFor(item)).available, false, 'sonde retirée, plus aucun chiffre');
+  assert.equal((await collectUsageFor(item)).available, false, 'probe removed, no figure any more');
 });
 
 test('a ↻ reaches the probe as `force`, at most once per floor, and only a literal true counts', async () => {
@@ -80,10 +80,10 @@ test('a ↻ reaches the probe as `force`, at most once per floor, and only a lit
   }
 });
 
-test("une sonde de plugin ne remplace pas la mesure du produit", async () => {
-  // `claude` porte la sonde native : un plugin ne peut pas s'y substituer.
+test("a plugin probe does not replace the product's measure", async () => {
+  // `claude` carries the native probe: a plugin cannot stand in for it.
   const native = await collectBackendUsage('claude');
-  assert.ok(native, 'claude est un backend actif');
+  assert.ok(native, 'claude is an active backend');
   const remove = registerUsageCollector('acme-plugin', 'claude', async () => ({
     windows: { week: { utilization: 7, resets_at: null } },
     extra: null,
@@ -93,7 +93,7 @@ test("une sonde de plugin ne remplace pas la mesure du produit", async () => {
   remove();
 });
 
-test('une sonde de plugin qui échoue rend une erreur, pas un chiffre', async () => {
+test('a plugin probe that fails returns an error, not a figure', async () => {
   const item = pluginProvider('flaky-llm');
   const remove = registerUsageCollector('acme-plugin', 'flaky-llm', async () => {
     throw new Error('endpoint injoignable');
@@ -105,7 +105,7 @@ test('une sonde de plugin qui échoue rend une erreur, pas un chiffre', async ()
   remove();
 });
 
-test('une session CLI absente n\'est pas une erreur de sonde', { concurrency: false }, async () => {
+test('a missing CLI session is not a probe error', { concurrency: false }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-usage-collect-no-oauth-'));
   const previousDir = process.env.CLAUDE_CONFIG_DIR;
   const previousToken = process.env.CLAUDE_CODE_OAUTH_TOKEN;
@@ -129,13 +129,13 @@ test('une session CLI absente n\'est pas une erreur de sonde', { concurrency: fa
   }
 });
 
-test('un backend inconnu rend null, jamais une entrée fabriquée', async () => {
+test('an unknown backend returns null, never a made-up entry', async () => {
   assert.equal(await collectBackendUsage('backend-qui-nexiste-pas'), null);
   const entries = await collectUsage();
-  assert.ok(entries.length > 0, 'au moins un backend actif');
+  assert.ok(entries.length > 0, 'at least one active backend');
   for (const entry of entries) {
     assert.equal(typeof entry.backend, 'string');
-    // Trois états, jamais un zéro de substitution.
+    // Three states, never a stand-in zero.
     if (!entry.available) assert.equal(entry.usage, null);
   }
 });

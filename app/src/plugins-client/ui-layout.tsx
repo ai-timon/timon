@@ -38,6 +38,6 @@ export const uiLayoutClient: BundledClientPlugin = {
   },
 };
 
-function ClockWidget({ poignee, className }: WidgetProps) {
-  return <Tile title={t('widgetCatalog.clock.title')} actions={poignee} className={className} bodyClassName="justify-center"><HudClock /></Tile>;
+function ClockWidget({ handle, className }: WidgetProps) {
+  return <Tile title={t('widgetCatalog.clock.title')} actions={handle} className={className} bodyClassName="justify-center"><HudClock /></Tile>;
 }

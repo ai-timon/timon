@@ -31,6 +31,8 @@ const accounts = await import('../backends/accounts.js');
 const { startAccountLogin, setLoginOptions, resetAccountLogins, getAccountLogin } = await import('../backends/account-login.js');
 
 const { mountOfficialProviders } = await import('../../tests/helpers/official-providers.js');
+const { getHost } = await import('../host/index.js');
+const { forgetMissionFence, prepareMissionLaunch, recordMissionFence, recordOneShotProcess, resetMissionFenceState } = await import('../mission-fence-state.js');
 await mountOfficialProviders();
 
 class FakeCli extends EventEmitter {
@@ -53,7 +55,9 @@ const ran: Array<{ cmd: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
 let nextWho = 'ada@perso.example';
 
 setLoginOptions({
-  platform: 'linux',
+  // Windows keeps the system whitelist without case (`Path`): forced to 'linux'
+  // there, the login's environment would lose the host's PATH.
+  platform: process.platform === 'win32' ? 'win32' : 'linux',
   promptTimeoutMs: 5_000,
   retainMs: 60_000,
   spawn: (cmd, args, opts) => {
@@ -240,6 +244,139 @@ test('REFUSAL: another plugin cannot read the account of a backend it did not re
   const { runtime } = await entry.runtimeFor();
   assert.throws(() => stranger.provider.account.of(runtime), (error: unknown) =>
     error instanceof PluginPolicyError && /not a backend this plugin registered/.test(error.message));
+});
+
+test('API 18: an account\'s own keychain entry is a declared service plus the folder\'s suffix, never the host\'s entry', async () => {
+  const res = readManifest({ timon: {
+    id: 'acme-accounts', apiVersion: 18, kind: 'provider', permissions: ['backends:register'],
+    provider: { binaries: [{ name: 'acme-acct' }], osCredentials: [{ service: 'Acme-credentials' }] },
+  } });
+  assert.equal(res.ok, true, res.ok ? '' : res.message);
+  if (!res.ok) throw new Error('unreachable');
+  const current = createPluginContext(new Context(), { manifest: res.manifest, version: '1.0.0' }, daemonHost());
+  const row = accounts.listBackendAccounts('acme-acct-profile')[0]!;
+  const entry = registry.activeProfiles().find((candidate) => candidate.profile.id === `acme-acct-profile@${row.id}`)!;
+  const { runtime } = await entry.runtimeFor();
+  const { accountEntrySuffix } = await import('./provider-facade.js');
+  const service = `Acme-credentials${accountEntrySuffix(accounts.accountConfigDir(row.id))}`;
+  assert.throws(() => current.provider.account.osCredential(runtime, service, ''), (error: unknown) =>
+    error instanceof PluginPolicyError && /id of the launch being built/.test(error.message));
+  const own = current.provider.account.osCredential(runtime, service, 'mission-acct');
+  assert.ok(own, 'a launch on an account gets its entry');
+  assert.equal(own.held(), 'unfenced', 'no fenced launch of that mission is being prepared');
+  const prepared = prepareMissionLaunch('mission-acct', { account: row.id, fenced: true });
+  assert.equal(own.held(), null);
+  if (process.platform !== 'darwin') {
+    // Off macOS there is no keychain: nothing is read, nothing is left to remove.
+    assert.equal(await own.read(), null);
+    assert.equal(await own.remove('copied'), 'removed');
+  }
+  await assert.rejects(own.remove(''), (error: unknown) => error instanceof PluginPolicyError && /value that was read/.test(error.message));
+
+  // A sign-in on the account: its CLI may rewrite the entry, so nothing is deleted until the
+  // flow finished AND the CLI exited — checked before the platform, the same on every OS.
+  startAccountLogin(row, initiator);
+  const cli = lastCli!;
+  assert.equal(own.held(), 'signing-in');
+  assert.equal(await own.remove('copied'), 'signing-in');
+  writeFileSync(join(cli.env.ACME_HOME!, 'credentials.json'), JSON.stringify({ who: row.identity_label ?? nextWho }));
+  cli.exit(0);
+  await settled(row.id);
+  assert.equal(own.held(), null, 'released once the flow is over and its CLI gone');
+  prepared();
+  const host = registry.activeProfiles().find((candidate) => candidate.profile.id === 'acme-acct-profile')!;
+  assert.equal(current.provider.account.osCredential((await host.runtimeFor()).runtime, service, 'mission-acct'), undefined,
+    'the host\'s own sign-in runs on no account');
+  const refused = (error: unknown) => error instanceof PluginPolicyError && /suffix of this account's folder/.test(error.message);
+  assert.throws(() => current.provider.account.osCredential(runtime, 'Acme-credentials', 'mission-acct'), refused, 'the declared name alone is the host\'s sign-in');
+  assert.throws(() => current.provider.account.osCredential(runtime, service.replace('Acme', 'Other'), 'mission-acct'), refused, 'only a declared service');
+  assert.throws(() => current.provider.account.osCredential(runtime, 'Acme-credentials-0123abcd', 'mission-acct'), refused, 'another account\'s entry');
+  assert.throws(() => current.provider.account.osCredential(runtime, service.toUpperCase(), 'mission-acct'), refused);
+  // Another plugin, on the same contract and with the same declared entry, does not own the backend.
+  const res2 = readManifest({ timon: {
+    id: 'other-accounts', apiVersion: 18, kind: 'provider', permissions: ['backends:register'],
+    provider: { binaries: [{ name: 'acme-acct' }], osCredentials: [{ service: 'Acme-credentials' }] },
+  } });
+  if (!res2.ok) throw new Error(res2.message);
+  const stranger = createPluginContext(new Context(), { manifest: res2.manifest, version: '1.0.0' }, daemonHost());
+  assert.throws(() => stranger.provider.account.osCredential(runtime, service, 'mission-acct'), (error: unknown) =>
+    error instanceof PluginPolicyError && /not a backend this plugin registered/.test(error.message));
+  // A plugin that declared an older contract is not promised the member.
+  assert.throws(() => ctx.provider.account.osCredential(runtime, service, 'mission-acct'), /apiVersion 18/);
+});
+
+test('API 18, macOS: the entry is deleted for a fenced launch only, and never while a process on the account runs outside the fence', async () => {
+  const res = readManifest({ timon: {
+    id: 'acme-accounts', apiVersion: 18, kind: 'provider', permissions: ['backends:register'],
+    provider: { binaries: [{ name: 'acme-acct' }], osCredentials: [{ service: 'Acme-credentials' }] },
+  } });
+  if (!res.ok) throw new Error(res.message);
+  const current = createPluginContext(new Context(), { manifest: res.manifest, version: '1.0.0' }, daemonHost());
+  const row = accounts.listBackendAccounts('acme-acct-profile')[0]!;
+  const entry = registry.activeProfiles().find((candidate) => candidate.profile.id === `acme-acct-profile@${row.id}`)!;
+  const { runtime } = await entry.runtimeFor();
+  const { accountEntrySuffix } = await import('./provider-facade.js');
+  const service = `Acme-credentials${accountEntrySuffix(accounts.accountConfigDir(row.id))}`;
+  const SECRET = 'acme-oauth-pair-stored-in-the-keychain';
+
+  // The keychain, played by `security`: what was run, and what is left.
+  const host = getHost();
+  const original = { exec: host.exec, platform: host.platform };
+  const keychain = new Map<string, string>([[service, SECRET]]);
+  const commands: string[][] = [];
+  host.exec = ((name: string, args: string[]) => {
+    commands.push([name, ...args]);
+    const value = keychain.get(args[2] ?? '');
+    if (args[0] === 'find-generic-password') return value === undefined ? { code: 44, stdout: '', stderr: '' } : { code: 0, stdout: `${value}\n`, stderr: '' };
+    if (args[0] === 'delete-generic-password') return keychain.delete(args[2] ?? '') ? { code: 0, stdout: '', stderr: '' } : { code: 44, stdout: '', stderr: '' };
+    return { code: 1, stdout: '', stderr: '' };
+  }) as typeof host.exec;
+  (host as { platform: string }).platform = 'darwin';
+  const deletes = () => commands.filter((command) => command[1] === 'delete-generic-password').length;
+  try {
+    // A launch outside the fence: its CLI writes the keychain itself, nothing is deleted.
+    const unfencedLaunch = prepareMissionLaunch('mission-unfenced', { account: row.id, fenced: false });
+    const outside = current.provider.account.osCredential(runtime, service, 'mission-unfenced')!;
+    assert.equal(outside.held(), 'unfenced');
+    assert.equal(await outside.remove(SECRET), 'unfenced');
+    assert.equal(deletes(), 0);
+    unfencedLaunch();
+
+    // A fenced launch, while another mission runs on the account outside the fence: kept.
+    const fencedLaunch = prepareMissionLaunch('mission-fenced', { account: row.id, fenced: true });
+    const own = current.provider.account.osCredential(runtime, service, 'mission-fenced')!;
+    const live = new EventEmitter();
+    recordMissionFence('mission-live', live, false, { account: row.id });
+    assert.equal(own.held(), 'in-use');
+    assert.equal(await own.read(), SECRET, 'reading stays harmless');
+    assert.equal(await own.remove(SECRET), 'in-use');
+    assert.equal(deletes(), 0, '`security delete-generic-password` never ran');
+    assert.equal(keychain.get(service), SECRET, 'the pair is still in the keychain');
+
+    // A process that starts outside the fence between the provider's read and its delete is
+    // recorded in the tick of its spawn: the delete that follows sees it and renounces.
+    forgetMissionFence('mission-live', live);
+    assert.equal(await own.read(), SECRET);
+    const oneShot = new EventEmitter();
+    recordOneShotProcess('summary-0a1b2c3d', `acme-acct-profile@${row.id}`, oneShot);
+    assert.equal(await own.remove(SECRET), 'in-use');
+    assert.equal(deletes(), 0);
+    oneShot.emit('close');
+
+    // Nothing left that may write it: the delete goes through, with names alone on the command line.
+    recordMissionFence('mission-fenced-other', {}, true, { account: row.id });
+    assert.equal(own.held(), null);
+    assert.equal(await own.remove(SECRET), 'removed');
+    assert.equal(deletes(), 1);
+    assert.equal(keychain.has(service), false);
+    assert.ok(!JSON.stringify(commands).includes(SECRET), 'the secret never reaches the command line');
+    fencedLaunch();
+    assert.equal(own.held(), 'unfenced', 'the launch is over: nothing more to move for it');
+  } finally {
+    host.exec = original.exec;
+    (host as { platform: string }).platform = original.platform;
+    resetMissionFenceState();
+  }
 });
 
 test('a login driver that is not five functions and a kind of prompt is refused at registration', () => {

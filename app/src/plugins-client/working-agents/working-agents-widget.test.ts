@@ -82,7 +82,7 @@ async function mount(props: Record<string, unknown>, stored: Row | null, run: (m
       root.render(React.createElement(PathnameContext.Provider, { value: '/' },
         React.createElement(SearchParamsContext.Provider, { value: new URLSearchParams() },
           React.createElement(WorkspaceLayoutProvider, null,
-            React.createElement(WorkingAgentsWidget, { poignee: null, ...props })))));
+            React.createElement(WorkingAgentsWidget, { handle: null, ...props })))));
     });
     // The feed, then the stored row (its pins come first once read).
     await until(() => host.querySelectorAll('[data-agent-tab], [data-project-tab]').length > 0, 'the tabs to be painted');

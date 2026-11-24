@@ -99,3 +99,19 @@ test('the folder goes, the branch and its commit stay, and a new worktree reatta
 
   assert.equal((await detach(randomUUID())).status, 404);
 });
+
+test('a malformed body on the worktree and sha routes carries the detail the board translates', async () => {
+  const id = randomUUID();
+  for (const path of [`/api/tasks/${id}/worktree`, `/api/tasks/${id}/worktree/detach`, `/api/tasks/${id}/merged-sha`]) {
+    const res = await fetch(`${base}${path}`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer detach-test', 'content-type': 'application/json' },
+      body: JSON.stringify({ unexpected: 1 }),
+    });
+    assert.equal(res.status, 400, path);
+    const body = await res.json() as { error?: string; code?: string; params?: Record<string, unknown> };
+    assert.equal(body.code, 'task_body_invalid', path);
+    assert.ok(body.error, path);
+    assert.deepEqual(body.params, { detail: body.error }, path);
+  }
+});

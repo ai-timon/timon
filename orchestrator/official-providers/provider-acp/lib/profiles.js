@@ -77,7 +77,7 @@ export const OPENCODE_PROFILE = {
 /** @type {import('@timon-ai/sdk/provider').BackendProfile} */
 export const HERMES_PROFILE = {
   // Hermes agent (`hermes-acp`) over the Agent Client Protocol. It holds its
-  // own login (`hermes --setup`, or Nous); Timon stores none.
+  // own login (`hermes setup`, or `hermes portal` for Nous); Timon stores none.
   id: 'hermes',
   dialect: 'hermes',
   label: 'Hermes (Nous Research)',
@@ -89,7 +89,7 @@ export const HERMES_PROFILE = {
   envFrom: { HERMES_HOME: 'HERMES_HOME' },
   subscription: {
     note: 'Calls go through the account Hermes itself is signed in to '
-      + '(`hermes --setup` on the host, or Nous). Hermes asks Timon before '
+      + '(`hermes setup` on the host, or `hermes portal` for Nous). Hermes asks Timon before '
       + 'it uses a tool: the request appears as an Allow / Deny card.',
   },
   // No model is named: the list depends on the account (83 entries on the
@@ -112,6 +112,11 @@ export const ANTIGRAVITY_PROFILE = {
   vendor: 'Google',
   brand: 'gemini',
   requiredBinary: manifestBackend('antigravity').binary?.names[0],
+  // Off by default: Google's Antigravity terms (§6) forbid reaching the service through third-party
+  // software, and accounts used through an orchestrator have been suspended
+  // (google-antigravity/antigravity-cli#1493). A person may switch it on from its provider page, at their
+  // own risk; the overlay's choice wins over this default (`activeProfiles`).
+  disabled: true,
   subscription: {
     note: 'Calls go through the personal Google account `agy` is signed in to '
       + `(\`${antigravitySignInCommand(process.platform)}\` on the host; Free, Google AI Pro or Ultra plan). `

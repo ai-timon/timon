@@ -50,8 +50,8 @@ import {
   type MachineRow,
   type MachineStatus,
 } from './store.js';
-import { MACHINE_URL_MAX, parseMachineUrl } from './url.js';
-import { apiError } from '../api-error.js';
+import { MACHINE_URL_MAX, parseMachineUrl, type MachineUrlProblem } from './url.js';
+import { apiError, type ApiErrorBody } from '../api-error.js';
 
 /** Short calls made while the person waits on a button. */
 const PROBE_TIMEOUT_MS = 5_000;
@@ -117,7 +117,7 @@ function fleetOwner(req: Request, res: Response): string | null {
 function ownedOr404(req: Request, res: Response, owner: string): MachineRow | null {
   const row = getOwnedMachine(owner, String(req.params.id));
   if (!row) {
-    res.status(404).json({ error: 'machine not found' });
+    res.status(404).json(apiError('machine_unknown', 'machine not found'));
     return null;
   }
   return row;
@@ -125,22 +125,36 @@ function ownedOr404(req: Request, res: Response, owner: string): MachineRow | nu
 
 function vaultOr503(res: Response): boolean {
   if (vaultEnabled()) return true;
-  res.status(503).json({ error: 'vault_unavailable', message: 'the secrets vault is switched off: machine tokens cannot be kept' });
+  res.status(503).json(apiError('vault_unavailable', 'the secrets vault is switched off: machine tokens cannot be kept'));
   return false;
 }
 
 function sendVaultFailure(res: Response): void {
-  res.status(503).json({ error: 'vault_unavailable', message: 'the secrets vault cannot open machine tokens' });
+  res.status(503).json(apiError('vault_unavailable', 'the secrets vault cannot open machine tokens'));
 }
 
 /** A transport failure, as the interface shows it. Never the remote's own words. */
 function sendTransportError(res: Response, err: MachineRequestError): void {
-  if (err.code === 'blocked_address' || err.code === 'invalid_url') {
-    res.status(400).json({ error: err.code, message: err.message });
-    return;
+  // One literal per code: the translation check reads them.
+  switch (err.code) {
+    case 'blocked_address': res.status(400).json(apiError('blocked_address', err.message)); return;
+    case 'invalid_url': res.status(400).json(apiError('invalid_url', err.message)); return;
+    case 'too_large': res.status(502).json(apiError('machine_bad_response', err.message)); return;
+    case 'tls_error': res.status(502).json(apiError('machine_tls_error', err.message)); return;
+    case 'redirect': res.status(502).json(apiError('machine_redirect', err.message)); return;
+    default: res.status(502).json(apiError('machine_unreachable', err.message));
   }
-  const error = err.code === 'too_large' ? 'machine_bad_response' : err.code === 'timeout' ? 'machine_unreachable' : `machine_${err.code}`;
-  res.status(502).json({ error, message: err.message });
+}
+
+/** Why an address cannot be a machine of the fleet. */
+function urlRefusal(problem: MachineUrlProblem): ApiErrorBody {
+  switch (problem) {
+    case 'https_required': return apiError('https_required', 'a machine is reached over HTTPS, plain HTTP only on this computer');
+    case 'credentials_in_url': return apiError('credentials_in_url', 'a machine address carries no login');
+    case 'query_in_url': return apiError('query_in_url', 'a machine address carries no query or fragment');
+    case 'blocked_address': return apiError('blocked_address', 'this address cannot be a machine of the fleet');
+    default: return apiError('invalid_url', 'invalid machine URL');
+  }
 }
 
 function statusOfFailure(err: unknown): MachineStatus {
@@ -210,14 +224,14 @@ export function registerMachineRoutes(app: Router, opts: MachineRoutesOptions = 
     }
     const parsed = parseMachineUrl(body.data.url);
     if (!parsed.ok) {
-      res.status(400).json({ error: parsed.problem });
+      res.status(400).json(urlRefusal(parsed.problem));
       return;
     }
     const url = parsed.value.url;
     if (!vaultOr503(res)) return;
     const known = findOwnedMachineByUrl(owner, url);
     if (!known && countOwnedMachines(owner) >= MACHINES_PER_OWNER) {
-      res.status(409).json({ error: 'too_many_machines', message: `a fleet holds at most ${MACHINES_PER_OWNER} machines` });
+      res.status(409).json(apiError('too_many_machines', `a fleet holds at most ${MACHINES_PER_OWNER} machines`, { max: MACHINES_PER_OWNER }));
       return;
     }
     // Every failed pairing counts: a session must not turn this route into a
@@ -245,24 +259,24 @@ export function registerMachineRoutes(app: Router, opts: MachineRoutesOptions = 
       noteAuthFailure(req, keys);
       const remoteError = (answer.json as { error?: unknown } | null)?.error;
       if (answer.status === 401) {
-        res.status(422).json({ error: 'invalid_code', message: 'the machine refused this pairing code: wrong, expired or already used' });
+        res.status(422).json(apiError('invalid_code', 'the machine refused this pairing code: wrong, expired or already used'));
       } else if (answer.status === 429) {
         const after = retryAfter(answer);
         if (after) res.setHeader('Retry-After', after);
-        res.status(429).json({ error: 'machine_throttled', message: 'the machine refuses more attempts for now' });
+        res.status(429).json(apiError('machine_throttled', 'the machine refuses more attempts for now'));
       } else if (answer.status === 403 && remoteError === 'device_requires_tls') {
-        res.status(502).json({ error: 'machine_requires_tls', message: 'the machine does not see this connection as HTTPS (check its reverse proxy)' });
+        res.status(502).json(apiError('machine_requires_tls', 'the machine does not see this connection as HTTPS (check its reverse proxy)'));
       } else if (answer.status === 404) {
-        res.status(502).json({ error: 'not_a_timon_machine', message: 'no Timon pairing endpoint at this address' });
+        res.status(502).json(apiError('not_a_timon_machine', 'no Timon pairing endpoint at this address'));
       } else {
-        res.status(502).json({ error: 'machine_bad_response', message: 'the machine answered something unexpected' });
+        res.status(502).json(apiError('machine_bad_response', 'the machine answered something unexpected'));
       }
       return;
     }
     const redeemed = redeemAnswerSchema.safeParse(answer.json);
     if (!redeemed.success) {
       noteAuthFailure(req, keys);
-      res.status(502).json({ error: 'machine_bad_response', message: 'the machine answered something unexpected' });
+      res.status(502).json(apiError('machine_bad_response', 'the machine answered something unexpected'));
       return;
     }
     clearThrottle(keys);
@@ -281,7 +295,7 @@ export function registerMachineRoutes(app: Router, opts: MachineRoutesOptions = 
       // The remote device exists but cannot be kept: do not leave it behind.
       await revokeRemoteDevice(url, token, device.id);
       if (err instanceof SecretStoreError || err instanceof SecretBoxError) sendVaultFailure(res);
-      else res.status(500).json({ error: 'machine_not_saved' });
+      else res.status(500).json(apiError('machine_not_saved', 'the machine could not be saved'));
       return;
     }
     if (saved.replacedDeviceId) await revokeRemoteDevice(url, token, saved.replacedDeviceId);

@@ -1,0 +1,14 @@
+{
+  "settingsFields": {
+    "TIMON_EVENTS_RETENTION_DAYS": {
+      "label": "Conservation de l’historique des missions",
+      "description": "Les messages, appels d’outils et sorties d’une mission inactive depuis plus longtemps sont effacés pour de bon, archives comprises, une fois par jour. La mission reste dans la liste avec son titre. Une mission en cours, ou dont une tâche ouverte a encore besoin, garde tout son historique. 0 garde tout.",
+      "unit": "jours"
+    },
+    "TIMON_LEARNINGS_RETENTION_DAYS": {
+      "label": "Conservation des faits bruts de la mémoire",
+      "description": "Les faits bruts notés par les agents après leurs missions (learnings, et les fichiers learnings.jsonl de chaque agent) plus anciens que cette durée sont effacés pour de bon, une fois par jour. Les règles de mémoire ne sont pas touchées. 0 garde tout.",
+      "unit": "jours"
+    }
+  }
+}

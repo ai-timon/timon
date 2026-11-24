@@ -987,6 +987,176 @@ readonly [`PluginBrowserRecordingOp`](PluginBrowserRecordingOp.md)[]
 
 ***
 
+### forge
+
+> **forge**: `object`
+
+#### issues
+
+> **issues**: `object`
+
+##### issues.get()
+
+> **get**(`project`, `number`): `Promise`\<[`PluginForgeIssueDetails`](PluginForgeIssueDetails.md) \| `undefined`\>
+
+###### Parameters
+
+###### project
+
+`string`
+
+###### number
+
+`number`
+
+###### Returns
+
+`Promise`\<[`PluginForgeIssueDetails`](PluginForgeIssueDetails.md) \| `undefined`\>
+
+##### issues.list()
+
+> **list**(`project`, `opts`): `Promise`\<`Readonly`\<\{ `author`: `string` \| `null`; `createdAt`: `string`; `labels`: readonly [`PluginForgeLabel`](PluginForgeLabel.md)[]; `number`: `number`; `state`: `"open"` \| `"closed"`; `title`: `string`; `updatedAt`: `string`; `url`: `string`; \}\>[]\>
+
+###### Parameters
+
+###### project
+
+`string`
+
+###### opts
+
+###### label
+
+`string`
+
+###### Returns
+
+`Promise`\<`Readonly`\<\{ `author`: `string` \| `null`; `createdAt`: `string`; `labels`: readonly [`PluginForgeLabel`](PluginForgeLabel.md)[]; `number`: `number`; `state`: `"open"` \| `"closed"`; `title`: `string`; `updatedAt`: `string`; `url`: `string`; \}\>[]\>
+
+#### proposals
+
+> **proposals**: `object`
+
+##### proposals.get()
+
+> **get**(`project`, `id`): `Promise`\<`Readonly`\<\{ `body`: `string`; `createdAt`: `number`; `id`: `string`; `key`: `string`; `kind`: `"comment"`; `project`: `string`; `publishedAt`: `number` \| `null`; `repo`: `string`; `sourceRef`: `string` \| `null`; `state`: [`PluginForgeProposalState`](PluginForgeProposalState.md); `target`: `Readonly`\<\{ `number`: `number`; `type`: `"issue"` \| `"pull"`; `url`: `string`; \}\>; `updatedAt`: `number`; `url`: `string` \| `null`; \}\> \| `undefined`\>
+
+###### Parameters
+
+###### project
+
+`string`
+
+###### id
+
+`string`
+
+###### Returns
+
+`Promise`\<`Readonly`\<\{ `body`: `string`; `createdAt`: `number`; `id`: `string`; `key`: `string`; `kind`: `"comment"`; `project`: `string`; `publishedAt`: `number` \| `null`; `repo`: `string`; `sourceRef`: `string` \| `null`; `state`: [`PluginForgeProposalState`](PluginForgeProposalState.md); `target`: `Readonly`\<\{ `number`: `number`; `type`: `"issue"` \| `"pull"`; `url`: `string`; \}\>; `updatedAt`: `number`; `url`: `string` \| `null`; \}\> \| `undefined`\>
+
+##### proposals.list()
+
+> **list**(`project`): `Promise`\<`Readonly`\<\{ `body`: `string`; `createdAt`: `number`; `id`: `string`; `key`: `string`; `kind`: `"comment"`; `project`: `string`; `publishedAt`: `number` \| `null`; `repo`: `string`; `sourceRef`: `string` \| `null`; `state`: [`PluginForgeProposalState`](PluginForgeProposalState.md); `target`: `Readonly`\<\{ `number`: `number`; `type`: `"issue"` \| `"pull"`; `url`: `string`; \}\>; `updatedAt`: `number`; `url`: `string` \| `null`; \}\>[]\>
+
+###### Parameters
+
+###### project
+
+`string`
+
+###### Returns
+
+`Promise`\<`Readonly`\<\{ `body`: `string`; `createdAt`: `number`; `id`: `string`; `key`: `string`; `kind`: `"comment"`; `project`: `string`; `publishedAt`: `number` \| `null`; `repo`: `string`; `sourceRef`: `string` \| `null`; `state`: [`PluginForgeProposalState`](PluginForgeProposalState.md); `target`: `Readonly`\<\{ `number`: `number`; `type`: `"issue"` \| `"pull"`; `url`: `string`; \}\>; `updatedAt`: `number`; `url`: `string` \| `null`; \}\>[]\>
+
+#### pulls
+
+> **pulls**: `object`
+
+##### pulls.checks()
+
+> **checks**(`project`, `number`): `Promise`\<`Readonly`\<\{ `checks`: readonly [`PluginForgeCheck`](PluginForgeCheck.md)[]; `draft`: `boolean`; `mergeable`: `"mergeable"` \| `"conflicting"` \| `"unknown"`; `mergeState`: [`PluginForgeMergeState`](PluginForgeMergeState.md); `number`: `number`; `review`: `"approved"` \| `"changes_requested"` \| `"review_required"` \| `null`; `state`: `"open"` \| `"closed"` \| `"merged"`; \}\> \| `undefined`\>
+
+###### Parameters
+
+###### project
+
+`string`
+
+###### number
+
+`number`
+
+###### Returns
+
+`Promise`\<`Readonly`\<\{ `checks`: readonly [`PluginForgeCheck`](PluginForgeCheck.md)[]; `draft`: `boolean`; `mergeable`: `"mergeable"` \| `"conflicting"` \| `"unknown"`; `mergeState`: [`PluginForgeMergeState`](PluginForgeMergeState.md); `number`: `number`; `review`: `"approved"` \| `"changes_requested"` \| `"review_required"` \| `null`; `state`: `"open"` \| `"closed"` \| `"merged"`; \}\> \| `undefined`\>
+
+##### pulls.get()
+
+> **get**(`project`, `number`): `Promise`\<[`PluginForgePullDetails`](PluginForgePullDetails.md) \| `undefined`\>
+
+###### Parameters
+
+###### project
+
+`string`
+
+###### number
+
+`number`
+
+###### Returns
+
+`Promise`\<[`PluginForgePullDetails`](PluginForgePullDetails.md) \| `undefined`\>
+
+##### pulls.list()
+
+> **list**(`project`): `Promise`\<`Readonly`\<\{ `author`: `string` \| `null`; `closingIssues`: readonly [`PluginForgeIssueRef`](PluginForgeIssueRef.md)[]; `headOwner`: `string` \| `null`; `headRepository`: `string` \| `null`; `isDraft`: `boolean`; `labels`: readonly [`PluginForgeLabel`](PluginForgeLabel.md)[]; `maintainerCanModify`: `boolean`; `mergeState`: [`PluginForgeMergeState`](PluginForgeMergeState.md); `number`: `number`; `title`: `string`; `updatedAt`: `string`; `url`: `string`; \}\>[]\>
+
+###### Parameters
+
+###### project
+
+`string`
+
+###### Returns
+
+`Promise`\<`Readonly`\<\{ `author`: `string` \| `null`; `closingIssues`: readonly [`PluginForgeIssueRef`](PluginForgeIssueRef.md)[]; `headOwner`: `string` \| `null`; `headRepository`: `string` \| `null`; `isDraft`: `boolean`; `labels`: readonly [`PluginForgeLabel`](PluginForgeLabel.md)[]; `maintainerCanModify`: `boolean`; `mergeState`: [`PluginForgeMergeState`](PluginForgeMergeState.md); `number`: `number`; `title`: `string`; `updatedAt`: `string`; `url`: `string`; \}\>[]\>
+
+#### propose()
+
+> **propose**(`project`, `input`): `Promise`\<`Readonly`\<\{ `created`: `boolean`; `proposal`: [`PluginForgeProposal`](PluginForgeProposal.md); \}\>\>
+
+##### Parameters
+
+###### project
+
+`string`
+
+###### input
+
+[`PluginForgeProposalInput`](PluginForgeProposalInput.md)
+
+##### Returns
+
+`Promise`\<`Readonly`\<\{ `created`: `boolean`; `proposal`: [`PluginForgeProposal`](PluginForgeProposal.md); \}\>\>
+
+#### repository()
+
+> **repository**(`project`): `Promise`\<`Readonly`\<\{ `project`: `string`; `repo`: `string`; `url`: `string`; \}\> \| `undefined`\>
+
+##### Parameters
+
+###### project
+
+`string`
+
+##### Returns
+
+`Promise`\<`Readonly`\<\{ `project`: `string`; `repo`: `string`; `url`: `string`; \}\> \| `undefined`\>
+
+***
+
 ### host
 
 > **host**: `object`

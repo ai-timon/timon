@@ -8,6 +8,7 @@
  * Idempotent through the notification anchor: a card already open is not raised
  * again at every boot, and it closes by itself once nobody is suspended.
  */
+import { daemonMessage } from '../daemon-message.js';
 import { dbApi, type UserRow } from '../db.js';
 import { createNotification, resolveAnchor } from '../notifications.js';
 import { freeAccountAllowed } from './free-access.js';
@@ -38,6 +39,7 @@ export function noticeSuspendedAccounts(): number {
       body: 'Accounts beyond the first superadmin need a pro licence and the Multi-user plugin. Their data are kept, and they get their access back as soon as both are there.',
       anchor: SUSPENDED_ACCOUNTS_ANCHOR,
       ownerUserId: admin.id,
+      message: daemonMessage('accounts_suspended', { count: n }),
     });
   }
   return n;

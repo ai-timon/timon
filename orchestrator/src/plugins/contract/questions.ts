@@ -21,7 +21,29 @@ export type SeriesPlanAnswer = {
   /** Free text typed below the form. It may qualify or contradict the
    *  choices: the agent must read it. */
   note?: string;
+  /** The job's branch. `{ kind: 'new', name }` cuts a new branch (from the
+   *  remote's target in a project that lands through pull requests, from the
+   *  project's local target otherwise); `{ kind: 'existing', name }` starts the
+   *  job from a branch the repository already has. A bare string is the
+   *  earlier form: a new branch, read only in a project that lands through pull
+   *  requests. The daemon checks it again and may number a new one (`-2`).
+   *  Absent: the job lands as it did before the field existed. */
+  branch?: string | SeriesPlanBranch;
+  /** What happens once the job's work is in its branch: `merge` (default)
+   *  merges it into the target, through the pull request in a project that
+   *  lands through one; `keep` leaves it on the branch, its ideas partial
+   *  until the branch lands. */
+  finish?: SeriesPlanFinish;
+  /** For a project that lands through pull requests: the job resolves its
+   *  ideas' issues entirely, so its pull request closes them (`Fixes`) even
+   *  when an idea is carried by several jobs. Absent = not said. */
+  resolves_issues?: boolean;
 };
+
+/** The branch a planned job works on (`SeriesPlanAnswer.branch`). */
+export type SeriesPlanBranch = { kind: 'new' | 'existing'; name: string };
+/** Where a planned job's branch ends up (`SeriesPlanAnswer.finish`). */
+export type SeriesPlanFinish = 'merge' | 'keep';
 
 /** Settings of a group of volets: per role, the same fields as a global row.
  *  Absent = the role's global setting (then the project role) applies. */

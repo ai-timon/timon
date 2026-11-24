@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { installConsoleAscii, toConsoleAscii } from '../bin/console-ascii.mjs';
 
 test('symbols get an ASCII look-alike and accents are dropped', () => {
-  assert.equal(toConsoleAscii('task 1 → DONE · capacités — “ok” …'), 'task 1 -> DONE - capacites - "ok" ...');
+  assert.equal(toConsoleAscii('task 1 → DONE · capacités — “ok” …'), 'task 1 -> DONE - capacites - "ok" ...'); // french-ok-file: accented text the console fold is about
   assert.equal(toConsoleAscii('plain ascii'), 'plain ascii');
   assert.equal(toConsoleAscii('日本語'), '日本語', 'what has no look-alike is left as it is');
 });

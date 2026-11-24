@@ -2,6 +2,7 @@
 
 import type { ReactElement } from 'react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { reportDirectoryPick, useDirectoryPicker } from '@/components/directory-browser';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
@@ -77,7 +78,7 @@ export function SettingsRow({
     <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13px] font-medium leading-snug">{label}</span>
+          <span className="text-[13px] font-medium leading-snug" title={setting.key}>{label}</span>
           {setting.overridden && !locked && (
             <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
               {t('settingsPage.modified')}
@@ -93,27 +94,38 @@ export function SettingsRow({
           )}
         </div>
         {description && (
-          <p className="mt-0.5 max-w-[65ch] text-[12px] leading-snug text-muted-foreground">
+          <p className="mt-1 max-w-[65ch] text-[12px] leading-relaxed text-muted-foreground">
             {description}
           </p>
         )}
-        <p /* code-font: setting key */ className="mt-1 font-mono text-[10.5px] text-muted-foreground/70">
-          {setting.key} · {t('settingsPage.default')} : {String(setting.default) || t('settingsPage.empty')}
-        </p>
+        {/* While the value is the default, the field already says it: the
+            default is worth a line only once it differs. The setting's key
+            stays one hover away on the label, and the search still finds it. */}
+        {/* Not for a switch: its position is the state, and "Default: false"
+            says nothing the Default button does not. */}
+        {setting.type !== 'bool' && String(setting.value) !== String(setting.default) && (
+          <p className="mt-1 text-[11px] text-muted-foreground/80">
+            {t('settingsPage.defaultValue', {
+              value: String(setting.default) === ''
+                ? t('settingsPage.empty')
+                : unit ? `${String(setting.default)} ${unit}` : String(setting.default),
+            })}
+          </p>
+        )}
       </div>
 
       <div className="flex shrink-0 flex-col items-end gap-1 self-start">
         <div className="flex items-center gap-2">
           {setting.type === 'bool' ? (
-            <Button
-              variant={setting.value ? 'default' : 'outline'}
-              size="sm"
+            // The same switch as the panes around it (Appearance, Developer
+            // mode): one control for on/off across the whole dialog.
+            <Switch
+              checked={Boolean(setting.value)}
               disabled={locked || saving}
-              className="h-7 min-w-[72px] text-[12px]"
-              onClick={() => void onSave(setting.key, setting.value ? 'false' : 'true')}
-            >
-              {setting.value ? t('settingsPage.enabled') : t('settingsPage.disabled')}
-            </Button>
+              aria-label={label}
+              className="my-1"
+              onCheckedChange={(checked) => void onSave(setting.key, checked ? 'true' : 'false')}
+            />
           ) : (
             <>
               <input

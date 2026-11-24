@@ -20,7 +20,7 @@ test('tabs: the asked one when shown, the first shown otherwise', () => {
 test('a webhook address is built on the page origin', () => {
   assert.equal(hookUrl({ url: '/api/triggers/hooks/bugs' }, 'https://timon.example'), 'https://timon.example/api/triggers/hooks/bugs');
   assert.equal(hookUrl({ url: null }, 'https://timon.example'), null);
-  assert.equal(slugify('Issues GitHub — été !'), 'issues-github-ete');
+  assert.equal(slugify('Issues GitHub — été !'), 'issues-github-ete'); // french-ok: accented text, the slug folding under test
 });
 
 test('a webhook draft becomes the body the daemon validates', () => {

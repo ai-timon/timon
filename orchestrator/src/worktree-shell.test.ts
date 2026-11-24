@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isHeldByGrepai, purgeShell, sweepShells } from './worktree-shell.js';
@@ -86,6 +86,44 @@ test('purging a shell unlinks inner symlinks without emptying their target', () 
   utimesSync(path, t, t);
   assert.equal(purgeShell(root, path, GRACE, Date.now(), []), 'purged');
   assert.equal(existsSync(join(deps, '.grepai', 'index.gob')), true);
+});
+
+test('purging a shell removes nested and dangling links first, never their targets', () => {
+  const root = makeRoot();
+  const deps = makeShell(makeRoot(), 'deps', 0);
+  const path = makeShell(root, 'task-n', GRACE * 2);
+  mkdirSync(join(path, 'app'));
+  mkdirSync(join(path, '.claude'));
+  symlinkSync(deps, join(path, 'app', 'node_modules'), 'dir');
+  symlinkSync(deps, join(path, '.claude', 'skills'), 'dir');
+  symlinkSync(join(deps, 'missing'), join(path, 'dangling'), 'dir');
+  const t = (Date.now() - GRACE * 2) / 1000;
+  utimesSync(path, t, t);
+  assert.equal(purgeShell(root, path, GRACE, Date.now(), []), 'purged');
+  assert.equal(existsSync(path), false);
+  assert.equal(existsSync(join(deps, '.grepai', 'index.gob')), true);
+});
+
+test('a shell whose link cannot be removed is kept whole', { skip: (process.platform === 'win32' || process.getuid?.() === 0) && 'needs POSIX permissions and a non-root user' }, (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const root = makeRoot();
+  const deps = makeShell(makeRoot(), 'deps', 0);
+  const path = makeShell(root, 'task-l', GRACE * 2);
+  const locked = join(path, 'app');
+  mkdirSync(locked);
+  symlinkSync(deps, join(locked, 'node_modules'), 'dir');
+  chmodSync(locked, 0o555);
+  const aged = (Date.now() - GRACE * 2) / 1000;
+  utimesSync(path, aged, aged);
+  try {
+    assert.equal(purgeShell(root, path, GRACE, Date.now(), []), 'locked');
+    assert.ok(lstatSync(join(locked, 'node_modules')).isSymbolicLink());
+    assert.ok(existsSync(join(path, '.grepai', 'index.gob')));
+    assert.ok(existsSync(join(deps, '.grepai', 'index.gob')));
+  } finally {
+    chmodSync(locked, 0o755);
+  }
+  assert.equal(purgeShell(root, path, GRACE, Date.now(), []), 'purged');
 });
 
 test('a shell still held by a grepai process is kept', () => {

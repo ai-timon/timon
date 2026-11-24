@@ -1,13 +1,13 @@
 /**
- * Règle de repli posée À CHAUD : elle déplace les tasks, tout de suite.
+ * Fallback rule set LIVE: it moves the tasks, right away.
  *
- * Le geste que ces tests verrouillent est celui de la nuit du 2026-09-01 —
- * `timon series fallback set --scope code --backend claude` posé en plein
- * incident. À l'époque il ne faisait qu'ÉCRIRE la cible : la task suivante est
- * repartie sous le backend mort, et il a fallu réécrire `backend_override`
- * task par task. Ce qui est vérifié ici, dans l'ordre : la portée nommée bouge,
- * les autres non, la task bloquée par le backend repart, et un pilote en bonne
- * santé n'est pas permuté au passage.
+ * The gesture these tests lock is the one of the night of 2026-09-01:
+ * `timon series fallback set --scope code --backend claude` set in the middle of the
+ * incident. At the time it only WROTE the target: the next task
+ * left again under the dead backend, and `backend_override` had to be rewritten
+ * task by task. What is checked here, in order: the named scope moves,
+ * the others do not, the task blocked by the backend restarts, and a healthy
+ * pilot is not swapped on the way.
  *
  * `node --test --import tsx src/series-fallback-hot.test.ts`
  */
@@ -57,16 +57,16 @@ host.spawn = (() => {
 }) as typeof host.spawn;
 test.after(() => { host.spawn = originalSpawn; });
 
-/** Une série en cours : un pilote, un volet code et une review, tous sur grok. */
+/** A running series: a pilot, a code part and a review, all on grok. */
 function series(opts: { codeStatus?: 'PENDING' | 'BLOCKED'; pilotAgent?: string } = {}) {
   const seriesId = randomUUID();
   const pilotId = randomUUID();
   const codeId = randomUUID();
   const reviewId = randomUUID();
-  dbApi.createMission(pilotId, opts.pilotAgent ?? 'p.main', 'pilote de la série');
-  // Le pilote tourne lui aussi sur grok : sans backend explicite il retomberait
-  // sur le défaut du dépôt, et une bascule vers claude serait un simple
-  // changement de modèle — le test ne prouverait plus rien de la permutation.
+  dbApi.createMission(pilotId, opts.pilotAgent ?? 'p.main', 'pilote de la série'); // french-ok: free-text sample data
+  // The pilot runs on grok too: without an explicit backend it would fall back
+  // on the repository default, and a switch to claude would be a mere
+  // model change; the test would no longer prove anything about the swap.
   dbApi.setMissionLlmOverrides(pilotId, 'grok', 'grok-4.6');
   for (const [id, type, title] of [[codeId, 'code', 'volet coder'], [reviewId, 'review', 'review du volet']] as const) {
     dbApi.createTask(id, title, 'p.coder', {
@@ -75,12 +75,12 @@ function series(opts: { codeStatus?: 'PENDING' | 'BLOCKED'; pilotAgent?: string 
     });
   }
   if (opts.codeStatus === 'BLOCKED') {
-    dbApi.setTaskInterrupted(codeId, 'exhausted', 'compte sans crédit (HTTP 402)');
+    dbApi.setTaskInterrupted(codeId, 'exhausted', 'compte sans crédit (HTTP 402)'); // french-ok: free-text sample data
   }
   return { seriesId, pilotId, codeId, reviewId };
 }
 
-test('une règle posée à chaud déplace les tasks de sa portée, et elles seules', async () => {
+test('a rule set live moves the tasks of its scope, and them alone', async () => {
   const { seriesId, codeId, reviewId } = series();
   dbApi.setSeriesFallback(seriesId, 'code', 'claude', 'opus');
 
@@ -89,13 +89,13 @@ test('une règle posée à chaud déplace les tasks de sa portée, et elles seul
   assert.deepEqual(applied, { backend: 'claude', model: 'opus' });
   assert.equal(dbApi.getTask(codeId)?.backend_override, 'claude');
   assert.equal(dbApi.getTask(codeId)?.model_override, 'opus');
-  // La review n'était pas nommée. Sans ce garde-fou elle partirait quand même,
-  // par le joker, la matrice d'équivalence ou le réglage global — trois cibles
-  // que l'humain n'a pas demandées en tapant `--scope code`.
+  // The review was not named. Without this guard it would leave anyway,
+  // through the wildcard, the equivalence matrix or the global setting: three targets
+  // the human did not ask for when typing `--scope code`.
   assert.equal(dbApi.getTask(reviewId)?.backend_override, 'grok');
 });
 
-test('une task bloquée par le backend repart en file, la règle appliquée', async () => {
+test('a task blocked by the backend goes back in the queue, the rule applied', async () => {
   const { seriesId, codeId } = series({ codeStatus: 'BLOCKED' });
   assert.equal(dbApi.getTask(codeId)?.status, 'BLOCKED');
   dbApi.setSeriesFallback(seriesId, 'code', 'claude', null);
@@ -104,36 +104,36 @@ test('une task bloquée par le backend repart en file, la règle appliquée', as
 
   const moved = dbApi.getTask(codeId);
   assert.equal(moved?.backend_override, 'claude');
-  // Le fond du problème corrigé ici : la règle appliquée sans remise en file
-  // laisse la task BLOCKED sur un plan de repli déjà posé — du travail
-  // déplaçable que plus personne ne déplace.
+  // The heart of the problem fixed here: the rule applied without a requeue
+  // leaves the task BLOCKED on a fallback plan already set: movable
+  // work nobody moves any more.
   assert.equal(moved?.status, 'PENDING');
   assert.equal(moved?.interrupted_reason, null);
 });
 
-test('un pilote en bonne santé n’est pas permuté par une règle qui vise le code', async () => {
+test('a healthy pilot is not swapped by a rule aimed at the code', async () => {
   const { seriesId, pilotId } = series();
   clearBackendCooldown('grok');
   dbApi.setSeriesFallback(seriesId, 'code', 'claude', null);
 
   await applySeriesFallbackRule(seriesId, 'code');
 
-  // `switchMissionBackend` rejoue le transcript d'une mission VIVANTE : le
-  // faire parce qu'on a réglé le repli du coder couperait l'orchestrateur en
-  // plein plan, sans que rien ne le lui ait demandé.
+  // `switchMissionBackend` replays the transcript of a LIVE mission: doing
+  // it because the coder fallback was set would cut the orchestrator off in
+  // the middle of its plan, without anything asking it to.
   assert.equal(dbApi.getMission(pilotId)?.backend_override, 'grok');
 });
 
-test('un pilote dont le backend est à sec bascule, lui, quelle que soit la portée', async () => {
+test('a pilot whose backend is running dry switches, whatever the scope', async () => {
   const { seriesId, pilotId } = series();
   dbApi.setBackendCooldown('grok', Date.now() + 3600_000, 'balance exhausted', false, 'exhausted');
   dbApi.setSeriesFallback(seriesId, 'code', 'claude', null);
   dbApi.setSeriesFallback(seriesId, 'orchestrator', 'claude', 'opus');
   try {
     await applySeriesFallbackRule(seriesId, 'code');
-    // Le pilote mort, plus aucun retour de task n'est traité : c'est la cascade
-    // de l'incident du 2026-08-20. On ne le laisse pas sur un backend à sec sous
-    // prétexte que la règle nommait le coder.
+    // With the pilot dead, no task return is handled any more: that is the cascade
+    // of the 2026-08-20 incident. It is not left on a dry backend on the
+    // pretext that the rule named the coder.
     assert.equal(dbApi.getMission(pilotId)?.backend_override, 'claude');
   } finally {
     clearBackendCooldown('grok');
@@ -162,7 +162,7 @@ test('a pilot whose fallback cannot start stays where it was, and the tasks stil
   }
 });
 
-test('la portée orchestrateur, elle, vise bien le pilote et lui seul', async () => {
+test('the orchestrator scope does target the pilot, and it alone', async () => {
   const { seriesId, pilotId, codeId, reviewId } = series();
   dbApi.setSeriesFallback(seriesId, 'orchestrator', 'claude', 'opus');
 
@@ -170,14 +170,14 @@ test('la portée orchestrateur, elle, vise bien le pilote et lui seul', async ()
 
   assert.equal(dbApi.getMission(pilotId)?.backend_override, 'claude');
   assert.equal(dbApi.getMission(pilotId)?.model_override, 'opus');
-  // Aucune task ne bouge : `orchestrator` ne gouverne aucun type de task, et
-  // ne tombe jamais dans le joker `'*'` (cf. `seriesRule`).
+  // No task moves: `orchestrator` governs no task type, and
+  // never falls into the `'*'` wildcard (see `seriesRule`).
   assert.equal(dbApi.getTask(codeId)?.backend_override, 'grok');
   assert.equal(dbApi.getTask(reviewId)?.backend_override, 'grok');
   await killAgent(pilotId, { source: 'test' });
 });
 
-/** La route Kanban montée nue : c'est elle qui porte le défaut `apply`. */
+/** The Kanban route mounted bare: it is the one carrying the `apply` default. */
 async function withApi<T>(fn: (base: string) => Promise<T>): Promise<T> {
   const app = express();
   app.use(express.json());
@@ -195,7 +195,7 @@ async function withApi<T>(fn: (base: string) => Promise<T>): Promise<T> {
   }
 }
 
-test('la route applique par défaut, et ne touche à rien avec apply:false', async () => {
+test('the route applies by default, and touches nothing with apply:false', async () => {
   const noApply = series();
   const byDefault = series();
 
@@ -207,13 +207,13 @@ test('la route applique par défaut, et ne touche à rien avec apply:false', asy
         body: JSON.stringify({ scope: 'code', backend: 'claude', ...body }),
       }).then((r) => r.json() as Promise<{ applied: { backend: string } | null }>);
 
-    // `apply: false` : la règle est écrite, les tasks en cours ne bougent pas.
+    // `apply: false`: the rule is written, the running tasks do not move.
     const recorded = await put(noApply.seriesId, { apply: false });
     assert.equal(recorded.applied, null);
     assert.equal(dbApi.getSeriesFallback(noApply.seriesId, 'code')?.backend, 'claude');
     assert.equal(dbApi.getTask(noApply.codeId)?.backend_override, 'grok');
 
-    // Rien de précisé : on applique. C'est le geste manqué du 2026-09-01.
+    // Nothing specified: it applies. That is the gesture missed on 2026-09-01.
     const applied = await put(byDefault.seriesId, {});
     assert.equal(applied.applied?.backend, 'claude');
     assert.equal(dbApi.getTask(byDefault.codeId)?.backend_override, 'claude');

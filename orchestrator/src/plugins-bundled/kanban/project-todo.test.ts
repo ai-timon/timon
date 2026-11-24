@@ -1,11 +1,11 @@
 /**
- * Le carnet "TO DO" appartient au Kanban — volet 2/4 du chantier Kanban.
+ * The "TO DO" notebook belongs to the Kanban: part 2/4 of the Kanban work.
  *
- * Ce test remplace l'ancien `backlog/split.test.ts`, qui vérifiait la
- * séparation qu'on vient de défaire. Ce qu'il garde de lui : le risque d'un
- * déplacement de routes n'est pas le code (verbatim), c'est un chemin monté
- * deux fois ou plus du tout. On monte donc les routeurs SEULS et on regarde ce
- * qu'ils servent.
+ * This test replaces the old `backlog/split.test.ts`, which checked the
+ * separation just undone. What it keeps from it: the risk of
+ * moving routes is not the code (verbatim), it is a path mounted
+ * twice or not at all. So the routers are mounted ALONE and we look at what
+ * they serve.
  */
 import '../../test-home.js';
 import { test } from 'node:test';
@@ -17,7 +17,7 @@ const kanbanRoutes = await import('./routes.js');
 const { CATALOG } = await import('../../kernel/catalog.js');
 const { RETIRED_IDS, canonicalModuleId, isRetiredModuleId } = await import('../../kernel/legacy-ids.js');
 
-/** Un serveur éphémère par routeur : aucun état partagé entre les tests. */
+/** One ephemeral server per router: no state shared between the tests. */
 async function serve(register: (r: Router) => void): Promise<{ url: (p: string) => string; close: () => void }> {
   const app = express();
   app.use(express.json());
@@ -28,20 +28,20 @@ async function serve(register: (r: Router) => void): Promise<{ url: (p: string) 
   return { url: (p) => `http://127.0.0.1:${port}${p}`, close: () => server.close() };
 }
 
-test('le Kanban sert le carnet « TO DO » en plus de ses tasks', async () => {
+test('the Kanban serves the "TO DO" notebook on top of its tasks', async () => {
   const d = await serve((r) => { kanbanRoutes.registerRoutes(r); todoLaterRoutes.registerRoutes(r); });
   try {
     assert.equal((await fetch(d.url('/api/project-todo'))).status, 200);
     assert.equal((await fetch(d.url('/api/tasks'))).status, 200);
-    // Ce qui est parti dans `dreams` au volet précédent n'est pas revenu ici.
+    // What left for `dreams` in the previous part has not come back here.
     assert.equal((await fetch(d.url('/api/dreams'))).status, 404);
     assert.equal((await fetch(d.url('/api/projects/scores'))).status, 404);
   } finally { d.close(); }
 });
 
-test('les deux routeurs du Kanban ne se marchent pas dessus', async () => {
-  // Aucun chemin monté deux fois : le routeur des tasks ignore le carnet, et
-  // réciproquement. Un doublon se verrait ici avant de se voir en production.
+test('the two Kanban routers do not step on each other', async () => {
+  // No path mounted twice: the task router ignores the notebook, and
+  // the other way round. A duplicate would show here before showing in production.
   const tasks = await serve(kanbanRoutes.registerRoutes);
   try {
     assert.equal((await fetch(tasks.url('/api/project-todo'))).status, 404);
@@ -54,9 +54,9 @@ test('les deux routeurs du Kanban ne se marchent pas dessus', async () => {
   } finally { carnet.close(); }
 });
 
-test('@timon/kanban éteint : plus aucune route project-todo', async () => {
-  // Le carnet n'a plus d'interrupteur à lui — éteindre le tableau l'emporte,
-  // et c'est le seul geste qui le fasse disparaître.
+test('@timon/kanban off: no project-todo route at all', async () => {
+  // The notebook no longer has a switch of its own: turning the board off takes it,
+  // and that is the only gesture that makes it disappear.
   const d = await serve(() => { /* module absent */ });
   try {
     for (const path of ['/api/project-todo', '/api/project-todo/1', '/api/project-todo/1/handoff']) {
@@ -65,23 +65,23 @@ test('@timon/kanban éteint : plus aucune route project-todo', async () => {
   } finally { d.close(); }
 });
 
-test('@timon/backlog n\'est plus un module : ni au catalogue, ni vendu à part', () => {
+test('@timon/backlog is no longer a module: neither in the catalogue nor sold separately', () => {
   assert.equal(CATALOG.some((m) => m.id === '@timon/backlog'), false);
-  // Le carnet suit le tableau, qui est libre : il ne se vend plus tout seul.
+  // The notebook follows the board, which is free: it is no longer sold on its own.
   assert.equal(CATALOG.find((m) => m.id === '@timon/kanban')?.licensed, undefined);
 });
 
-test('une config qui porte encore @timon/backlog n\'éteint pas le Kanban', () => {
-  // Id retiré, pas aliasé : le traduire vers `@timon/kanban` transformerait
-  // "je ne veux pas du carnet" en "je ne veux pas du tableau".
+test('a config still carrying @timon/backlog does not turn the Kanban off', () => {
+  // Id removed, not aliased: translating it to `@timon/kanban` would turn
+  // "I do not want the notebook" into "I do not want the board".
   assert.equal(RETIRED_IDS.has('@timon/backlog'), true);
   assert.equal(isRetiredModuleId('@timon/backlog'), true);
   assert.equal(canonicalModuleId('@timon/backlog'), '@timon/backlog');
 });
 
-test('le module alice a disparu du catalogue, ses deux moitiés lui survivent', () => {
-  // Volet 11 : l'identité `alice` retourne à ce qu'elle a toujours été, un
-  // agent de l'utilisateur. Ce qui était du code est ici, ou dans `dreams`.
+test('the alice module is gone from the catalogue, its two halves outlive it', () => {
+  // Part 11: the `alice` identity goes back to what it always was, an
+  // agent of the user. What was code is here, or in `dreams`.
   assert.equal(CATALOG.some((m) => m.id === '@timon/alice'), false);
   assert.ok(CATALOG.some((m) => m.id === '@timon/kanban'));
   assert.ok(CATALOG.some((m) => m.id === '@timon/dreams'));

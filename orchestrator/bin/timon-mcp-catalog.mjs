@@ -238,6 +238,16 @@ const TOOLS = [
             'shared repo happens to be on — possibly another agent\'s. Set it (usually ' +
             '"main") whenever several tasks run on the same repo.',
         },
+        landing: {
+          type: 'string',
+          enum: ['pr', 'local'],
+          description:
+            'Only on the final `merge` task of a job on a branch of its own (the `commands` ' +
+            'of `kanban_plan` say when): "pr" makes it publish the job\'s integration branch ' +
+            'with `pr_open` instead of merging a task branch into it; "local" makes it merge ' +
+            'that branch into the project\'s local target on this machine. Leave unset on ' +
+            'every other task.',
+        },
         project: {
           type: 'string',
           description:
@@ -1415,6 +1425,7 @@ async function runTool(rawName, args, ctx) {
       if (args.group_id !== undefined) body.group_id = args.group_id;
       if (args.plan_group !== undefined) body.plan_group = args.plan_group;
       if (args.base !== undefined) body.base = args.base;
+      if (args.landing !== undefined) body.landing = args.landing;
       if (args.project !== undefined) body.project = args.project;
       if (args.todo_id !== undefined) body.todo_id = args.todo_id;
       if (env.traceId) body.trace_id = env.traceId;

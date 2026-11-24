@@ -3,6 +3,8 @@
  * lists its catalog: the language and its default, the precise-model card of
  * a Parakeet-only install, the catalog's origins, the import that asks for
  * the kind of model, and the card that offers the model of the language.
+  *
+  * french-ok-file: the French locale of the pane under test
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

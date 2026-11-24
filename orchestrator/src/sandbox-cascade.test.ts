@@ -44,7 +44,7 @@ test('sandbox refusals are recognised, other blockages are not', () => {
     'exec failed: blocked by policy',
     "fatal: Unable to create '/r/.git/index.lock': Read-only file system",
     'process exited with code -1073741502',
-    'Sandbox read-only forcé : toute écriture est refusée (403)',
+    'Sandbox read-only forcé : toute écriture est refusée (403)', // french-ok: a French sandbox message the detector reads
     'Every write was denied by the sandbox.',
   ]) assert.equal(looksLikeSandboxFailure(text), true, text);
   for (const text of [

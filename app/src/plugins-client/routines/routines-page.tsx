@@ -10,6 +10,8 @@ import { t } from '@/lib/i18n';
 import { formatDate, formatTime } from '@/lib/intl';
 import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-context';
 import { apiErrorMessage, responseErrorMessage } from '@/lib/api-error';
+import { ChipToggles } from '@/components/task-form/task-form-parts';
+import { parseJsonList } from '@/components/task-form/task-form-model';
 
 type Routine = {
   id: string;
@@ -20,6 +22,8 @@ type Routine = {
   cron_expr: string;
   enabled: number;
   project: string | null;
+  /** JSON list of the MCP server ids copied onto every task it opens; null = none. */
+  extra_mcp_servers?: string | null;
   last_run_at: number | null;
   next_run_at: number | null;
   created_at: number;
@@ -27,6 +31,7 @@ type Routine = {
 };
 
 type Agent = { name: string; project?: string | null };
+type McpSummary = { id: string };
 
 const TASK_TYPES = ['code', 'review', 'merge', 'research', 'doc', 'chore'] as const;
 
@@ -65,7 +70,22 @@ function RoutineDialog({
   const [cron, setCron] = useState(routine?.cron_expr ?? '0 9 * * *');
   const [project, setProject] = useState(routine?.project ?? '');
   const [enabled, setEnabled] = useState(routine ? routine.enabled === 1 : true);
+  const [mcpServers, setMcpServers] = useState<string[]>(() => parseJsonList(routine?.extra_mcp_servers));
+  const [mcps, setMcps] = useState<McpSummary[]>([]);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/ui/mcp', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() as Promise<{ servers?: McpSummary[] }> : { servers: [] }))
+      .catch(() => ({ servers: [] }))
+      .then((j) => { if (!cancelled) setMcps(j.servers ?? []); });
+    return () => { cancelled = true; };
+  }, []);
+
+  function toggleMcp(id: string) {
+    setMcpServers((list) => (list.includes(id) ? list.filter((v) => v !== id) : [...list, id]));
+  }
 
   async function submit(e: { preventDefault(): void }) {
     e.preventDefault();
@@ -80,6 +100,7 @@ function RoutineDialog({
         cron_expr: cron.trim(),
         project: project.trim() || null,
         enabled,
+        extra_mcp_servers: mcpServers,
       };
       const res = await fetch(
         isEdit ? `/api/ui/routines/${routine!.id}` : '/api/ui/routines',
@@ -204,6 +225,20 @@ function RoutineDialog({
                 {t('routinesPage.enabled')}
               </label>
             </div>
+          </div>
+
+          <div>
+            <span className="mb-1 block text-[11px] text-muted-foreground">{t('routinesPage.mcpServers')}</span>
+            <ChipToggles
+              label={t('routinesPage.mcpServers')}
+              options={mcps.map((m) => m.id)}
+              values={mcpServers}
+              onToggle={toggleMcp}
+              empty={t('routinesPage.noMcpServers')}
+              noMatch={t('routinesPage.noMcpServers')}
+              filter=""
+            />
+            <p className="mt-1 text-[11px] text-muted-foreground">{t('routinesPage.mcpServersHint')}</p>
           </div>
         </div>
 

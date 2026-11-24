@@ -192,11 +192,21 @@ declare module '@timon/ui' {
     links?: { provider: string; ref: string; url: string | null; label: string | null; plugin_id: string | null; created_at: number }[];
     /** Files attached to the idea; absent from a host older than client API 15. */
     attachment_count?: number;
+    /** Where the branch of the idea's jobs stands, read-only; `null` when no
+     *  job has an integration branch. Absent from a host older than client API 19. */
+    landing?: TodoLanding | null;
   };
+  /** State of one job's branch: `branch` (embargo, no pull request expected),
+   *  `pending` (pull request not created), `open`, `merged`, `closed` (without a merge). */
+  export type TodoLandingState = 'branch' | 'pending' | 'open' | 'merged' | 'closed';
+  /** One job (integration branch) of an idea; `jobId` names it in `/api/kanban/landings/:id`, absent from an older host. */
+  export type TodoLandingJob = { jobId?: string; state: TodoLandingState; branch: string; prNumber: number | null; prUrl: string | null };
+  /** An idea's landing: its job furthest from landing on top, every job in `jobs`, oldest first. */
+  export type TodoLanding = TodoLandingJob & { jobs: TodoLandingJob[] };
   /**
-   * The idea a `kanban.todo.badge` occupant is rendered for; `null` outside
-   * that slot. Read it from here, never from props: the entry is registered
-   * once and rendered on every line.
+   * The idea a `kanban.todo.badge` or `kanban.todo.landing` (client API 19)
+   * occupant is rendered for; `null` outside those slots. Read it from here,
+   * never from props: the entry is registered once and rendered on every line.
    */
   export function useTodoItem(): TodoItem | null;
   /**
@@ -1594,6 +1604,318 @@ declare module '@timon/ui' {
     titleId: string;
   } | null;
 
+  /** An idea a Kanban job carries, as its links list it. Client API 19. */
+  export type KanbanJobTodo = {
+    id: number;
+    /** At most 300 characters. */
+    text: string;
+    status: string;
+    progress: string | null;
+    project: string | null;
+  };
+  /**
+   * An issue a Kanban job touches (client API 19). `closes`: the pull
+   * request's description says it closes it, which is its author's claim;
+   * otherwise one of the job's ideas is linked to it (`todo_id`).
+   */
+  export type KanbanJobIssue = { repo: string; number: number; url: string | null; todo_id: number | null; closes: boolean };
+  /** The way back from a job to its ideas, their issues and the mission piloting its series. Client API 19. */
+  export type KanbanJobLinks = {
+    todos: KanbanJobTodo[];
+    issues: KanbanJobIssue[];
+    series_id: string | null;
+    /** Only when the reader may open that mission. */
+    pilot_mission_id: string | null;
+  };
+  /**
+   * A Kanban job (client API 19): the integration branch of a series, and the
+   * pull request it lands through. `state` is `branch` (embargoed, no pull
+   * request expected), `open`, `merged` or `closed` (without a merge);
+   * `pr_number` stays `null` while the pull request is not created. `checks`
+   * is the last read of the pull request's checks and review, `null` before
+   * one.
+   */
+  export type KanbanJob = {
+    id: string;
+    project: string | null;
+    series_id: string | null;
+    branch: string;
+    remote: string;
+    target: string;
+    mode: string;
+    state: 'branch' | 'open' | 'merged' | 'closed';
+    pr_number: number | null;
+    pr_url: string | null;
+    pr_title: string | null;
+    head_sha: string | null;
+    merge_sha: string | null;
+    landed: boolean;
+    created_at: number;
+    updated_at: number;
+    checks: {
+      read_at: number;
+      draft: boolean;
+      mergeable: 'mergeable' | 'conflicting' | 'unknown';
+      review: 'approved' | 'changes_requested' | 'review_required' | null;
+      counts: Record<'pass' | 'fail' | 'pending' | 'skipped', number>;
+      items: Array<{ name: string; status: 'pass' | 'fail' | 'pending' | 'skipped'; url: string | null }>;
+      /** GitHub's `mergeStateStatus`, lower case (`clean`, `dirty`, `behind`…). Client API 19. */
+      merge_state?: string;
+      /** Review threads still open; `null` when they were not read. Client API 19. */
+      unresolved_threads?: number | null;
+    } | null;
+    conflict: boolean | null;
+    checks_running: boolean;
+    /** Absent from a daemon that does not compute them. */
+    links?: KanbanJobLinks;
+    /** Absent from a daemon that does not compute them. Client API 19. */
+    repairs?: KanbanJobRepairs;
+    /** What the planner chose for the job's end; absent from an older daemon. Client API 19. */
+    finish?: 'merge' | 'keep' | null;
+    /** The planner kept the job on its branch: it waits for a person to land it. Client API 19. */
+    kept?: boolean;
+    /** Tasks of a kept job still waiting or running: Timon refuses to land it meanwhile. Client API 19. */
+    under_way?: number;
+    /** The latest task of a kept job merged into its branch. Client API 19. */
+    last_merge?: { sha: string; at: number } | null;
+  };
+  /** What a repair of a Kanban job fixes (client API 19). */
+  export type KanbanJobRepairKind = 'checks' | 'comments' | 'conflict';
+  /**
+   * One repair of a Kanban job (client API 19): a `code` task on the job's
+   * branch, asked by a person. `pushed` once Timon pushed its work to the pull
+   * request, `unchanged` when it brought no commit, `failed` when it was not
+   * pushed (`error`, in English, says why).
+   */
+  export type KanbanJobRepair = {
+    id: string;
+    kind: KanbanJobRepairKind;
+    state: 'running' | 'pushed' | 'unchanged' | 'failed';
+    task_id: string;
+    head_after: string | null;
+    error: string | null;
+    created_at: number;
+    updated_at: number;
+  };
+  /**
+   * The repairs of a Kanban job (client API 19): `used` of `max`, whatever
+   * became of them; the one `running`, during which no other starts; the
+   * `last`; and what the forge last said `needs` a repair.
+   */
+  export type KanbanJobRepairs = {
+    used: number;
+    max: number;
+    running: KanbanJobRepair | null;
+    last: KanbanJobRepair | null;
+    needs: KanbanJobRepairKind[];
+  };
+  /**
+   * The job a `kanban.job.dialog` occupant paints (client API 19), opened from
+   * the Jobs widget, the Pull requests widget and the landing badge of a TO DO
+   * idea. The occupant draws the whole window (`Dialog` from this module) and
+   * calls `close()` when it is dismissed. `openTodo` and `openMission` close
+   * the window first; `openTodo` is `null` where the screen cannot show an
+   * idea. The job's diff, commits and pre-checks stay the product's; its
+   * gestures (client API 19) are Timon's: `refresh()` reads the checks again,
+   * `repair(kind)` asks for a repair on behalf of the signed-in person (call
+   * it only from a click), says how it went and resolves `true` once a task
+   * started. Both replace `landing` with the daemon's answer.
+   */
+  export type JobDialogValue = {
+    /** The job, its `links` and `repairs` included. */
+    landing: KanbanJob;
+    /** The gesture under way, if any. Client API 19. */
+    busy: 'refresh' | 'land' | KanbanJobRepairKind | null;
+    /** Client API 19. */
+    refresh(): Promise<void>;
+    /** Client API 19. */
+    repair(kind: KanbanJobRepairKind): Promise<boolean>;
+    /**
+     * Lands a job the planner kept on its branch, on a person's click only:
+     * merged into its local target, or its pull request opened (`title`
+     * required then). Timon asks for confirmation with `commits` (read again
+     * when absent), says how it went, and resolves `true` once it landed.
+     * `null` when the job is not kept. Client API 19.
+     */
+    land: ((request?: { title?: string; body?: string }, commits?: number | null) => Promise<boolean>) | null;
+    /** Why `land` cannot start now (a missing right, a task of the job still running), or null. Client API 19. */
+    landBlocked: string | null;
+    close(): void;
+    openTodo: ((id: number) => void) | null;
+    openMission(missionId: string): void;
+  };
+  /** The job a `kanban.job.dialog` occupant paints, and its gestures (client API 19); `null` outside the slot. */
+  export function useJobDialog(): JobDialogValue | null;
+
+  /**
+   * A text proposed for publication on a project's forge (client API 19): a
+   * comment on an issue or a pull request, waiting for a person. `draft` and
+   * `failed` wait; `publishing`, `published` and `discarded` are done.
+   * `trigger` says what prepared it: `person`, `landing` (a job landed),
+   * `todo_resolved`, or `plugin` (a plugin's `ctx.forge.propose`, daemon API
+   * 19, which names it in `plugin`). `account` and `url` are set once published.
+   */
+  export type ForgeProposal = {
+    id: string;
+    project: string;
+    repo: string;
+    /**
+     * `comment`; `update_branch`: GitHub merges the base into a pull
+     * request's branch (`body` is the host's summary, never edited);
+     * `conflict_push`: a resolution pushed to a contributor's branch, then
+     * `body` posted as a comment.
+     */
+    kind: 'comment' | 'update_branch' | 'conflict_push';
+    target: { type: 'issue' | 'pull'; number: number; url: string };
+    body: string;
+    state: 'draft' | 'publishing' | 'published' | 'failed' | 'discarded';
+    trigger: 'person' | 'landing' | 'todo_resolved' | 'plugin';
+    plugin?: string | null;
+    key: string;
+    source_ref: string | null;
+    /** What a branch update or a conflict push runs with, written by the host (branch, heads, commit, files); `null` for a comment. */
+    details?: Record<string, unknown> | null;
+    /** Whether `body` may change before publishing: false for a branch update. */
+    editable?: boolean;
+    account: string | null;
+    url: string | null;
+    error: { code: string; reason: string | null } | null;
+    created_at: number;
+    updated_at: number;
+    published_at: number | null;
+  };
+  /**
+   * The "Publish on GitHub" window a `forge.publish.dialog` occupant paints
+   * (client API 19): the exact text that would leave, where it goes and as
+   * which account. Opened from a job's or a pull request's row, a pull
+   * request's menu (`proposal` is then `null` until the new comment is saved
+   * or published) and a proposal's notification card. The occupant draws the
+   * whole window (`Dialog` from this module), lets the person edit `body`
+   * through `setBody`, and offers one main action, `publish()`.
+   *
+   * The occupant holds no access to the forge or to the daemon: `publish`,
+   * `save` and `discard` are the host's gestures. They go through the
+   * signed-in person's session, the daemon refuses them from anyone else and
+   * checks the account again before posting, and each resolves `true` once
+   * taken, `false` on a refusal (then read `error`). Nothing reaches the forge
+   * without a click on `publish`; a published or discarded proposal closes
+   * the window.
+   */
+  export type PublishDialogValue = {
+    project: string;
+    proposal: ForgeProposal | null;
+    /** True until the proposal and the project's account are read. */
+    loading: boolean;
+    /** `owner/name`, when known. */
+    repo: string | null;
+    target: { type: 'issue' | 'pull'; number: number; url: string | null };
+    /** The account the project publishes as; `null` when none is set, and `publish()` is then refused. */
+    account: string | null;
+    /** The text as it would leave, edits included. */
+    body: string;
+    setBody(body: string): void;
+    /** False for a branch update: its text is the host's, published as is (`problem` is then `null`). */
+    editable: boolean;
+    /** Why the daemon would refuse `body`, checked before it is sent (8,000 characters at most, no control character); `null` when it is fine. */
+    problem: 'empty' | 'tooLong' | 'control' | 'marker' | null;
+    /** The gesture in progress. */
+    busy: 'publish' | 'save' | 'discard' | null;
+    /** The last refusal, in the reader's language. */
+    error: string | null;
+    /** Posts `body` as it stands, as the project's account. */
+    publish(): Promise<boolean>;
+    /** Keeps the text for later, unpublished. */
+    save(): Promise<boolean>;
+    /** "Do not publish": the proposal closes and nothing reaches the forge. */
+    discard(): Promise<boolean>;
+    close(): void;
+  };
+  /** The text a `forge.publish.dialog` occupant paints, and the host's gestures (client API 19); `null` outside the slot. */
+  export function usePublishDialog(): PublishDialogValue | null;
+
+  /**
+   * The project a widget of the "Git" stack shows (client API 19): in a
+   * chat's rail, the conversation's project, and nothing is asked; elsewhere
+   * the one picked once for the whole stack (Branches, Pull requests, Jobs,
+   * yours), remembered per browser. `project` is `null` while none is picked.
+   */
+  export type GitStackProject = {
+    project: string | null;
+    inChat: boolean;
+  };
+  /** The project the "Git" stack shows; re-renders when it is picked again (client API 19). */
+  export function useGitStackProject(): GitStackProject;
+  /**
+   * The stack's project picker, for a widget's header (client API 19): a
+   * select of the person's projects that sets what `useGitStackProject()`
+   * answers in every widget of the stack. Paints nothing in a chat's rail.
+   * Props: `none` (label of the empty choice), `label` (its accessible name),
+   * `className?`.
+   */
+  export const GitStackProjectPicker: PlatformComponent;
+
+  /**
+   * Opens a TO DO idea by its number in the product's idea form (client API
+   * 19). The idea is read again from the daemon, which answers only what the
+   * reader may see; an idea out of reach says so in a toast. Paint `todoModal`
+   * where it stays mounted (not inside a dialog you close first).
+   */
+  export type TodoOpener = {
+    openTodo(id: number): void;
+    todoModal: unknown;
+  };
+  export function useTodoOpener(): TodoOpener;
+
+  /**
+   * The project a `project.settings` occupant is painted for (client API 19),
+   * in the project's window under "Integrations". Paint ONE row: a title and a
+   * status line on the left, one action on the right, the rest in a "…" menu;
+   * a form opens in a `Dialog`, never in the row.
+   */
+  export type ProjectSettingsValue = {
+    /** Slug of the project whose settings are open. */
+    project: string;
+  };
+  /** The project of a `project.settings` row (client API 19); `null` outside the slot. */
+  export function useProjectSettings(): ProjectSettingsValue | null;
+
+  /**
+   * What a widget hands its tab when it is one tab of a stack (client API 19).
+   * Register it with `widget.liveCount` so it stays mounted, hidden, behind
+   * the tab in front, and its tab stays true.
+   *
+   * Publishes the number shown on the widget's tab (nothing for `null` or 0).
+   * Returns whether the host shows it: when it does not (a card alone), paint
+   * it next to your own title.
+   */
+  export function useWidgetCount(count: number | null | undefined): boolean;
+  /**
+   * A dot on the widget's tab while something in it waits for the person;
+   * `label` names it in the tab's tooltip and for a screen reader ("2 to
+   * approve"), `null` clears it. Returns whether the host shows it.
+   */
+  export function useWidgetAttention(label: string | null | undefined): boolean;
+  /** One action a stacked widget hands to its menu (the gear, a right click on the tabs). */
+  export type WidgetMenuItem = {
+    key: string;
+    label: string;
+    /** A React element, 14 px. */
+    icon?: unknown;
+    onSelect(): void;
+  };
+  /**
+   * Hands header actions to the widget's menu while it is a tab of a stack:
+   * at 300 px the tab strip has no room left for them. Returns whether it
+   * did; when it did not (a card alone), keep them in your header.
+   */
+  export function useWidgetMenu(items: readonly WidgetMenuItem[]): boolean;
+  /**
+   * Whether the widget is in view: always for a card alone, only while its
+   * tab is in front for one kept mounted behind (`liveCount`). Wait for it
+   * before a costly read.
+   */
+  export function useWidgetInFront(): boolean;
+
   /** A heading of a list page, as the `page.toc` occupant lists it. Client API 15. */
   export type PageTocEntry = {
     /** The heading's `id`, also its anchor. */
@@ -1647,6 +1969,11 @@ declare module '@timon/ui' {
    * agent's head in the onboarding, the agent creation or the chat. `null`
    * outside that slot. Paint a square of `size` pixels; draw what overflows
    * (an accessory) only when `fit` is false.
+   *
+   * A mascot pack's own head (a `shape` part with `head`, see `MascotPart`)
+   * reads the same value, for the agents whose `look.shape` is that part's id.
+   * Draw it as an `<svg>` or a `<canvas>`: the onboarding's welcome copies
+   * one of those into its scene and leaves any other element out.
    */
   export function useAgentMascot(): {
     look: AgentLook;

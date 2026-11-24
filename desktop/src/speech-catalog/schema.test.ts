@@ -130,7 +130,7 @@ test('source, id, license and unknown keys are checked', () => {
 
 test('a tier is a product word from a closed list, never free text', () => {
   refused({ ...entry(), tier: 'fastest' }, /tier/);
-  refused({ ...entry(), tier: 'Précis, 2,9 Go' }, /tier/);
+  refused({ ...entry(), tier: 'Précis, 2,9 Go' }, /tier/); // french-ok: a French tier label, the shape under test
   refused({ ...entry(), tier: '' }, /tier/);
 });
 

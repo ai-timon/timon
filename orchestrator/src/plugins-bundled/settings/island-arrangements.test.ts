@@ -71,7 +71,7 @@ test('saving: a name, a tree, no twin, twelve at most, under 64 KiB', () => {
   assert.deepEqual(first.arrangement, { id: 'a', name: 'Deep work', createdAt: 1000, tree: split, menu: false });
   assert.equal(first.replaced, false);
   // Case and accents fold, as in the menu.
-  assert.deepEqual(saveArrangement(first.arrangements, 'DÉEP WORK', split, opts('b')), { ok: false, error: 'duplicate-name' });
+  assert.deepEqual(saveArrangement(first.arrangements, 'DÉEP WORK', split, opts('b')), { ok: false, error: 'duplicate-name' }); // french-ok: an accented name the comparison folds
   const full = Array.from({ length: 12 }, (_, i) => ({ id: `id-${i}`, name: `n${i}`, createdAt: 0, tree: split, menu: false }));
   assert.deepEqual(saveArrangement(full, 'thirteenth', split, opts('c')), { ok: false, error: 'too-many' });
   const heavy = { ...split, pad: 'x'.repeat(40 * 1024) };

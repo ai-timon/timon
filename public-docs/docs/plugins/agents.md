@@ -16,7 +16,7 @@ A plugin that connects Timon to another system often has to manage what an agent
 | Permission | Surface | Sensitive |
 | --- | --- | --- |
 | `agents:manage` | `ctx.agents.delete`, `rename`, `setAvatar`, and `memoryScope` on `update` | |
-| `agents:manage` (API 15) | `skills`, `mcpServers` and `team` on `create` / `update`; `ctx.agents.teams.create` and `teams.delete` (`agents:read` for `teams.list`); `purge` on `ctx.agents.delete` | yes |
+| `agents:manage` (API 15) | `skills`, `mcpServers`, `team` and `reportsTo` on `create` / `update`; `ctx.agents.teams.create` and `teams.delete` (`agents:read` for `teams.list`); `purge` on `ctx.agents.delete` | yes |
 | `agents:docs:read`, `agents:docs:write` | `ctx.agents.docs.*`: an agent's identity documents (`SOUL.md`…), which are its instructions | yes |
 | `agents:export` (API 15) | `ctx.agents.export(name)`: the portable definition of any agent the signed-in account may read (a stable `id` that a rename keeps, prompt, documents, settings, skills, MCP servers, team, picture, routines), to recreate it elsewhere. A request only; never a secret, log or transcript | yes |
 | `messages:send`, `messages:read` | `ctx.messages`: the inbox of the agents you created | `read`: yes |
@@ -87,6 +87,19 @@ await ctx.agents.teams.delete(team.id)        // true; false for a team the acco
 
 `skills` and `mcpServers` are the agent's whole set: `update` removes what it no longer names. An unknown id is `invalid` and nothing is written. Unless a superadmin makes the request, a skill that pre-authorises tools (`allowed-tools`) and a server your plugin did not declare are `forbidden`. A request sees, creates and deletes the teams of the signed-in account; a job only the teams no account owns. Deleting a team puts its members back outside any team, and is `forbidden` when it holds an agent your plugin did not create (unless a superadmin makes the request). `list` still returns an agent's identity, never its skills, servers or team.
 
+## Reporting line
+
+```js
+const lead = (await ctx.agents.list()).find((a) => a.role === 'orchestrator' && a.project === 'billing')
+await ctx.agents.create({
+  name: 'billing.checker', systemPrompt: 'You check invoices.', role: 'research',
+  reportsTo: lead.name,               // an existing agent
+})
+await ctx.agents.update('billing.checker', { reportsTo: null })   // back to the derived default
+```
+
+`reportsTo` is the agent this one reports to: its place in the hierarchy, and a manager it may always message. `list` returns it as `reportsTo` (`null` while none is set, the app then derives one). An unknown agent, the agent itself, or a manager that already reports to it (a cycle) is `invalid` and nothing is written. A request may name any existing agent; a job sees only the agents your plugin created, so it may name only those. As with every write, only agents your plugin created can be changed (unless a superadmin makes the request).
+
 ## Messages
 
 ```js
@@ -131,6 +144,7 @@ Not to be confused with `ctx.mcp`, which hands an agent on another machine Timon
 - You change or remove only the servers you declared. Servers Timon injects, connectors discovered by the harness and servers added by a person stay out of reach.
 - Secrets are always read back masked (`***`), a superadmin's request included. Writing the masked value back keeps the stored secret as long as the server still points at the same place; if its URL changed, the write is refused.
 - OAuth sign-in is a step with the user in the browser: it is never written through this API.
+- You can write a `get` result back after changing a field. `put` ignores what the host stamps or observes (`id`, `mine`, `createdBy`, `source`, `last_status`, `last_seen_at`, `tools_cache`, `tools_cached_at`, `public_only`, `app_slug`). Any other unknown key is still `invalid`, so a misspelt field is not swallowed. Forged OAuth state in a transport is still refused. A server of another kind (an `external` transport) cannot be written.
 
 ## Backends
 

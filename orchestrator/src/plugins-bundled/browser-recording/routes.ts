@@ -13,7 +13,7 @@ import type { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { getBrowserProfile, type BrowserProfile } from '../../browser-profiles.js';
 import { isPersonAuth, requireAuth, viewerFromRequest } from '../../users/identity.js';
-import { callNativeBrowser, NativeBrowserError } from '../../native-browser-provider.js';
+import { browserErrorBody, callNativeBrowser, NativeBrowserError } from '../../native-browser-provider.js';
 import {
   BrowserRecordingPatch, deleteBrowserRecording, getBrowserRecording, learnRefusal, listBrowserRecordings,
   markBrowserRecordingLearning, patchBrowserRecording, publishBrowserRecordingLearned, publishBrowserRecordingStarted,
@@ -26,6 +26,7 @@ import { canonicalAgentName } from '../../agent-config.js';
 import { isValidAgentName, normalizeAgentName } from '../../agent-name.js';
 import { agentDir } from '../../paths.js';
 import { mainAgentName } from '../../main-agent.js';
+import { apiError } from '../../api-error.js';
 
 /** The bundled skill the conversion mission applies (task 5 of #461 ships it). */
 export const LEARN_BROWSER_RECORDING_SKILL = 'learn-browser-recording';
@@ -54,10 +55,10 @@ export type BrowserRecordingRouteDeps = {
   agentNames?: () => string[];
 };
 
-const notFound = () => new NativeBrowserError('Browser recording not found.', 404);
+const notFound = () => new NativeBrowserError(apiError('browser_recording_not_found', 'Browser recording not found.'), 404);
 
 function personOf(req: Request): string {
-  if (!isPersonAuth(req.auth) || !req.auth.user) throw new NativeBrowserError('This operation requires a signed-in user.', 403);
+  if (!isPersonAuth(req.auth) || !req.auth.user) throw new NativeBrowserError(apiError('browser_sign_in_required', 'This operation requires a signed-in user.'), 403);
   return req.auth.user.id;
 }
 
@@ -65,7 +66,7 @@ function ownedProfile(req: Request): BrowserProfile {
   const userId = personOf(req);
   const id = ProfileParam.safeParse(req.params.profileId);
   const profile = id.success ? getBrowserProfile(id.data, viewerFromRequest(req)) : null;
-  if (!profile || profile.owner_user_id !== userId) throw new NativeBrowserError('Browser profile not found.', 404);
+  if (!profile || profile.owner_user_id !== userId) throw new NativeBrowserError(apiError('browser_profile_not_found', 'Browser profile not found.'), 404);
   return profile;
 }
 
@@ -105,8 +106,8 @@ export function registerBrowserRecordingRoutes(app: Router, deps: BrowserRecordi
     res.setHeader('Cache-Control', 'no-store');
     try { res.json(await operation(req)); }
     catch (error) {
-      if (error instanceof z.ZodError) { res.status(400).json({ error: error.issues[0]?.message ?? 'Invalid request.' }); return; }
-      res.status(error instanceof NativeBrowserError ? error.status : 400).json({ error: (error as Error).message });
+      if (error instanceof z.ZodError) { const detail = error.issues[0]?.message ?? 'Invalid request.'; res.status(400).json(apiError('invalid_detail', detail, { detail })); return; }
+      res.status(error instanceof NativeBrowserError ? error.status : 400).json(browserErrorBody(error));
     }
   };
 
@@ -139,7 +140,7 @@ export function registerBrowserRecordingRoutes(app: Router, deps: BrowserRecordi
       const missionId = req.auth.missionId;
       if (!meta || !missionId || meta.learnMissionId !== missionId || (meta.status !== 'reviewed' && meta.status !== 'learned')) throw notFound();
       const steps = readBrowserRecordingSteps(meta);
-      if (!steps) throw new NativeBrowserError('The steps of this recording were already deleted.', 410);
+      if (!steps) throw new NativeBrowserError(apiError('browser_recording_steps_gone', 'The steps of this recording were already deleted.'), 410);
       return {
         recording: { id: meta.id, profileId: meta.profileId, title: meta.title, startUrl: meta.startUrl, steps: meta.steps, truncated: meta.truncated },
         steps: stepsForAgent(steps),
@@ -178,10 +179,10 @@ export function registerBrowserRecordingRoutes(app: Router, deps: BrowserRecordi
     const refusal = learnRefusal(meta);
     if (refusal) throw new NativeBrowserError(refusal, 409);
     const agent = body.agent ? canonicalAgentName(body.agent) : mainAgentName();
-    if (!agent || !existsSync(agentDir(agent))) throw new NativeBrowserError('No agent can run the conversion.', 404);
+    if (!agent || !existsSync(agentDir(agent))) throw new NativeBrowserError(apiError('browser_conversion_no_agent', 'No agent can run the conversion.'), 404);
     // Checked again at every turn of the mission (`spawnTurn`): this answer only spares a spawn bound to fail.
     const unsafe = conversionRefusal(agent);
-    if (unsafe) throw new NativeBrowserError(unsafe, 400);
+    if (unsafe) throw new NativeBrowserError(apiError('browser_conversion_backend_unsafe', unsafe), 400);
     // The mission is named before it exists, so that the moment it starts it alone may read the steps.
     const missionId = randomUUID();
     const learning = markBrowserRecordingLearning(meta, missionId);
@@ -192,7 +193,7 @@ export function registerBrowserRecordingRoutes(app: Router, deps: BrowserRecordi
       });
     } catch (error) {
       revertBrowserRecordingLearning(meta);
-      throw new NativeBrowserError(`The conversion mission could not start: ${(error as Error).message}`, 503);
+      throw new NativeBrowserError(apiError('browser_conversion_start_failed', `The conversion mission could not start: ${(error as Error).message}`, { detail: (error as Error).message }), 503);
     }
     publishBrowserRecordingLearned(learning, userOrigin(userId));
     return { recording: learning, missionId };

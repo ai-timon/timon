@@ -340,3 +340,142 @@ test('the examples/plugin-mascot template paints every mascot with the SDK alone
   await w.act(() => { dispose(); });
   assert.ok(w.document.querySelector('svg[data-mascot]'), 'the meerkat comes back');
 });
+
+/** Two packs that each draw a head of their own, the way a plugin's browser half would (`useAgentMascot()` from `@timon/ui`). */
+async function packHeads(t: TestContext) {
+  const { register, resetSlotsForTests, MASCOT_PARTS_SLOT } = await import('@/lib/plugin-host/slots');
+  const { recordMascotDeclarations, resetMascotDeclarationsForTests } = await import('@/lib/mascot/parts-declarations');
+  const { useAgentMascot } = await import('./agent-mascot-context');
+  resetSlotsForTests();
+  resetMascotDeclarationsForTests();
+  t.after(() => React.act(async () => { resetSlotsForTests(); resetMascotDeclarationsForTests(); }));
+  recordMascotDeclarations([
+    { id: 'fire-pack', label: 'Fire', mascot: { shape: ['flame', 'broken'] } },
+    { id: 'ice-pack', label: 'Ice', mascot: { shape: ['cube'] } },
+  ]);
+  function Flame() {
+    const m = useAgentMascot();
+    return React.createElement('canvas', { 'data-flame': m?.fur, width: m?.size, height: m?.size });
+  }
+  function Cube() {
+    const m = useAgentMascot();
+    return React.createElement('svg', { 'data-cube': m?.state ?? 'still', width: m?.size, height: m?.size });
+  }
+  function Broken(): never {
+    throw new Error('the pack failed');
+  }
+  const fire = register({ slot: MASCOT_PARTS_SLOT, pluginId: 'fire-pack', key: 'flame', mascotPart: { type: 'shape', label: 'Flame', head: Flame } });
+  const broken = register({ slot: MASCOT_PARTS_SLOT, pluginId: 'fire-pack', key: 'broken', mascotPart: { type: 'shape', label: 'Broken', head: Broken } });
+  const ice = register({ slot: MASCOT_PARTS_SLOT, pluginId: 'ice-pack', key: 'cube', mascotPart: { type: 'shape', label: 'Cube', head: Cube } });
+  return { fire, broken, ice, register };
+}
+
+test('two packs each draw their own head for the agents that wear it; a third agent keeps Timon\'s', async (t) => {
+  const { AgentMascotHost } = await import('./agent-mascot');
+  const { fire } = await packHeads(t);
+  const w = await mount(t, true);
+  const crowd = () => React.createElement(React.Fragment, null,
+    React.createElement(AgentMascotHost, { look: { shape: 'fire-pack:flame', color: '#ff5fbf' }, size: 40, label: 'Ember' }),
+    React.createElement(AgentMascotHost, { look: { shape: 'ice-pack:cube' }, size: 40, state: 'thinking' }),
+    React.createElement(AgentMascotHost, { look: { shape: 'gem', color: '#ff5fbf' }, size: 40 }),
+  );
+  await w.render(crowd());
+  const flame = w.document.querySelector('[data-mascot-head="fire-pack:flame"] canvas[data-flame]');
+  assert.equal(flame?.getAttribute('data-flame'), '#ff5fbf', 'the head reads the agent\'s fur');
+  assert.equal(flame?.getAttribute('width'), '40');
+  assert.equal(w.document.querySelector('[data-mascot-head="ice-pack:cube"] svg[data-cube]')?.getAttribute('data-cube'), 'thinking');
+  const product = w.document.querySelectorAll('svg[data-mascot]');
+  assert.deepEqual(Array.from(product).map((svg) => svg.getAttribute('data-shape')), ['gem'], 'only the native agent is Timon\'s drawing');
+
+  // The configurator's eyes and accessory cells draw a part alone: those stay Timon's, on its classic screen.
+  await w.render(React.createElement(AgentMascotHost, { look: { shape: 'fire-pack:flame', eyes: 'heart' }, size: 40, part: 'screen' }));
+  assert.ok(!w.document.querySelector('[data-flame]'));
+  assert.equal(w.document.querySelector('svg[data-mascot]')?.getAttribute('data-mascot-part'), 'screen');
+
+  // The fire pack leaves: its agent shows its role's default skull, the ice head stays.
+  await w.render(crowd());
+  await w.act(() => { fire(); });
+  assert.ok(!w.document.querySelector('[data-flame]'), 'the flame is gone');
+  assert.ok(w.document.querySelector('svg[data-cube]'), 'the other pack is untouched');
+  assert.deepEqual(Array.from(w.document.querySelectorAll('svg[data-mascot]')).map((svg) => svg.getAttribute('data-shape')), [DEFAULT_LOOK.shape, 'gem']);
+});
+
+test('a pack\'s head that throws draws Timon\'s default head for that agent, and the page goes on', async (t) => {
+  const { AgentMascotHost } = await import('./agent-mascot');
+  await packHeads(t);
+  t.mock.method(console, 'error', () => undefined);
+  const w = await mount(t, true);
+  const base = defaultLookFor('code');
+  await w.render(React.createElement(React.Fragment, null,
+    React.createElement(AgentMascotHost, { look: { shape: 'fire-pack:broken', color: '#ff5fbf', acc: 'globe' }, base, size: 40, label: 'Nova' }),
+    React.createElement(AgentMascotHost, { look: { shape: 'fire-pack:flame' }, size: 40 }),
+  ));
+  const fallback = w.document.querySelector('svg[data-mascot]');
+  assert.equal(fallback?.getAttribute('data-shape'), base.shape, 'the role\'s default skull');
+  assert.equal(fallback?.getAttribute('data-acc'), 'globe', 'the rest of the look is kept');
+  assert.equal(fallback?.getAttribute('aria-label'), 'Nova');
+  assert.ok(w.document.querySelector('[data-flame]'), 'the head beside it still draws');
+  assert.ok(!w.document.querySelector('[role="alert"]'), 'no error card in place of a mascot');
+});
+
+test('a plugin that takes agent.mascot still wins over a pack\'s head', async (t) => {
+  const { AGENT_MASCOT_SLOT } = await import('@/lib/plugin-host/slots');
+  const { AgentMascotHost, ProductAgentMascot } = await import('./agent-mascot');
+  const { register } = await packHeads(t);
+  const w = await mount(t, true);
+  const fallback = register({ slot: AGENT_MASCOT_SLOT, pluginId: '@timon/agents', fallback: true }, ProductAgentMascot);
+  await w.render(React.createElement(AgentMascotHost, { look: { shape: 'fire-pack:flame' }, size: 40 }));
+  assert.ok(w.document.querySelector('[data-flame]'), 'the product\'s default occupant lets the pack draw');
+  let dispose = (): void => undefined;
+  await w.act(() => { dispose = register({ slot: AGENT_MASCOT_SLOT, pluginId: 'acme-mascot' }, () => React.createElement('i', { 'data-replacement': '' })); });
+  assert.ok(w.document.querySelector('[data-replacement]'), 'the replacement paints every mascot');
+  assert.ok(!w.document.querySelector('[data-flame]'));
+  await w.act(() => { dispose(); fallback(); });
+  assert.ok(w.document.querySelector('[data-flame]'), 'the pack\'s head comes back');
+});
+
+test('the examples/plugin-mascot-head template draws its ember for the agents that wear it, with the SDK alone', async (t) => {
+  const { readFileSync, mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join, resolve } = await import('node:path');
+  const { pathToFileURL } = await import('node:url');
+  const { register, resetSlotsForTests } = await import('@/lib/plugin-host/slots');
+  const { recordMascotDeclarations, resetMascotDeclarationsForTests } = await import('@/lib/mascot/parts-declarations');
+  resetSlotsForTests();
+  resetMascotDeclarationsForTests();
+  t.after(() => React.act(async () => { resetSlotsForTests(); resetMascotDeclarationsForTests(); }));
+  const root = resolve(process.cwd(), '..', 'examples', 'plugin-mascot-head');
+  const manifest = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { timon: { id: string; label: string; mascot: unknown } }).timon;
+  recordMascotDeclarations([{ id: manifest.id, label: manifest.label, mascot: manifest.mascot }]);
+  const source = readFileSync(join(root, 'lib', 'client.js'), 'utf8');
+  const platform = source
+    .replace(/import React from 'react'\n/, 'const React = globalThis.__mascotTestReact\n')
+    .replace(/import \{([^}]*)\} from '@timon\/ui'\n/, 'const {$1} = globalThis.__mascotTestUi\n');
+  assert.notEqual(platform, source, 'the client still imports react and @timon/ui');
+  const { UI_KIT } = await import('@/lib/plugin-host/ui-kit');
+  Object.assign(globalThis, { __mascotTestReact: React, __mascotTestUi: UI_KIT });
+  const dir = mkdtempSync(join(tmpdir(), 'mascot-head-example-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const file = join(dir, 'client.mjs');
+  writeFileSync(file, platform);
+  const mod = await import(pathToFileURL(file).href) as { apply: (ctx: unknown) => () => void };
+  const { AgentMascotHost } = await import('./agent-mascot');
+  const w = await mount(t, true);
+  let dispose = (): void => undefined;
+  await w.act(() => { dispose = mod.apply({ slots: { register: (options: { slot: string }) => register({ ...options, pluginId: manifest.id }) } }); });
+  const base = defaultLookFor('code');
+  await w.render(React.createElement(React.Fragment, null,
+    React.createElement(AgentMascotHost, { look: { shape: 'example-mascot-head:ember', color: '#3fa9ff' }, base, size: 48, state: 'sleeping', label: 'Ember' }),
+    React.createElement(AgentMascotHost, { look: { shape: 'gem' }, size: 48 }),
+  ));
+  const ember = w.document.querySelector('svg[data-ember]');
+  assert.equal(ember?.getAttribute('data-ember'), 'sleeping');
+  assert.equal(ember?.getAttribute('width'), '48');
+  assert.equal(ember?.getAttribute('aria-label'), 'Ember');
+  assert.ok(ember?.querySelector('path[fill="#3fa9ff"]'), 'the flame is the agent\'s colour');
+  assert.ok(!ember?.querySelector('animateTransform'), 'still under reduced motion');
+  assert.deepEqual(Array.from(w.document.querySelectorAll('svg[data-mascot]')).map((svg) => svg.getAttribute('data-shape')), ['gem']);
+  await w.act(() => { dispose(); });
+  assert.ok(!w.document.querySelector('svg[data-ember]'));
+  assert.deepEqual(Array.from(w.document.querySelectorAll('svg[data-mascot]')).map((svg) => svg.getAttribute('data-shape')), [base.shape, 'gem'], 'the role\'s default skull meanwhile');
+});

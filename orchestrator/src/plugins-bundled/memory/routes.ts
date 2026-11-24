@@ -58,7 +58,7 @@ function docWriteTarget(req: Request<{ name: string; file: string }>, res: Respo
     name = canonicalAgentName(req.params.name);
     exists = getAgent(name) !== null;
   } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
+    res.status(400).json(apiError('agent_doc_refused', (err as Error).message, { detail: (err as Error).message }));
     return null;
   }
   if (!exists && delegatingAgent(req) !== null) {
@@ -89,7 +89,7 @@ export function registerRoutes(app: Router): void {
     try {
       res.json({ files: listMemory(req.params.name) });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -103,7 +103,7 @@ export function registerRoutes(app: Router): void {
       }
       res.type('text/plain; charset=utf-8').send(content);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -114,7 +114,7 @@ export function registerRoutes(app: Router): void {
       const info = writeMemory(req.params.name, req.params.file, content);
       res.json(info);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -128,7 +128,7 @@ export function registerRoutes(app: Router): void {
       }
       res.json({ ok: true });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -137,7 +137,7 @@ export function registerRoutes(app: Router): void {
     try {
       res.json({ files: listProjectMemory(req.params.slug) });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -151,7 +151,7 @@ export function registerRoutes(app: Router): void {
       }
       res.type('text/plain; charset=utf-8').send(content);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -162,7 +162,7 @@ export function registerRoutes(app: Router): void {
       const info = writeProjectMemory(req.params.slug, req.params.file, content);
       res.json(info);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -176,7 +176,7 @@ export function registerRoutes(app: Router): void {
       }
       res.json({ ok: true });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -184,7 +184,7 @@ export function registerRoutes(app: Router): void {
     try {
       res.json(memoryOverview(viewerFromRequest(req)));
     } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json(apiError('memory_read_failed', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -193,7 +193,7 @@ export function registerRoutes(app: Router): void {
     try {
       res.json({ facts: dbApi.groupedLearnings(req.params.name) });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_file_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -202,10 +202,10 @@ export function registerRoutes(app: Router): void {
       const id = Number(req.params.hash);
       const action = (req.body as { action?: string } | undefined)?.action;
       if (action !== 'accept' && action !== 'reject') {
-        res.status(400).json({ error: 'action must be accept|reject' });
+        res.status(400).json(apiError('proposal_action_invalid', 'action must be accept|reject'));
         return;
       }
-      if (!Number.isInteger(id)) { res.status(400).json({ error: 'invalid proposal id' }); return; }
+      if (!Number.isInteger(id)) { res.status(400).json(apiError('proposal_id_invalid', 'invalid proposal id')); return; }
       const p = scopedDb(viewerFromRequest(req)).getProposal(id);
       if (!p) { res.status(404).json(apiError('proposal_not_found', 'proposal not found')); return; }
       const status = action === 'accept' ? 'accepted' : 'rejected';
@@ -213,7 +213,7 @@ export function registerRoutes(app: Router): void {
       if (changed) dbApi.decideProposal(id, status);
       res.json({ ok: true, changed, status });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('proposal_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -222,16 +222,16 @@ export function registerRoutes(app: Router): void {
       const id = Number(req.params.id);
       const action = (req.body as { action?: string } | undefined)?.action;
       if (action !== 'accept' && action !== 'reject') {
-        res.status(400).json({ error: 'action must be accept|reject' }); return;
+        res.status(400).json(apiError('proposal_action_invalid', 'action must be accept|reject')); return;
       }
-      if (!Number.isInteger(id)) { res.status(400).json({ error: 'invalid proposal id' }); return; }
+      if (!Number.isInteger(id)) { res.status(400).json(apiError('proposal_id_invalid', 'invalid proposal id')); return; }
       const p = scopedDb(viewerFromRequest(req)).getProposal(id);
       if (!p) { res.status(404).json(apiError('proposal_not_found', 'proposal not found')); return; }
       const status = action === 'accept' ? 'accepted' : 'rejected';
       const changed = p.status === 'pending';
       if (changed) dbApi.decideProposal(id, status);
       res.json({ ok: true, changed, status });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('proposal_refused', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/memory/rules', (req, res) => {
@@ -240,10 +240,10 @@ export function registerRoutes(app: Router): void {
       res.status(201).json({ ok: true, rule });
     } catch (err) {
       if (err instanceof MemoryRuleError) {
-        res.status(err.status).json({ error: err.message, duplicate: err.duplicate ?? null });
+        res.status(err.status).json({ ...apiError('memory_rule_refused', err.message, { detail: err.message }), duplicate: err.duplicate ?? null });
         return;
       }
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('memory_rule_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -254,24 +254,24 @@ export function registerRoutes(app: Router): void {
       if (typeof req.query.project === 'string' && req.query.project) opts.project = req.query.project;
       if (typeof req.query.agent === 'string' && req.query.agent) opts.agent = req.query.agent;
       res.json({ rules: dbApi.listRules(opts) });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('memory_rule_refused', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.delete('/api/memory/rules/:id', (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!Number.isInteger(id)) { res.status(400).json({ error: 'invalid rule id' }); return; }
+      if (!Number.isInteger(id)) { res.status(400).json(apiError('rule_id_invalid', 'invalid rule id')); return; }
       const removed = removeMemoryRule(id, requestActor(req));
       if (!removed) { res.status(404).json(apiError('rule_not_found', 'rule not found')); return; }
       // `fresh_conversation`: the agents whose next mission starts without their old session.
       res.json({ ok: true, deleted: removed.rule, fresh_conversation: removed.freshConversation });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('memory_rule_refused', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.patch('/api/memory/rules/:id', (req, res) => {
     try {
       const id = Number(req.params.id);
-      if (!Number.isInteger(id)) { res.status(400).json({ error: 'invalid rule id' }); return; }
+      if (!Number.isInteger(id)) { res.status(400).json(apiError('rule_id_invalid', 'invalid rule id')); return; }
       const b = (req.body ?? {}) as Record<string, unknown>;
       const patch: Parameters<typeof dbApi.updateRule>[1] = {};
       for (const k of ['scope', 'project', 'agent', 'role', 'kind', 'text', 'tier', 'status'] as const) {
@@ -281,7 +281,7 @@ export function registerRoutes(app: Router): void {
       const edited = editMemoryRule(id, patch);
       if (!edited) { res.status(404).json(apiError('rule_not_found', 'rule not found')); return; }
       res.json({ ...edited.rule, fresh_conversation: edited.freshConversation });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('memory_rule_refused', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.get('/api/memory/audit', (req, res) => {
@@ -289,27 +289,27 @@ export function registerRoutes(app: Router): void {
       const runId = typeof req.query.run === 'string' ? req.query.run : undefined;
       const limit = req.query.limit ? Number(req.query.limit) : undefined;
       res.json({ audit: dbApi.listMemoryAudit({ runId, limit }) });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('memory_read_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/memory/backfill', (req, res) => {
     const b = (req.body ?? {}) as { project?: string; onlyGlobal?: boolean; dryRun?: boolean };
     runBackfill({ project: b.project, onlyGlobal: b.onlyGlobal, dryRun: b.dryRun })
       .then((r) => res.json({ ok: true, ...r }))
-      .catch((err) => res.status(500).json({ error: (err as Error).message }));
+      .catch((err) => res.status(500).json(apiError('memory_backfill_failed', (err as Error).message, { detail: (err as Error).message })));
   });
 
   app.post('/api/memory/synthesize', (_req, res) => {
     runSynthesisNow()
       .then(() => res.json({ ok: true }))
-      .catch((err) => res.status(500).json({ error: (err as Error).message }));
+      .catch((err) => res.status(500).json(apiError('memory_synthesis_failed', (err as Error).message, { detail: (err as Error).message })));
   });
 
   app.get('/api/memory/search', (req, res) => {
     try {
       res.json(searchMemoryHits(String((req.query.q as string) ?? '')));
     } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json(apiError('memory_search_failed', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -318,7 +318,7 @@ export function registerRoutes(app: Router): void {
     try {
       res.json({ files: listDocs(req.params.name) });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('agent_doc_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -327,7 +327,7 @@ export function registerRoutes(app: Router): void {
     try {
       const content = readDoc(req.params.name, req.params.file);
       if (content === null) {
-        res.status(404).json({ error: 'doc not found' });
+        res.status(404).json(apiError('agent_doc_not_found', 'doc not found'));
         return;
       }
       // The CLI and MCP read JSON: a doc whose text happens to parse as JSON
@@ -338,7 +338,7 @@ export function registerRoutes(app: Router): void {
       }
       res.type('text/plain; charset=utf-8').send(content);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('agent_doc_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -348,19 +348,19 @@ export function registerRoutes(app: Router): void {
     const json = req.is('application/json') ? jsonDocBodySchema.safeParse(req.body) : null;
     const text = json ? null : textDocBodySchema.safeParse(req.body);
     if (json ? !json.success : !text?.success) {
-      res.status(400).json({ error: 'body must be the doc text (text/plain) or { "content": string }' });
+      res.status(400).json(apiError('agent_doc_body_invalid', 'body must be the doc text (text/plain) or { "content": string }'));
       return;
     }
     const content = json?.success ? json.data.content : typeof text?.data === 'string' ? text.data : '';
     if (Buffer.byteLength(content, 'utf8') > DOC_MAX_BYTES) {
-      res.status(413).json({ error: `doc too large (max ${DOC_MAX_BYTES} bytes)` });
+      res.status(413).json(apiError('agent_doc_too_large', `doc too large (max ${DOC_MAX_BYTES} bytes)`, { max: DOC_MAX_BYTES }));
       return;
     }
     try {
       const info = writeDoc(name, req.params.file, content);
       res.json(info);
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('agent_doc_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -370,12 +370,12 @@ export function registerRoutes(app: Router): void {
     try {
       const ok = deleteDoc(name, req.params.file);
       if (!ok) {
-        res.status(404).json({ error: 'doc not found' });
+        res.status(404).json(apiError('agent_doc_not_found', 'doc not found'));
         return;
       }
       res.json({ ok: true });
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      res.status(400).json(apiError('agent_doc_refused', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 }

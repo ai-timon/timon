@@ -26,6 +26,7 @@ test('the Privacy pane is filed under System when the module paints it', () => {
     graftedGroups: new Set(), desktop: false,
   });
   const system = layout.find((c) => c.id === 'system');
-  assert.ok(system?.tabs.some((tab) => tab.id === 'privacy' && tab.kind === 'plugin'));
+  const privacy = system?.tabs.find((tab) => tab.id === 'privacy');
+  assert.ok(privacy?.kind === 'native' && privacy.hosted?.pluginId === '@timon/telemetry');
   assert.equal(layout.find((c) => c.id === 'plugins')?.tabs.some((tab) => tab.id === '@timon/telemetry') ?? false, false);
 });

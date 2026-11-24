@@ -15,13 +15,17 @@
  *   `AgentMascot` itself while no occupant is registered (module off, a page
  *   before the plugins load). A screen never mounts `AgentMascot` directly,
  *   or a plugin could not replace it there.
+ * - A mascot pack may draw a head of its own (a shape part with `head`): the
+ *   host paints it, instead of the product, for the agents whose look wears
+ *   that shape. A plugin that took `agent.mascot` still wins over it.
  */
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, type CSSProperties, type ReactElement } from 'react';
 import { SlotSingle, useSlotEntries } from '@/lib/plugin-host/render';
 import { AGENT_MASCOT_SLOT } from '@/lib/plugin-host/slots';
 import { DEFAULT_LOOK, lookFurHex, normalizeAgentLook, type AgentLook } from './agent-look';
-import { useMascotPartsVersion } from './mascot-parts';
+import { mascotHeadOf, useMascotPartsVersion, type MascotPackHead } from './mascot-parts';
+import { PluginBoundary } from '@/lib/plugin-host/plugin-boundary';
 import { AgentMascotProvider, useAgentMascot, type AgentMascotValue } from './agent-mascot-context';
 import { MascotAccessoryArt, MascotAccessoryIcon } from './mascot-accessories';
 import { exprPoints, furOf, headLayout, isDrawableEyes, luma, ptsPath, shade, type MascotEyesKey } from './mascot-geometry';
@@ -339,11 +343,39 @@ export function AgentMascotHost({
       reducedMotion,
     };
   }, [shape, color, eyes, acc, base, size, live, reducedMotion, state, fit, shadow, label, parts]);
+  // A part alone (the configurator's eyes and accessory cells) stays the
+  // product's drawing: a pack's head has no screen or tool to show apart.
+  const pack = product && !part ? mascotHeadOf(value.look.shape) : null;
   return (
     <AgentMascotProvider value={value}>
       {part && product
         ? <AgentMascotFromValue value={value} part={part} />
-        : claimed ? <SlotSingle name={AGENT_MASCOT_SLOT} /> : <AgentMascotFromValue value={value} />}
+        : pack ? <PackHead pack={pack} value={value} base={base} />
+          : claimed ? <SlotSingle name={AGENT_MASCOT_SLOT} /> : <AgentMascotFromValue value={value} />}
     </AgentMascotProvider>
+  );
+}
+
+/**
+ * A head a pack draws itself. It ignores the user's 2D / 3D style: the pack
+ * draws what it draws. If it throws, the agent gets the product's head on its
+ * role's default skull (`base`), the rest of its look kept, and the page
+ * goes on; another shape mounts a fresh boundary, so the next head is tried.
+ */
+function PackHead({ pack, value, base }: { pack: MascotPackHead; value: AgentMascotValue; base: AgentLook }): ReactElement {
+  const { Head } = pack;
+  const fallback = useMemo<AgentMascotValue>(() => {
+    // A base that is itself a pack's head would fail the same way: the product's classic skull then.
+    const shape = mascotHeadOf(base.shape) ? DEFAULT_LOOK.shape : base.shape;
+    return { ...value, look: { ...value.look, shape } };
+  }, [value, base.shape]);
+  return (
+    <PluginBoundary
+      key={value.look.shape}
+      pluginId={pack.pluginId}
+      fallback={<AgentMascotProvider value={fallback}><AgentMascotFromValue value={fallback} /></AgentMascotProvider>}
+    >
+      <span data-mascot-head={value.look.shape} className="contents"><Head /></span>
+    </PluginBoundary>
   );
 }

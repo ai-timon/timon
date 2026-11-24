@@ -61,14 +61,16 @@ type MountOptions = {
   dismissed?: string[];
   shell?: ReturnType<typeof fakeShell> | null;
   buildExpiresAt?: string | null;
-  withLicenseBanner?: boolean;
+  withLicenseNotices?: boolean;
 };
 
-async function mount(status: UpdateStatus | null, { dismissed = [], shell = null, buildExpiresAt = OFFER_STATUS.buildExpiresAt, withLicenseBanner = false }: MountOptions = {}) {
+async function mount(status: UpdateStatus | null, { dismissed = [], shell = null, buildExpiresAt = OFFER_STATUS.buildExpiresAt, withLicenseNotices = false }: MountOptions = {}) {
   const { JSDOM } = await import('jsdom');
-  // The desktop app on Linux; jsdom's typings omit `userAgent`, its constructor reads it.
-  const options = { url: 'http://localhost/', pretendToBeVisual: true, userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Timon/0.1.6' };
-  const dom = new JSDOM('<html><body><div id="root"></div></body></html>', options as ConstructorParameters<typeof JSDOM>[1]);
+  const dom = new JSDOM('<html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true });
+  // The desktop app on Linux. Set on the navigator: jsdom ignores a `userAgent`
+  // option, and its own names the host (`(darwin)`, `(win32)`), so the system
+  // the card offers an installer for would be the machine running the test.
+  Object.defineProperty(dom.window.navigator, 'userAgent', { value: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130 Timon/0.1.6', configurable: true });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   const install = (key: string, value: unknown) => {
     if (!saved.has(key)) saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
@@ -127,15 +129,15 @@ async function mount(status: UpdateStatus | null, { dismissed = [], shell = null
   dialog.resetUpdateDialogForTests();
   const { NoticesHost } = await import('@/components/notices/notices-host');
   const { UpdateNotice } = await import('./update-notice');
-  const { LicenseBanner } = await import('@/components/license-banner');
+  const { LicenseNotices } = await import('@/components/notices/license-notices');
   const root = createRoot(document.getElementById('root')!);
   await React.act(async () => {
-    root.render(React.createElement(React.Fragment, null,
-      React.createElement(NoticesHost),
-      withLicenseBanner ? React.createElement(LicenseBanner) : null));
+    root.render(React.createElement(NoticesHost));
   });
   // As the client half of `@timon/updates` registers it.
   await React.act(async () => { slots.register({ slot: 'notices', key: 'update', pluginId: '@timon/updates' }, UpdateNotice); });
+  // As the client half of `@timon/settings` registers it: the licence's cards beside the update's.
+  if (withLicenseNotices) await React.act(async () => { slots.register({ slot: 'notices', key: 'license', pluginId: '@timon/settings' }, LicenseNotices); });
   const until = (condition: () => boolean, what: string) => waitUntil(React.act, condition, what);
   const click = async (el: Element | null | undefined) => {
     assert.ok(el, 'element to click');
@@ -271,7 +273,7 @@ test('closing is later for that version, per account: the same version stays clo
 
 test('a build about to stop makes the card a warning that says when; alone, it is a card of its own; the top banner no longer says it', async () => {
   const ending = new Date(NOW + 5 * DAY).toISOString();
-  const m = await mount(OFFER_STATUS, { buildExpiresAt: ending, withLicenseBanner: true });
+  const m = await mount(OFFER_STATUS, { buildExpiresAt: ending, withLicenseNotices: true });
   try {
     await m.until(() => /This build stops running on/.test(text()), 'the end in the update card');
     assert.equal(card()?.querySelector('[data-notice-card]')?.getAttribute('data-notice-card'), 'warning');

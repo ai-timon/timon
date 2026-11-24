@@ -1,4 +1,4 @@
-/** Fixture : revendique l'id d'un autre paquet. Jamais importée. */
+/** Fixture: claims the id of another package. Never imported. */
 ;(globalThis.__timonFixtureTrace ??= []).push('duplicate:imported')
 
 export function apply() {}

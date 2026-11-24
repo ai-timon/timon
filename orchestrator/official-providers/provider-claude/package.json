@@ -6,7 +6,7 @@
   "main": "lib/index.js",
   "timon": {
     "id": "provider-claude",
-    "apiVersion": 12,
+    "apiVersion": 18,
     "kind": "provider",
     "label": "Claude (Anthropic)",
     "description": "Official subscription provider using the Claude CLI.",

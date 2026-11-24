@@ -12,6 +12,11 @@
  *    web app reports what that person opened. Never anonymous, never a token:
  *    an agent does not report page views on anyone's behalf. The body is one
  *    event of a closed list; the page path is reduced to its section here.
+ *    One exception, `onboarding_screen` while the machine has no account yet:
+ *    the screens before the account (welcome, background, account) have no
+ *    one to sign in. The auth middleware lets an anonymous caller reach this
+ *    route only then, and only on the loopback; the event is a closed list of
+ *    words, and at most `ANONYMOUS_SCREEN_EVENTS` of them per daemon run.
  */
 import type { Router } from 'express';
 import { z } from 'zod';
@@ -20,6 +25,13 @@ import { preferenceEditable, writePreference, type TelemetryPreference } from '.
 import { telemetry } from './runtime.js';
 import { versionValue } from './events.js';
 import { apiError } from '../../api-error.js';
+import { dbApi } from '../../db.js';
+import {
+  ONBOARDING_LLM_CHOICES, ONBOARDING_LLM_CONNECTIONS, ONBOARDING_LLM_FAILURES, ONBOARDING_SCREEN_ACTIONS, ONBOARDING_SCREENS,
+} from '../../onboarding-events.js';
+
+/** Enough for several people trying the onboarding over and over; a script posting in a loop stops here. */
+export const ANONYMOUS_SCREEN_EVENTS = 300;
 
 const PreferenceBody = z.object({ enabled: z.boolean() }).strict();
 const DesktopOpenedBody = z.object({ version: z.string().max(64).optional() }).strict();
@@ -32,6 +44,16 @@ const UiEventBody = z.discriminatedUnion('name', [
     name: z.literal('upgrade_action'), surface: UiSurface,
     action: z.enum(['plans_viewed', 'buy_opened']),
     entryPoint: z.enum(['license_page', 'users', 'settings', 'banner', 'other']),
+  }).strict(),
+  z.object({
+    name: z.literal('onboarding_screen'), surface: UiSurface,
+    screen: z.enum(ONBOARDING_SCREENS),
+    action: z.enum(ONBOARDING_SCREEN_ACTIONS),
+    llmChoice: z.enum(ONBOARDING_LLM_CHOICES).optional(),
+    // A CLI's binary name, mapped to a product backend or `other` before it leaves.
+    backend: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/).optional(),
+    connection: z.enum(ONBOARDING_LLM_CONNECTIONS).optional(),
+    failureCode: z.enum(ONBOARDING_LLM_FAILURES).optional(),
   }).strict(),
 ]);
 
@@ -47,6 +69,8 @@ function view(pref: TelemetryPreference): Record<string, unknown> {
 }
 
 export function registerRoutes(app: Router, preference: () => TelemetryPreference): void {
+  let anonymousScreens = 0;
+
   app.get('/api/telemetry/preference', (req, res) => {
     if (!requireAuth(req, res)) return;
     res.json(view(preference()));
@@ -61,10 +85,10 @@ export function registerRoutes(app: Router, preference: () => TelemetryPreferenc
     }
     if (rejectIfDenied(req, res, 'settings:write')) return;
     const body = PreferenceBody.safeParse(req.body);
-    if (!body.success) { res.status(400).json({ error: 'enabled must be a boolean' }); return; }
+    if (!body.success) { res.status(400).json(apiError('enabled_required', 'enabled must be a boolean')); return; }
     const before = preference();
     if (!preferenceEditable(before)) {
-      res.status(409).json({ error: 'forced', source: before.source });
+      res.status(409).json({ ...apiError('telemetry_preference_forced', 'the statistics preference is set outside Timon (environment or configuration file)'), source: before.source });
       return;
     }
     writePreference(body.data.enabled);
@@ -73,6 +97,18 @@ export function registerRoutes(app: Router, preference: () => TelemetryPreferenc
   });
 
   app.post('/api/telemetry/ui-event', (req, res) => {
+    if (!req.auth) {
+      const body = UiEventBody.safeParse(req.body);
+      // Anything else, or once an account exists, gets the usual 401.
+      if (body.success && body.data.name === 'onboarding_screen' && dbApi.countUsers() === 0) {
+        if (anonymousScreens < ANONYMOUS_SCREEN_EVENTS) {
+          anonymousScreens += 1;
+          telemetry().trackUi(body.data, { userId: null });
+        }
+        res.json({ ok: true });
+        return;
+      }
+    }
     const auth = requireAuth(req, res);
     if (!auth) return;
     if (!isPersonAuth(auth)) {
@@ -80,7 +116,7 @@ export function registerRoutes(app: Router, preference: () => TelemetryPreferenc
       return;
     }
     const body = UiEventBody.safeParse(req.body);
-    if (!body.success) { res.status(400).json({ error: 'invalid event' }); return; }
+    if (!body.success) { res.status(400).json(apiError('telemetry_event_invalid', 'invalid event')); return; }
     telemetry().trackUi(body.data, { userId: auth.user?.id ?? null });
     res.json({ ok: true });
   });

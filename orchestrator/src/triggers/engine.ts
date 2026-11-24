@@ -10,7 +10,9 @@
 import { CronExpressionParser } from 'cron-parser';
 import { evaluateFilter } from './filter.js';
 import { lookup, type TriggerInput } from './payload.js';
-import { runActions, type ActionOutcome } from './actions.js';
+import { missingProviders, runActions, type ActionOutcome } from './actions.js';
+import { daemonMessage } from '../daemon-message.js';
+import { createNotification } from '../notifications.js';
 import {
   claimDelivery, claimScheduleRun, excerptOf, getTrigger, listDueSchedules, listTriggerRows, markTriggered,
   parseTrigger, recordDelivery, releaseDelivery, setNextRun, type Trigger,
@@ -150,21 +152,94 @@ export function scheduleInput(trigger: Trigger, now: number): TriggerInput {
 }
 
 /**
+ * How long a due occurrence waits for a module that serves one of its actions
+ * (Workflows) to start. At boot it registers within seconds of this source; a
+ * module that never comes (switched off, failed) must not hold the trigger
+ * forever, nor make it retry on every tick.
+ */
+export const SCHEDULE_PROVIDER_GRACE_MS = 5 * 60_000;
+
+/** The occurrence each waiting trigger holds back, and since when. In memory: a restart waits again, once. */
+const waiting = new Map<string, { occurrence: number; since: number }>();
+
+/**
+ * True while the occurrence must wait for a module that is not running yet.
+ * The whole trigger waits, not only the missing action: its other actions
+ * would otherwise run now and again once the module is there.
+ */
+function holdForProviders(trigger: Trigger, now: number): boolean {
+  const missing = missingProviders(trigger);
+  const occurrence = trigger.nextRunAt ?? now;
+  const held = waiting.get(trigger.id);
+  if (missing.length === 0) { waiting.delete(trigger.id); return false; }
+  if (!held || held.occurrence !== occurrence) {
+    waiting.set(trigger.id, { occurrence, since: now });
+    console.log(`[triggers] ${trigger.id}: scheduled run waits for ${missing.join(', ')} to start`);
+    return true;
+  }
+  if (now - held.since < SCHEDULE_PROVIDER_GRACE_MS) return true;
+  waiting.delete(trigger.id);
+  return false;
+}
+
+/**
+ * Schedules whose last run failed and whose owner was told. One alert per
+ * streak: a cron every minute against a module that is switched off would
+ * otherwise alert every minute. A successful run ends the streak.
+ */
+const failing = new Set<string>();
+
+/**
+ * A scheduled run nobody watches: a failure that will not fix itself reaches
+ * the owner as well as the journal. `trigger:<id>` as source, so an event
+ * trigger never fires on its own alert.
+ */
+function alertScheduleFailure(trigger: Trigger, error: string): void {
+  if (failing.has(trigger.id)) return;
+  failing.add(trigger.id);
+  try {
+    createNotification({
+      type: 'alert', title: `Scheduled trigger failed: ${trigger.name}`, body: error,
+      ownerUserId: trigger.ownerUserId, source: `trigger:${trigger.id}`,
+      message: daemonMessage('trigger_schedule_failed', { name: trigger.name, error }),
+    });
+  } catch (err) {
+    console.warn(`[triggers] schedule alert for ${trigger.id} not sent: ${(err as Error).message}`);
+  }
+}
+
+function failureOf(result: FireResult): string | null {
+  if (result.status !== 'error') return null;
+  return result.outcomes.flatMap((o) => (o.ok ? [] : [`${o.type}: ${o.error}`])).join('; ');
+}
+
+/**
  * Native schedule triggers due now. Like the routines: the next run is
  * computed from now (a daemon that was down does not catch up in bursts), and
- * claimed before running so two ticks never run the same occurrence.
+ * claimed before running so two ticks never run the same occurrence. An
+ * occurrence whose module is not running yet is not claimed: it stays due,
+ * and runs at most once when the module is there or the grace is over.
  */
 export function tickSchedules(now: number = Date.now()): void {
-  for (const trigger of listDueSchedules(now)) {
+  const due = listDueSchedules(now);
+  // A trigger no longer due (switched off, deleted, rescheduled) waits for nothing.
+  const dueIds = new Set(due.map((t) => t.id));
+  for (const id of waiting.keys()) if (!dueIds.has(id)) waiting.delete(id);
+  for (const trigger of due) {
     if (trigger.source !== 'schedule') continue;
+    if (holdForProviders(trigger, now)) continue;
     let next: number;
     try { next = nextScheduleAt(trigger.config, now); } catch { next = now + 60_000; }
     if (!claimScheduleRun(trigger.id, now, next)) continue;
+    let failure: string | null;
     try {
-      fireTrigger(trigger, scheduleInput(trigger, now));
+      failure = failureOf(fireTrigger(trigger, scheduleInput(trigger, now)));
     } catch (err) {
-      recordDelivery({ triggerId: trigger.id, status: 'error', reason: (err as Error).message });
+      failure = (err as Error).message;
+      recordDelivery({ triggerId: trigger.id, status: 'error', reason: failure });
     }
+    if (failure === null) failing.delete(trigger.id);
+    else alertScheduleFailure(trigger, failure);
   }
 }
 

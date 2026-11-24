@@ -10,8 +10,8 @@ import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  DaemonAnswerError, appImageBackupPath, debInstallCommand, missionsAtStake, readMissionCount, removeAppImageBackup, replaceAppImage,
-  type AppImageFs,
+  DaemonAnswerError, appImageBackupPath, debInstallCommand, missionsAtStake, previousAppImage, readMissionCount, removeAppImageBackup,
+  replaceAppImage, rollBackAppImage, type AppImageFs,
 } from './update-install.js';
 
 const NEW = Buffer.from('the new AppImage');
@@ -101,6 +101,107 @@ test('the new version removes the previous AppImage once it runs', async () => {
   assert.equal(existsSync(appImageBackupPath(s.appImage)), false);
   assert.deepEqual(readFileSync(s.appImage), NEW);
   await removeAppImageBackup(undefined);
+});
+
+/**
+ * A simulated file system for "Go back to x.y.z": files by path, executable or not,
+ * and every operation written down in order.
+ */
+function simulatedFs(files: Record<string, { content: string; executable: boolean }>) {
+  const ops: string[] = [];
+  return {
+    files, ops,
+    fs: {
+      access: async (path: string, mode: number) => {
+        ops.push(`access ${path}`);
+        const file = files[path];
+        if (!file || (mode & 0o1 && !file.executable)) throw Object.assign(new Error(`ENOENT ${path}`), { code: 'ENOENT' });
+      },
+      rename: async (from: string, to: string) => {
+        ops.push(`rename ${from} -> ${to}`);
+        const file = files[from];
+        if (!file) throw Object.assign(new Error(`ENOENT ${from}`), { code: 'ENOENT' });
+        files[to] = file;
+        delete files[from];
+      },
+      rm: async (path: string) => { ops.push(`rm ${path}`); delete files[path]; },
+    },
+  };
+}
+
+const LAUNCHED = '/home/me/Applications/Timon.AppImage';
+const PREVIOUS = '/home/me/Applications/.Timon.AppImage.previous';
+const STAGED = '/home/me/Applications/.Timon.AppImage.timon-update';
+
+test('going back puts the previous AppImage under the launched name, then queues its start', { skip: process.platform === 'win32' }, async () => {
+  const sim = simulatedFs({
+    [LAUNCHED]: { content: '0.2.0', executable: true }, [PREVIOUS]: { content: '0.1.8', executable: true },
+    [STAGED]: { content: 'half a copy', executable: false },
+  });
+  const relaunched: string[] = [];
+  const outcome = await rollBackAppImage(LAUNCHED, async (path) => { relaunched.push(`${path}: ${sim.files[path]!.content}`); }, sim.fs);
+  assert.deepEqual(outcome, { status: 'relaunched' });
+  assert.deepEqual(relaunched, [`${LAUNCHED}: 0.1.8`], 'the previous version is what starts, under the launched name');
+  assert.deepEqual(Object.keys(sim.files), [LAUNCHED]);
+  assert.deepEqual(sim.ops, [`access ${PREVIOUS}`, `rename ${PREVIOUS} -> ${LAUNCHED}`, `rm ${STAGED}`]);
+});
+
+test('without a previous AppImage there is nothing to go back to, and nothing is touched', { skip: process.platform === 'win32' }, async () => {
+  for (const files of [
+    { [LAUNCHED]: { content: '0.2.0', executable: true } },
+    // A previous file that lost its executable bit would not start: no button either.
+    { [LAUNCHED]: { content: '0.2.0', executable: true }, [PREVIOUS]: { content: '0.1.8', executable: false } },
+  ]) {
+    const sim = simulatedFs(files);
+    assert.equal(await previousAppImage(LAUNCHED, sim.fs.access), null);
+    let relaunched = false;
+    assert.deepEqual(await rollBackAppImage(LAUNCHED, async () => { relaunched = true; }, sim.fs), { status: 'missing' });
+    assert.equal(relaunched, false);
+    assert.equal(sim.files[LAUNCHED]!.content, '0.2.0');
+    assert.ok(sim.ops.every(op => op.startsWith('access ')), sim.ops.join('\n'));
+  }
+  const sim = simulatedFs({ [PREVIOUS]: { content: '0.1.8', executable: true } });
+  for (const appImage of [undefined, '', 'Timon.AppImage', '/x\0y']) {
+    assert.equal(await previousAppImage(appImage, sim.fs.access), null, String(appImage));
+    assert.deepEqual(await rollBackAppImage(appImage, async () => {}, sim.fs), { status: 'missing' });
+  }
+  assert.deepEqual(sim.ops, [], 'a path that is not absolute is never looked at');
+});
+
+test('the previous AppImage is found beside the launched one', { skip: process.platform === 'win32' }, async () => {
+  const sim = simulatedFs({ [PREVIOUS]: { content: '0.1.8', executable: true } });
+  assert.equal(await previousAppImage(LAUNCHED, sim.fs.access), PREVIOUS);
+});
+
+test('a start that cannot be queued still leaves the previous version in place, and says so', { skip: process.platform === 'win32' }, async () => {
+  const sim = simulatedFs({ [LAUNCHED]: { content: '0.2.0', executable: true }, [PREVIOUS]: { content: '0.1.8', executable: true } });
+  const outcome = await rollBackAppImage(LAUNCHED, async () => { throw new Error('Could not create the restart control pipe.'); }, sim.fs);
+  assert.deepEqual(outcome, { status: 'restored', message: 'Could not create the restart control pipe.' });
+  assert.equal(sim.files[LAUNCHED]!.content, '0.1.8');
+});
+
+test('a rename that fails keeps the new AppImage and starts nothing', { skip: process.platform === 'win32' }, async () => {
+  const sim = simulatedFs({ [LAUNCHED]: { content: '0.2.0', executable: true }, [PREVIOUS]: { content: '0.1.8', executable: true } });
+  let relaunched = false;
+  const outcome = await rollBackAppImage(LAUNCHED, async () => { relaunched = true; }, {
+    ...sim.fs, rename: async () => { throw Object.assign(new Error('EROFS: read-only file system'), { code: 'EROFS' }); },
+  });
+  assert.deepEqual(outcome, { status: 'failed', message: 'EROFS: read-only file system' });
+  assert.equal(relaunched, false);
+  assert.equal(sim.files[LAUNCHED]!.content, '0.2.0');
+  assert.equal(sim.files[PREVIOUS]!.content, '0.1.8');
+});
+
+test('on the real file system, an install then a refusal brings the running AppImage back', { skip: process.platform === 'win32' }, async () => {
+  const s = setup();
+  await replaceAppImage({ appImage: s.appImage, verified: s.verified, sha256: NEW_SHA });
+  assert.equal(await previousAppImage(s.appImage), appImageBackupPath(s.appImage));
+  const relaunched: string[] = [];
+  assert.deepEqual(await rollBackAppImage(s.appImage, async (path) => { relaunched.push(readFileSync(path, 'utf8')); }), { status: 'relaunched' });
+  assert.deepEqual(relaunched, ['the running AppImage']);
+  assert.equal(statSync(s.appImage).mode & 0o111, 0o110);
+  assert.equal(existsSync(appImageBackupPath(s.appImage)), false);
+  assert.equal(await previousAppImage(s.appImage), null);
 });
 
 test('the .deb command quotes its path for a POSIX shell', () => {

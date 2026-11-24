@@ -31,6 +31,7 @@ import { nodeRuntime } from '../../host/node-runtime.js';
 // and the app must know this URL even when the module carrying it is
 // disabled — the compose container publishes exactly the same endpoint.
 import { composeStackAvailable, resolveTts } from '../tts/index.js';
+import { daemonMessage } from '../../daemon-message.js';
 
 export const manifest: ModuleManifest = {
   name: '@timon/web-app',
@@ -171,6 +172,9 @@ export function superviseApp(host: Host, cfg: TimonConfig, appDir: string): () =
         const rearm = why.includes('port occupied') ? '' : ' Once fixed, `timon app restart` or reopening the desktop app starts it again.';
         return `${why}. ${advice}${rearm}`;
       },
+      message: (why) => why.includes('port occupied') ? daemonMessage('web_app_port_occupied', { why })
+        : why.includes('clean exit') ? daemonMessage('web_app_clean_exit', { why })
+          : daemonMessage('web_app_stopped', { why }),
     },
   });
 }

@@ -26,6 +26,8 @@ const FAKE = join(HERE, '..', 'backends', 'acp', '__fixtures__', 'fake-acp-agent
 const { mountOfficialProviders, stubCliBinaries, buildUnderSeal } = await import('../../tests/helpers/official-providers.js');
 await stubCliBinaries('opencode', 'hermes-acp', 'pi', 'agy');
 assert.ok((await mountOfficialProviders()).includes('provider-acp'));
+// Antigravity ships off (Google's terms): these tests switch it on, as a person does from its provider page.
+(await import('../backends/overlays.js')).saveBackendOverlay('antigravity', { disabled: false });
 const { getDialect, installedProfiles, profileDeclarations, registeredBackendOwners } = await import('../backends/registry.js');
 const { getBackend } = await import('../backends/index.js');
 const { BUILTIN_DECLARATIONS } = await import('../backends/builtin-declarations.js');
@@ -33,7 +35,7 @@ const { openLaunchSeal, closeLaunchSeal } = await import('../backends/launch-sea
 
 const { spawnOverrideRefusal } = await import('../users/privileged-overrides.js');
 const { acpInitEvent } = await import('../backends/acp/events.js');
-const { antigravityKeychainEnv, antigravitySignIn, antigravitySignInCommand } = await import('../../official-providers/provider-acp/lib/agents.js');
+const { ACP_AGENTS, antigravityKeychainEnv, antigravitySignIn, antigravitySignInCommand } = await import('../../official-providers/provider-acp/lib/agents.js');
 /** The sign-in sentence of THIS platform, as a pattern: on Linux the command switches the keychain off. */
 const AGY_SIGN_IN = new RegExp(antigravitySignIn(process.platform).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 type BuildSpawnOpts = import('../backends/types.js').BuildSpawnOpts;
@@ -174,6 +176,24 @@ test('Antigravity keeps its sign-in where a fenced mission reads it: on Linux ev
   for (const id of ['opencode', 'hermes'] as const) {
     assert.equal((await buildUnderSeal(id, opts())).env?.DBUS_SESSION_BUS_ADDRESS, undefined, `${id} keeps its own bus`);
   }
+});
+
+test('Antigravity ships off: no backend, no model listing, until a person switches it on', async () => {
+  const { activeProfiles, inactiveProfiles } = await import('../backends/registry.js');
+  const { saveBackendOverlay } = await import('../backends/overlays.js');
+  const { db } = await import('../db.js');
+  assert.equal(installedProfiles().find((candidate) => candidate.id === 'antigravity')?.disabled, true);
+  for (const id of ['opencode', 'hermes']) assert.notEqual(installedProfiles().find((candidate) => candidate.id === id)?.disabled, true, id);
+  db.prepare(`DELETE FROM backend_overlays WHERE id = 'antigravity'`).run();
+  try {
+    assert.equal(inactiveProfiles().find((entry) => entry.id === 'antigravity')?.reason, 'disabled in settings');
+    // The model discovery and the quota gauge read the active set only: nothing starts `agy`.
+    assert.ok(!activeProfiles().some((entry) => entry.profile.id === 'antigravity'));
+    assert.throws(() => getBackend('antigravity'), /disabled in settings/);
+  } finally {
+    saveBackendOverlay('antigravity', { disabled: false });
+  }
+  assert.ok(activeProfiles().some((entry) => entry.profile.id === 'antigravity'), 'the switch on the provider page wins');
 });
 
 test('the Antigravity profile names its binary, invents no model and passes no variable of its own', () => {
@@ -353,8 +373,18 @@ test('through the backend: Hermes asks, TIMON answers; opencode is declared as d
   }
 });
 
+test('Hermes names the commands that sign in: `hermes setup`, `hermes portal` for Nous, never `--setup` (TIM-0159)', () => {
+  // `hermes --setup` is refused by Hermes 0.22 (`unrecognized arguments`).
+  assert.equal(BUILTIN_DECLARATIONS.hermes?.signInCommand, 'hermes setup');
+  const signIn = ACP_AGENTS.find((agent) => agent.id === 'hermes')?.signIn;
+  assert.match(signIn?.byMethod?.nous ?? '', /`hermes portal`/);
+  assert.match(signIn?.byMethod?.['hermes-setup'] ?? '', /`hermes setup`/);
+  assert.match(signIn?.fallback ?? '', /`hermes setup`/);
+  assert.doesNotMatch(JSON.stringify(signIn), /--setup/);
+});
+
 test('a refused sign-in names the login step of the agent\'s own row', async () => {
-  const cases = [['opencode', /run `opencode auth login`/], ['hermes', /run `hermes --setup`/], ['antigravity', AGY_SIGN_IN]] as const;
+  const cases = [['opencode', /run `opencode auth login`/], ['hermes', /run `hermes setup`/], ['antigravity', AGY_SIGN_IN]] as const;
   for (const [id, expected] of cases) {
     const previous = process.env.FAKE_ACP_AUTH;
     process.env.FAKE_ACP_AUTH = '1';
@@ -446,7 +476,7 @@ function acpScript(id: string, sessionId: string, authMethod: string): import('.
 
 const SESSION_CASES = [
   { id: 'opencode', cmd: 'opencode', args: ['acp'], authMethod: 'opencode-login', signIn: /run `opencode auth login` in a terminal on this machine, then retry/ },
-  { id: 'hermes', cmd: 'hermes-acp', args: [], authMethod: 'hermes-setup', signIn: /run `hermes --setup` in a terminal on this machine, then retry/ },
+  { id: 'hermes', cmd: 'hermes-acp', args: [], authMethod: 'hermes-setup', signIn: /run `hermes setup` in a terminal on this machine, then retry/ },
   { id: 'antigravity', cmd: 'agy', args: ['acp'], authMethod: 'oauth-personal', signIn: AGY_SIGN_IN },
 ] as const;
 

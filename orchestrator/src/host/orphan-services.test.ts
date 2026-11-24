@@ -28,12 +28,21 @@ test('the home is read back from each supervisor definition as it is rendered', 
   assert.equal(homeOfUnit('[Service]\nEnvironment=PATH=/usr/bin\n', '/home/t'), null);
   assert.equal(homeOfPlist(renderPlist(base('/Users/t', '/var/folders/x/T/a&b'))), '/var/folders/x/T/a&b');
   assert.equal(homeOfPlist(renderLaunchDaemonPlist(base('/Users/t', '/private/tmp/rc'))), '/private/tmp/rc');
-  const xml = renderTaskXml({ userName: 't', timonHome: 'C:\\Users\\t\\AppData\\Local\\Temp\\rc & co', installDir: 'C:\\Timon' });
+  const packagedNode = 'C:\\Timon\\resources\\node\\node.exe';
+  const xml = renderTaskXml({ userName: 't', timonHome: 'C:\\Users\\t\\AppData\\Local\\Temp\\rc & co', installDir: 'C:\\Timon\\resources\\orchestrator', nodePath: packagedNode });
   assert.equal(homeOfTask(xml), 'C:\\Users\\t\\AppData\\Local\\Temp\\rc & co');
   assert.equal(homeOfTask('<Task><Actions><Exec><Command>notepad.exe</Command></Exec></Actions></Task>'), null);
-  // The logon task ("only while I'm logged in") names its launcher in a PowerShell literal.
-  const logon = renderTaskXml({ userName: 'o', timonHome: "C:\\Users\\o'neil & co\\.timon", installDir: 'C:\\Timon', offSession: false });
+  // The logon task ("only while I'm logged in") names its configuration after `Timon.exe --timon-service`.
+  const logon = renderTaskXml({ userName: 'o', timonHome: "C:\\Users\\o'neil & co\\.timon", installDir: 'C:\\Timon\\resources\\orchestrator', nodePath: packagedNode, offSession: false });
   assert.equal(homeOfTask(logon), "C:\\Users\\o'neil & co\\.timon");
+  // A source checkout's logon task, which has no Timon.exe, names it in a PowerShell literal.
+  const scripted = renderTaskXml({ userName: 'o', timonHome: "C:\\Users\\o'neil & co\\.timon", installDir: 'C:\\src\\timon\\orchestrator', nodePath: 'C:\\Program Files\\nodejs\\node.exe', offSession: false });
+  assert.equal(homeOfTask(scripted), "C:\\Users\\o'neil & co\\.timon");
+  // The tasks of revision 5, still registered until the upgrade rewrites them: the batch through cmd, or through PowerShell.
+  const batchBoot = '<Task><Actions><Exec><Command>cmd.exe</Command><Arguments>/d /s /c &quot;&quot;C:\\Users\\t\\.timon\\run\\timon-service.cmd&quot;&quot;</Arguments></Exec></Actions></Task>';
+  assert.equal(homeOfTask(batchBoot), 'C:\\Users\\t\\.timon');
+  const batchLogon = "<Task><Actions><Exec><Command>powershell.exe</Command><Arguments>-NoProfile -Command &quot;$i.Arguments = '/d /s /c ' + [char]34 + [char]34 + 'C:\\Users\\o''neil\\.timon\\run\\timon-service.cmd' + [char]34 + [char]34&quot;</Arguments></Exec></Actions></Task>";
+  assert.equal(homeOfTask(batchLogon), "C:\\Users\\o'neil\\.timon");
 });
 
 test('#464: Linux lists the Timon units whose home is gone, and only those', () => {
@@ -91,7 +100,7 @@ test('#464: macOS checks both the LaunchDaemon and the LaunchAgent', () => {
 
 test('#464: Windows reads the home from the registered task', () => {
   const dead = 'C:\\Users\\t\\AppData\\Local\\Temp\\rc';
-  const xml = renderTaskXml({ userName: 't', timonHome: dead, installDir: 'C:\\Timon' });
+  const xml = renderTaskXml({ userName: 't', timonHome: dead, installDir: 'C:\\Timon\\resources\\orchestrator', nodePath: 'C:\\Timon\\resources\\node\\node.exe' });
   const exists = (path: string) => path !== dead;
   const found = orphanServices({ platform: 'win32', homeDir: 'C:\\Users\\t', readWindowsTask: () => xml, exists });
   assert.deepEqual(found.map((orphan) => [orphan.name, orphan.home]), [['TimonOrchestrator', dead]]);

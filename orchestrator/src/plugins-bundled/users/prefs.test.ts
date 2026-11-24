@@ -71,7 +71,7 @@ async function call(
 test('GET /api/auth/me before setup returns product-default prefs', async () => {
   const me = await call('GET', '/api/auth/me');
   assert.equal(me.status, 200);
-  assert.deepEqual(me.json, { user: null, needsSetup: true, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null });
+  assert.deepEqual(me.json, { user: null, needsSetup: true, setupRequiresToken: false, setupRequiresLicense: false, setupRequiresEmailCode: false, prefs: DEFAULT_USER_PREFS, can: { 'projects:manage': false, 'agents:manage': false, 'agents:privileged-config': false, 'providers:manage': false, 'providers:accounts': false, 'settings:write': false }, welcome: null, emailUnverified: false });
 });
 
 test('daemon-token without a user: GET defaults, PUT 403', async () => {

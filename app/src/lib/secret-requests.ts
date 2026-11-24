@@ -118,6 +118,25 @@ export type SecretAnswerOutcome = { ok: true; request: SecretRequestView } | { o
 
 const ERRORS: readonly SecretAnswerError[] = ['not_found', 'already_decided', 'expired', 'duplicate', 'not_stored', 'invalid_request', 'session_required'];
 
+/** The daemon's `code` for each refusal; an older daemon put the bare name in `error`. */
+const CODES: Readonly<Record<string, SecretAnswerError>> = {
+  secret_request_not_found: 'not_found',
+  secret_request_decided: 'already_decided',
+  secret_request_expired: 'expired',
+  secret_request_duplicate: 'duplicate',
+  secret_request_not_stored: 'not_stored',
+  secret_request_value_invalid: 'invalid_request',
+  invalid_request: 'invalid_request',
+  secret_request_session_required: 'session_required',
+};
+
+/** Which refusal a failed answer is, `null` when the body names none. */
+export function secretAnswerError(body: unknown): SecretAnswerError | null {
+  const raw = body && typeof body === 'object' ? body as { code?: unknown; error?: unknown } : {};
+  if (typeof raw.code === 'string' && Object.prototype.hasOwnProperty.call(CODES, raw.code)) return CODES[raw.code]!;
+  return oneOf(ERRORS, raw.error);
+}
+
 async function answer(id: string, verb: 'provide' | 'refuse', body: unknown): Promise<SecretAnswerOutcome> {
   let res: Response;
   try {
@@ -132,13 +151,12 @@ async function answer(id: string, verb: 'provide' | 'refuse', body: unknown): Pr
   } catch {
     return { ok: false, error: 'network' };
   }
-  const json = (await res.json().catch(() => null)) as { request?: unknown; error?: unknown } | null;
+  const json = (await res.json().catch(() => null)) as { request?: unknown; error?: unknown; code?: unknown } | null;
   if (res.ok) {
     const request = parseSecretRequest(json?.request);
     return request ? { ok: true, request } : { ok: false, error: 'network' };
   }
-  const error = oneOf(ERRORS, json?.error);
-  return { ok: false, error: error ?? 'network' };
+  return { ok: false, error: secretAnswerError(json) ?? 'network' };
 }
 
 /** Sends the typed value to the vault. The caller drops it from memory whatever the outcome. */

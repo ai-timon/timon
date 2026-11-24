@@ -136,7 +136,7 @@ test('the widget window lists the removed top bar widgets, under a Top bar tab a
 });
 
 test('a view stored before the widget existed shows it in the middle of the top bar', async () => {
-  // The /chat row of the regression: the former « Agents list » card in a chat
+  // The /chat row of the regression: the former "Agents list" card in a chat
   // column tab, the bell and quotas on the right of the bar, no Working agents.
   const { cleanup } = await mountPalette([
     { id: GIT, rail: 'chat.right.widget', rang: 0, hauteur: 300 },

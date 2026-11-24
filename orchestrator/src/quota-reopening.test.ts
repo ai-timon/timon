@@ -39,6 +39,7 @@ const { RECHECK_INTERVAL_MS, setUsageProbeForTest } = await import('./backend-re
 const { MAX_BLIND_QUOTA_DEATHS, MAX_SYSTEM_REQUEUES } = await import('./db.js');
 const { upsertAgent } = await import('./agent.js');
 const { QUOTA_REOPEN_MARGIN_MS } = await import('./interruption.js');
+const { bestRateLimit } = await import('./rate-limit.js');
 
 const MINUTE = 60_000;
 const night = (hhmm: string): number => new Date(`2026-10-31T${hhmm}:00`).getTime();
@@ -668,4 +669,39 @@ test('the orphan path applies the same bound as the live one', async () => {
   const task = dbApi.getTask(taskId);
   assert.equal(task?.status, 'PENDING');
   assert.equal(task?.requeue_count, 1);
+});
+
+test('a quota notice printed as the answer of a clean turn stops the task until the reopening it names', () => {
+  // Antigravity, 2026-11-21: the CLI does not fail the turn, it ends it normally
+  // with the provider's notice for an answer. Read as a success, the task waited
+  // for the idle reaper and closed with no work done.
+  const { taskId, missionId } = runningTask();
+  const notice = '\n⚠ Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 2h20m0s.\n';
+  dbApi.insertEvent(missionId, 'assistant', { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: notice }] } });
+  const result = {
+    type: 'result', subtype: 'success', is_error: false, result: notice, stop_reason: 'end_turn', total_cost_usd: 0,
+  };
+  // What the live stream does with each event (`processEvent`, agent.ts): the
+  // account is sidelined for every mission, not only this one.
+  const hit = bestRateLimit([{ type: 'result', payload: result }], { includePending: true });
+  assert.equal(hit?.resetsAt, REOPENS);
+  if (hit) noteBackendRateLimit('grok', hit);
+  dbApi.insertEvent(missionId, 'result', result);
+
+  // The reaper finalises some 12 minutes later: the duration is counted from the
+  // notice, not from then.
+  setClock(night('01:42'));
+  die(missionId, 'terminated', 'killed');
+
+  const blocked = dbApi.getTask(taskId);
+  assert.equal(blocked?.status, 'BLOCKED');
+  assert.equal(blocked?.interrupted_reason, 'rate_limit');
+  assert.equal(blocked?.requeue_count, 0);
+  assert.equal(blocked?.quota_resets_at, REOPENS);
+  assert.equal(dbApi.getBackendCooldown('grok')?.until, REOPENS);
+
+  noSpawnBetween(taskId, night('01:43'), LEAVES);
+  setClock(LEAVES);
+  assert.equal(requeueBackendBlockedTasks(), 1);
+  assert.equal(dbApi.getTask(taskId)?.status, 'PENDING');
 });

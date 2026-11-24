@@ -1,14 +1,14 @@
 /**
- * Un blocage SYSTÈME ne survit ni au kill/reap, ni à la requalification.
+ * A SYSTEM block survives neither the kill/reap nor the requalification.
  *
- * Ce que ces tests protègent est ce qui a coûté la nuit du 2026-08-15 : des doc
- * tasks tuées par le reap de mission idle, laissées BLOCKED, et relancées à la
- * main le lendemain — alors qu'aucune décision humaine n'était nécessaire. Et
- * la task `bceeb4cd`, requalifiée en `chore`, restée morte au board avec le
- * motif d'un garde qui ne s'appliquait plus à son nouveau type.
+ * What these tests protect is what cost the night of 2026-08-15: doc
+ * tasks killed by the idle mission reap, left BLOCKED, and relaunched by
+ * hand the next day, while no human decision was needed. And
+ * task `bceeb4cd`, requalified as `chore`, left dead on the board with the
+ * reason of a guard that no longer applied to its new type.
  *
- * La base est ouverte dans un TIMON_HOME temporaire : les imports sont donc
- * dynamiques, APRÈS avoir posé l'environnement.
+ * The database is opened in a temporary TIMON_HOME: the imports are therefore
+ * dynamic, AFTER the environment is set.
  *
  * `node --test --import tsx src/task-requeue.test.ts`
  */
@@ -19,13 +19,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+// french-ok-file: French sample reasons the test feeds in
+
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-requeue-test-'));
 
 const { dbApi, MAX_SYSTEM_REQUEUES } = await import('./db.js');
 const { bus } = await import('./bus.js');
 
-/** Task IN_PROGRESS avec une mission vivante — l'état exact d'une task dont le
- *  process se fait tuer en vol. */
+/** An IN_PROGRESS task with a live mission: the exact state of a task whose
+ *  process gets killed mid-flight. */
 function runningTask(type: 'code' | 'doc' | 'chore' = 'doc'): string {
   const taskId = randomUUID();
   const missionId = randomUUID();
@@ -35,9 +37,9 @@ function runningTask(type: 'code' | 'doc' | 'chore' = 'doc'): string {
   return taskId;
 }
 
-/** Compte les `task_blocked` émis pendant l'appel : c'est cet event qui réveille
- *  l'orchestrateur et lance la boucle de recovery. Une relance automatique ne
- *  doit en émettre aucun. */
+/** Counts the `task_blocked` emitted during the call: that event wakes
+ *  the orchestrator and starts the recovery loop. An automatic restart
+ *  must emit none. */
 function countBlockedEvents(fn: () => void): number {
   let n = 0;
   const listener = (ev: { kind: string }) => {
@@ -52,41 +54,41 @@ function countBlockedEvents(fn: () => void): number {
   return n;
 }
 
-test('une task tuée par le reap repart en PENDING sans réveiller personne', () => {
+test('a task killed by the reap goes back to PENDING without waking anybody', () => {
   const id = runningTask();
   let outcome = '';
   const blocked = countBlockedEvents(() => {
     outcome = dbApi.setTaskInterrupted(id, 'killed', 'process tué');
   });
   assert.equal(outcome, 'requeued');
-  assert.equal(blocked, 0, 'une relance automatique ne doit pas émettre task_blocked');
+  assert.equal(blocked, 0, 'an automatic restart must not emit task_blocked');
 
   const after = dbApi.getTask(id);
   assert.equal(after?.status, 'PENDING');
-  assert.equal(after?.mission_id, null, 'la mission morte ne doit plus être attachée');
+  assert.equal(after?.mission_id, null, 'the dead mission must no longer be attached');
   assert.equal(after?.interrupted_reason, null);
   assert.equal(after?.blocked_reason, null);
   assert.equal(after?.requeue_count, 1);
 });
 
-test('le compteur de relances est DÉDIÉ : `iteration` n\'est jamais consommée', () => {
-  // Le piège : réutiliser `iteration` (comme le fait merge-integrity, qui n'est
-  // pas dans la boucle de vérification) brûlerait le budget de review d'une
-  // task `code` pour une cause qui n'a rien à voir avec son contenu.
+test('the restart counter is DEDICATED: `iteration` is never consumed', () => {
+  // The trap: reusing `iteration` (as merge-integrity does, which is not
+  // in the verification loop) would burn the review budget of a
+  // `code` task for a cause that has nothing to do with its content.
   const id = runningTask('code');
   dbApi.setTaskVerificationMeta(id, 1, id);
   dbApi.setTaskInterrupted(id, 'timeout', 'tour bloqué');
   const after = dbApi.getTask(id);
   assert.equal(after?.requeue_count, 1);
-  assert.equal(after?.iteration, 1, 'iteration appartient à la boucle de vérification');
+  assert.equal(after?.iteration, 1, 'iteration belongs to the verification loop');
 });
 
-test('au cap, la task reste BLOCKED et l\'appelant est invité à escalader', () => {
+test('at the cap, the task stays BLOCKED and the caller is asked to escalate', () => {
   const id = runningTask();
   for (let i = 1; i <= MAX_SYSTEM_REQUEUES; i++) {
     assert.equal(dbApi.setTaskInterrupted(id, 'killed', 'process tué'), 'requeued');
     assert.equal(dbApi.getTask(id)?.requeue_count, i);
-    // Re-dispatch : la task repart sur une nouvelle mission.
+    // Re-dispatch: the task leaves again on a new mission.
     const missionId = randomUUID();
     dbApi.createMission(missionId, 'tester', 'retry');
     dbApi.assignTaskMission(id, missionId);
@@ -96,12 +98,12 @@ test('au cap, la task reste BLOCKED et l\'appelant est invité à escalader', ()
     outcome = dbApi.setTaskInterrupted(id, 'killed', 'process tué une fois de trop');
   });
   assert.equal(outcome, 'escalated');
-  assert.equal(blocked, 1, 'au cap, le blocage doit bien remonter');
+  assert.equal(blocked, 1, 'at the cap, the block must indeed go up');
   const after = dbApi.getTask(id);
   assert.equal(after?.status, 'BLOCKED');
   assert.equal(after?.interrupted_reason, 'killed');
-  // La mort de trop compte aussi : sans elle, une boucle relancée par le pilote
-  // resterait figée au cap (TIM-0065, crash-loop.test.ts).
+  // The death too many counts too: without it, a loop relaunched by the pilot
+  // would stay frozen at the cap (TIM-0065, crash-loop.test.ts).
   assert.equal(after?.requeue_count, MAX_SYSTEM_REQUEUES + 1);
   // TIM-0149: the death sentence alone says "not a business block", which next
   // to BLOCKED read as a replay still to come. The reason has to say it is over.
@@ -119,9 +121,9 @@ test('a cause never replayed keeps its reason without the exhausted-retries sent
   assert.equal(dbApi.getTask(id)?.blocked_reason, 'refused tool');
 });
 
-test('un blocage MÉTIER n\'est jamais relancé', () => {
-  // Posé par l'agent via `timon task block --reason` : interrupted_reason reste
-  // NULL, et la task attend une décision.
+test('a BUSINESS block is never restarted', () => {
+  // Set by the agent through `timon task block --reason`: interrupted_reason stays
+  // NULL, and the task waits for a decision.
   const id = runningTask();
   dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'la spec est ambiguë' });
   assert.equal(dbApi.getTask(id)?.interrupted_reason, null);
@@ -133,10 +135,10 @@ test('un blocage MÉTIER n\'est jamais relancé', () => {
   assert.equal(after?.requeue_count, 0);
 });
 
-test('le résidu d\'un blocage précédent n\'empêche pas la relance', () => {
-  // `blocked_reason` n'est PAS remis à NULL au re-dispatch : une task déjà
-  // bloquée puis relancée en traîne le motif. Le lire comme un verdict métier
-  // frais interdirait toute relance à ces tasks-là. Seul le STATUT fait foi.
+test('the residue of a previous block does not prevent the restart', () => {
+  // `blocked_reason` is NOT reset to NULL on re-dispatch: a task already
+  // blocked then restarted drags the reason along. Reading it as a fresh
+  // business verdict would forbid any restart for those tasks. Only the STATUS prevails.
   const id = runningTask();
   dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'motif d\'un tour précédent' });
   const missionId = randomUUID();
@@ -147,10 +149,10 @@ test('le résidu d\'un blocage précédent n\'empêche pas la relance', () => {
   assert.equal(dbApi.setTaskInterrupted(id, 'crash', 'arrêt inattendu'), 'requeued');
   const after = dbApi.getTask(id);
   assert.equal(after?.status, 'PENDING');
-  assert.equal(after?.blocked_reason, null, 'le résidu part avec la relance');
+  assert.equal(after?.blocked_reason, null, 'the residue goes with the restart');
 });
 
-test('une limite d\'usage n\'est pas relancée ici : elle attend la bascule de backend', () => {
+test('a usage limit is not restarted here: it waits for the backend switch', () => {
   const id = runningTask();
   const outcome = dbApi.setTaskInterrupted(id, 'rate_limit', 'quota épuisé');
   assert.equal(outcome, 'blocked');
@@ -158,18 +160,18 @@ test('une limite d\'usage n\'est pas relancée ici : elle attend la bascule de b
   assert.equal(dbApi.getTask(id)?.requeue_count, 0);
 });
 
-test('requalifier le type d\'une task BLOCKED efface le motif périmé', () => {
+test("requalifying the type of a BLOCKED task clears the stale reason", () => {
   const id = runningTask('code');
   dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'garde merge : sha manquant' });
   dbApi.updateTask(id, { type: 'chore' });
   const after = dbApi.getTask(id);
   assert.equal(after?.type, 'chore');
-  assert.equal(after?.status, 'BLOCKED', 'on efface le motif, on ne débloque pas à la place');
+  assert.equal(after?.status, 'BLOCKED', 'the reason is cleared, nothing is unblocked instead');
   assert.equal(after?.blocked_reason, null);
   assert.equal(after?.interrupted_reason, null);
 });
 
-test('un update sans changement de type laisse le motif intact', () => {
+test('an update without a type change leaves the reason intact', () => {
   const id = runningTask('code');
   dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'garde merge : sha manquant' });
   dbApi.updateTask(id, { priority: 5, type: 'code' });

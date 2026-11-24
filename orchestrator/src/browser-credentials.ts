@@ -7,6 +7,7 @@ import { isSealed } from './secrets/box.js';
 import { openWithVault, pluginKvIdentity, readSecretValue, sealWithVault } from './secrets/store.js';
 import { boundBrowserSecret, requestedBrowserCredentials, REQUESTED_CREDENTIAL_PREFIX } from './secrets/requests.js';
 import { callNativeBrowser, NativeBrowserError } from './native-browser-provider.js';
+import { apiError } from './api-error.js';
 
 const STORE = '@timon/browser-embedded';
 const META_PREFIX = 'browser-credentials/';
@@ -42,17 +43,17 @@ type StoredCredential = {
 /** A full page URL is accepted at save time; only its exact canonical origin
  * is persisted. Userinfo is rejected, not silently stripped. */
 export function canonicalCredentialOrigin(value: unknown): string {
-  if (typeof value !== 'string' || !value || value.length > 16_384) throw new NativeBrowserError('A valid HTTP or HTTPS origin is required.');
+  if (typeof value !== 'string' || !value || value.length > 16_384) throw new NativeBrowserError(apiError('browser_origin_invalid', 'A valid HTTP or HTTPS origin is required.'));
   try {
     const url = new URL(value);
     if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.username || url.password || !url.hostname) throw new Error();
     return url.origin;
-  } catch { throw new NativeBrowserError('A valid HTTP or HTTPS origin without userinfo is required.'); }
+  } catch { throw new NativeBrowserError(apiError('browser_origin_invalid', 'A valid HTTP or HTTPS origin without userinfo is required.')); }
 }
 
 const metaKey = (profile: BrowserProfile, id: string) => `${META_PREFIX}${profile.id}/${id}`;
 const secretKey = (profile: BrowserProfile, id: string) => `${SECRET_PREFIX}${profile.id}/${id}`;
-const unavailable = () => new NativeBrowserError('The browser credential vault is unavailable or its encrypted data is invalid.', 503);
+const unavailable = () => new NativeBrowserError(apiError('browser_vault_unavailable', 'The browser credential vault is unavailable or its encrypted data is invalid.'), 503);
 
 function metadata(profile: BrowserProfile, value: string): BrowserCredentialMetadata {
   try {
@@ -66,9 +67,9 @@ function metadata(profile: BrowserProfile, value: string): BrowserCredentialMeta
 }
 
 function getMetadata(profile: BrowserProfile, id: string): BrowserCredentialMetadata {
-  if (typeof id !== 'string' || !CREDENTIAL_ID.test(id)) throw new NativeBrowserError('Browser credential not found.', 404);
+  if (typeof id !== 'string' || !CREDENTIAL_ID.test(id)) throw new NativeBrowserError(apiError('browser_credential_not_found', 'Browser credential not found.'), 404);
   const raw = dbApi.pluginKvGet(STORE, metaKey(profile, id));
-  if (!raw) throw new NativeBrowserError('Browser credential not found.', 404);
+  if (!raw) throw new NativeBrowserError(apiError('browser_credential_not_found', 'Browser credential not found.'), 404);
   const row = metadata(profile, raw);
   if (row.id !== id) throw unavailable();
   return row;
@@ -99,9 +100,9 @@ export function listBrowserCredentials(profile: BrowserProfile): BrowserCredenti
 /** Internal write primitive; the HTTP facade admits signed-in owners only. */
 export function upsertBrowserCredential(profile: BrowserProfile, input: BrowserCredentialInput): BrowserCredentialMetadata {
   const origin = canonicalCredentialOrigin(input.origin);
-  if (typeof input.username !== 'string' || input.username.length > 1024 || input.username.includes('\0')) throw new NativeBrowserError('The username is invalid.');
-  if (typeof input.password !== 'string' || !input.password || input.password.length > 16_384 || input.password.includes('\0')) throw new NativeBrowserError('A non-empty password is required.');
-  if (input.label !== undefined && (typeof input.label !== 'string' || input.label.length > 160 || /[\u0000-\u001f]/.test(input.label))) throw new NativeBrowserError('The credential label is invalid.');
+  if (typeof input.username !== 'string' || input.username.length > 1024 || input.username.includes('\0')) throw new NativeBrowserError(apiError('browser_credential_username_invalid', 'The username is invalid.'));
+  if (typeof input.password !== 'string' || !input.password || input.password.length > 16_384 || input.password.includes('\0')) throw new NativeBrowserError(apiError('browser_credential_password_required', 'A non-empty password is required.'));
+  if (input.label !== undefined && (typeof input.label !== 'string' || input.label.length > 160 || /[\u0000-\u001f]/.test(input.label))) throw new NativeBrowserError(apiError('browser_credential_label_invalid', 'The credential label is invalid.'));
   let previous: BrowserCredentialMetadata | undefined;
   if (input.id !== undefined) previous = getMetadata(profile, input.id);
   else {
@@ -151,7 +152,7 @@ export async function fillBrowserCredential(profile: BrowserProfile, credentialI
   } catch {
     // Provider/DOM error text can be site-controlled. Never echo it after
     // supplying credentials, even if it appears to be an ordinary exception.
-    throw new NativeBrowserError('Credential filling was refused. Check the exact site origin and login form.', 409);
+    throw new NativeBrowserError(apiError('browser_credential_fill_refused', 'Credential filling was refused. Check the exact site origin and login form.'), 409);
   }
 }
 
@@ -194,17 +195,17 @@ export type RequestedFillDeps = {
 export async function fillRequestedCredential(profile: BrowserProfile, missionId: string | null | undefined, credentialId: unknown,
   call: typeof callNativeBrowser = callNativeBrowser, deps: RequestedFillDeps = {}): Promise<{ filled: true }> {
   const bound = boundBrowserSecret(missionId, credentialId);
-  if (!bound) throw new NativeBrowserError('Browser credential not found.', 404);
+  if (!bound) throw new NativeBrowserError(apiError('browser_credential_not_found', 'Browser credential not found.'), 404);
   const journal = deps.journal ?? ((line) => dbApi.recordSecretAccess(line));
   const note = (outcome: 'ok' | 'denied', detail: string): void => {
     journal({ secret_id: bound.secretId, name: bound.name, mission_id: missionId ?? null, agent: bound.agent, kind: 'fill', outcome, detail, at: Date.now() });
   };
-  const wrongPage = new NativeBrowserError(`This value may only be filled on ${bound.origin}. Open a page of that exact origin first.`, 409);
+  const wrongPage = new NativeBrowserError(apiError('browser_credential_wrong_origin', `This value may only be filled on ${bound.origin}. Open a page of that exact origin first.`, { origin: bound.origin }), 409);
   let pageOrigin: unknown;
   try {
     pageOrigin = ((await call(profile.id, { action: 'evaluate', expression: 'location.origin', commandActor: 'agent' })) as { result?: unknown } | null)?.result;
   } catch {
-    throw new NativeBrowserError('The current page could not be checked.', 409);
+    throw new NativeBrowserError(apiError('browser_page_unchecked', 'The current page could not be checked.'), 409);
   }
   if (pageOrigin !== bound.origin) {
     note('denied', `wrong page (expected ${bound.origin})`);
@@ -222,7 +223,7 @@ export async function fillRequestedCredential(profile: BrowserProfile, missionId
   // to the provider — a single conditional update, only one fill wins it.
   if (!bound.claim()) {
     note('denied', 'once: already used');
-    throw new NativeBrowserError('Browser credential not found.', 404);
+    throw new NativeBrowserError(apiError('browser_credential_not_found', 'Browser credential not found.'), 404);
   }
   try {
     const result = await call(profile.id, { action: 'fillCredential', origin: bound.origin, credentialId: String(credentialId),
@@ -233,7 +234,7 @@ export async function fillRequestedCredential(profile: BrowserProfile, missionId
   } catch {
     // Same rule as a saved login: the provider's words may be the page's.
     note('denied', `fill refused on ${bound.origin}`);
-    throw new NativeBrowserError('Credential filling was refused. Check the exact site origin and that the page shows one password or one-time-code field.', 409);
+    throw new NativeBrowserError(apiError('browser_credential_fill_refused', 'Credential filling was refused. Check the exact site origin and that the page shows one password or one-time-code field.'), 409);
   } finally {
     bound.used(`browser fill on ${bound.origin}`);
   }
@@ -245,9 +246,9 @@ export async function saveBrowserCredentialFromPage(profile: BrowserProfile, lab
   commandActor: 'human' | 'agent' = 'agent'): Promise<{ credential: BrowserCredentialMetadata }> {
   let captured: unknown;
   try { captured = await call(profile.id, { action: 'captureCredential', commandActor }); }
-  catch { throw new NativeBrowserError('The current login form could not be saved. Check the page and form origin.', 409); }
-  if (!captured || typeof captured !== 'object') throw new NativeBrowserError('The current page has no supported login form.', 409);
+  catch { throw new NativeBrowserError(apiError('browser_login_form_unsaved', 'The current login form could not be saved. Check the page and form origin.'), 409); }
+  if (!captured || typeof captured !== 'object') throw new NativeBrowserError(apiError('browser_login_form_missing', 'The current page has no supported login form.'), 409);
   const value = captured as Record<string, unknown>;
-  if (typeof value.origin !== 'string' || typeof value.username !== 'string' || typeof value.password !== 'string') throw new NativeBrowserError('The current page has no supported login form.', 409);
+  if (typeof value.origin !== 'string' || typeof value.username !== 'string' || typeof value.password !== 'string') throw new NativeBrowserError(apiError('browser_login_form_missing', 'The current page has no supported login form.'), 409);
   return { credential: upsertBrowserCredential(profile, { origin: value.origin, username: value.username, password: value.password, label }) };
 }

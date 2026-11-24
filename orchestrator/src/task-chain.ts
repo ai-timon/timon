@@ -58,8 +58,13 @@ import { runVerificationChain } from './verification-loop.js';
 import { maybeCreateDocTask } from './doc-task.js';
 import { evaluateGroupCompleteForTask } from './wake.js';
 import { notifyUser } from './notify.js';
+import { daemonMessage } from './daemon-message.js';
 import { applyTodoClosure } from './todo-closure.js';
 import { isMirrorTask } from './task-mirror.js';
+
+// The landing replay of an integration branch is the second half of a chain's
+// closure; re-exported so `reconcile.ts` keeps its three imports.
+export { reconcileLandedIntegrations } from './integration-landing.js';
 
 /**
  * Chaining attempts before explicitly giving up.
@@ -134,7 +139,12 @@ export async function runTaskChain(taskId: string): Promise<void> {
       `cannot be resolved, error in a step of the chain) — the \`[task-chain]\` logs of this task ` +
       `carry the cause.\n\n` +
       `To replay: dispatching the task again resets the counter.`,
-      { taskId },
+      {
+        taskId,
+        message: daemonMessage('chain_abandoned', {
+          title: task.title, taskId, type: task.type, attempts: task.chain_attempts,
+        }),
+      },
     );
     return;
   }

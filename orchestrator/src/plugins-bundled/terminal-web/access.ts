@@ -16,6 +16,7 @@ import { dbApi, type UserRow } from '../../db.js';
 import { settingBool } from '../../settings.js';
 import { isPersonAuth, type RequestAuth } from '../../users/identity.js';
 import { userAllows } from '../../users/permissions.js';
+import { apiError, type ApiErrorBody } from '../../api-error.js';
 export { isSameOriginUpgrade, upgradeAuth } from '../../users/upgrade-auth.js';
 
 export const TERMINAL_PERMISSION = 'terminal:open';
@@ -39,4 +40,14 @@ export function decideAccess(auth: RequestAuth | undefined): { user: UserRow } |
 
 export function denialStatus(denied: TerminalDenial): number {
   return denied === 'unauthorized' ? 401 : 403;
+}
+
+/** The body of a refusal: a 401 stays bare, the proxy sends the browser to sign in. */
+export function denialBody(denied: TerminalDenial): ApiErrorBody | { error: 'unauthorized' } {
+  switch (denied) {
+    case 'unauthorized': return { error: 'unauthorized' };
+    case 'session_required': return apiError('terminal_session_required', 'the terminal opens from a signed-in browser');
+    case 'forbidden': return apiError('terminal_forbidden', 'this account may not open a terminal');
+    default: return apiError('terminal_disabled', 'the web terminal is turned off');
+  }
 }

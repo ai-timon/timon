@@ -87,15 +87,16 @@ function packSkull(sk: { top: number; bottom: number; height: number; radius: nu
 /**
  * The skull of a shape: the product's, or a pack's (four numbers checked
  * against `SKULL_BOUNDS` when it registered — a pack cannot draw a free
- * outline, so ears, visor and accessory still land on it). Unknown, or its
- * pack gone: the classic skull.
+ * outline, so ears, visor and accessory still land on it). Unknown, its
+ * pack gone, or a head the pack draws itself (no skull to read): the classic
+ * skull.
  */
 const packSkulls = new WeakMap<object, Skull2D>();
 function skullOf(shape: string): Skull2D {
   const own = (SKULLS_2D as Readonly<Record<string, Skull2D>>)[shape];
   if (own) return own;
   const pack = mascotPartOf('shape', shape);
-  if (!pack) return SKULLS_2D.squircle;
+  if (!pack?.skull) return SKULLS_2D.squircle;
   let skull = packSkulls.get(pack);
   if (!skull) { skull = packSkull(pack.skull); packSkulls.set(pack, skull); }
   return skull;

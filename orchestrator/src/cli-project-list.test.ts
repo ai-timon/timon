@@ -2,7 +2,7 @@
  * `timon project list` prints one slug per line (TIM-0055: it printed
  * `[object Object]` once `GET /api/projects` returned objects instead of slugs).
  *
- * Témoin HTTP sur `127.0.0.1:0`, jamais le daemon de la machine.
+ * HTTP witness on `127.0.0.1:0`, never the daemon of the machine.
  */
 import { mkdtempSync } from 'node:fs';
 import http from 'node:http';

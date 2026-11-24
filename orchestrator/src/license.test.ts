@@ -18,26 +18,26 @@ const { attachBundledReconciler } = await import('./kernel/bundled-reload.js');
 const { attachPluginLoader } = await import('./plugins/runtime.js');
 const { applyLicensedSurfaces } = await import('./kernel/routes/license.js');
 
-// Copie vendue du contrat figé (`timon-site/fixtures/token-claims.json`) : les
-// tests ne lisent jamais un chemin absolu vers l'autre dépôt.
+// A vendored copy of the frozen contract (`timon-site/fixtures/token-claims.json`): the
+// tests never read an absolute path into the other repository.
 const fixture = JSON.parse(readFileSync(new URL('../fixtures/token-claims.json', import.meta.url), 'utf8')) as {
   examples: { name: string; header: Record<string, unknown>; claims: Record<string, unknown> }[];
 };
 const example = (name: string) => {
   const found = fixture.examples.find((e) => e.name === name);
-  assert.ok(found, `exemple ${name} absent de la fixture`);
+  assert.ok(found, `example ${name} missing from the fixture`);
   return found;
 };
 
 const pair = generateKeyPairSync('ed25519');
 const keys = [{ keyId: 'test', publicKey: pair.publicKey.export({ type: 'spki', format: 'pem' }).toString() }];
 const now = Math.floor(Date.now() / 1000);
-/** Identifiant d'appareil de CE daemon : les jetons de test sont émis pour lui,
- *  comme le serveur émet pour le `deviceId()` que l'activation lui a envoyé. */
+/** Device identifier of THIS daemon: the test tokens are issued for it,
+ *  as the server issues for the `deviceId()` the activation sent it. */
 const DEVICE = deviceId();
 const enc = (v: unknown) => Buffer.from(JSON.stringify(v)).toString('base64url');
 
-/** Claims du contrat, recalés sur l'horloge du test (la fixture est datée). */
+/** Claims of the contract, aligned on the test clock (the fixture is dated). */
 /** The fixture carries `fph` for the machine whose `fp` is 64 zeros; tokens
  *  for THIS machine drop it unless a test binds one on purpose. */
 function claims(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -50,8 +50,8 @@ function signed(payload: Record<string, unknown>, header: Record<string, unknown
   return `${input}.${sign(null, Buffer.from(input), pair.privateKey).toString('base64url')}`;
 }
 const token = (overrides: Record<string, unknown> = {}) => signed(claims(overrides));
-/** La liaison appareil n'est plus optionnelle : sauf quand le test la vise,
- *  la vérification part de l'identifiant réel de la machine de test. */
+/** The device binding is no longer optional: except when the test targets it,
+ *  the check starts from the real identifier of the test machine. */
 const verify = (tok: string, opts: Record<string, unknown> = {}) =>
   verifyLicenseToken(tok, { keys, device: DEVICE, ...opts });
 
@@ -70,7 +70,7 @@ function signedAnswer(init: RequestInit | undefined, status: number, body: unkno
   return new Response(text, { status, headers: { 'content-type': 'application/json', 'x-timon-signature': signature } });
 }
 
-test('absence de fichier : Free local, tout le produit, un seul compte', () => {
+test('no file: local Free, the whole product, a single account', () => {
   const state = readLicense(join(process.env.TIMON_HOME!, 'absent.jwt'), { keys });
   assert.equal(state.status, 'unlicensed');
   assert.equal(state.edition, 'expert');
@@ -94,11 +94,11 @@ test('an empty keyring never grants paid capabilities, with or without a token',
   }
 });
 
-test('les exemples du contrat sont acceptés', () => {
+test('the examples of the contract are accepted', () => {
   for (const name of ['beta-1-year', 'beta-lifetime', 'developer']) {
     const source = example(name);
-    // `did` recalé sur cet appareil, comme le serveur émet pour le device
-    // qu'on lui a déclaré ; le reste des claims est celui du contrat.
+    // `did` aligned on this device, as the server issues for the device
+    // declared to it; the rest of the claims is the contract one.
     const state = verify(signed({ ...source.claims, did: DEVICE, iat: now - 1, nbf: now - 61, exp: now + 900, srv: now }), { fingerprint: FIXTURE_FP });
     assert.equal(state.status, 'valid', name);
     // The fixture's `fph` is a real binding: another machine is refused.
@@ -111,7 +111,7 @@ test('les exemples du contrat sont acceptés', () => {
   }
 });
 
-test('sub_exp null (plan developer) passe, sub_exp daté est rendu en ISO', () => {
+test('sub_exp null (developer plan) passes, a dated sub_exp is returned as ISO', () => {
   const developer = example('developer').claims;
   assert.equal(developer.sub_exp, null);
   const verified = verify(signed({ ...developer, did: DEVICE, iat: now - 1, nbf: now - 61, exp: now + 900, srv: now }), { fingerprint: FIXTURE_FP });
@@ -122,9 +122,9 @@ test('sub_exp null (plan developer) passe, sub_exp daté est rendu en ISO', () =
   assert.equal(dated.subscriptionExpiresAt, new Date(1767225600 * 1000).toISOString());
 });
 
-test('les claims du contrat traversent le schéma sans être perdus', () => {
-  // Détection de dérive : si le serveur renomme un claim, la fixture change et
-  // ce test le dit — sans jamais rejeter un jeton pour un claim informatif.
+test('the claims of the contract cross the schema without being lost', () => {
+  // Drift detection: if the server renames a claim, the fixture changes and
+  // this test says so, without ever rejecting a token for an informative claim.
   const state = verify(token());
   const source = claims();
   assert.equal(state.edition, source.edition);
@@ -134,9 +134,9 @@ test('les claims du contrat traversent le schéma sans être perdus', () => {
   for (const claim of ['sub', 'lic', 'did', 'plan', 'edition', 'modules', 'plugins', 'features', 'seats', 'iat', 'nbf', 'exp', 'srv', 'jti', 'status']) {
     assert.ok(claim in source, `claim ${claim} absent du contrat`);
   }
-  // `plan_name` est l'un des trois claims optionnels (avec `fph` et `users`) :
-  // il est arrivé après le gel du contrat, les jetons déjà émis ne le portent pas. Présent, c'est lui qu'on
-  // montre ; absent, l'identifiant de plan fait l'affaire.
+  // `plan_name` is one of the three optional claims (with `fph` and `users`):
+  // it arrived after the contract was frozen, the tokens already issued do not carry it. Present, it is what is
+  // shown; absent, the plan identifier does the job.
   assert.equal(verify(token()).plan, source.plan_name);
   const { plan_name: _omit, ...sansLabel } = source;
   assert.equal(verify(signed(sansLabel)).plan, source.plan);
@@ -170,163 +170,163 @@ test('v4: the users quota travels, and its absence restricts nothing', () => {
   assert.equal(verify(token({ users: -1 })).reason, 'invalid:format');
 });
 
-test('licence lite restreint une config expert', () => {
+test('a lite licence restricts an expert config', () => {
   assert.equal(effectiveEdition('expert', verify(token({ edition: 'lite' })).edition), 'lite');
 });
 
-test('status past_due reste une licence valide (bannière, pas refus)', () => {
+test('status past_due stays a valid licence (banner, not refusal)', () => {
   const state = verify(token({ status: 'past_due' }));
   assert.equal(state.status, 'valid');
   assert.equal(state.paymentStatus, 'past_due');
   assert.equal(state.modules !== '*' && state.modules.length > 0, true);
 });
 
-test('gardes d\'horloge : iat, nbf et srv', () => {
+test('clock guards: iat, nbf and srv', () => {
   assert.equal(verify(token({ iat: now + 120 })).reason, 'invalid:clock');
   assert.equal(verify(token({ nbf: now + 120 })).reason, 'invalid:clock');
-  // Tolérance de 60 s : un nbf juste dans le futur passe.
+  // 60 s tolerance: an nbf just in the future passes.
   assert.equal(verify(token({ nbf: now + 30 })).status, 'valid');
   assert.equal(verify(token({ srv: now + 7200 })).reason, 'invalid:clock');
 });
 
-test('expiration : plus de grâce locale, le jeton périmé est refusé', () => {
+test('expiry: no more local grace, the expired token is refused', () => {
   assert.equal(verify(token({ exp: now - 120 })).reason, 'expired');
-  // 14 jours de grâce n'existent plus (PRD 03 : révocation ≤ 15 min).
+  // 14 days of grace no longer exist (PRD 03: revocation ≤ 15 min).
   assert.equal(verify(token({ exp: now - 86400 })).status, 'unlicensed');
-  // Tolérance d'horloge : une expiration à la seconde près ne rejette pas.
+  // Clock tolerance: an expiry to the second does not reject.
   assert.equal(verify(token({ exp: now - 30 })).status, 'valid');
 });
 
-test('un plan à vie expire comme les autres : « à vie » qualifie l\'abonnement, pas le jeton (L-2)', () => {
-  // Jusqu'au 04/09 un jeton `sub_exp: null` ignorait `exp` : bearer permanent,
-  // duplicable, irrévocable. La boucle de renouvellement existe désormais, le
-  // garde n'a plus de raison d'être levé.
+test('a lifetime plan expires like the others: "lifetime" qualifies the subscription, not the token (L-2)', () => {
+  // Until 04/09 a `sub_exp: null` token ignored `exp`: a permanent bearer,
+  // duplicable, irrevocable. The renewal loop now exists, the
+  // guard has no more reason to be lifted.
   const aVie = verify(token({ sub_exp: null, exp: now - 86400 }));
   assert.equal(aVie.status, 'unlicensed');
   assert.equal(aVie.reason, 'expired');
   const frais = verify(token({ sub_exp: null }));
   assert.equal(frais.status, 'valid');
   assert.equal(frais.lifetime, true);
-  // Le jeton annonce son échéance, comme tous les autres.
+  // The token announces its due date, like all the others.
   assert.equal(typeof frais.expiresAt, 'string');
   assert.equal(verify(token({ sub_exp: now + 86400 })).lifetime, false);
-  // Un abonnement daté garde son expiration.
+  // A dated subscription keeps its expiry.
   assert.equal(verify(token({ sub_exp: now + 86400, exp: now - 120 })).reason, 'expired');
 });
 
-test('tolérance hors-ligne : graceUntil accepte un jeton périmé, jusqu\'à l\'instant donné (L-7)', () => {
+test('offline tolerance: graceUntil accepts an expired token, up to the given instant (L-7)', () => {
   const expired = token({ exp: now - 3600 });
   assert.equal(verify(expired, { graceUntil: now + 60 }).status, 'valid');
   assert.equal(verify(expired, { graceUntil: now - 1 }).reason, 'expired');
 });
 
-test('srv mesure une dérive, jamais un âge (L-6)', () => {
-  // Relu depuis le disque, un jeton vieux de 48 h dont l'exp tient encore
-  // (artificiel : TTL 15 min) n'est pas refusé pour son `srv` ancien.
+test('srv measures a drift, never an age (L-6)', () => {
+  // Read back from disk, a 48 h old token whose exp still holds
+  // (artificial: TTL 15 min) is not refused for its old `srv`.
   const ancien = token({ iat: now - 172_800, nbf: now - 172_860, srv: now - 172_800, exp: now + 900 });
   assert.equal(verify(ancien).status, 'valid');
-  // Le même jeton qui ARRIVE du serveur trahit une horloge fausse d'un jour.
+  // The same token ARRIVING from the server betrays a clock off by a day.
   assert.equal(verify(ancien, { fresh: true }).reason, 'invalid:clock');
-  // Deux valeurs serveur qui divergent : le jeton n'est pas cohérent.
+  // Two server values that diverge: the token is not consistent.
   assert.equal(verify(token({ srv: now - 7200 })).reason, 'invalid:clock');
-  // Un jeton frais dont srv colle à l'horloge locale passe.
+  // A fresh token whose srv matches the local clock passes.
   assert.equal(verify(token(), { fresh: true }).status, 'valid');
 });
 
-test('fph : le jeton est lié à la machine, pas seulement au fichier device-id (L-2)', () => {
+test('fph: the token is bound to the machine, not only to the device-id file (L-2)', () => {
   const fp = 'a'.repeat(64);
   assert.equal(verify(token({ fph: fingerprintHash(fp) }), { fingerprint: fp }).status, 'valid');
   assert.equal(verify(token({ fph: fingerprintHash(fp) }), { fingerprint: 'b'.repeat(64) }).reason, 'invalid:fingerprint');
-  // Sans `fph` (jeton d'avant l'amendement), la liaison `did` seule s'applique.
+  // Without `fph` (a token from before the amendment), the `did` binding alone applies.
   assert.equal(verify(token(), { fingerprint: 'b'.repeat(64) }).status, 'valid');
-  // Grammaire stricte : un `fph` mal formé est un jeton mal formé.
+  // Strict grammar: a malformed `fph` is a malformed token.
   assert.equal(verify(token({ fph: 'zz' })).reason, 'invalid:format');
 });
 
-test('ancre d\'horloge : un srv plus ancien qu\'un déjà accepté, ou une horloge locale reculée, est refusé (L-5)', () => {
+test('clock anchor: an srv older than one already accepted, or a local clock set back, is refused (L-5)', () => {
   const file = join(process.env.TIMON_HOME!, 'anchor-test.json');
   const anchor = fileClockAnchor(file);
   assert.equal(verify(token(), { anchor }).status, 'valid');
   assert.equal(readLicenseStore(file).maxSrv, now);
-  // Un jeton émis avant celui-là : rejoué ou ressuscité par faketime.
+  // A token issued before that one: replayed or revived by faketime.
   assert.equal(verify(token({ iat: now - 3600, nbf: now - 3660, srv: now - 3600, exp: now + 900 }), { anchor }).reason, 'invalid:clock:rollback');
-  // Une horloge locale deux jours en arrière du dernier instant vu.
+  // A local clock two days behind the last instant seen.
   const past = new Date((now - 2 * 86400) * 1000);
   assert.equal(verify(token({ iat: now - 2 * 86400, nbf: now - 2 * 86400 - 60, srv: now - 2 * 86400, exp: now - 2 * 86400 + 900 }), { anchor, now: past }).reason, 'invalid:clock:rollback');
-  // Une minute de dérive entre deux serveurs n'est pas un recul.
+  // One minute of drift between two servers is not a step back.
   assert.equal(verify(token({ iat: now - 30, nbf: now - 90, srv: now - 30 }), { anchor }).status, 'valid');
-  // Un refus ne déplace pas l'ancre.
+  // A refusal does not move the anchor.
   assert.equal(readLicenseStore(file).maxSrv, now);
 });
 
-test('did : la liaison appareil est obligatoire, jamais implicite', () => {
-  // Un jeton émis pour une AUTRE machine ne tourne pas ici, même signé.
+test('did: the device binding is mandatory, never implicit', () => {
+  // A token issued for ANOTHER machine does not run here, even signed.
   assert.equal(verify(token({ did: example('beta-1-year').claims.did as string })).reason, 'invalid:machine');
   assert.equal(verify(token({ did: 'dev_0000000000000000' })).reason, 'invalid:machine');
-  // `did` absent : claim requis du contrat, donc format — pas un laissez-passer.
+  // `did` missing: a required claim of the contract, hence format, not a free pass.
   const { did: _did, ...withoutDid } = claims();
   assert.equal(verify(signed(withoutDid)).reason, 'invalid:format');
-  // Sans `device` explicite, la vérification résout l'identifiant du daemon.
+  // Without an explicit `device`, the check resolves the daemon identifier.
   assert.equal(verifyLicenseToken(token(), { keys }).status, 'valid');
   assert.equal(verifyLicenseToken(token({ did: 'dev_0000000000000000' }), { keys }).reason, 'invalid:machine');
 });
 
-test('deviceId : opaque, persistant, identique à celui que readLicense compare', () => {
+test('deviceId: opaque, persistent, identical to the one readLicense compares', () => {
   const file = join(process.env.TIMON_HOME!, 'license.jwt');
   assert.match(DEVICE, /^dev_[0-9a-f]{16}$/);
-  // Persistance : deux appels rendent le même id, et il est bien sur le disque.
+  // Persistence: two calls return the same id, and it is indeed on disk.
   assert.equal(deviceId(), DEVICE);
   assert.equal(readFileSync(join(process.env.TIMON_HOME!, 'device-id'), 'utf8').trim(), DEVICE);
-  // Chemin de production : readLicense sans `device` explicite lit ce fichier.
+  // Production path: readLicense without an explicit `device` reads this file.
   writeFileSync(file, token());
   assert.equal(readLicense(file, { keys }).status, 'valid');
-  // Le même jeton, émis pour un autre appareil, est refusé par ce chemin-là.
+  // The same token, issued for another device, is refused by that path.
   writeFileSync(file, token({ did: 'dev_ffffffffffffffff' }));
   assert.equal(readLicense(file, { keys }).reason, 'invalid:machine');
 });
 
-test('installation neuve : le device est tiré au vol, un jeton d\'avant est refusé', () => {
-  // Le cas que le test précédent ne couvre PAS : aucune `device-id` sur le
-  // disque encore. C'est le premier boot après réinstallation, avec un jeton
-  // hérité de l'installation d'avant — il doit tomber, pas passer par défaut.
+test('fresh install: the device is drawn on the fly, a token from before is refused', () => {
+  // The case the previous test does NOT cover: no `device-id` on
+  // disk yet. It is the first boot after a reinstall, with a token
+  // inherited from the previous install; it must fall, not pass by default.
   const fresh = mkdtempSync(join(tmpdir(), 'timon-license-fresh-'));
   const idFile = join(fresh, 'device-id');
   const file = join(fresh, 'license.jwt');
   writeFileSync(file, token({ did: 'dev_ffffffffffffffff' }));
   assert.equal(readLicense(file, { keys, device: deviceId(idFile) }).reason, 'invalid:machine');
-  // L'identifiant tiré est neuf, persisté, et différent de celui du daemon de test.
+  // The drawn identifier is new, persisted, and different from the test daemon one.
   const drawn = readFileSync(idFile, 'utf8').trim();
   assert.match(drawn, /^dev_[0-9a-f]{16}$/);
   assert.notEqual(drawn, DEVICE);
   assert.equal(deviceId(idFile), drawn);
-  // Un jeton émis pour CE device neuf passe.
+  // A token issued for THIS new device passes.
   writeFileSync(file, token({ did: drawn }));
   assert.equal(readLicense(file, { keys, device: deviceId(idFile) }).status, 'valid');
 });
 
-test('fingerprint : hachage stable du machine-id, jamais l\'identifiant brut', () => {
-  // Le contrat §5.8 : 64 hex minuscules, et rien d'autre ne sort de la machine.
+test('fingerprint: a stable hash of the machine-id, never the raw identifier', () => {
+  // The §5.8 contract: 64 lowercase hex, and nothing else leaves the machine.
   const fp = fingerprint('b8e3f1a2-0000-4c11-9d55-7e0a1b2c3d4e');
   assert.match(fp, /^[0-9a-f]{64}$/);
   assert.equal(fingerprint('b8e3f1a2-0000-4c11-9d55-7e0a1b2c3d4e'), fp);
   assert.notEqual(fp.includes('b8e3f1a2'), true);
-  // Deux machines, deux empreintes : c'est tout ce sur quoi le serveur tranche.
+  // Two machines, two fingerprints: that is all the server decides on.
   assert.notEqual(fingerprint('une-autre-machine'), fp);
-  // Les espaces du fichier ne comptent pas : /etc/machine-id finit par \n.
+  // The spaces of the file do not count: /etc/machine-id ends with \n.
   assert.equal(fingerprint('  b8e3f1a2-0000-4c11-9d55-7e0a1b2c3d4e\n'), fp);
-  // Pas d'empreinte inventée quand l'OS ne rend rien : une valeur bidon lierait
-  // l'activation à une machine qui n'existe pas, et le boot suivant se ferait
-  // refuser en device_mismatch.
+  // No made-up fingerprint when the OS returns nothing: a bogus value would bind
+  // the activation to a machine that does not exist, and the next boot would be
+  // refused with device_mismatch.
   assert.throws(() => fingerprint(null));
   assert.throws(() => fingerprint('   '));
-  // Sur cette machine-ci, l'OS répond : le chemin de production est parcouru.
+  // On this machine, the OS answers: the production path is walked through.
   const raw = machineId();
   if (raw !== null) assert.match(fingerprint(), /^[0-9a-f]{64}$/);
 });
 
-test('rotateDeviceId : sortie de secours du 409 device_mismatch', () => {
-  // ~/.timon copié depuis une autre machine : le serveur a rendu
-  // device_mismatch, on retire un identifiant neuf et on réactive une fois.
+test('rotateDeviceId: the emergency exit of the 409 device_mismatch', () => {
+  // ~/.timon copied from another machine: the server returned
+  // device_mismatch, a new identifier is drawn and activation is retried once.
   const home = mkdtempSync(join(tmpdir(), 'timon-license-clone-'));
   const idFile = join(home, 'device-id');
   const file = join(home, 'license.jwt');
@@ -337,58 +337,58 @@ test('rotateDeviceId : sortie de secours du 409 device_mismatch', () => {
   const rotated = rotateDeviceId(idFile);
   assert.match(rotated, /^dev_[0-9a-f]{16}$/);
   assert.notEqual(rotated, copied);
-  // Persisté, donc stable au prochain boot.
+  // Persisted, hence stable at the next boot.
   assert.equal(readFileSync(idFile, 'utf8').trim(), rotated);
   assert.equal(deviceId(idFile), rotated);
-  // Le jeton hérité de la copie ne vaut plus rien sur cette machine.
+  // The token inherited from the copy is worth nothing on this machine any more.
   assert.equal(readLicense(file, { keys, device: rotated }).reason, 'invalid:machine');
-  // Et le jeton que le serveur émettra pour l'identifiant neuf passe.
+  // And the token the server will issue for the new identifier passes.
   writeFileSync(file, token({ did: rotated }));
   assert.equal(readLicense(file, { keys, device: deviceId(idFile) }).status, 'valid');
 });
 
-test('header : alg, typ et kid sont validés', () => {
+test('header: alg, typ and kid are validated', () => {
   assert.equal(verify(signed(claims(), { typ: 'JWE' })).reason, 'invalid:format');
   assert.equal(verify(signed(claims(), { alg: 'HS256' })).reason, 'invalid:format');
   assert.equal(verify(signed(claims(), { kid: '' })).reason, 'invalid:format');
 });
 
-test('modules : \'*\' ou des ids @timon/*, rien d\'autre', () => {
+test("modules: '*' or @timon/* ids, nothing else", () => {
   assert.equal(verify(token({ modules: '*' })).modules, '*');
   assert.deepEqual(verify(token({ modules: ['@timon/dreams'] })).modules, ['@timon/dreams']);
   assert.equal(verify(token({ modules: ['dreams'] })).reason, 'invalid:format');
   assert.equal(verify(token({ modules: ['@autre/dreams'] })).reason, 'invalid:format');
-  // Les ids de plugins, eux, sont des paquets npm tiers : pas de préfixe imposé.
+  // Plugin ids are third-party npm packages: no prefix imposed.
   assert.deepEqual(verify(token({ plugins: ['acme-widget'] })).plugins, ['acme-widget']);
 });
 
-test('tous les claims du contrat sont requis (sub_exp nullable, pas optionnel)', () => {
+test('every claim of the contract is required (sub_exp nullable, not optional)', () => {
   for (const claim of ['sub', 'lic', 'did', 'plan', 'edition', 'modules', 'plugins', 'features', 'seats', 'iat', 'nbf', 'exp', 'srv', 'jti', 'sub_exp', 'status']) {
     const partial = { ...claims() };
     delete partial[claim];
-    assert.equal(verify(signed(partial)).reason, 'invalid:format', `claim ${claim} manquant devrait être refusé`);
+    assert.equal(verify(signed(partial)).reason, 'invalid:format', `missing claim ${claim} should be refused`);
   }
-  // Les exemples du contrat portent bien tous ces claims.
+  // The examples of the contract do carry all these claims.
   for (const name of ['beta-1-year', 'beta-lifetime', 'developer']) {
     for (const claim of ['sub', 'lic', 'did', 'plan', 'edition', 'modules', 'plugins', 'features', 'seats', 'iat', 'nbf', 'exp', 'srv', 'jti', 'sub_exp', 'status']) {
-      assert.ok(claim in example(name).claims, `${claim} absent de l'exemple ${name}`);
+      assert.ok(claim in example(name).claims, `${claim} missing from example ${name}`);
     }
   }
 });
 
-test('kid inconnu, signature falsifiée et format cassé sont distingués', () => {
+test('unknown kid, forged signature and broken format are told apart', () => {
   assert.equal(verify(token(), { keys: [{ ...keys[0]!, keyId: 'autre' }] }).reason, 'invalid:key');
   const [header, payload, signature] = token().split('.') as [string, string, string];
   const flipped = Buffer.from(signature, 'base64url');
   flipped[0] = flipped[0]! ^ 0xff;
   assert.equal(verify(`${header}.${payload}.${flipped.toString('base64url')}`).reason, 'invalid:signature');
   assert.equal(verify('invalide').reason, 'invalid:format');
-  // Claim requis manquant : format, jamais une licence muette.
+  // Required claim missing: format, never a mute licence.
   const { status: _status, ...withoutStatus } = claims();
   assert.equal(verify(signed(withoutStatus)).reason, 'invalid:format');
 });
 
-test('une installation invalide ne remplace pas le fichier', () => {
+test('an invalid install does not replace the file', () => {
   const file = join(process.env.TIMON_HOME!, 'license.jwt');
   const original = token();
   writeFileSync(file, original);
@@ -397,7 +397,7 @@ test('une installation invalide ne remplace pas le fichier', () => {
   assert.equal(readFileSync(file, 'utf8'), original);
 });
 
-test('PUT /api/license refuse un JWT invalide sans toucher au fichier', async () => {
+test('PUT /api/license refuses an invalid JWT without touching the file', async () => {
   const file = join(process.env.TIMON_HOME!, 'license.jwt');
   const original = token();
   writeFileSync(file, original);
@@ -416,17 +416,17 @@ test('PUT /api/license refuse un JWT invalide sans toucher au fichier', async ()
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 });
 
-// `installLicenseToken` réussi via HTTP exigerait un jeton signé par la clé
-// PRIVÉE de production, absente du dépôt par construction (§4 du runbook
-// `timon-site`) — comme `PUT /api/license refuse un JWT invalide` plus haut,
-// ce chemin ne se joue qu'en refus. `applyLicensedSurfaces` (ce que le
-// succès déclencherait) se teste donc directement, hors HTTP.
+// A successful `installLicenseToken` over HTTP would require a token signed by the
+// production PRIVATE key, absent from the repository by construction (§4 of the
+// `timon-site` runbook); like `PUT /api/license refuses an invalid JWT` above,
+// this path is only played as a refusal. `applyLicensedSurfaces` (what the
+// success would trigger) is therefore tested directly, outside HTTP.
 function fakeApp(): { get(key: string): unknown; set(key: string, value: unknown): unknown } {
   const store = new Map<string, unknown>();
   return { get: (key) => store.get(key), set: (key, value) => { store.set(key, value); return undefined; } };
 }
 
-test('applyLicensedSurfaces recompose les modules bundled ET relit les plugins licenciés (lic-6)', async () => {
+test('applyLicensedSurfaces recomposes the bundled modules AND rereads the licensed plugins (lic-6)', async () => {
   const app = fakeApp();
   let reconciled = 0;
   attachBundledReconciler(app, {
@@ -442,11 +442,11 @@ test('applyLicensedSurfaces recompose les modules bundled ET relit les plugins l
   assert.equal(updated, 1);
 });
 
-test("applyLicensedSurfaces ne fait rien planter hors d'un kernel booté (aucun reconciler/loader attaché)", async () => {
+test('applyLicensedSurfaces crashes nothing outside a booted kernel (no reconciler/loader attached)', async () => {
   await assert.doesNotReject(applyLicensedSurfaces(fakeApp() as unknown as Parameters<typeof applyLicensedSurfaces>[0]));
 });
 
-test('un reconciler ou un loader qui rejette ne fait pas échouer applyLicensedSurfaces', async () => {
+test('a reconciler or a loader that rejects does not make applyLicensedSurfaces fail', async () => {
   const app = fakeApp();
   attachBundledReconciler(app, {
     reconcile: () => Promise.reject(new Error('boom')),
@@ -457,7 +457,7 @@ test('un reconciler ou un loader qui rejette ne fait pas échouer applyLicensedS
   await assert.doesNotReject(applyLicensedSurfaces(app as unknown as Parameters<typeof applyLicensedSurfaces>[0]));
 });
 
-test("l'échec de l'installation ne déclenche aucune recomposition", async () => {
+test('the failure of the install triggers no recomposition', async () => {
   const app = express();
   app.use(express.json());
   app.use(asCaller);
@@ -482,19 +482,19 @@ test("l'échec de l'installation ne déclenche aucune recomposition", async () =
   }
 });
 
-test("la licence n'est pas un module du catalogue", async () => {
-  // Décision du 30/08 : la licence est une porte du noyau, pas une brique
-  // qu'on installe ou qu'on désactive. Elle ne doit donc pas apparaître dans
-  // le catalogue — et par conséquent pas non plus comme carte de la galerie,
-  // qui dérive de `CATALOG` via `bundledModuleRows`.
+test('the licence is not a catalogue module', async () => {
+  // Decision of 30/08: the licence is a door of the kernel, not a brick
+  // one installs or disables. It must therefore not appear in
+  // the catalogue, and hence not as a gallery card either,
+  // which derives from `CATALOG` through `bundledModuleRows`.
   const { CATALOG } = await import('./kernel/catalog.js');
   const { BUNDLED_IDENTITY } = await import('./plugins/bundled-identity.js');
   assert.equal(CATALOG.some((m) => m.id === 'core-license'), false);
   assert.equal('core-license' in BUNDLED_IDENTITY, false);
-  // Le compte baisse à mesure que "fin du tier core" sort les modules
-  // désactivables du noyau (30/08 : `@timon/projects` est passé `std`, le
-  // coffre de secrets `opt`, le centre de notifications `std`, la mémoire `opt`).
-  // 05/11/2026 : `@timon/users` y entre.
+  // The count goes down as "end of the core tier" takes the modules that can
+  // be disabled out of the kernel (30/08: `@timon/projects` went `std`, the
+  // secrets vault `opt`, the notification centre `std`, the memory `opt`).
+  // 05/11/2026: `@timon/users` joins it.
   assert.equal(CATALOG.filter((m) => m.tier === 'core').length, 8);
 });
 
@@ -541,16 +541,16 @@ const post = (port: number, path: string, body: unknown) => fetch(`http://127.0.
   method: path === '/api/license' ? 'PUT' : 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
 });
 
-test('L-3 : les routes d\'installation sont 403 pour un jeton de mission et pour une session non-superadmin', async () => {
+test('L-3: the install routes are 403 for a mission token and for a non-superadmin session', async () => {
   for (const as of [{ kind: 'api-token', isSuperadmin: false }, { kind: 'session', isSuperadmin: false }] as Caller[]) {
     await withActivateServer(async (port) => {
       assert.equal((await post(port, '/api/license', { token: token() })).status, 403, `PUT as ${as.kind}`);
       assert.equal((await post(port, '/api/license/activate', { key: 'TMN-TEST' })).status, 403, `activate as ${as.kind}`);
-      // La lecture reste ouverte : c'est la bannière de tout le monde.
+      // Reading stays open: it is everybody's banner.
       assert.equal((await fetch(`http://127.0.0.1:${port}/api/license`)).status, 200);
     }, as);
   }
-  // Un jeton de mission marqué superadmin (n'existe pas, mais le refus doit tenir au `kind`).
+  // A mission token marked superadmin (does not exist, but the refusal must hold on `kind`).
   await withActivateServer(async (port) => {
     assert.equal((await post(port, '/api/license', { token: token() })).status, 403);
   }, { kind: 'api-token', isSuperadmin: true });
@@ -560,7 +560,7 @@ test('L-3 : les routes d\'installation sont 403 pour un jeton de mission et pour
   }, { kind: 'session', isSuperadmin: true });
 });
 
-test('L-3 : une rétrogradation exige force: true', async () => {
+test('L-3: a downgrade requires force: true', async () => {
   await withActivateServer(async (port) => {
     assert.equal((await post(port, '/api/license', { token: token({ edition: 'expert', modules: '*' }) })).status, 200);
     assert.equal(licenseState().edition, 'expert');
@@ -571,18 +571,18 @@ test('L-3 : une rétrogradation exige force: true', async () => {
     assert.equal(body.current.edition, 'expert');
     assert.equal(body.next.edition, 'lite');
     assert.equal(licenseState().edition, 'expert');
-    // Un module de moins est aussi une rétrogradation…
+    // One module less is a downgrade too…
     assert.equal((await post(port, '/api/license', { token: token({ edition: 'expert', modules: ['@timon/dreams'] }) })).status, 409);
-    // …et force la fait passer.
+    // …and force lets it through.
     assert.equal((await post(port, '/api/license', { token: token({ edition: 'lite', modules: [] }), force: true })).status, 200);
     assert.equal(licenseState().edition, 'lite');
-    // Remonter ne demande rien.
+    // Going up asks for nothing.
     assert.equal((await post(port, '/api/license', { token: token({ edition: 'expert', modules: '*' }) })).status, 200);
     setLicenseState(readLicense(join(process.env.TIMON_HOME!, 'absent.jwt'), { keys }));
   });
 });
 
-test('L-1 : une activation réussie persiste la clé et le calendrier du serveur', async () => {
+test('L-1: a successful activation persists the key and the server schedule', async () => {
   const { readLicenseKey } = await import('./license/refresh.js');
   await withMockedLicenseServer(
     (_url, init) => signedAnswer(init, 200, { token: token(), refresh: { every: 120, offlineHours: 48 } }),
@@ -599,7 +599,7 @@ test('L-1 : une activation réussie persiste la clé et le calendrier du serveur
   );
 });
 
-test('POST /api/license/activate refuse une clé manquante sans appeler le serveur', async () => {
+test('POST /api/license/activate refuses a missing key without calling the server', async () => {
   await withActivateServer(async (port) => {
     const response = await fetch(`http://127.0.0.1:${port}/api/license/activate`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key: '' }),
@@ -609,7 +609,7 @@ test('POST /api/license/activate refuse une clé manquante sans appeler le serve
   });
 });
 
-test('POST /api/license/activate relaie le refus du serveur de licences', async () => {
+test('POST /api/license/activate relays the refusal of the licence server', async () => {
   await withMockedLicenseServer(
     (_url, init) => signedAnswer(init, 409, { error: 'seat_limit', message: 'no seat left' }),
     () => withActivateServer(async (port) => {
@@ -624,12 +624,12 @@ test('POST /api/license/activate relaie le refus du serveur de licences', async 
   );
 });
 
-test("POST /api/license/activate refuse un jeton que ce daemon ne reconnaît pas sans l'installer", async () => {
+test('POST /api/license/activate refuses a token this daemon does not recognise without installing it', async () => {
   const file = join(process.env.TIMON_HOME!, 'license.jwt');
   const original = token();
   writeFileSync(file, original);
-  // Réponse signée par la clé que le daemon épingle, mais jeton signé par une
-  // autre : le serveur d'en face est authentique, le jeton non.
+  // A response signed by the key the daemon pins, but a token signed by another
+  // one: the server on the other side is genuine, the token is not.
   const issued = signed(claims(), { kid: 'unknown' });
   await withMockedLicenseServer(
     (_url, init) => signedAnswer(init, 200, { token: issued }),
@@ -644,11 +644,11 @@ test("POST /api/license/activate refuse un jeton que ce daemon ne reconnaît pas
   );
 });
 
-test('la clé de production épinglée est bien celle du JWKS publié', async () => {
+test('the pinned production key is indeed the one of the published JWKS', async () => {
   const { LICENSE_PUBLIC_KEYS } = await import('./license/pubkey.js');
   const { createPublicKey } = await import('node:crypto');
   const pinned = LICENSE_PUBLIC_KEYS.find((k) => k.keyId === 'license-2026-09');
-  assert.ok(pinned, 'clé de production absente du registre');
+  assert.ok(pinned, 'production key missing from the registry');
   const jwk = createPublicKey(pinned.publicKey).export({ format: 'jwk' }) as { crv?: string; x?: string };
   assert.equal(jwk.crv, 'Ed25519');
   assert.equal(jwk.x, '5lx205PP0N9rtsGjKdJHBO0sv4IO5GtzwL62eP4LOwE');

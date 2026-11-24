@@ -253,11 +253,13 @@ export type Zone = keyof typeof ZONES;
  *  archive (tens of MB per agent), everything else is config. */
 export const AGENT_ARCHIVE_FILES = ['log.jsonl'] as const;
 
-/** Absolute path → portable: `/home/user/x` becomes `~/x`. Idempotent. */
+/** Absolute path → portable: `/home/user/x` becomes `~/x`. Idempotent.
+ *  The rest of the path is written with `/`: an export made on Windows must
+ *  expand on macOS or Linux too, and `expandPath` turns it back there. */
 export function portablePath(p: string): string {
   const home = homedir();
   if (p === home) return '~';
-  if (p.startsWith(home + sep)) return '~/' + p.slice(home.length + 1);
+  if (p.startsWith(home + sep)) return '~/' + p.slice(home.length + 1).split(sep).join('/');
   return p;
 }
 

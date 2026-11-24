@@ -115,7 +115,7 @@ test('closing a task names the task in the stop of its mission', async () => {
   const res = await fetch(`${base}/api/tasks/close`, {
     method: 'POST',
     headers: { authorization: `Bearer ${DAEMON_TOKEN}`, 'content-type': 'application/json', 'X-TIMON-Mission': missionId },
-    body: JSON.stringify({ outcome: 'done', comment: 'livré' }),
+    body: JSON.stringify({ outcome: 'done', comment: 'livré' }), // french-ok: a free-text comment
   });
   assert.equal(res.status, 200);
   const deadline = Date.now() + CLOSED_TASK_STOP_DELAY_MS * 4;

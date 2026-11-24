@@ -54,7 +54,7 @@ test('no pairing address without a root handler to this daemon on the loopback',
   assert.equal(pairingAddress({ error: 'forbidden' }), null);
 });
 
-test('what « Make this machine reachable » publishes is read back as the pairing address', () => {
+test('what "Make this machine reachable" publishes is read back as the pairing address', () => {
   // `serve status` after `tailscale serve --bg --https=10000 http://127.0.0.1:3001`, flattened by the daemon.
   assert.equal(pairingAddress(served([
     { host: 'box.tail1.ts.net:443', target: 'http://127.0.0.1:3100' },

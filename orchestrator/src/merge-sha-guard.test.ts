@@ -1,10 +1,10 @@
 /**
- * Garde merge : une task `merge` ne passe DONE qu'avec un sha de merge complet.
+ * Merge guard: a `merge` task only goes DONE with a full merge sha.
  *
- * L'enjeu du message d'erreur, pas seulement du refus : quand un agent a
- * RÉELLEMENT mergé mais rapporté un sha abrégé, un refus muet l'envoie chercher
- * un merge qui existe déjà. Trois agents s'y sont succédé sur une même série le
- * 2026-08-20 sans jamais comprendre ce qui manquait.
+ * What is at stake is the error message, not only the refusal: when an agent
+ * REALLY merged but reported an abbreviated sha, a mute refusal sends it looking for
+ * a merge that already exists. Three agents took turns on one series on
+ * 2026-08-20 without ever understanding what was missing.
  *
  * `node --test --import tsx src/merge-sha-guard.test.ts`
  */
@@ -24,29 +24,29 @@ function mergeTask(): string {
   return id;
 }
 
-test('un sha complet dans le commentaire suffit à clore, même sans --merged-sha', () => {
+test('a full sha in the comment is enough to close, even without --merged-sha', () => {
   const id = mergeTask();
   const sha = 'fe2dd843d282d2a8238ce465417a973652aed9c3';
-  dbApi.updateTaskStatus(id, 'DONE', { doneComment: `Merge effectué sur main (${sha}).` });
+  dbApi.updateTaskStatus(id, 'DONE', { doneComment: `Merge effectué sur main (${sha}).` }); // french-ok: a free-text comment
   const t = dbApi.getTask(id);
   assert.equal(t?.status, 'DONE');
   assert.equal(t?.merged_commit_sha, sha);
 });
 
-test('un sha abrégé est refusé, mais le motif dit quoi faire', () => {
+test('an abbreviated sha is refused, but the reason says what to do', () => {
   const id = mergeTask();
-  dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'Merge effectué manuellement (fe2dd84).' });
+  dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'Merge effectué manuellement (fe2dd84).' }); // french-ok: a free-text comment
   const t = dbApi.getTask(id);
   assert.equal(t?.status, 'BLOCKED');
-  // Sans ces deux éléments, l'agent relit "il manque le sha" alors qu'il vient
-  // d'en fournir un : c'est le refus incompréhensible qui a fait boucler la task.
+  // Without these two elements, the agent rereads "the sha is missing" while it just
+  // gave one: that is the incomprehensible refusal that made the task loop.
   assert.match(t?.blocked_reason ?? '', /ABBREVIATED SHA/);
   assert.match(t?.blocked_reason ?? '', /git rev-parse fe2dd84/);
 });
 
-test('sans le moindre sha, le motif rappelle la commande de base', () => {
+test('without any sha, the reason recalls the base command', () => {
   const id = mergeTask();
-  dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'Tout est intégré, rien à signaler.' });
+  dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'Tout est intégré, rien à signaler.' }); // french-ok: a free-text comment
   const t = dbApi.getTask(id);
   assert.equal(t?.status, 'BLOCKED');
   assert.match(t?.blocked_reason ?? '', /git rev-parse HEAD/);

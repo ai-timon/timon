@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { PluginWebhooksPane } from '@/components/plugin-webhooks-pane';
 import { PluginBoundary } from '@/lib/plugin-host/plugin-boundary';
 import { t } from '@/lib/i18n';
@@ -56,7 +57,7 @@ function PluginSettingsForm({ pluginId }: { pluginId: string }): ReactElement {
   }, [pluginId]);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex max-w-3xl flex-col">
       {settings.map((setting) => {
         const current = drafts[setting.key] !== undefined
           ? drafts[setting.key]!
@@ -69,24 +70,17 @@ function PluginSettingsForm({ pluginId }: { pluginId: string }): ReactElement {
             className="flex flex-col gap-3 py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8"
           >
             <div className="min-w-0 flex-1">
-              <span className="text-[13px] font-medium leading-snug">{setting.label}</span>
-              <p /* code-font: setting key */ className="mt-1 font-mono text-[10.5px] text-muted-foreground/70">
-                {setting.key}
-              </p>
+              <span className="text-[13px] font-medium leading-snug" title={setting.key}>{setting.label}</span>
             </div>
             <div className="flex shrink-0 items-center gap-2 self-start">
               {setting.type === 'boolean' ? (
-                <Button
-                  variant={Boolean(setting.value ?? setting.default) ? 'default' : 'outline'}
-                  size="sm"
+                <Switch
+                  checked={Boolean(setting.value ?? setting.default)}
                   disabled={saving === setting.key}
-                  className="h-7 min-w-[72px] text-[12px]"
-                  onClick={() => void save(setting, !Boolean(setting.value ?? setting.default))}
-                >
-                  {Boolean(setting.value ?? setting.default)
-                    ? t('settingsPage.enabled')
-                    : t('settingsPage.disabled')}
-                </Button>
+                  aria-label={setting.label}
+                  className="my-1"
+                  onCheckedChange={(checked) => void save(setting, checked)}
+                />
               ) : (
                 <>
                   <input

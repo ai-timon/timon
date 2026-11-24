@@ -20,7 +20,7 @@ async function relay(slug: string, body: string, headers: Record<string, string>
 }
 
 test('the relay forwards the exact bytes and what a sender signs, never a credential', async () => {
-  const raw = '{"issue": {"title": "é"}}\n';
+  const raw = '{"issue": {"title": "é"}}\n'; // french-ok: a non-ASCII payload, the UTF-8 relay under test
   const { res, seen } = await relay('bugs', raw, {
     'content-type': 'application/json',
     'x-hub-signature-256': 'sha256=abc',

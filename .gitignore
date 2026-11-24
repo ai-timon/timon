@@ -9,9 +9,10 @@ dist/
 .env.local
 .DS_Store
 # Every hidden folder is local tool state (.claude, .grepai, .codex, .idea,
-# .next…), at any depth. Files already tracked under one (the maintainers'
-# project skills, and the two links that expose them to the agents' CLIs) stay
-# tracked; a new one needs `git add -f`.
+# .next…), at any depth. The two links that expose the maintainers' project
+# skills to the agents' CLIs (.claude/skills, .agents/skills) are local too:
+# `.worktreelinks` shares them with every task worktree. A file that must be
+# tracked under a hidden folder needs `git add -f`.
 .*/
 !.github/
 

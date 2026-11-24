@@ -23,10 +23,13 @@ test('a restore replaces the database and config, drops the stale WAL and keeps 
   const files = downgraded();
   const live = seed(files, 'after the update');
   assert.ok(existsSync(`${files.dbPath}-wal`));
-  // Its latest writes still sit in the -wal, un-checkpointed.
+  // Its latest writes still sit in the -wal, un-checkpointed. Windows will not
+  // rename a database another handle holds (the restore runs at boot, before
+  // the open): there the writer is closed first, which checkpoints the WAL.
+  if (process.platform === 'win32') live.close();
   requestRestore(files, 'pre-0.1.2', '0.1.1');
   const result = applyPendingRestore(files, '0.1.1', { now: () => 7 });
-  live.close();
+  if (live.open) live.close();
   assert.deepEqual(result, { id: 'r1', snapshot: 'pre-0.1.2', ok: true, error: null, at: 7 });
   assert.deepEqual(notes(files.dbPath), ['before the update']);
   assert.equal(readFileSync(files.configPath, 'utf8'), '{"v":"0.1.1"}');

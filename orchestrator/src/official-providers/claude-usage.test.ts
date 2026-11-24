@@ -51,7 +51,8 @@ test('refreshes expired CLI credentials and persists rotated tokens', { concurre
     });
   }) as typeof fetch;
   try {
-    const usage = await getClaudeUsage({ force: true, fetchImpl });
+    // The refresh is the Linux and Windows path: on macOS the CLI's keychain session is never rotated.
+    const usage = await getClaudeUsage({ force: true, fetchImpl, readKeychain: () => null, platform: 'linux' });
     assert.equal(usage.windows.five_hour?.utilization, 27);
     assert.equal(calls.length, 2);
     assert.equal(calls[0]?.json?.grant_type, 'refresh_token');
@@ -307,7 +308,7 @@ test('invalid_grant is a readable "signed out", not the token endpoint JSON', { 
     }) as typeof fetch;
     for (let attempt = 0; attempt < 2; attempt++) {
       await assert.rejects(
-        getClaudeUsage({ force: attempt === 0, fetchImpl, readKeychain: () => null }),
+        getClaudeUsage({ force: attempt === 0, fetchImpl, readKeychain: () => null, platform: 'linux' }),
         (error: unknown) => {
           assert.ok(isUsageNotSignedInError(error), `attempt ${attempt}: ${(error as Error).message}`);
           assert.match((error as Error).message, /run `claude`, then `\/login`/);

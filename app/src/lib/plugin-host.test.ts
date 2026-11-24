@@ -17,12 +17,12 @@ import type { Capabilities } from './capabilities';
 
 const Empty = () => React.createElement('div');
 
-test('register refuse un slot non déclaré', () => {
+test('register refuses an undeclared slot', () => {
   resetSlotsForTests();
   assert.throws(() => register({ slot: 'absent', pluginId: 'fixture' }, Empty), /not declared/);
 });
 
-test('disposer root effondre récursivement ses slots enfants', () => {
+test('disposing root recursively collapses its child slots', () => {
   resetSlotsForTests();
   const dispose = register({ slot: 'root', pluginId: 'layout', children: { page: 'single', 'nav.item': 'list' } }, Empty);
   register({ slot: 'nav.item', pluginId: 'child', children: { nested: 'keyed' } }, Empty);
@@ -33,7 +33,7 @@ test('disposer root effondre récursivement ses slots enfants', () => {
   assert.equal(slotKind('nested'), null);
 });
 
-test('blank layout ne déclare que page et accepte la page Next', () => {
+test('blank layout only declares page and accepts the Next page', () => {
   resetSlotsForTests();
   register({ slot: 'root', pluginId: 'blank-layout', children: { page: 'keyed' } }, Empty);
   register({ slot: 'page', pluginId: 'next-router', key: NEXT_ROUTER_KEY }, Empty);
@@ -42,7 +42,7 @@ test('blank layout ne déclare que page et accepte la page Next', () => {
   assert.equal(slotKind('cockpit.widget'), null);
 });
 
-test('chaque entrée possède sa propre boundary : une erreur ne remplace pas ses voisines', () => {
+test('each entry has its own boundary: an error does not replace its neighbours', () => {
   resetSlotsForTests();
   declareSlot('items', 'list');
   register({ slot: 'items', pluginId: 'throws' }, () => { throw new Error('boum'); });
@@ -319,19 +319,19 @@ test('an empty single slot paints nothing', () => {
 });
 
 
-test('le calque des overlays laisse passer les clics, sauf sur ce qu’un plugin peint', () => {
-  // Le contrat du gabarit `examples/plugin-overlay` : il se positionne
-  // lui-même en `fixed` et attend du calque qu'il ne lui vole ni ses clics ni
-  // sa place. Un calque plein écran qui capterait le pointeur rendrait toute
-  // l'application inerte dès le premier plugin installé.
+test('the overlay layer lets clicks through, except on what a plugin paints', () => {
+  // The contract of the `examples/plugin-overlay` template: it positions
+  // itself as `fixed` and expects the layer to steal neither its clicks nor
+  // its place. A full-screen layer that caught the pointer would make the whole
+  // application inert from the first installed plugin.
   assert.match(OVERLAY_LAYER_CLASS, /\bfixed\b/);
   assert.match(OVERLAY_LAYER_CLASS, /\binset-0\b/);
   assert.match(OVERLAY_LAYER_CLASS, /pointer-events-none/);
   assert.match(OVERLAY_LAYER_CLASS, /\[&>\*\]:pointer-events-auto/);
-  // Au-dessus du chrome, sous les modales : une mascotte ne couvre pas un
-  // dialogue.
+  // Above the chrome, under the modals: a mascot does not cover a
+  // dialog.
   const z = Number(/z-\[(\d+)\]/.exec(OVERLAY_LAYER_CLASS)?.[1]);
-  assert.ok(z > 20 && z < 50, `z-index hors de la fenêtre attendue : ${z}`);
+  assert.ok(z > 20 && z < 50, `z-index outside the expected window: ${z}`);
 
   mountLayout();
   register({ slot: 'overlay', pluginId: 'mascot' }, () =>
@@ -340,8 +340,8 @@ test('le calque des overlays laisse passer les clics, sauf sur ce qu’un plugin
     React.createElement(SlotRegion, { name: 'overlay', className: OVERLAY_LAYER_CLASS }),
   );
   assert.match(html, /suricate/);
-  // Le plugin garde SON positionnement : le calque n'est pas un hôte de
-  // placement, il ne pose ni cadre ni coordonnées (§10.12 — pas WidgetHost).
+  // The plugin keeps ITS positioning: the layer is not a placement
+  // host, it sets neither frame nor coordinates (§10.12 — not WidgetHost).
   assert.match(html, /position:fixed/);
   assert.doesNotMatch(html, /data-widget|cursor-grab/);
 });

@@ -27,7 +27,9 @@ import { CONFIG_FILE } from './config/load.js';
 import { dbApi } from './db.js';
 import { diagnose } from './doctor.js';
 import { getHost } from './host/index.js';
-import { LAUNCHD_SYSTEM_KIND, MACOS_LABEL, WINDOWS_TASK } from './host/service-install.js';
+import { LAUNCHD_SYSTEM_KIND, LINUX_UNIT, MACOS_LABEL, WINDOWS_TASK } from './host/service-install.js';
+import { ownLinuxUnit } from './host/packaged-service.js';
+import { TIMON_HOME } from './paths.js';
 import { mainAgentOnboardingPending } from './onboarding-main-agent.js';
 import { teamOnboardingPending } from './onboarding-team-state.js';
 import type { SupervisorKind } from './host/machine.js';
@@ -111,8 +113,9 @@ export function clearRestartPending(): void {
 export function restartCommand(
   supervisor: SupervisorKind,
   launchDaemon: boolean = process.env.TIMON_SERVICE_KIND === LAUNCHD_SYSTEM_KIND,
+  env: NodeJS.ProcessEnv = process.env,
 ): string | null {
-  if (supervisor === 'systemd-user') return 'systemctl --user restart timon-orchestrator';
+  if (supervisor === 'systemd-user') return `systemctl --user restart ${ownLinuxUnit(LINUX_UNIT, TIMON_HOME, env)}`;
   if (supervisor === 'launchd') {
     // The system domain only takes orders from root.
     return launchDaemon

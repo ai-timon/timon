@@ -98,8 +98,8 @@ test('destroy() releases every frame, timer, observer and listener', async () =>
   h.handle.destroy();
   assert.equal(h.frames.size, 0, 'no animation frame left outstanding');
   assert.equal(h.timers.size, 0, 'no timer left outstanding');
-  // Ne prouve rien avant l'init -- les ResizeObserver sont créés avec le renderer, donc
-  // jamais ici. Gardé comme garde-fou pour le jour où ce test couvrira un montage complet.
+  // Proves nothing before init -- the ResizeObservers are created with the renderer, so
+  // never here. Kept as a guard for the day this test covers a full mount.
   assert.equal(h.observing.size, 0, 'every ResizeObserver disconnected');
   assert.deepEqual(h.listeners, [], 'every window/document listener removed');
 });

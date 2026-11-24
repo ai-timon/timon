@@ -1,3 +1,4 @@
+// french-ok-file: an accented message, the text the thread must render
 /**
  * A chat in a slim or middling island on a wide screen.
  *

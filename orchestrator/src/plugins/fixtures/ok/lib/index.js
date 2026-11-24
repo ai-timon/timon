@@ -1,11 +1,11 @@
 /**
- * Fixture : le plugin nominal. Il fait le minimum qui prouve quelque chose —
- * une route (dont on vérifie qu'elle disparaît au `disable`) et un effet (dont
- * on vérifie qu'il est défait au déchargement).
+ * Fixture: the nominal plugin. It does the minimum that proves something:
+ * a route (checked to disappear on `disable`) and an effect (checked to
+ * be undone on unload).
  *
- * La trace passe par `globalThis` et non par un export : le loader importe ce
- * fichier avec un `?rev=` qui casse le cache ESM, donc le test et le loader ne
- * partagent PAS la même instance de module.
+ * The trace goes through `globalThis` and not an export: the loader imports this
+ * file with a `?rev=` that busts the ESM cache, so the test and the loader do
+ * NOT share the same module instance.
  */
 export const name = 'fixture-ok'
 export const inject = ['storage']

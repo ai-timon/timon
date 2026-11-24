@@ -346,11 +346,11 @@ A port published by Docker is opened by Docker's own firewall rules, before `ufw
 
 ## Apply a configuration change
 
-Changes to listeners and to `daemon.behindTlsProxy` take effect when the daemon restarts. On Linux, the service installed by `timon service install` (and by the setup of the deb package) is the user unit `timon-orchestrator`:
+Changes to listeners and to `daemon.behindTlsProxy` take effect when the daemon restarts. On Linux, a package (deb or AppImage) runs its daemon as the user unit `timon-desktop-<id>`, named after your data directory; a source checkout's `timon service install` uses `timon-orchestrator`. `timon service status` names yours:
 
 ```bash
-systemctl --user restart timon-orchestrator
 timon service status
+systemctl --user restart timon-desktop-<id>    # or timon-orchestrator for a source checkout
 timon app status
 ```
 

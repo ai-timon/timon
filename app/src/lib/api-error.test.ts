@@ -61,3 +61,20 @@ test('responseErrorMessage reads the body, and falls back on the status when it 
   const html = new Response('<html></html>', { status: 500 });
   assert.equal(await inLocale('en', () => responseErrorMessage(html)), 'HTTP 500');
 });
+
+test('a code whose params are missing shows the daemon English, never a template with braces', () => {
+  registerLocale('xz', { apiErrors: { sha_not_in_base: 'Le commit {sha} manque dans {base}.' } });
+  const partial = { error: 'Commit x is not in main', code: 'sha_not_in_base', params: { sha: 'x' } };
+  assert.equal(inLocale('xz', () => apiErrorMessage(partial)), 'Commit x is not in main');
+  assert.equal(inLocale('en', () => apiErrorMessage({ error: 'Commit x is not in main', code: 'sha_not_in_base' })),
+    'Commit x is not in main');
+  const whole = { ...partial, params: { sha: 'x', base: 'main' } };
+  assert.equal(inLocale('xz', () => apiErrorMessage(whole)), 'Le commit x manque dans main.');
+});
+
+test('a code whose params are missing and that has no English falls back like a body without code', () => {
+  inLocale('en', () => {
+    assert.equal(apiErrorMessage({ code: 'sha_not_in_base' }, 'mark failed'), 'mark failed');
+    assert.equal(apiErrorMessageOrNull({ code: 'sha_not_in_base' }), 'Something went wrong.');
+  });
+});

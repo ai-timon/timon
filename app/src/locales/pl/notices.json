@@ -6,6 +6,11 @@
       "title": "Gwiazdka na GitHubie?",
       "action": "Daj gwiazdkę na GitHubie"
     },
+    "confirmEmail": {
+      "title": "Potwierdź swój adres e-mail",
+      "body": "Pozwala zresetować hasło przez e-mail.",
+      "action": "Potwierdź"
+    },
     "feed": {
       "open": "Dowiedz się więcej"
     },
@@ -18,6 +23,43 @@
       "feed": {
         "title": "Pokaz na żywo w czwartek",
         "body": "Agenci i wtyczki, jedna godzina."
+      },
+      "update": {
+        "highlight1": "Aktualizacje pobierają się, weryfikują i instalują w aplikacji.",
+        "highlight2": "Misje wznawiają się po restarcie tam, gdzie się zatrzymały.",
+        "highlight3": "Długie rozmowy przewijają się szybciej.",
+        "highlight4": "Wtyczki mogą dodać własną stronę ustawień.",
+        "states": "Podgląd",
+        "state": {
+          "downloading": "Pobieranie",
+          "verified": "Zweryfikowano",
+          "missions": "Misje",
+          "network": "Błąd sieci",
+          "cancelled": "Anulowano hasło"
+        },
+        "done": "Podgląd: nic nie zostało zainstalowane."
+      }
+    },
+    "license": {
+      "enterKey": "Wpisz mój klucz",
+      "paused": {
+        "title": "Płatne funkcje wstrzymane",
+        "body": "Wrócą, gdy tylko {brand} połączy się z serwerem licencji.",
+        "action": "Dowiedz się więcej"
+      },
+      "refused": {
+        "title": "Twoja licencja nie jest już aktywna",
+        "body": "{brand} działa dalej w wersji Free. Wpisz klucz, aby odzyskać płatne funkcje."
+      },
+      "pastDue": {
+        "title": "Zaległa płatność",
+        "body": "Odnów subskrypcję, aby zachować płatne funkcje.",
+        "bodyUntil": "Odnów subskrypcję przed {date}, aby zachować płatne funkcje.",
+        "action": "Zobacz moją licencję"
+      },
+      "ends": {
+        "title": "Twoja licencja kończy się {date}",
+        "body": "Wpisz nowy klucz przed tym dniem, aby zachować płatne funkcje."
       }
     }
   }

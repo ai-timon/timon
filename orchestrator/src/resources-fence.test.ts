@@ -27,7 +27,7 @@ import { configuredAgentCwd } from './agent-config.js';
 import type { HostFence, HostFenceProbe, HostFenceWitness } from './host/types.js';
 import {
   fenceLaunchFailure, launchErrorStatus, missionLaunchErrorBody, fenceMissionCommand, fencePolicyFile, fenceWitnessFailure, hostFenceStatus, MissionFenceRefusedError, noteFenceLaunchFailure,
-  resetFenceLaunchFailureForTest, watchFencedLaunch, wrapMissionLaunch, type MissionFenceOutcome,
+  missionFenceExpected, resetFenceLaunchFailureForTest, watchFencedLaunch, wrapMissionLaunch, type MissionFenceOutcome,
 } from './resources.js';
 
 // The fence checks every grant on the path it resolves to: the tree exists,
@@ -82,7 +82,7 @@ function fencedOutcome(name: string, mechanism: 'landlock' | 'seatbelt' = 'landl
   const policyFile = join(TH, 'run', 'fence', `${name}.policy`);
   mkdirSync(join(TH, 'run', 'fence'), { recursive: true });
   writeFileSync(policyFile, 'x');
-  return { state: 'fenced', mechanism, policyFile, tmpDir: null, workspace: 'rw', packageCacheDir: null };
+  return { state: 'fenced', mechanism, policyFile, tmpDir: null, workspace: 'rw', packageCacheDir: null, credentialStoreWritable: false };
 }
 
 test('a fence that answers wraps the CLI, with the policy under the folder no mission reaches', () => {
@@ -94,7 +94,7 @@ test('a fence that answers wraps the CLI, with the policy under the folder no mi
   assert.deepEqual(launch, {
     cmd: '/opt/timon/timon-fence',
     args: ['--policy', policyFile, '--', '/usr/bin/claude', '-p'],
-    fence: { state: 'fenced', mechanism: 'landlock', policyFile, tmpDir: join(TH, 'tmp', 'missions', MISSION), workspace: 'rw', packageCacheDir: null },
+    fence: { state: 'fenced', mechanism: 'landlock', policyFile, tmpDir: join(TH, 'tmp', 'missions', MISSION), workspace: 'rw', packageCacheDir: null, credentialStoreWritable: false },
   });
   assert.equal(fence.policies[0]?.enabled, true);
   assert.ok(fence.policies[0]?.rw.includes(TARGET.cwd), 'the policy is the daemon\'s own projection of the target');
@@ -826,7 +826,7 @@ test('the real fence applies the level of the CLI sandbox it replaces: a writing
 test('what the CLI says before the mission reads its stderr waits for the mission\'s reader', async () => {
   const stderr = new PassThrough();
   const proc = Object.assign(new EventEmitter(), { stderr });
-  watchFencedLaunch(proc, { state: 'fenced', mechanism: 'landlock', policyFile: join(TH, 'run', 'fence', 'early.policy'), tmpDir: null, workspace: 'rw', packageCacheDir: null });
+  watchFencedLaunch(proc, { state: 'fenced', mechanism: 'landlock', policyFile: join(TH, 'run', 'fence', 'early.policy'), tmpDir: null, workspace: 'rw', packageCacheDir: null, credentialStoreWritable: false });
   stderr.write('early line\n');
   await new Promise((resolve) => setImmediate(resolve));
   let read = '';
@@ -865,4 +865,27 @@ test('a fence refusal answers a translatable code, never a bare launch error', (
   const other = new Error('spawn claude ENOENT');
   assert.deepEqual(missionLaunchErrorBody(other), { error: 'spawn claude ENOENT' });
   assert.equal(launchErrorStatus(other, 400), 400);
+});
+
+test('a launch is expected fenced against the keychain only with a ready fence and no `writable` grant reaching it', () => {
+  const home = '/Users/tester';
+  const isolation = (filesystem: 'auto' | 'off', extra: Record<string, unknown> = {}) =>
+    TimonConfigSchema.parse({ host: { isolation: { filesystem, ...extra } } });
+  const ready = fakeFence({ available: true, abi: 0 });
+  const on = (cfg: ReturnType<typeof isolation>, fence: HostFence | undefined = ready) => ({ cfg, fence, platform: 'darwin' as const, home });
+  assert.equal(missionFenceExpected({ agent: 'coder' }, on(isolation('auto'))), true);
+  assert.equal(missionFenceExpected({ agent: 'coder' }, on(isolation('off'))), false, 'isolation off');
+  assert.equal(missionFenceExpected({ agent: 'coder' }, on(isolation('auto'), fakeFence({ available: false, reason: 'no sandbox-exec' }))), false,
+    'a fence that falls back to unfenced in `auto`');
+  assert.equal(missionFenceExpected({ agent: 'coder' }, { ...on(isolation('auto')), fence: undefined }), false, 'no fence on this OS');
+  // An exception that opens the login keychain: the CLI renews its entry in place, nothing must move.
+  const byAgent = isolation('auto', { exceptions: { agents: { coder: { writable: ['~/Library'] } } } });
+  assert.equal(missionFenceExpected({ agent: 'coder' }, on(byAgent)), false);
+  assert.equal(missionFenceExpected({ agent: 'other' }, on(byAgent)), true, 'only that agent');
+  const byProject = isolation('auto', { exceptions: { projects: { site: { writable: ['~/Library/Keychains/login.keychain-db'] } } } });
+  assert.equal(missionFenceExpected({ agent: 'coder', project: 'site' }, on(byProject)), false);
+  assert.equal(missionFenceExpected({ agent: 'coder', project: 'other' }, on(byProject)), true);
+  assert.equal(missionFenceExpected({ agent: 'coder' }, on(isolation('auto', { writable: ['~/'] }))), false, 'the whole home, globally');
+  assert.equal(missionFenceExpected({ agent: 'coder' }, on(isolation('auto', { writable: ['~/Library/Caches'] }))), true, 'a sibling folder');
+  assert.equal(missionFenceExpected({ agent: 'coder' }, { ...on(byAgent), platform: 'linux' }), true, 'no such store off macOS');
 });

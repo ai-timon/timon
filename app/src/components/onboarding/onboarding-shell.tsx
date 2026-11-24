@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { fetchCapabilities } from '@/lib/capabilities';
 import { getLocale, t } from '@/lib/i18n';
 import { welcomeLanding } from '@/app/setup/agent/setup-landing';
+import { reportOnboardingScreen, type OnboardingScreenAction, type OnboardingScreenDetail } from '@/lib/usage-events';
 import { cn } from '@/lib/utils';
 import { usePrefersReducedMotion } from '@/components/mascot/agent-mascot';
 import { MascotStyleToggle } from '@/components/mascot/look-styler/mascot-style-switch';
@@ -60,10 +61,12 @@ export type OnboardingShellProps = {
   gate?: OnboardingGate;
   /** What "Continue" does on the last step; `afterLastStep` unless a test passes its own. */
   finish?: () => void;
+  /** Where the funnel's screen events go; the daemon's usage route unless a test passes its own. */
+  report?: (screen: OnboardingStepId, action: OnboardingScreenAction, detail?: OnboardingScreenDetail) => void;
 };
 
 export function OnboardingShell({
-  steps = ONBOARDING_STEPS, companions = ONBOARDING_COMPANIONS, gate: Gate = ONBOARDING_GATE, finish,
+  steps = ONBOARDING_STEPS, companions = ONBOARDING_COMPANIONS, gate: Gate = ONBOARDING_GATE, finish, report = reportOnboardingScreen,
 }: OnboardingShellProps): ReactElement | null {
   // `null` until the URL is read: a reload on `?step=llm` must not flash the welcome.
   const [at, setAt] = useState<Position | null>(null);
@@ -75,36 +78,83 @@ export function OnboardingShell({
   motion.current = reduced;
   const finishRef = useRef(finish ?? (() => { void afterLastStep(); }));
   finishRef.current = finish ?? finishRef.current;
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  // The first step was reported `viewed`: the mount effect may run twice in development.
+  const opened = useRef(false);
+  const outcome = useRef<OnboardingScreenDetail | undefined>(undefined);
+  /** The funnel's word for how the current step was left. Analytics never breaks the onboarding. */
+  const left = useCallback((action: OnboardingScreenAction): void => {
+    try { reportRef.current(current.current, action, action === 'completed' ? outcome.current : undefined); } catch { /* best effort */ }
+  }, []);
+  /**
+   * Reported when the shell decides to show a step, not from an effect: a
+   * step that steps aside on mount does so in its own effect, which React
+   * runs before its parent's, and the funnel would hear it leave first.
+   */
+  const shows = useCallback((step: OnboardingStepId): void => {
+    outcome.current = undefined;
+    try { reportRef.current(step, 'viewed'); } catch { /* best effort */ }
+  }, []);
 
   useEffect(() => {
     // A tab still on the former chat step goes where that conversation lives now.
     if (asksFormerChatStep(window.location.search)) { finishRef.current(); return; }
     const step = stepFromSearch(window.location.search);
     current.current = step;
+    if (!opened.current) { opened.current = true; shows(step); }
     setAt({ step, direction: 1 });
-  }, []);
+  }, [shows]);
 
   const goTo = useCallback((step: OnboardingStepId, direction: 1 | -1 = 1): void => {
     if (step === current.current) return;
     current.current = step;
+    shows(step);
     // The address follows the step, so a reload reopens it; Next keeps its own history state.
     window.history.replaceState(window.history.state, '', stepHref(step));
     transition(() => {
       backHandler.current = null;
       setAt({ step, direction });
     }, motion.current);
-  }, []);
+  }, [shows]);
 
-  const next = useCallback((): void => {
+  /** Forward, without saying how the step was left. */
+  const advance = useCallback((): void => {
     const step = nextStep(current.current);
     if (step) goTo(step, 1);
     else if (isLastStep(current.current)) finishRef.current();
   }, [goTo]);
 
+  const next = useCallback((): void => {
+    if (nextStep(current.current) || isLastStep(current.current)) left('completed');
+    advance();
+  }, [advance, left]);
+
   const back = useCallback((): void => {
     const step = previousStep(current.current);
-    if (step) goTo(step, -1);
-  }, [goTo]);
+    if (!step) return;
+    left('back');
+    goTo(step, -1);
+  }, [goTo, left]);
+
+  const skip = useCallback((direction: 1 | -1 = 1): void => {
+    const step = direction === -1 ? previousStep(current.current) : nextStep(current.current);
+    if (!step && !(direction === 1 && isLastStep(current.current))) return;
+    left('skipped');
+    if (direction === -1 && step) goTo(step, -1);
+    else advance();
+  }, [advance, goTo, left]);
+
+  /** A step that leads elsewhere by itself (the welcome to the background or the sign-in) is done with. */
+  const goForward = useCallback((id: OnboardingStepId): void => {
+    if (id === current.current) return;
+    left('completed');
+    goTo(id, 1);
+  }, [goTo, left]);
+
+  const setOutcome = useCallback((detail: OnboardingScreenDetail): void => {
+    outcome.current = detail;
+  }, []);
 
   const setLanguage = useCallback(async (tag: string): Promise<string> => {
     const active = await applyLanguage(tag, document);
@@ -117,8 +167,8 @@ export function OnboardingShell({
   }, []);
 
   const nav = useMemo<OnboardingNav | null>(() => (at
-    ? { step: at.step, direction: at.direction, next, back, goTo: (id) => goTo(id, 1), setLanguage, setBackHandler }
-    : null), [at, next, back, goTo, setLanguage, setBackHandler]);
+    ? { step: at.step, direction: at.direction, next, back, goTo: goForward, skip, setOutcome, setLanguage, setBackHandler }
+    : null), [at, next, back, goForward, skip, setOutcome, setLanguage, setBackHandler]);
 
   if (!at || !nav) return null;
 

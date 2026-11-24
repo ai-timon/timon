@@ -23,7 +23,7 @@ test('Connected holds what can run now; the search folds case and accents and re
   const list = [
     provider('claude', { name: 'Claude', status: 'connected' }),
     provider('codex', { name: 'Codex', status: 'not-connected' }),
-    provider('user:local', { name: 'Modèle local', status: 'available', backends: [{ ...provider('x').backends[0]!, id: 'ollama', label: 'Ollama' }] }),
+    provider('user:local', { name: 'Modèle local', status: 'available', backends: [{ ...provider('x').backends[0]!, id: 'ollama', label: 'Ollama' }] }), // french-ok: a model name a French user gave
     provider('acme', { name: 'Acme', status: 'blocked' }),
     provider('off', { name: 'Off', status: 'disabled' }),
     provider('wait', { name: 'Wait', status: 'needs-authorization' }),

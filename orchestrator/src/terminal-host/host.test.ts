@@ -284,7 +284,18 @@ test('endpoints: a pipe per instance on Windows, a short private folder when the
   assert.notEqual(hostFiles('C:\\Users\\b\\.timon', 'win32').endpoint, win.endpoint);
   const short = hostFiles('/home/u/.timon', 'linux');
   assert.equal(short.endpoint, join('/home/u/.timon', 'run', 'terminal-host.sock'));
-  const long = hostFiles(`/home/u/${'deep/'.repeat(30)}.timon`, 'linux');
+  // Measured against the machine's temporary folder, as a daemon sees it: the
+  // test runner's own is nested deeper, which on macOS (`/var/folders/…/T/`)
+  // already leaves no room for a socket name.
+  const scratch = process.env.TMPDIR;
+  process.env.TMPDIR = process.env.TIMON_TEST_REAL_TMPDIR || tmpdir();
+  let long: ReturnType<typeof hostFiles>;
+  try {
+    long = hostFiles(`/home/u/${'deep/'.repeat(30)}.timon`, 'linux');
+  } finally {
+    if (scratch === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = scratch;
+  }
   assert.ok(Buffer.byteLength(long.endpoint) <= 100, long.endpoint);
   assert.equal(long.token, join(`/home/u/${'deep/'.repeat(30)}.timon`, 'run', 'terminal-host.token'));
 });

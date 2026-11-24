@@ -68,7 +68,8 @@ function program(dir: string, name: string): string {
   return file;
 }
 
-const root = realpathSync(mkdtempSync(join(tmpdir(), 'timon-launch-authority-')));
+// `.native` also unfolds a Windows 8.3 name (`RUNNER~1`), as the launch check does.
+const root = realpathSync.native(mkdtempSync(join(tmpdir(), 'timon-launch-authority-')));
 const bin = join(root, 'bin');
 const agentFile = program(bin, 'acme-auth');
 const elsewhere = program(join(root, 'elsewhere'), 'acme-auth');

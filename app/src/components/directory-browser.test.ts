@@ -1,5 +1,5 @@
 /**
- * TIM-0136 on screen: driving another machine, « Browse… » lists that
+ * TIM-0136 on screen: driving another machine, "Browse…" lists that
  * machine's folders through the daemon, never this computer's OS dialog;
  * on this computer's own daemon the desktop dialog is kept.
  */

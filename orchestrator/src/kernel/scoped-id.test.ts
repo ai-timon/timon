@@ -1,14 +1,14 @@
 /**
- * Un id de module porte désormais un `/` (`@timon/db`, §10.14). Ce test tient
- * les trois endroits où un `/` peut faire dérailler un identifiant qui n'en
- * avait jamais eu : une URL, un chemin sur le disque, une clé en base.
+ * A module id now carries a `/` (`@timon/db`, §10.14). This test holds
+ * the three places where a `/` can derail an identifier that had
+ * never had one: a URL, a path on disk, a database key.
  *
- * Aucun n'échouerait bruyamment. Une route rendrait 404 (le `/` coupe le
- * segment), un fichier atterrirait dans un sous-dossier inexistant, une clé
- * partirait dans la mauvaise ligne. D'où trois assertions plutôt qu'une
- * relecture.
+ * None would fail loudly. A route would return 404 (the `/` cuts the
+ * segment), a file would land in a missing subfolder, a key
+ * would go into the wrong row. Hence three assertions rather than a
+ * reread.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,35 +21,36 @@ const { LABEL, MODULE_ID } = await import('../plugins-bundled/web-app/control.js
 
 const SCOPED = '@timon/secrets-vault';
 
-test('un id scopé ne traverse une URL qu\'encodé', () => {
-  assert.ok(CATALOG.some((m) => m.id === SCOPED), 'id de référence du test');
+test('a scoped id only crosses a URL encoded', () => {
+  assert.ok(CATALOG.some((m) => m.id === SCOPED), 'reference id of the test');
 
-  // Ce que le front doit écrire. Le `/` disparaît de la forme brute : sans ça,
-  // Express voit `/api/plugins/@timon/secrets-vault/enabled` comme quatre
-  // segments et aucune route ne matche.
+  // What the front end must write. The `/` disappears from the raw form: without it,
+  // Express sees `/api/plugins/@timon/secrets-vault/enabled` as four
+  // segments and no route matches.
   const encoded = encodeURIComponent(SCOPED);
   assert.equal(encoded.includes('/'), false);
   assert.equal(new URL(`http://timon.invalid/api/plugins/${encoded}/enabled`).pathname.split('/').length, 5);
-  // Le serveur retrouve l'id exact — l'aller-retour ne perd ni le scope ni la
-  // casse.
+  // The server finds the exact id back: the round trip loses neither the scope nor the
+  // case.
   assert.equal(decodeURIComponent(encoded), SCOPED);
 });
 
-test('un id scopé reste sous son dossier de données, et ne sert jamais de nom de pidfile', () => {
-  // Le `/` crée un sous-dossier ; ce qui compte est qu'il ne SORTE pas de
-  // `plugins-data/` (pas de `..`, pas de chemin absolu).
+test('a scoped id stays under its data folder, and never serves as a pidfile name', () => {
+  // The `/` creates a subfolder; what matters is that it does not LEAVE
+  // `plugins-data/` (no `..`, no absolute path).
   const dir = pluginDataDir(SCOPED);
-  assert.ok(dir.startsWith(PLUGINS_DATA_DIR + sep), `${dir} doit rester sous ${PLUGINS_DATA_DIR}`);
+  assert.ok(dir.startsWith(PLUGINS_DATA_DIR + sep), `${dir} must stay under ${PLUGINS_DATA_DIR}`);
   assert.equal(dir.includes('..'), false);
 
-  // Le pidfile, lui, est un FICHIER à plat : il ne peut pas porter l'id. D'où
-  // le couple LABEL / MODULE_ID de web-app.
+  // The pidfile is a flat FILE: it cannot carry the id. Hence
+  // the LABEL / MODULE_ID pair of web-app.
   assert.equal(MODULE_ID, '@timon/web-app');
   assert.equal(LABEL.includes('/'), false);
   assert.equal(childPidFile(LABEL), `${RUN_DIR}${sep}${LABEL}.pid`);
 });
 
-test('un id scopé est une clé de base comme une autre, et reste cloisonné', () => {
+test('a scoped id is a database key like any other, and stays partitioned', () => {
+  // french-ok-file: free-text sample values
   dbApi.pluginKvSet(SCOPED, 'k', 'à moi');
   dbApi.pluginKvSet('secrets-vault', 'k', 'à un autre');
 
@@ -59,5 +60,5 @@ test('un id scopé est une clé de base comme une autre, et reste cloisonné', (
 
   dbApi.pluginKvClear(SCOPED);
   assert.equal(dbApi.pluginKvGet(SCOPED, 'k'), undefined);
-  assert.equal(dbApi.pluginKvGet('secrets-vault', 'k'), 'à un autre', 'effacer l\'un ne touche pas l\'autre');
+  assert.equal(dbApi.pluginKvGet('secrets-vault', 'k'), 'à un autre', 'erasing one does not touch the other');
 });

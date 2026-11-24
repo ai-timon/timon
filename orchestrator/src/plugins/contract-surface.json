@@ -1,5 +1,5 @@
 {
-  "apiVersion": 17,
+  "apiVersion": 19,
   "members": {
     "accountProvider": {
       "type": "object",
@@ -418,6 +418,67 @@
       "type": "function",
       "arity": 2,
       "since": 1
+    },
+    "forge": {
+      "type": "object",
+      "since": 19
+    },
+    "forge.issues": {
+      "type": "object",
+      "since": 19
+    },
+    "forge.issues.get": {
+      "type": "function",
+      "arity": 2,
+      "since": 19
+    },
+    "forge.issues.list": {
+      "type": "function",
+      "arity": 2,
+      "since": 19
+    },
+    "forge.proposals": {
+      "type": "object",
+      "since": 19
+    },
+    "forge.proposals.get": {
+      "type": "function",
+      "arity": 2,
+      "since": 19
+    },
+    "forge.proposals.list": {
+      "type": "function",
+      "arity": 1,
+      "since": 19
+    },
+    "forge.propose": {
+      "type": "function",
+      "arity": 2,
+      "since": 19
+    },
+    "forge.pulls": {
+      "type": "object",
+      "since": 19
+    },
+    "forge.pulls.checks": {
+      "type": "function",
+      "arity": 2,
+      "since": 19
+    },
+    "forge.pulls.get": {
+      "type": "function",
+      "arity": 2,
+      "since": 19
+    },
+    "forge.pulls.list": {
+      "type": "function",
+      "arity": 1,
+      "since": 19
+    },
+    "forge.repository": {
+      "type": "function",
+      "arity": 1,
+      "since": 19
     },
     "host": {
       "type": "object",
@@ -1017,6 +1078,11 @@
       "arity": 1,
       "since": 12
     },
+    "provider.account.osCredential": {
+      "type": "function",
+      "arity": 3,
+      "since": 18
+    },
     "provider.binary": {
       "type": "object",
       "since": 12
@@ -1609,6 +1675,11 @@
       "type": "function",
       "arity": 1,
       "since": 12
+    },
+    "provider.scratch.profile": {
+      "type": "function",
+      "arity": 1,
+      "since": 18
     },
     "questions": {
       "type": "object",
@@ -3497,6 +3568,10 @@
         "userMcpServers?": "readonly ProviderMcpServer[] | undefined",
         "binaries?": "Readonly<Record<string, { readonly path?: string; readonly version?: string; readonly probe?: (args: readonly string[]) => Partial<ProviderProbeResult>; readonly converse?: (args: readonly string[]) => ProviderConversation; }>> | undefined",
         "osCredentials?": "Readonly<Record<string, string>> | undefined",
+        "lockedOsCredentials?": "readonly string[] | undefined",
+        "signingInAccounts?": "readonly string[] | undefined",
+        "unfencedMissions?": "readonly string[] | undefined",
+        "accountsInUse?": "readonly string[] | undefined",
         "generatedMedia?": "readonly ProviderGeneratedMedia[] | undefined",
         "secrets?": "readonly string[] | undefined",
         "credentialDirs?": "readonly string[] | undefined",
@@ -3623,7 +3698,8 @@
       "since": 12,
       "signature": "ProviderScratch",
       "members": {
-        "mission": "(spawn: BuildSpawnOpts) => Promise<ProviderScratchDir>"
+        "mission": "(spawn: BuildSpawnOpts) => Promise<ProviderScratchDir>",
+        "profile": "(profile: ProfileRuntime) => ProviderScratchDir"
       }
     },
     "ProviderRedact": {
@@ -3716,7 +3792,8 @@
       "since": 12,
       "signature": "ProviderAccount",
       "members": {
-        "of": "(profile: ProfileRuntime) => ProviderAccountContext | undefined"
+        "of": "(profile: ProfileRuntime) => ProviderAccountContext | undefined",
+        "osCredential": "(profile: ProfileRuntime, service: string, missionId: string) => ProviderAccountOsCredential | undefined"
       }
     },
     "ProviderAccountContext": {

@@ -16,10 +16,13 @@ export type { TriggerTestResult } from '../plugins/contract/automation.js';
 
 export type TriggerTestBody = z.infer<typeof testTriggerSchema>;
 export type TriggerTestRefusal = { status: number; error: string };
+/** The refusal this module makes itself, beside whatever `mayExecute` answers. */
+export type TriggerTestTooLarge = { status: 413; error: string };
 
-export function runTriggerTest(
-  trigger: Trigger, body: TriggerTestBody, mayExecute: () => TriggerTestRefusal | null,
-): { refused: TriggerTestRefusal } | { result: TriggerTestResult } {
+/** Generic over the caller's refusal: a route answers a coded body, a plugin facade a plain message. */
+export function runTriggerTest<R extends { status: number } = TriggerTestRefusal>(
+  trigger: Trigger, body: TriggerTestBody, mayExecute: () => R | null,
+): { refused: R | TriggerTestTooLarge } | { result: TriggerTestResult } {
   const payload = body.payload ?? {};
   if (Buffer.byteLength(JSON.stringify(payload) ?? '') > TRIGGER_HOOK_BODY_LIMIT) {
     return { refused: { status: 413, error: 'payload too large' } };

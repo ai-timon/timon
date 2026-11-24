@@ -18,6 +18,8 @@ Declare `kind: "widget"` and a slot ending in `.widget`, then register the body 
 | `bar` | The widget also has a compact form: it may sit on the top bar's line (`topbar.widget`) and paints that form in the sidebars |
 | `placedByDefault` | Placed in `zone` on every page that has not placed or removed it yet, instead of waiting in the palette |
 | `formerKeys` | Keys the widget was registered under before (`''` for a keyless registration): a saved place is handed down |
+| `tabTitle` | Short name on the widget's tab when it is stacked (« PR » for « Pull requests »); the tooltip keeps `title` (API 19) |
+| `liveCount` | Kept mounted, hidden, behind the stack's front tab, so the count or dot it publishes stays true (API 19) |
 
 Without metadata, the title falls back to the registration key or plugin ID, the default height is 260px and the default cockpit placement is the left rail. The existing cockpit zone IDs are `gauche` and `droite`; they are placement identifiers, not translated UI text.
 
@@ -28,6 +30,26 @@ These defaults apply only on first placement. The user's saved layout takes prec
 Placement is identified by **plugin ID plus registration key**. Give each instance a stable, distinct key. Do not derive it from a mutable label or agent name. To change a registration title, dispose and re-register under the same key; its placement remains associated with that key.
 
 If instance configuration arrives asynchronously, clean up its subscription when the plugin unloads. Otherwise a disabled plugin can accidentally register its cards again.
+
+## In a stack of tabs
+
+The user can stack widgets into one card with a tab each, like the chat's **Git** stack. Your tab can say more than your title, through four hooks of the [UI kit](ui-kit.md) (manifest `"apiVersion": 19`):
+
+- `useWidgetCount(n)` puts a number on your tab (« Issues 2 »); `null` or 0 shows none. It returns whether the tab shows it: when it does not (a card on its own), paint the number next to your own title.
+- `useWidgetAttention(label)` puts a dot on your tab while something in your widget waits for the person; `label` (« 2 to approve ») is said in the tab's tooltip and to a screen reader, `null` clears it.
+- `useWidgetMenu(items)` moves header actions (`{ key, label, icon?, onSelect }`) into the widget's menu, the gear or a right click on the tabs: at 300px the tab strip has no room left. It returns whether it did; when it did not, keep them in your header.
+- `useWidgetInFront()` tells whether your widget is in view.
+
+Without `liveCount`, a stacked widget is painted only while its tab is in front, and its count leaves with it. With `liveCount`, it stays mounted behind the front tab: keep it cheap there. Read `useWidgetInFront()` and wait for it before a costly read, or reuse what you read less than a minute ago; read again when your tab comes forward.
+
+```js
+import { Tile, useWidgetCount, useWidgetMenu } from '@timon/ui'
+
+const left = issues ? issues.length : null
+const onTab = useWidgetCount(left)
+const inMenu = useWidgetMenu([{ key: 'refresh', label: 'Refresh', onSelect: reload }])
+return h(Tile, { title: 'Issues', subtitle: onTab ? undefined : left, actions: inMenu ? handle : h(React.Fragment, null, refreshButton, handle), className }, rows)
+```
 
 ## In the chat's columns
 
@@ -51,14 +73,14 @@ Every widget receives `orientation`: `horizontal` on the top bar's line, `vertic
 
 The rule is the zone's, never the widget's width: the side navigation widens on hover, and a widget must not change form under the pointer. A widget without `bar` keeps its card everywhere it is admitted, sidebars included; a widget in a stack of tabs keeps its card too. The shape is not painted as a label: read it from `orientation` and `compact`.
 
-The compact form is icons and badges only. Its detail opens on click with `AnchoredPopover` from the [UI kit](ui-kit.md) (manifest `"apiVersion": 6`): `placement: 'below'` on the line, `'beside'` in a column. The popover keeps itself inside the window. Use `frame: 'none'` so the component chooses between the forms; a `tile` widget is painted without its frame in a compact zone. The host gives the compact form no height, no resize, no style menu and no tab stacking: only the grip and the gear (settings menu, whose last item deletes the widget), passed in `poignee` while editing, laid out after it in the zone's direction.
+The compact form is icons and badges only. Its detail opens on click with `AnchoredPopover` from the [UI kit](ui-kit.md) (manifest `"apiVersion": 6`): `placement: 'below'` on the line, `'beside'` in a column. The popover keeps itself inside the window. Use `frame: 'none'` so the component chooses between the forms; a `tile` widget is painted without its frame in a compact zone. The host gives the compact form no height, no resize, no style menu and no tab stacking: only the grip and the gear (settings menu, whose last item deletes the widget), passed in `handle` while editing, laid out after it in the zone's direction.
 
 ```js
 ctx.slots.register(
   { slot: 'cockpit.widget', key: 'status', widget: { title: 'Status', zone: 'topbar.widget', frame: 'none', bar: true } },
-  ({ orientation, compact, poignee, className }) => compact
-    ? h(React.Fragment, null, h(StatusButton, { placement: orientation === 'horizontal' ? 'below' : 'beside' }), poignee)
-    : h(Tile, { title: 'Status', actions: poignee, className }, h(StatusDetails)),
+  ({ orientation, compact, handle, className }) => compact
+    ? h(React.Fragment, null, h(StatusButton, { placement: orientation === 'horizontal' ? 'below' : 'beside' }), handle)
+    : h(Tile, { title: 'Status', actions: handle, className }, h(StatusDetails)),
 )
 ```
 
@@ -70,6 +92,8 @@ ctx.slots.register(
 
 ## Supplying your own frame
 
-Choose `frame: 'none'` only when the header needs custom content. The host passes `poignee` (layout controls), `className` (including height classes) and optional `editing`. Forward `className` to the root and propagate the host's full-height class for a fill-mode widget. In layout editing the host draws the card's own controls — a grip at the left and a gear at the right, in a strip above your header — and makes the body inert so the whole card can be grabbed: `poignee` is then empty on a card, and only filled on a compact form. Keep rendering it in your header's actions anyway, and keep your own actions (filters, an Add button) there: they never share a row with the layout controls. A right click on the card in layout editing, or on a stack's tab at any time, opens the same menu as the gear.
+Choose `frame: 'none'` only when the header needs custom content. The host passes `handle` (layout controls), `className` (including height classes) and optional `editing`. Forward `className` to the root and propagate the host's full-height class for a fill-mode widget. In layout editing the host draws the card's own controls — a grip at the left and a gear at the right, in a strip above your header — and makes the body inert so the whole card can be grabbed: `handle` is then empty on a card, and only filled on a compact form. Keep rendering it in your header's actions anyway, and keep your own actions (filters, an Add button) there: they never share a row with the layout controls. A right click on the card in layout editing, or on a stack's tab at any time, opens the same menu as the gear.
+
+`handle` is given from manifest `"apiVersion": 17`. A widget written for an earlier version reads the same controls as `poignee`: the host still passes it, and the SDK keeps it as a deprecated alias.
 
 Do not create another drag context or duplicate the host's palette. The [UI kit](ui-kit.md) provides `Tile` for a custom frame. The supplied `plugin-widget` is the simplest starting point.

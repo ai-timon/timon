@@ -20,6 +20,7 @@
  * the orchestrator itself, and a recorded key reads to it as "name step
  * answered" (`mainAgentNamed` in `onboarding-main-agent.ts`).
  */
+import { daemonMessage } from './daemon-message.js';
 import { bus, type BusEvent } from './bus.js';
 import { dbApi } from './db.js';
 import { chooseMainAgent, mainSeatCandidates, mainSeatHolder } from './main-agent.js';
@@ -56,7 +57,10 @@ export function mainSeatNotice(candidates: readonly string[]): { title: string; 
 const centreNotices: MainSeatNotices = {
   raise(candidates) {
     const { title, body } = mainSeatNotice(candidates);
-    return createNotification({ type: 'action_required', urgent: false, title, body, anchor: MAIN_SEAT_ANCHOR }) !== null;
+    return createNotification({
+      type: 'action_required', urgent: false, title, body, anchor: MAIN_SEAT_ANCHOR,
+      message: daemonMessage('main_seat_empty', { candidates: candidates.length > 0 ? candidates.join(', ') : 'none' }),
+    }) !== null;
   },
   resolve() {
     resolveAnchor(MAIN_SEAT_ANCHOR);

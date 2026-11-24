@@ -39,28 +39,28 @@ const bounce = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-test('un result stérile est reconnu sans lire le moindre message d’erreur', () => {
+test('a sterile result is recognised without reading any error message', () => {
   assert.equal(sterileResultSignature('result', bounce()), '0 turn / 0 token / 295 ms');
 });
 
-test('trois results stériles consécutifs déclenchent le coupe-circuit, pas deux', () => {
+test('three consecutive sterile results trip the circuit breaker, not two', () => {
   resetBreakers();
   const sig = sterileResultSignature('result', bounce())!;
   assert.equal(noteSterileTurn('grok', sig, 1_000), null);
   assert.equal(noteSterileTurn('grok', sig, 2_000), null);
   const trip = noteSterileTurn('grok', sig, 3_000);
-  assert.ok(trip, 'le seuil de 3 doit déclencher');
+  assert.ok(trip, 'the threshold of 3 must trip');
   assert.equal(trip.backend, 'grok');
   assert.equal(trip.failures, 3);
   assert.equal(trip.threshold, 3);
   assert.equal(trip.spanMs, 2_000);
   assert.equal(trip.signature, '0 turn / 0 token / 295 ms');
-  // Au-delà du seuil, chaque nouveau rebond redéclenche : la 4e mission qui
-  // meurt mérite la même qualification que la 3e.
+  // Beyond the threshold, each new bounce trips again: the 4th mission that
+  // dies deserves the same qualification as the 3rd.
   assert.ok(noteSterileTurn('grok', sig, 4_000));
 });
 
-test('les compteurs sont par backend : grok à sec n’écarte pas claude', () => {
+test('the counters are per backend: grok running dry does not set claude aside', () => {
   resetBreakers();
   const sig = '0 turn / 0 token / 295 ms';
   noteSterileTurn('grok', sig, 1_000);
@@ -70,7 +70,7 @@ test('les compteurs sont par backend : grok à sec n’écarte pas claude', () =
   assert.ok(noteSterileTurn('grok', sig, 3_000));
 });
 
-test('un tour qui aboutit remet le compteur à zéro', () => {
+test('a turn that succeeds resets the counter to zero', () => {
   resetBreakers();
   const sig = '0 turn / 0 token / 295 ms';
   noteSterileTurn('grok', sig, 1_000);
@@ -80,20 +80,20 @@ test('un tour qui aboutit remet le compteur à zéro', () => {
   assert.equal(noteSterileTurn('grok', sig, 3_000), null);
 });
 
-test('la fenêtre glisse : deux échecs d’il y a une heure ne comptent plus', () => {
+test('the window slides: two failures from an hour ago no longer count', () => {
   resetBreakers();
   const sig = '0 turn / 0 token / 295 ms';
   noteSterileTurn('grok', sig, 0);
   noteSterileTurn('grok', sig, 1_000);
-  // Une heure plus tard, la fenêtre de 10 min a tout oublié.
+  // An hour later, the 10 min window has forgotten everything.
   assert.equal(noteSterileTurn('grok', sig, 3_600_000), null);
   assert.equal(breakerFailures('grok', 3_600_000), 1);
 });
 
-test('un tour productif n’est jamais stérile, si vite qu’il finisse', () => {
-  // Un token produit prouve que le fournisseur a travaillé.
+test('a productive turn is never sterile, however fast it ends', () => {
+  // A produced token proves the provider worked.
   assert.equal(sterileResultSignature('result', bounce({ usage: { input_tokens: 12, output_tokens: 0 } })), null);
-  // Un coût aussi.
+  // A cost too.
   assert.equal(sterileResultSignature('result', bounce({ total_cost_usd: 0.004 })), null);
   // A real one-turn answer: tokens produced, so the turn counts as work.
   assert.equal(sterileResultSignature('result', bounce({
@@ -101,9 +101,9 @@ test('un tour productif n’est jamais stérile, si vite qu’il finisse', () =>
   })), null);
   // More than one turn means the CLI went round the loop: not a bounce.
   assert.equal(sterileResultSignature('result', bounce({ num_turns: 2 })), null);
-  // Trop long pour être un rebond.
+  // Too long to be a bounce.
   assert.equal(sterileResultSignature('result', bounce({ duration_ms: 240_000 })), null);
-  // Un succès stérile ne dit rien de la santé du backend.
+  // A sterile success says nothing about the health of the backend.
   assert.equal(sterileResultSignature('result', bounce({ is_error: false })), null);
 });
 
@@ -121,14 +121,14 @@ const AUTH_RESULT = {
   usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
 };
 
-test('un rebond à num_turns: 1 sans token est stérile (OAuth expirée, claude)', () => {
+test('a bounce at num_turns: 1 without a token is sterile (expired OAuth, claude)', () => {
   assert.equal(sterileResultSignature('result', AUTH_RESULT), '1 turn / 0 token / 45 ms');
   // With no usage block, the zero tokens would be assumed rather than observed.
   const { usage, ...noUsage } = AUTH_RESULT;
   assert.equal(sterileResultSignature('result', noUsage), null);
 });
 
-test('un échec d’auth se lit sur le champ structuré, jamais sur le texte', () => {
+test('an auth failure is read on the structured field, never on the text', () => {
   const synthetic = {
     type: 'assistant',
     error: 'authentication_failed',
@@ -142,7 +142,7 @@ test('un échec d’auth se lit sur le champ structuré, jamais sur le texte', (
   assert.equal(isAuthFailureEvent('result', synthetic), false);
 });
 
-test('un échec d’auth déclenche au premier rebond, un rebond muet non', () => {
+test('an auth failure trips at the first bounce, a mute bounce does not', () => {
   resetBreakers();
   const sig = sterileResultSignature('result', AUTH_RESULT)!;
   assert.equal(noteSterileTurn('claude', sig, 1_000), null, 'a shapeless bounce still needs the threshold');
@@ -153,9 +153,9 @@ test('un échec d’auth déclenche au premier rebond, un rebond muet non', () =
   assert.equal(trip.threshold, 1);
 });
 
-test('un dialecte muet sur num_turns ou duration_ms n’est jamais lu comme un rebond', () => {
-  // Champ absent ≠ zéro : sans cette règle, tout backend qui ne remonte pas
-  // ces compteurs serait écarté au bout de trois tours parfaitement sains.
+test('a dialect mute on num_turns or duration_ms is never read as a bounce', () => {
+  // A missing field ≠ zero: without this rule, any backend that does not report
+  // these counters would be set aside after three perfectly healthy turns.
   const { num_turns, ...noTurns } = bounce();
   assert.equal(sterileResultSignature('result', noTurns), null);
   const { duration_ms, ...noDuration } = bounce();
@@ -164,7 +164,7 @@ test('un dialecte muet sur num_turns ou duration_ms n’est jamais lu comme un r
   assert.equal(sterileResultSignature('result', null), null);
 });
 
-test('un process mort avant son premier result compte aussi comme un rebond', () => {
+test('a process dead before its first result counts as a bounce too', () => {
   assert.equal(sterileExitSignature(300), 'no result / 300 ms');
   assert.equal(sterileExitSignature(240_000), null);
 });

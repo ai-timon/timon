@@ -64,7 +64,6 @@
     "browseByProject": "按项目浏览"
   },
   "gitWidget": {
-    "tabs": {"branches": "分支", "graph": "提交图", "publish": "发布"},
     "detached": "分离的 HEAD",
     "noProject": "此智能体未关联项目，没有可显示的仓库。",
     "repos": {"label": "仓库", "root": "{name}（根仓库）", "otherToPush": "{name}：{count} 个待推送的提交"},

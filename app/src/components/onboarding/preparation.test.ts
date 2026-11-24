@@ -94,7 +94,7 @@ test('a service already registered is not installed again', async () => {
   assert.equal(viewOf(store.getState()).phase, 'running');
 });
 
-test('a refusal shows its reason and command, survives a reload, and only « Try again » retries', async () => {
+test('a refusal shows its reason and command, survives a reload, and only "Try again" retries', async () => {
   const storage = memoryStorage();
   const refusal = { ok: false, installed: false, lines: [], reason: 'The UAC prompt was dismissed', command: null };
   const { machine, api } = fake({ refusal });
@@ -112,7 +112,7 @@ test('a refusal shows its reason and command, survives a reload, and only « Try
   assert.deepEqual(machine.calls.filter((c) => c === 'install-service'), ['install-service']);
   assert.equal(viewOf(reloaded.getState()).phase, 'failed');
 
-  // « Try again », this time accepted.
+  // "Try again", this time accepted.
   machine.refusal = null;
   await reloaded.retry();
   view = viewOf(reloaded.getState());

@@ -84,6 +84,16 @@ test('the skill names the source apps the Hermes direct import uses', () => {
   assert.match(SKILL, /`profile:<profile name>`/);
 });
 
+test('the skill tells the active Hermes folder from the root, as Hermes resolves them', () => {
+  // Run from a named profile, HERMES_HOME is `<root>/profiles/<name>`: taking it for the
+  // root would miss the other profiles and key that profile as `profile:default`.
+  assert.match(SKILL, /\*\*active folder\*\*/);
+  assert.match(SKILL, /\*\*root\*\*/);
+  assert.match(SKILL, /`<folder>\/profiles\/<name>`:\s+`<folder>`/);
+  assert.match(SKILL, /you are `work`, not `default`/);
+  assert.doesNotMatch(SKILL, /The home itself is the profile `default`/);
+});
+
 test('the skill never names another product\'s export format', () => {
   assert.doesNotMatch(SKILL, /openbot/i);
 });

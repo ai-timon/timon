@@ -108,7 +108,7 @@ test('an unreadable serve config is not an empty one: nothing is published', asy
   }
 });
 
-test('a status that exits 0 without JSON is unreadable, not « not connected », and says what tailscale printed', async () => {
+test('a status that exits 0 without JSON is unreadable, not "not connected", and says what tailscale printed', async () => {
   // The macOS app bundle started by launchd without TERM (the maintainer's Mac mini, 25/10/2026).
   const gui = 'The Tailscale GUI failed to start: The operation couldn\u2019t be completed. (Tailscale.CLIError error 3.)';
   const fake = fakeTailscale({ binary: '/Applications/Tailscale.app/Contents/MacOS/Tailscale', platform: 'darwin' });

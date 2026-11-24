@@ -1,18 +1,18 @@
 /**
- * Streaming du texte partiel d'une réponse d'agent.
+ * Streaming of the partial text of an agent answer.
  *
- * Deux invariants, dans cet ordre d'importance :
+ * Two invariants, in this order of importance:
  *
- *  1. RIEN DE SUPERFLU NE SORT DE parseLine. `--include-partial-messages`
- *     ajoute au flux claude une ligne `stream_event` par fragment ET par
- *     transition de bloc. Comme `processEvent` persiste tout ce qui n'est pas
- *     un delta, laisser passer ne serait-ce que les `message_start` ferait
- *     écrire des milliers de lignes par tour dans la table `events`.
- *  2. Le seul type qui ressort est `assistant_delta`, avec le `mode` qui
- *     correspond à la façon dont le CLI émet (claude : incréments → append).
+ *  1. NOTHING SUPERFLUOUS COMES OUT OF parseLine. `--include-partial-messages`
+ *     adds to the claude stream one `stream_event` line per fragment AND per
+ *     block transition. Since `processEvent` persists everything that is not
+ *     a delta, letting even the `message_start` through would
+ *     write thousands of rows per turn into the `events` table.
+ *  2. The only type that comes out is `assistant_delta`, with the `mode` that
+ *     matches the way the CLI emits (claude: increments → append).
  *
- * Les formes JSON testées ici sont celles réellement observées sur claude-code
- * 2.1.228 et codex-cli 0.147.0, pas des formes supposées.
+ * The JSON shapes tested here are those really observed on claude-code
+ * 2.1.228 and codex-cli 0.147.0, not assumed shapes.
  */
 
 import { test } from 'node:test';
@@ -22,8 +22,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { removeHomeOnExit } from '../../tests/helpers/test-home.js';
 
-/* TIMON_HOME jetable, posé avant l'import du registry (paths.js lit l'env au
-   chargement) → import dynamique obligatoire. */
+/* Throwaway TIMON_HOME, set before importing the registry (paths.js reads the env on
+   load) → dynamic import required. */
 const TMP_HOME = mkdtempSync(join(tmpdir(), 'timon-streaming-'));
 process.env.TIMON_HOME = TMP_HOME;
 process.env.CODEX_AUTH_DIR = join(TMP_HOME, 'codex-auth');
@@ -50,8 +50,8 @@ function spawnOpts(model: string) {
   };
 }
 
-/** Enveloppe `stream_event` telle que le CLI l'écrit (champs de plomberie
- *  omis : parseLine ne les regarde pas). */
+/** `stream_event` envelope as the CLI writes it (plumbing fields
+ *  left out: parseLine does not look at them). */
 function streamEvent(event: unknown): string {
   return JSON.stringify({
     type: 'stream_event',
@@ -68,10 +68,10 @@ test('[claude] buildSpawn active --include-partial-messages', async () => {
   const sp = await buildUnderSeal('claude', spawnOpts('opus'));
   assert.ok(
     sp.args.includes('--include-partial-messages'),
-    'sans ce flag le CLI n\'émet aucun texte partiel : plus de streaming du tout',
+    'without this flag the CLI emits no partial text: no streaming at all',
   );
-  // Le flag n'a d'effet qu'en stream-json — s'il disparaissait, le flag serait
-  // silencieusement inopérant plutôt qu'en erreur.
+  // The flag only has an effect in stream-json: if it disappeared, the flag would
+  // be silently inoperative rather than in error.
   const i = sp.args.indexOf('--output-format');
   assert.equal(sp.args[i + 1], 'stream-json');
 });
@@ -84,17 +84,17 @@ test('[claude] un text_delta devient un assistant_delta en mode append', () => {
   }));
   assert.equal(evs.length, 1);
   assert.equal(evs[0]!.type, ASSISTANT_DELTA);
-  // Le CLI émet des INCRÉMENTS ("B" puis "onjour ! …") : concaténer, pas
-  // remplacer — sinon la bulle n'afficherait que le dernier fragment.
+  // The CLI emits INCREMENTS ("B" then "onjour ! …"): concatenate, do not
+  // replace, otherwise the bubble would only show the last fragment.
   assert.deepEqual(evs[0]!.payload as AssistantDeltaPayload, {
     text: 'onjour ! 👋',
     mode: 'append',
   });
 });
 
-test('[claude] thinking_delta et input_json_delta sont ignorés', () => {
-  // On ne streame pas le raisonnement, et les arguments d'un tool_use à
-  // moitié sérialisés ne veulent rien dire dans une bulle de chat.
+test('[claude] thinking_delta and input_json_delta are ignored', () => {
+  // We do not stream the reasoning, and the arguments of a half-serialised
+  // tool_use mean nothing in a chat bubble.
   assert.deepEqual(claude.parseLine(streamEvent({
     type: 'content_block_delta',
     index: 0,
@@ -107,9 +107,9 @@ test('[claude] thinking_delta et input_json_delta sont ignorés', () => {
   })), []);
 });
 
-test('[claude] la plomberie stream_event ne produit aucun event', () => {
-  // Ces lignes n'existaient pas avant le flag. Si l'une d'elles ressortait,
-  // processEvent l'écrirait en base une par une.
+test('[claude] the stream_event plumbing produces no event', () => {
+  // These lines did not exist before the flag. If one of them came out,
+  // processEvent would write it to the database one by one.
   const noise: unknown[] = [
     { type: 'message_start', message: { id: 'msg_1', role: 'assistant', content: [] } },
     { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
@@ -122,20 +122,20 @@ test('[claude] la plomberie stream_event ne produit aucun event', () => {
   }
 });
 
-test('[claude] un stream_event malformé ne fait pas tomber le parsing', () => {
+test('[claude] a malformed stream_event does not bring the parsing down', () => {
   for (const event of [null, 'texte', 42, {}, { type: 'content_block_delta' },
     { type: 'content_block_delta', delta: null },
     { type: 'content_block_delta', delta: { type: 'text_delta' } },
     { type: 'content_block_delta', delta: { type: 'text_delta', text: 123 } },
-    // Un fragment vide ne dirait rien à l'UI et déclencherait un rendu pour rien.
+    // An empty fragment would say nothing to the UI and trigger a render for nothing.
     { type: 'content_block_delta', delta: { type: 'text_delta', text: '' } }]) {
     assert.deepEqual(claude.parseLine(streamEvent(event)), [], JSON.stringify(event));
   }
   assert.deepEqual(claude.parseLine('{"type":"stream_event"}'), []);
 });
 
-test('[claude] le message assistant complet passe toujours, lui', () => {
-  // C'est la seule source persistée : le streaming ne doit pas la court-circuiter.
+test('[claude] the full assistant message still goes through', () => {
+  // It is the only persisted source: streaming must not short-circuit it.
   const line = JSON.stringify({
     type: 'assistant',
     message: { id: 'msg_1', role: 'assistant', content: [{ type: 'text', text: 'Bonjour !' }] },
@@ -147,12 +147,12 @@ test('[claude] le message assistant complet passe toujours, lui', () => {
 
 /* ── codex ──────────────────────────────────────────────────────────────── */
 
-test('[codex] aucun partiel : item.started/item.updated restent droppés', () => {
-  // Constat empirique sur codex-cli 0.147.0 : `codex exec --json` ne produit
-  // AUCUN item.started/item.updated — le flux va de turn.started à
-  // item.completed d'un bloc. Ce test verrouille l'absence de streaming côté
-  // codex (documentée, pas subie) ; il tombera le jour où on mappera ces
-  // events, ce qui obligera à re-vérifier si `text` est cumulé ou incrémental.
+test('[codex] no partials: item.started/item.updated stay dropped', () => {
+  // Empirical finding on codex-cli 0.147.0: `codex exec --json` produces
+  // NO item.started/item.updated; the stream goes from turn.started to
+  // item.completed in one block. This test locks the absence of streaming on the
+  // codex side (documented, not suffered); it will fall the day these
+  // events are mapped, which will force rechecking whether `text` is cumulative or incremental.
   const started = JSON.stringify({
     type: 'item.started',
     item: { id: 'item_0', type: 'agent_message', text: 'Bon' },
@@ -165,7 +165,7 @@ test('[codex] aucun partiel : item.started/item.updated restent droppés', () =>
   assert.deepEqual(codex.parseLine(updated), []);
 });
 
-test('[codex] item.completed produit toujours le message assistant complet', () => {
+test('[codex] item.completed still produces the full assistant message', () => {
   const line = JSON.stringify({
     type: 'item.completed',
     item: { id: 'item_0', type: 'agent_message', text: 'Bonjour !' },
@@ -177,11 +177,11 @@ test('[codex] item.completed produit toujours le message assistant complet', () 
 
 /* ── contrat de non-persistance ─────────────────────────────────────────── */
 
-test('un assistant_delta ne ressemble à aucun type persisté', () => {
-  // `processEvent` (agent.ts) court-circuite EXACTEMENT ce type avant
-  // insertEvent/appendAgentLog. Le test ne peut pas l'exécuter sans monter un
-  // RunningAgent complet (process, DB, mission) ; il verrouille au moins le
-  // nom du type, qui est le seul lien entre le dialecte et la branche.
+test('an assistant_delta looks like no persisted type', () => {
+  // `processEvent` (agent.ts) short-circuits EXACTLY this type before
+  // insertEvent/appendAgentLog. The test cannot run it without mounting a
+  // full RunningAgent (process, DB, mission); it at least locks the
+  // name of the type, which is the only link between the dialect and the branch.
   assert.equal(ASSISTANT_DELTA, 'assistant_delta');
   for (const persisted of ['assistant', 'user', 'system', 'result']) {
     assert.notEqual(ASSISTANT_DELTA, persisted);

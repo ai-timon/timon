@@ -61,6 +61,12 @@
 
 ***
 
+### reportsTo
+
+> **reportsTo**: `string` \| `null`
+
+***
+
 ### role
 
 > **role**: `string` \| `null`

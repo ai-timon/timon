@@ -14,7 +14,7 @@ import type { PluginPermission } from './permissions.js';
  * to the daemon's own constant by `plugins/manifest-contract-guards.ts`: bump
  * both together (the history of each version is beside the daemon's).
  */
-export const PLUGIN_API_VERSION = 17;
+export const PLUGIN_API_VERSION = 19;
 
 /**
  * What a plugin is; spelled out from `PLUGIN_KINDS`. Not exported by the SDK:

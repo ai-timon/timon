@@ -195,10 +195,10 @@ export const ACP_AGENTS = Object.freeze([
     // tester took for a sign-in stuck on a browser (TIM-0153). The sentence names the command that does sign in.
     signIn: {
       byMethod: {
-        nous: `sign in to Nous with \`hermes --setup\` in a terminal on this machine, then retry the mission (${HERMES_ACP_NOTE})`,
-        'hermes-setup': `run \`hermes --setup\` in a terminal on this machine, then retry the mission (${HERMES_ACP_NOTE})`,
+        nous: `sign in to Nous with \`hermes portal\` in a terminal on this machine, then retry the mission (${HERMES_ACP_NOTE})`,
+        'hermes-setup': `run \`hermes setup\` in a terminal on this machine, then retry the mission (${HERMES_ACP_NOTE})`,
       },
-      fallback: `run \`hermes --setup\` in a terminal on this machine, then retry the mission (${HERMES_ACP_NOTE})`,
+      fallback: `run \`hermes setup\` in a terminal on this machine, then retry the mission (${HERMES_ACP_NOTE})`,
     },
     binary: HERMES.binary,
     declares: { credentialDirs: HERMES.credentialDirs },

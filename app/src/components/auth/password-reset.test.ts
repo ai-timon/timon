@@ -1,5 +1,5 @@
 /**
- * « Forgot password? » (docs/EMAIL-CODE-UI.md): the address → the code → the
+ * "Forgot password?" (docs/EMAIL-CODE-UI.md): the address → the code → the
  * new password twice → done; a wrong code learnt with the password goes back
  * to the code with its tries left; the offline way is always recalled; and a
  * refusal of the daemon is said, its wait counted down.
@@ -86,6 +86,8 @@ test('ask → code → new password twice → done, and the offline way is recal
   await w.press(w.submit());
   assert.deepEqual(w.calls[0], { url: '/api/ui/auth/password-reset', body: { email: 'ada@example.com', locale: 'en' } });
   assert.match(w.text(), /If an account here uses ada@example\.com and that address was confirmed/);
+  // An unconfirmed address gets no code and the same answer: the way out is said here.
+  assert.match(w.doc.querySelector('[data-reset-unconfirmed]')?.textContent ?? '', /confirm it from your profile, or ask an administrator/);
 
   await w.fill(w.code(), '123456');
   assert.match(w.text(), /Choose a new password/);

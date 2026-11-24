@@ -1,3 +1,4 @@
+// french-ok-file: accented names, the folding under test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRail, filterRail, firstAgent, foldText, readRailPrefs, type RailAgent } from './multichat-rail';

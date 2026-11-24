@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -41,7 +41,8 @@ const IDENTITIES: Record<string, RequestAuth> = {
   mission: { kind: 'api-token', user: admin, isSuperadmin: true, missionId: 'm-1' },
 };
 
-const BIN_DIR = mkdtempSync(join(tmpdir(), 'timon-provider-routes-'));
+// Canonical: the host resolves a program to its real path (`/private/var/...` on macOS).
+const BIN_DIR = realpathSync.native(mkdtempSync(join(tmpdir(), 'timon-provider-routes-')));
 const AGENT = join(BIN_DIR, 'acme-route-agent');
 if (posix) {
   writeFileSync(AGENT, '#!/bin/sh\nexit 0\n');

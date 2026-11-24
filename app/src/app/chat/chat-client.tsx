@@ -6,6 +6,7 @@ import { useChatChrome, WithoutChatChrome } from './chat-chrome';
 import { IslandRoutePrimary, useIslandRouteFocused } from '@/components/islands/island-workspace';
 import { chatPin, fetchAgentDetails, missionOwnerAgent, requestedChatMission } from '@/lib/chat-entry';
 import { missionDetailUrl, takePreloadedChatMission } from '@/lib/chat-mission-preload';
+import { parseHistoryPurgedDays, purgeNotice } from '@/lib/mission-history-purge';
 import {
   chatCacheEpoch, forgetChatMission, getCachedChatMission, historyDeltaUrl, newestEventId, parseHistoryDelta, putCachedChatMission,
 } from '@/lib/chat-mission-cache';
@@ -1565,6 +1566,9 @@ export function ChatClient({
   // Keyed by mission: a fresh conversation, or one whose detail is still in
   // flight, must not wear the previous mission's owner.
   const [missionOwner, setMissionOwner] = useState<{ missionId: string; owner: MissionOwner | null } | null>(null);
+  // The retention emptied this mission's history: keyed by mission, so a
+  // switch never shows the previous conversation's notice.
+  const [historyPurge, setHistoryPurge] = useState<{ missionId: string; days: number | null } | null>(null);
   const shownOwner = missionOwner && missionOwner.missionId === currentMissionId ? missionOwner.owner : null;
   /** A POST /model is in flight: we freeze the selector to avoid stacking
    *  two contradictory requests on the same turn. */
@@ -1783,7 +1787,7 @@ export function ChatClient({
 
   /** request_id of a permission card we should scroll into view + highlight
    *  once the conversation is bound and rendered. Set when the user clicks
-   *  a mission card flagged "action requise"; consumed (and cleared) by the
+   *  a mission card flagged "action required"; consumed (and cleared) by the
    *  effect that watches `messages` length below. */
   // A notification's link (`&highlight=<card id>`) is a deep-link too.
   const pendingDeepLinkPermId = useRef<string | null>(params.get('highlight'));
@@ -2817,6 +2821,7 @@ export function ChatClient({
     setMissionCwd(typeof detail.cwd_override === 'string' && detail.cwd_override ? detail.cwd_override : null);
     setMissionReasoningEffort(typeof detail.reasoning_effort === 'string' ? detail.reasoning_effort : null);
     setMissionOwner({ missionId, owner: parseMissionOwner(detail.owner) });
+    setHistoryPurge({ missionId, days: parseHistoryPurgedDays(detail) });
     return owner;
   }
 
@@ -5816,6 +5821,11 @@ export function ChatClient({
   // The bubble being written, or the "thinking" bubble that stands for it; an
   // inline turn writes into its last message instead.
   const writing = Boolean(streamText) || (thinking && !inlineRunning);
+  const purge = purgeNotice(
+    historyPurge && historyPurge.missionId === currentMissionId ? historyPurge.days : null,
+    messages.length,
+    threadStart > 0 || hasOlderHistory,
+  );
   const liveBubble = useMemo(() => liveBubbleOf(messages, writing), [messages, writing]);
   const faceState = bubbleState(activityState({ busy: thinking, tool: thinking ? thinkingHint : null, awaitingUser }), storedFace);
   const bubbleFace = useMemo<BubbleFace>(
@@ -6127,7 +6137,15 @@ export function ChatClient({
               "flex w-full min-w-0 flex-col gap-4",
               dense ? "px-1" : !larg && "mx-auto max-w-[var(--chat-col,780px)]",
             )}>
-              {messages.length === 0 && !thinking && (
+              {purge && (messages.length > 0 || !thinking) && (
+                <p className={cn(
+                  "text-center text-[12.5px] text-muted-foreground/70",
+                  messages.length === 0 ? "my-12" : "mt-2",
+                )}>
+                  {i18n(purge.key, { days: purge.days })}
+                </p>
+              )}
+              {!purge && messages.length === 0 && !thinking && (
                 <p className="my-12 text-center text-[12.5px] text-muted-foreground/70">
                   {freshStart.current
                     ? i18n('chatSurface.newConversationEmpty')

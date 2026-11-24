@@ -1,3 +1,4 @@
+// french-ok-file: an accented sub-agent label, as a user names one
 /**
  * The row of agent shortcuts on top of the cockpit chat card.
  *

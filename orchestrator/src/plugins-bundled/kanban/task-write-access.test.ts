@@ -239,13 +239,20 @@ test('POST: the bodies of the task form, the CLI and the MCP are accepted', asyn
   assert.ok(task.group_id);
 });
 
-test('POST: the finer refusals keep their message', async () => {
+test('POST: the finer refusals keep their message, and carry the code the board translates', async () => {
+  type Coded = { error: string; code?: string; params?: Record<string, unknown> };
   const missing = await call('POST', '/api/tasks', 'writer', { title: 'No agent' });
   assert.equal(missing.status, 400);
-  assert.match((await missing.json() as { error: string }).error, /title and agent_name required/);
+  const missingBody = await missing.json() as Coded;
+  assert.match(missingBody.error, /title and agent_name required/);
+  assert.equal(missingBody.code, 'task_fields_required');
   const pipeline = await call('POST', '/api/tasks', 'writer', { title: 'Bad pipeline', agent_name: 'witness', pipeline: 'yolo' });
   assert.equal(pipeline.status, 400);
-  assert.match((await pipeline.json() as { error: string }).error, /pipeline/);
+  const pipelineBody = await pipeline.json() as Coded;
+  assert.match(pipelineBody.error, /pipeline/);
+  // A reason computed elsewhere travels whole, as the message's detail.
+  assert.equal(pipelineBody.code, 'task_field_invalid');
+  assert.equal(pipelineBody.params?.detail, pipelineBody.error);
 });
 
 test('DELETE: kanban:read alone is refused with 403 and the task stays', async () => {

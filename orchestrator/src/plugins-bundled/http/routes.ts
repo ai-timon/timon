@@ -40,6 +40,7 @@ import { BRAND } from '../../brand.js';
 import { packagedDaemon } from '../../data-version.js';
 import { onboardingStep } from '../../onboarding-events.js';
 import { apiError } from '../../api-error.js';
+import { alreadyCompleteBody, invalidIdentityBody, invalidPresetBody, mainAgentErrorBody, restartRefusalBody, restartRequiredBody, resumeErrorBody, teamErrorBody } from './setup-errors.js';
 
 export function registerRoutes(app: Router): void {
   /**
@@ -115,7 +116,7 @@ export function registerRoutes(app: Router): void {
       const body = (req.body ?? {}) as SetupInput & { force?: boolean };
       const missing = noProviderForSetup(body);
       if (missing) {
-        res.status(409).json({ error: missing, code: 'no_provider' });
+        res.status(409).json(apiError('no_provider', missing));
         return;
       }
       const written = applySetup(body, undefined, body.force === true);
@@ -126,7 +127,7 @@ export function registerRoutes(app: Router): void {
       res.json({ ...written, restartRequired: armed, teamOnboarding: teamOnboardingPending() });
     } catch (e) {
       const status = e instanceof SetupError ? 400 : 500;
-      res.status(status).json({ error: (e as Error).message });
+      res.status(status).json(apiError('setup_failed', (e as Error).message, { detail: (e as Error).message }));
     }
   });
 
@@ -148,7 +149,7 @@ export function registerRoutes(app: Router): void {
     if (dbApi.countUsers() > 0 && !requireSuperadmin(req, res)) return;
     if (!isFirstRun()) {
       res.status(409).json({
-        error: 'onboarding is over on this machine (timon.config.json exists)',
+        ...apiError('onboarding_over', 'onboarding is over on this machine (timon.config.json exists)'),
         command: null,
       });
       return;
@@ -161,7 +162,7 @@ export function registerRoutes(app: Router): void {
       res.json(result);
     } catch (e) {
       const status = e instanceof OnboardingError ? 400 : 500;
-      res.status(status).json({ error: (e as Error).message });
+      res.status(status).json(apiError('onboarding_action_failed', (e as Error).message, { detail: (e as Error).message }));
     }
   });
 
@@ -188,7 +189,7 @@ export function registerRoutes(app: Router): void {
       res.json({ ...written, restartRequired: false, resumed: true });
     } catch (error) {
       const known = error instanceof ResumeError || error instanceof SetupError;
-      res.status(known ? 409 : 500).json({ error: known ? (error as Error).message : 'resume_failed' });
+      res.status(known ? 409 : 500).json(resumeErrorBody(error));
     }
   });
 
@@ -215,15 +216,13 @@ export function registerRoutes(app: Router): void {
       return;
     }
     const parsed = MainAgentSchema.safeParse(req.body);
-    if (!parsed.success) { res.status(400).json({ error: 'invalid_identity' }); return; }
+    if (!parsed.success) { res.status(400).json(invalidIdentityBody()); return; }
     try {
       const applied = applyMainAgent(parsed.data);
       onboardingStep('main_agent', 'completed');
       res.json(applied);
     } catch (error) {
-      res.status(error instanceof MainAgentSetupError ? 409 : 500).json({
-        error: error instanceof MainAgentSetupError ? error.message : 'main_agent_failed',
-      });
+      res.status(error instanceof MainAgentSetupError ? 409 : 500).json(mainAgentErrorBody(error));
     }
   });
 
@@ -261,7 +260,7 @@ export function registerRoutes(app: Router): void {
     // does not get.
     const outcome = restartForOnboarding();
     if (!outcome.ok) {
-      res.status(409).json({ restarting: false, command: outcome.command, error: outcome.reason });
+      res.status(409).json({ restarting: false, command: outcome.command, ...restartRefusalBody(outcome.reason) });
       return;
     }
     if (!outcome.alreadyRequested) onboardingStep('restart', 'completed');
@@ -276,9 +275,9 @@ export function registerRoutes(app: Router): void {
    */
   app.post('/api/setup/restart/skip', (req, res) => {
     if (dbApi.countUsers() > 0 && !requireSuperadmin(req, res)) return;
-    if (!restartOnboardingPending()) { res.status(409).json({ error: 'setup_complete' }); return; }
+    if (!restartOnboardingPending()) { res.status(409).json(alreadyCompleteBody()); return; }
     if (restartStatus().supervisor !== null) {
-      res.status(409).json({ error: 'restart_required' });
+      res.status(409).json(restartRequiredBody());
       return;
     }
     clearRestartPending();
@@ -294,15 +293,13 @@ export function registerRoutes(app: Router): void {
   app.post('/api/setup/team', (req, res) => {
     if (!requireSuperadmin(req, res)) return;
     const choice = TeamChoiceSchema.safeParse(req.body);
-    if (!choice.success) { res.status(400).json({ error: 'invalid_preset' }); return; }
+    if (!choice.success) { res.status(400).json(invalidPresetBody()); return; }
     try {
       const team = applyTeam(choice.data.preset);
       onboardingStep('team', 'completed');
       res.json(team);
     } catch (error) {
-      res.status(error instanceof TeamSetupError ? 409 : 500).json({
-        error: error instanceof TeamSetupError ? error.message : 'team_failed',
-      });
+      res.status(error instanceof TeamSetupError ? 409 : 500).json(teamErrorBody(error));
     }
   });
 
@@ -337,7 +334,7 @@ export function registerRoutes(app: Router): void {
       }
       res.json({ backend: report.backend, supported: true, connected: true, ...report.usage });
     } catch (e) {
-      res.status(503).json({ backend: backend ?? null, error: (e as Error).message });
+      res.status(503).json({ backend: backend ?? null, ...apiError('usage_unavailable', (e as Error).message, { detail: (e as Error).message }) });
     }
   });
 

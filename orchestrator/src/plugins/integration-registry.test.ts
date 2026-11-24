@@ -152,7 +152,7 @@ test('JSON rejects silent data loss, getters, cycles, sparse arrays and oversize
   const symbolKey = { [Symbol('hidden')]: 1 };
   for (const input of [undefined, NaN, Infinity, 1n, () => {}, new Date(), cycle, sparse, accessor, symbolKey,
     { missing: undefined }, { toJSON: () => 'hidden' }, Object.defineProperty({}, 'hidden', { value: 1 }),
-    'é'.repeat(140_000), Array(10_001).fill(0), deep]) {
+    'é'.repeat(140_000), Array(10_001).fill(0), deep]) { // french-ok: a two-byte letter that doubles the UTF-8 size
     assert.throws(() => integrationJson(input), code('invalid'));
   }
   assert.equal(getterCalls, 0);

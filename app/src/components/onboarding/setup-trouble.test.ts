@@ -4,14 +4,14 @@ import { chatTroubleSignal, DISCONNECTED_AFTER, SILENT_AFTER_MS, setupTrouble, t
 
 const calm: SetupTroubleInput = { signal: null, mission: { status: 'running', liveness: 'working' }, pollFailures: 0, spoke: true, elapsedMs: 0 };
 
-test('a conversation that goes well keeps « Skip » quiet', () => {
+test('a conversation that goes well keeps "Skip" quiet', () => {
   assert.deepEqual(setupTrouble(calm), { level: 'quiet' });
   // Not polled yet, not spoken yet, but early: nothing to say.
   assert.deepEqual(setupTrouble({ ...calm, mission: null, spoke: false, elapsedMs: SILENT_AFTER_MS - 1 }), { level: 'quiet' });
   assert.deepEqual(setupTrouble({ ...calm, pollFailures: DISCONNECTED_AFTER - 1 }), { level: 'quiet' });
 });
 
-test('a refused tool puts « Skip » forward, without a restart that would hit the same refusal', () => {
+test('a refused tool puts "Skip" forward, without a restart that would hit the same refusal', () => {
   assert.deepEqual(setupTrouble({ ...calm, signal: 'tool_error' }), { level: 'prominent', reason: 'tool_error', canRestart: false });
   assert.deepEqual(setupTrouble({ ...calm, signal: 'interrupted' }), { level: 'prominent', reason: 'interrupted', canRestart: false });
 });

@@ -18,7 +18,9 @@ import {
   homeLockHolderFile,
   readHomeLockHolder,
   recordHomeLockPort,
+  recordServiceHeldOut,
   releaseHomeLock,
+  serviceHeldOutFile,
 } from './home-lock.js';
 
 const freshHome = (): string => mkdtempSync(join(tmpdir(), 'timon-home-lock-'));
@@ -110,6 +112,24 @@ test('the lock of a daemon that crashed is taken over, whatever its description 
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     releaseHomeLock(home);
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a refused service daemon leaves its mark for the desktop; an embedded or CLI start does not', () => {
+  const home = freshHome();
+  try {
+    assert.equal(recordServiceHeldOut(home, {}), false, 'no marker: not the service');
+    assert.equal(recordServiceHeldOut(home, { TIMON_DESKTOP_SERVICE: '0' }), false);
+    assert.equal(recordServiceHeldOut(home, { TIMON_DESKTOP_SERVICE: '1', TIMON_DESKTOP_EMBEDDED: '1' }), false);
+    assert.equal(existsSync(serviceHeldOutFile(home)), false);
+    assert.equal(recordServiceHeldOut(home, { TIMON_DESKTOP_SERVICE: '1' }, { pid: 4242, now: () => 1_700_000_000_000 }), true);
+    assert.deepEqual(JSON.parse(readFileSync(serviceHeldOutFile(home), 'utf8')), { at: 1_700_000_000_000, pid: 4242 });
+    assert.equal(serviceHeldOutFile(home), join(home, 'run', 'service-held-out'));
+    const guard = readFileSync(new URL('./home-lock-boot.ts', import.meta.url), 'utf8');
+    assert.ok(guard.indexOf('recordServiceHeldOut(TIMON_HOME)') > 0 && guard.indexOf('recordServiceHeldOut(TIMON_HOME)') < guard.indexOf('process.exit(HOME_HELD_EXIT_CODE)'),
+      'the refusal is recorded before the exit');
+  } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });

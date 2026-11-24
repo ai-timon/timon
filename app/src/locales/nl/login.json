@@ -26,10 +26,8 @@
     "working": "Bezig…",
     "failed": "Aanmelden mislukt",
     "setupFailed": "Configuratie geweigerd",
-    "freeUnavailable": "Free-registratie is nog niet open voor deze versie. Probeer het later opnieuw of gebruik een bestaande licentiesleutel.",
     "clientUpgradeRequired": "Werk Timon bij naar een ondersteunde versie en probeer het opnieuw.",
     "transferPending": "Het token van de vorige machine is nog niet verlopen. Wacht voordat je deze machine activeert.",
-    "freeIncompatible": "Free kan niet worden geactiveerd met de huidige accounts of plug-ins. Je gegevens zijn behouden.",
-    "freeAccountRestricted": "Free staat alleen de eerste actieve superadmin toe. Je account en gegevens blijven bewaard. Vraag die beheerder een licentie te activeren om de toegang te herstellen."
+    "freeIncompatible": "Deze licentie kan niet worden toegepast met de huidige accounts of plug-ins. Je gegevens zijn behouden."
   }
 }

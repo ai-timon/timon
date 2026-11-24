@@ -1,3 +1,4 @@
+// french-ok-file: the French samples the hard-coded text detector must find
 /**
  * No visible text written straight into a component of `app/src` or the
  * desktop shell (`desktop/src`): it goes through a message file, or no

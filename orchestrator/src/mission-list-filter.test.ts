@@ -1,12 +1,12 @@
 /**
- * `listMissions` doit honorer son filtre de statut.
+ * `listMissions` must honour its status filter.
  *
- * Ce qu'on protège : dans la nuit du 2026-08-22, `/api/missions?status=running`
- * ignorait le paramètre en silence et renvoyait les 100 dernières missions tous
- * statuts confondus. L'agent qui diagnostiquait la saturation du cap global y a
- * lu "100 missions running" là où il y en avait 11, et a conclu à une armée de
- * zombies inexistante — le vrai bug (des process de chat jamais reapés) est resté
- * invisible plusieurs heures. Un filtre ignoré ment mieux qu'une erreur.
+ * What is protected: on the night of 2026-08-22, `/api/missions?status=running`
+ * silently ignored the parameter and returned the last 100 missions of all
+ * statuses. The agent diagnosing the saturation of the global cap
+ * read "100 missions running" where there were 11, and concluded to an army of
+ * non-existent zombies; the real bug (chat processes never reaped) stayed
+ * invisible for hours. An ignored filter lies better than an error.
  *
  * `node --test --import tsx src/mission-list-filter.test.ts`
  */
@@ -21,7 +21,7 @@ process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-mission-filter-test-'
 
 const { dbApi } = await import('./db.js');
 
-/** Crée une mission, et la finalise si un statut terminal est demandé. */
+/** Creates a mission, and finalises it if a terminal status is asked for. */
 function mission(agent: string, status: 'running' | 'completed' | 'failed'): string {
   const id = randomUUID();
   dbApi.createMission(id, agent, `mission ${status}`);
@@ -35,20 +35,20 @@ mission('alpha.main', 'completed');
 mission('alpha.main', 'failed');
 mission('beta.main', 'completed');
 
-test('status=running ne rend que les missions running', () => {
+test('status=running only returns the running missions', () => {
   const rows = dbApi.listMissions(100, undefined, 'running');
   assert.deepEqual(new Set(rows.map((m) => m.id)), new Set([aliveA, aliveB]));
 });
 
-test('sans filtre, tous les statuts remontent — le comportement historique est préservé', () => {
+test('without a filter, every status comes up: the historical behaviour is kept', () => {
   assert.equal(dbApi.listMissions(100).length, 5);
 });
 
-test('le filtre de statut se combine avec le filtre d’agent, sans en écraser un', () => {
+test('the status filter combines with the agent filter, without overriding either', () => {
   const rows = dbApi.listMissions(100, ['alpha.main'], 'running');
   assert.deepEqual(rows.map((m) => m.id), [aliveA]);
 });
 
-test('un statut sans aucune mission rend une liste vide, pas la liste entière', () => {
+test('a status without any mission returns an empty list, not the whole list', () => {
   assert.deepEqual(dbApi.listMissions(100, undefined, 'terminated'), []);
 });

@@ -95,8 +95,14 @@ const CMD = checkBackendBinaries()[0]!.cmd;
 // Beside the Timon home, not in it: no binary is ever resolved from there.
 const BIN_DIR = join(`${HOME}-pins`, 'bin dir');
 mkdirSync(BIN_DIR, { recursive: true });
-const EXECUTABLE = join(BIN_DIR, CMD);
-writeFileSync(EXECUTABLE, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+// Windows runs a program by its extension: the witness there is a batch file.
+const RUNNABLE = process.platform === 'win32' ? '.cmd' : '';
+const SCRIPT = process.platform === 'win32' ? '@exit /b 0\r\n' : '#!/bin/sh\nexit 0\n';
+/** Runnable on Linux, refused on Windows for want of an extension. */
+const POSIX_EXECUTABLE = join(BIN_DIR, CMD);
+writeFileSync(POSIX_EXECUTABLE, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+const EXECUTABLE = join(BIN_DIR, `${CMD}${RUNNABLE}`);
+writeFileSync(EXECUTABLE, SCRIPT, { mode: 0o755 });
 const NOT_EXECUTABLE = join(BIN_DIR, `${CMD}-plain`);
 writeFileSync(NOT_EXECUTABLE, 'not a program\n', { mode: 0o644 });
 chmodSync(NOT_EXECUTABLE, 0o644);
@@ -175,8 +181,8 @@ test('PUT: the file keeps every other key and its indent, and the running daemon
 });
 
 test('recheck re-reads a hand edit without writing', async () => {
-  const other = join(BIN_DIR, `${CMD}-other`);
-  writeFileSync(other, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  const other = join(BIN_DIR, `${CMD}-other${RUNNABLE}`);
+  writeFileSync(other, SCRIPT, { mode: 0o755 });
   const edited = { ...fileNow(), host: { gui: 'disabled', binaries: { [CMD]: other } } };
   writeFileSync(CONFIG_FILE, `${JSON.stringify(edited, null, 4)}\n`);
   const before = readFileSync(CONFIG_FILE, 'utf8');
@@ -244,6 +250,6 @@ test('Windows: only what the adapter can start is accepted, whatever the execute
   }
   // An existing, runnable-on-Linux file without a Windows extension: refused
   // as soon as the daemon runs on Windows.
-  assert.throws(() => assertExecutablePin(EXECUTABLE, 'win32'), (err: Error & { code?: string }) => err.code === 'path_not_executable');
-  assert.doesNotThrow(() => assertExecutablePin(EXECUTABLE, 'linux'));
+  assert.throws(() => assertExecutablePin(POSIX_EXECUTABLE, 'win32'), (err: Error & { code?: string }) => err.code === 'path_not_executable');
+  assert.doesNotThrow(() => assertExecutablePin(POSIX_EXECUTABLE, 'linux'));
 });

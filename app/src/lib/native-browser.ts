@@ -15,12 +15,26 @@ export type NativeBrowserStatus = {
 };
 export type BrowserShot = { data: string; mimeType: string; width: number; height: number };
 
-/** Integer DIP bounds must remain inside both the CSS surface and the Electron content window. */
-export function browserPanelBounds(rect: { left: number; top: number; width: number; height: number }, windowSize: { width: number; height: number }) {
-  const x = Math.max(0, Math.min(windowSize.width, Math.ceil(rect.left)));
-  const y = Math.max(0, Math.min(windowSize.height, Math.ceil(rect.top)));
-  const right = Math.max(x, Math.min(windowSize.width, Math.floor(rect.left + rect.width)));
-  const bottom = Math.max(y, Math.min(windowSize.height, Math.floor(rect.top + rect.height)));
+/**
+ * Integer DIP bounds must remain inside both the CSS surface and the Electron
+ * content window. `rect` and `windowSize` are CSS pixels; under the desktop's
+ * interface size (`zoom`) a CSS pixel is `zoom` DIPs, so both are scaled to
+ * DIPs and then rounded inward: the start of the rectangle up, its end and the
+ * window's size down. The bounds thus stay within the layout box measured and
+ * within the window as the page measures it (`innerWidth`, `innerHeight`).
+ */
+export function browserPanelBounds(
+  rect: { left: number; top: number; width: number; height: number },
+  windowSize: { width: number; height: number },
+  zoom = 1,
+) {
+  const scale = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const maxW = Math.floor(windowSize.width * scale);
+  const maxH = Math.floor(windowSize.height * scale);
+  const x = Math.max(0, Math.min(maxW, Math.ceil(rect.left * scale)));
+  const y = Math.max(0, Math.min(maxH, Math.ceil(rect.top * scale)));
+  const right = Math.max(x, Math.min(maxW, Math.floor((rect.left + rect.width) * scale)));
+  const bottom = Math.max(y, Math.min(maxH, Math.floor((rect.top + rect.height) * scale)));
   return { x, y, width: right - x, height: bottom - y };
 }
 export type BrowserCommand = <T = unknown>(action: string, data?: Record<string, unknown>) => Promise<T>;

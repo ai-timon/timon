@@ -47,6 +47,8 @@ createTestAccount(dbApi, { email: 'acp-witness@example.test', name: 'Witness', p
 
 assert.deepEqual(config().pluginPolicy.exec.allow, [], 'the witness runs under the default policy: nothing on the operator\'s allowlist');
 assert.ok((await mountOfficialProviders()).includes('provider-acp'));
+// Antigravity ships off (Google's terms): these tests switch it on, as a person does from its provider page.
+(await import('../backends/overlays.js')).saveBackendOverlay('antigravity', { disabled: false });
 
 const AGENTS = [
   { backend: 'opencode', args: ['acp'] },

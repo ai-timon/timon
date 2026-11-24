@@ -142,7 +142,7 @@ test('a fence path is spelled as an escaped SBPL string', () => {
   assert.equal(sbplString('/x/"q"'), '"/x/\\"q\\""');
   assert.equal(sbplString('/x/a\\b'), '"/x/a\\\\b"');
   assert.equal(sbplString('/x/\n\t\r'), '"/x/\\n\\t\\r"');
-  assert.equal(sbplString('/Users/josé/日本'), '"/Users/josé/日本"');
+  assert.equal(sbplString('/Users/josé/日本'), '"/Users/josé/日本"'); // french-ok: a non-ASCII path
   assert.throws(() => sbplString('/x/\u0001'), SeatbeltRenderError);
   assert.throws(() => sbplString('/x/\u007f'), SeatbeltRenderError);
 });

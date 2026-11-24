@@ -147,8 +147,11 @@ function post(path: string, body: unknown): Promise<Response> {
 /** A 400 from the schema, not from git further down: the request never ran. */
 async function assertRefused(r: Response, label: string): Promise<void> {
   assert.equal(r.status, 400, label);
-  const { error } = await r.json() as { error: string };
+  const { error, code, params } = await r.json() as { error: string; code: string; params: { detail: string } };
   assert.match(error, /^invalid request: /, label);
+  // The webview translates the code and quotes the detail: both must travel.
+  assert.equal(code, 'invalid_detail', label);
+  assert.equal(`invalid request: ${params.detail}`, error, label);
 }
 
 test('every git route refuses wrong types and unknown fields with a 400', async () => {
@@ -247,7 +250,10 @@ test('an agent read git did not answer is a 503, never an empty 200', async (t) 
   t.mock.method(getHost(), 'execAsync', async () => ({ code: 1, stdout: '', stderr: '', timedOut: true }));
   const res = await fetch(`${base}/api/agents/silentagent/git?slug=gitproj`, { headers: auth });
   assert.equal(res.status, 503);
-  assert.match((await res.json() as { error: string }).error, /did not answer/);
+  const body = await res.json() as { error: string; code: string; params: { detail: string } };
+  assert.match(body.error, /did not answer/);
+  assert.equal(body.code, 'git_info_failed');
+  assert.equal(body.params.detail, body.error);
   const anonymous = await fetch(`${openBase}/api/agents/silentagent/git?slug=gitproj`);
   assert.equal(anonymous.status, 401);
 });

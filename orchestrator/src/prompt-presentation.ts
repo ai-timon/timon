@@ -30,6 +30,8 @@ export type ReturnCard = {
   todo_progress?: { id: number; progress: string; landed?: number; total?: number }[];
   summary?: string;
   blocked_reason?: string;
+  /** The code of `blocked_reason`, for the screen to read it in the reader's language. */
+  blocked_reason_code?: { code: string; params: Record<string, string | number> };
   /** Review findings, only when the verdict is not `pass`: they call a decision. */
   findings?: string;
   /** Final report of a mission without a task: it IS the deliverable. */

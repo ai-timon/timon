@@ -3,7 +3,7 @@ title: Example cookbook
 sidebar_position: 18
 ---
 
-41 supplied packages demonstrate the public contract. Commentary is written for this guide; code excerpts are copied verbatim from the named files. Some original strings are French. Regenerate excerpts with `node scripts/gen-examples.mjs`.
+45 supplied packages demonstrate the public contract. Commentary is written for this guide; code excerpts are copied verbatim from the named files. Some original strings are French. Regenerate excerpts with `node scripts/gen-examples.mjs`.
 
 Obtain the example tree with your developer distribution. There is no public repository link. Use a licensed test instance and follow [Testing](testing.md) before installing third-party code.
 
@@ -1241,6 +1241,44 @@ export function apply(ctx) {
 }
 ```
 
+## A mascot head the plugin draws {#mascot-head}
+
+Source: `examples/plugin-mascot-head`. Manifest ID: `example-mascot-head`. Minimum API: **15**.
+
+API 15. A mascot pack whose part is a whole head drawn by the plugin's own component: an ember, a flame in the agent's colour whose eyes follow its state. The manifest declares the slug under timon.mascot.shape; the browser half registers it in the mascot.parts slot with a head component instead of the four skull numbers. Only the agents whose skull is `example-mascot-head:ember` are drawn by it; every other agent stays Timon's, in the person's 2D or 3D style, and several packs add their heads side by side. The component reads useAgentMascot(), like an agent.mascot occupant, and paints an svg (or a canvas) of `size` pixels. A head that throws is replaced by Timon's for that agent; remove the plugin and the agent shows its role's default skull.
+
+Permissions: none. Read the [related guide](mascot-pack.md).
+
+`timon plugin add ./examples/plugin-mascot-head` installs this package on the target instance.
+
+From `examples/plugin-mascot-head/lib/client.js`, line 42 (excerpt):
+
+```js
+function EmberHead() {
+  const m = useAgentMascot()
+  if (!m) return null
+  const e = React.createElement
+  const kind = STATE_EYES[m.state] || 'open'
+  const a11y = m.label ? { role: 'img', 'aria-label': m.label } : { 'aria-hidden': true }
+  return e('svg', { viewBox: '0 0 100 100', width: m.size, height: m.size, 'data-ember': m.state || 'still', ...a11y },
+    m.shadow ? e('ellipse', { cx: 50, cy: 96, rx: 30, ry: 3, fill: '#000', opacity: 0.25 }) : null,
+    // `fur`: the agent's colour as `#rrggbb`, a pack's fur included.
+    e('path', { d: FLAME, fill: m.fur },
+      // A flicker only for a live mascot: `live` is already false under reduced motion.
+      m.live ? e('animateTransform', { attributeName: 'transform', type: 'scale', values: '1 1;1.02 0.98;1 1', dur: '1.2s', repeatCount: 'indefinite', additive: 'sum' }) : null),
+    e('path', { d: 'M50 40 C 58 52, 68 58, 68 72 C 68 84, 60 90, 50 90 C 40 90, 32 84, 32 72 C 32 60, 44 54, 50 40 Z', fill: '#fff', opacity: 0.28 }),
+    eye(kind, 40), eye(kind, 60))
+}
+
+export function apply(ctx) {
+  return ctx.slots.register({
+    slot: 'mascot.parts',
+    key: 'ember',
+    mascotPart: { type: 'shape', label: { en: 'Ember', fr: 'Braise' }, head: EmberHead },
+  })
+}
+```
+
 ## Replace the code screen {#email-code}
 
 Source: `examples/plugin-email-code`. Manifest ID: `example-email-code`. Minimum API: **15**.
@@ -1333,6 +1371,39 @@ function CompactLookStyler() {
 
 export function apply(ctx) {
   return ctx.slots.register({ slot: 'agent.lookstyler' }, CompactLookStyler)
+}
+```
+
+## Replace the pull request badge of an idea {#todo-landing}
+
+Source: `examples/plugin-todo-landing`. Manifest ID: `example-todo-landing`. Minimum API: **19**.
+
+API 19. One registration in the single kanban.todo.landing slot replaces the badge that says where the branch of a TO DO idea stands, on the lines of the TO DO widgets, in the Kanban TO DO column and in the idea's detail, with a plain line of text. The component reads the idea from useTodoItem(): its landing is null when no job of the idea has an integration branch, else the state (branch, pending, open, merged or closed), the branch, the pull request's number and address, and every job in jobs, the one furthest from landing first. The field is read-only. Remove the plugin and Timon's own badge comes back.
+
+Permissions: none. Read the [related guide](slots.md).
+
+`timon plugin add ./examples/plugin-todo-landing` installs this package on the target instance.
+
+From `examples/plugin-todo-landing/lib/client.js`, line 40 (excerpt):
+
+```js
+function PlainLanding() {
+  const item = useTodoItem()
+  const landing = item && item.landing
+  if (!landing) return null
+  const href = safeUrl(landing.prUrl)
+  const text = describe(landing)
+  const others = landing.jobs.length - 1
+  return React.createElement('span', { 'data-plain-landing': landing.state, className: 'text-[11px] text-muted-foreground' },
+    href
+      ? React.createElement('a', { href, target: '_blank', rel: 'noopener noreferrer', className: 'underline-offset-2 hover:underline' }, text)
+      : text,
+    others > 0 ? ` ${t('more', { count: others })}` : null)
+}
+
+/** @param {import('@timon-ai/sdk').ClientContext} ctx */
+export function apply(ctx) {
+  return ctx.slots.register({ slot: 'kanban.todo.landing' }, PlainLanding)
 }
 ```
 
@@ -1486,6 +1557,61 @@ function PlainTodoForm() {
 /** @param {import('@timon-ai/sdk').ClientContext} ctx */
 export function apply(ctx) {
   return ctx.slots.register({ slot: 'todo.form' }, PlainTodoForm)
+}
+```
+
+## Replace the Publish on GitHub window {#publish-dialog}
+
+Source: `examples/plugin-publish-dialog`. Manifest ID: `example-publish-dialog`. Minimum API: **19**.
+
+API 19. One registration in the single forge.publish.dialog slot replaces the window that shows a comment before it is posted on GitHub, opened from the rows of the Jobs and Pull requests widgets, a pull request's menu and the notification of a proposed comment, with a plain dialog. The component reads usePublishDialog(): the text as it would leave and setBody(), where it goes, the account the project publishes as, why the text would be refused, and three gestures, publish(), save() and discard(). They are Timon's: the plugin holds no access to GitHub or to the daemon, the gestures go through the signed-in person's session, and nothing is posted before the click on Publish. The component draws the whole window with Dialog from @timon/ui and calls close() when it is dismissed. Remove the plugin and Timon's own window comes back.
+
+Permissions: none. Read the [related guide](slots.md).
+
+`timon plugin add ./examples/plugin-publish-dialog` installs this package on the target instance.
+
+From `examples/plugin-publish-dialog/lib/client.js`, line 38 (excerpt):
+
+```js
+function PlainPublishDialog() {
+  const host = usePublishDialog()
+  if (!host) return null
+  const { proposal, target, account, body, problem, busy, error, loading, editable } = host
+  const waiting = proposal === null || proposal.state === 'draft' || proposal.state === 'failed'
+  const canPublish = waiting && !loading && !problem && account !== null && busy === null
+  const where = t(target.type === 'pull' ? 'onPull' : 'onIssue', { number: target.number })
+
+  return React.createElement(Dialog, { open: true, onOpenChange: (open) => { if (!open) host.close() } },
+    React.createElement(DialogContent, { className: 'flex max-w-[640px] flex-col gap-3' },
+      React.createElement(DialogTitle, null, t('title')),
+      React.createElement(DialogDescription, null,
+        account ? `${where} · ${t('as', { account })}` : `${where} · ${t('noAccount')}`),
+      waiting && editable
+        ? React.createElement('textarea', {
+          'aria-label': t('text'), value: body, rows: 12, disabled: busy !== null,
+          onChange: (e) => host.setBody(e.target.value),
+          className: 'min-h-[12rem] rounded-md bg-muted/40 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        })
+        : waiting
+          ? React.createElement('p', { className: 'whitespace-pre-wrap text-[13px]' }, body)
+          : React.createElement('p', { className: 'text-[13px] text-muted-foreground' }, t(proposal.state)),
+      (problem && waiting) || error
+        ? React.createElement('p', { role: 'alert', className: 'text-[12px] text-destructive' }, error ?? t(problem ?? ''))
+        : null,
+      React.createElement('div', { className: 'flex items-center justify-end gap-2' },
+        waiting
+          ? React.createElement(React.Fragment, null,
+            React.createElement(Button, { type: 'button', variant: 'ghost', size: 'sm', disabled: busy !== null, onClick: () => { void host.discard() } }, t('discard')),
+            editable
+              ? React.createElement(Button, { type: 'button', variant: 'secondary', size: 'sm', disabled: busy !== null || problem !== null, onClick: () => { void host.save() } }, t('save'))
+              : null,
+            React.createElement(Button, { type: 'button', size: 'sm', disabled: !canPublish, onClick: () => { void host.publish() }, 'data-plain-publish': '' }, t('publish')))
+          : React.createElement(Button, { type: 'button', variant: 'ghost', size: 'sm', onClick: host.close }, t('close')))))
+}
+
+/** @param {import('@timon-ai/sdk').ClientContext} ctx */
+export function apply(ctx) {
+  return ctx.slots.register({ slot: 'forge.publish.dialog' }, PlainPublishDialog)
 }
 ```
 
@@ -1911,7 +2037,7 @@ export function apply(ctx) {
 
 ## Usage without fabricated zeroes {#quota-monitor}
 
-Source: `examples/plugin-quota-monitor`. Manifest ID: `quota-monitor`. Minimum API: **6**.
+Source: `examples/plugin-quota-monitor`. Manifest ID: `quota-monitor`. Minimum API: **17**.
 
 The monitor combines host storage/settings with topbar, widget and settings surfaces. This function computes risk only from known finite measurements. Unknown usage remains null. The full template also preserves the last known reading during transient failures. Timon ships this package built in and enabled, so an installed copy with the same manifest ID is ignored: to experiment, copy the folder and change `timon.id` first.
 
@@ -2097,6 +2223,77 @@ export async function syncAgents(ctx, profiles, defaults = {}) {
 const STATUS = { invalid: 400, forbidden: 403, not_found: 404, conflict: 409 };
 
 /** @param {import('@timon-ai/sdk').PluginContext} ctx */
+```
+
+## The GitHub repository of a project {#forge}
+
+Source: `examples/plugin-forge`. Manifest ID: `forge-example`. Minimum API: **19**.
+
+API 19. A behavior plugin that works with the GitHub repository of a Timon project without `gh` or a token: Timon reads it with the account set on the project and never shows it. `GET /candidates?project=<slug>` lists the open issues carrying the label of its settings (`accepted` by default), each with `brief`, the issue marked as outside data for an agent. `POST /thanks` with `{ project, issue }` proposes a thank-you comment, once per issue (`key: thanks:<n>`): it waits in the notification centre and in the **Publish on GitHub** window, where a person edits it and publishes or discards it. `GET /proposals` says where they stand. The comment is a template and never quotes the issue. Calling the routes needs an account allowed to manage projects, and proposing needs a person signed in: an agent's token is refused.
+
+Permissions: `forge:read`, `forge:propose`, `settings`. Read the [related guide](forge.md).
+
+`timon plugin add ./examples/plugin-forge` installs this package on the target instance.
+
+From `examples/plugin-forge/lib/index.js`, line 12 (excerpt):
+
+```js
+export function thanksFor() {
+  return 'Thanks for reporting this. We are tracking it, and will post here when a fix lands.'
+}
+
+/**
+ * What an agent may be handed of an issue: bounded, and marked as text from
+ * outside, never an instruction.
+ */
+export function asUntrusted(issue) {
+  const data = JSON.stringify({ number: issue.number, title: issue.title.slice(0, 200), author: issue.author })
+  return `<untrusted-data>${data.replace(/</g, '\\u003c').replace(/>/g, '\\u003e')}</untrusted-data>`
+}
+
+/** @param {import('@timon-ai/sdk').PluginContext} ctx */
+export function apply(ctx) {
+  const router = ctx.router()
+
+  const answer = (handler) => async (request, response) => {
+    if (!ctx.user()) { response.status(401).json({ error: 'sign_in_required' }); return }
+    try {
+      response.json(await handler(request))
+    } catch (err) {
+      if (err?.name === 'PluginCallerError') { response.status(403).json({ error: 'forbidden' }); return }
+      const status = STATUS[err?.code]
+      if (!status) throw err
+      response.status(status).json({ error: err.code })
+    }
+  }
+
+  // The open issues of a project that carry the label of the settings.
+  router.get('/candidates', answer(async (request) => {
+    const project = String(request.query.project ?? '')
+    const label = String(ctx.settings.get('label') || 'accepted')
+    const issues = await ctx.forge.issues.list(project, { label })
+    return { issues: issues.map((issue) => ({ number: issue.number, title: issue.title, url: issue.url, brief: asUntrusted(issue) })) }
+  }))
+
+  // Proposes the thank-you comment once per issue: a second call returns the
+  // same proposal. Nothing reaches GitHub here.
+  router.post('/thanks', answer(async (request) => {
+    const project = String(request.body?.project ?? '')
+    const number = Number(request.body?.issue)
+    const { proposal, created } = await ctx.forge.propose(project, {
+      target: { type: 'issue', number },
+      body: thanksFor(),
+      key: `thanks:${number}`,
+    })
+    return { id: proposal.id, state: proposal.state, created }
+  }))
+
+  // Where this plugin's proposals stand: waiting, published (with the comment's address) or discarded.
+  router.get('/proposals', answer(async (request) => {
+    const proposals = await ctx.forge.proposals.list(String(request.query.project ?? ''))
+    return { proposals: proposals.map((p) => ({ id: p.id, issue: p.target.number, state: p.state, url: p.url })) }
+  }))
+}
 ```
 
 ## A TO DO connector (GitHub Issues) {#todo-connector}

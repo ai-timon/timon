@@ -139,10 +139,19 @@ function readEntry(raw: unknown): WidgetLayout | null {
  * the widget then lands where it would for anyone.
  */
 export function inheritedPlacement(raw: unknown, formerIds: readonly string[], id: string): WidgetLayout | null {
+  return inheritedSource(raw, formerIds, id)?.entry ?? null;
+}
+
+/**
+ * Like `inheritedPlacement`, and names the former id the place came from:
+ * several widgets split out of one card all inherit its place, and must then
+ * share it as one stack rather than overlap.
+ */
+export function inheritedSource(raw: unknown, formerIds: readonly string[], id: string): { entry: WidgetLayout; from: string } | null {
   if (!Array.isArray(raw) || formerIds.length === 0) return null;
   for (const former of formerIds) {
     const e = raw.map(readEntry).find((entry) => entry?.id === former);
-    if (e && !e.removed) return { ...e, id };
+    if (e && !e.removed) return { entry: { ...e, id }, from: former };
   }
   return null;
 }

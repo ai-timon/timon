@@ -1,3 +1,4 @@
+import { daemonMessage } from './daemon-message.js';
 import { assertFreeAccountAccess } from './users/free-access.js';
 import { noteProviderSignedIn, noteProviderSignedOut } from './backends/sign-in-state.js';
 import { assertLicensedExecution } from './license/capabilities.js';
@@ -49,9 +50,9 @@ import {
   type AgentSkillsDraft, type AgentSkillsWrite, type ResolvedSkill, type SkillMode, type SkillVia,
 } from './skill-attachments.js';
 import { getMcp, refreshToolsCacheFromInit, listMcp } from './mcp.js';
-import { chatAttachmentsRoot } from './chat-attachments.js';
+import { ensureChatAttachmentsDir } from './chat-attachments.js';
 import { pluginPackageDirs, removeAgentPackageCache, worktreeGitDirs } from './mission-fence-target.js';
-import { forgetMissionFence, missionFenced, recordMissionFence } from './mission-fence-state.js';
+import { forgetMissionFence, missionFenced, prepareMissionLaunch, recordMissionFence } from './mission-fence-state.js';
 import { setAcpFenceSource } from './backends/acp/provider.js';
 import type { FenceTarget } from './host/isolation.js';
 import { journalDirectSkillReads } from './skill-reads.js';
@@ -89,9 +90,10 @@ import {
 } from './backend-fallback.js';
 import { backendStillDry } from './backend-recheck.js';
 import { resolvedPermissionModeFor } from './backends/catalog.js';
+import { reportInertShellPreallow } from './auto-mode-preallow.js';
 import { nestedSandboxOf } from './backends/capabilities.js';
 import { settingBool, settingNum } from './settings.js';
-import { profileLimits, watchFencedLaunch, wrapMissionLaunch } from './resources.js';
+import { missionFenceExpected, profileLimits, watchFencedLaunch, wrapMissionLaunch } from './resources.js';
 import { getHost, type Host } from './host/index.js';
 import {
   backgroundDescendants, cliBaseline, cliProcessPid, readProcessTable, type ProcessEntry,
@@ -635,6 +637,7 @@ export function evictIdleMission(now = Date.now(), graceMs = EVICT_IDLE_GRACE_MS
     `(${oldest.agentName}, idle ${Math.round((now - lastActivityAt(oldest)) / 1000)} s)`,
   );
   oldest.terminationIntent = 'idle';
+  dbApi.confirmClosureIgnoredReap(oldest.missionId);
   try { oldest.handle.kill('SIGTERM'); } catch { /* already dead */ }
   return oldest.missionId;
 }
@@ -919,6 +922,12 @@ user can then pick models per group, the general settings staying the default �
 It returns \`{plan, commands, note?}\`: run \`commands\` as they are, filling the \`<...>\` templates;
 read \`note\`, it can contradict the ticked boxes. Models and fallbacks are set before the first
 task and apply to the series only, including the tasks the dispatcher creates itself.
+In a project that lands through pull requests it also returns \`integration\`: every task starts from
+its \`branch\` (\`--base\`), the last command creates the \`--landing pr\` task that opens the pull
+request, and you never merge the job into the target branch yourself: a person merges the pull request.
+A sequential job there starts with \`timon pr branch <branch>\`: code and commit only in the
+\`worktree\` it returns (never in the shared checkout), move the branch by reference after each
+commit, and end with that same \`--landing pr\` task; \`integration.note\` gives the exact gestures.
 
 | \`plan.mode\` | what you do |
 |---------------|-------------|
@@ -1856,14 +1865,25 @@ const HANDOVER_START_TIMEOUT_MS = 120_000;
 
 type MissionLaunch = { spec: SpawnResult; proc: ChildProcessWithoutNullStreams; procEnv: NodeJS.ProcessEnv; missionToken: string };
 
+/** The mission's attachments folder, made if missing; `null` when the home refuses it, the fence then leaving it closed. */
+function chatAttachmentsFolder(missionId: string): string | null {
+  try {
+    return ensureChatAttachmentsDir(missionId);
+  } catch (error) {
+    console.warn(`[agent] mission ${missionId.slice(0, 8)}: attachments folder not created, the fence leaves it closed: ${(error as Error).message}`);
+    return null;
+  }
+}
+
 /**
  * What the fence of a mission needs beyond its working directory
  * (`host/isolation.ts`, `FenceTarget`): who it is, the subscription account
- * and provider plugin it runs on, the git directories its worktree commits
+ * and provider plugin it runs on, the profile whose folder of the plugin's
+ * cache is the only one it reaches, the git directories its worktree commits
  * into, the plugin packages its MCP servers run from, and the folder its chat
  * attachments were saved to. Every path is checked again by `resolveFence`.
  */
-function missionFenceTarget(input: {
+export function missionFenceTarget(input: {
   missionId: string;
   agentName: string;
   project: string;
@@ -1881,7 +1901,9 @@ function missionFenceTarget(input: {
       return []; // an id that is not a server's: the launch leaves it out too
     }
   });
-  const attachments = join(chatAttachmentsRoot(), input.missionId);
+  // Created before the fence is computed, so it is always among the folders it opens.
+  const attachments = chatAttachmentsFolder(input.missionId);
+  const instance = splitBackendInstance(input.backend);
   return {
     agent: input.agentName,
     // Read again from the agent's config file: `cfg.cwd` may by now be a
@@ -1889,11 +1911,15 @@ function missionFenceTarget(input: {
     // `workspace` exception of the fence.
     agentCwd: configuredAgentCwd(input.agentName),
     project: input.project || undefined,
-    account: splitBackendInstance(input.backend).accountId ?? undefined,
+    account: instance.accountId ?? undefined,
     providerPlugin: backendOwnerPlugin(input.backend) ?? undefined,
+    // The folder `ctx.provider.scratch.profile` keeps for a profile without an account. An
+    // account's mission keeps its sign-in in the account's own folder: its owner is a person,
+    // and the profile's folder is shared by every account of that profile.
+    providerProfile: instance.accountId ? undefined : instance.backend,
     gitDirs: git.dirs,
     pluginDirs: pluginPackageDirs(commandLines, TIMON_HOME),
-    timonRead: existsSync(attachments) ? [attachments] : [],
+    timonRead: attachments ? [attachments] : [],
   };
 }
 
@@ -1916,6 +1942,12 @@ async function launchMissionProcess(
   // plugin brought, and the daemon swaps what comes back at the points where the
   // data leaves for the process. A core dialect has no plugin to answer to.
   const seal = trust === 'core' ? null : openLaunchSeal(missionId, backend.name, spawnOpts, () => missionApiToken(missionId));
+  // Before `buildSpawn`: a provider may move the account's keychain entry there, which only
+  // a fenced launch needs (`mission-fence-state.ts`). Released however the launch ends.
+  const account = splitBackendInstance(backend.name).accountId;
+  const project = cfg.project ?? projectFromCwd(cfg.cwd) ?? undefined;
+  const fenced = account !== null && missionFenceExpected({ agent: agentName, ...(project ? { project } : {}) });
+  const prepared = prepareMissionLaunch(missionId, { account, fenced });
   try {
     return await spawnMissionProcess(backend, spawnOpts, cfg, missionId, agentName, seal, trust, confirmSpawn);
   } catch (err) {
@@ -1923,6 +1955,8 @@ async function launchMissionProcess(
     // references of a launch that never reached a process must not outlive it.
     if (seal) closeLaunchSeal(seal);
     throw err;
+  } finally {
+    prepared();
   }
 }
 
@@ -2056,7 +2090,12 @@ async function spawnMissionProcess(
   // A launcher that cannot fence on this machine after all switches the fence off for the next launches.
   void watchFencedLaunch(proc, launch.fence);
   // The session driver reads it: inside the fence, a sign-in step that opens a browser can never finish.
-  recordMissionFence(missionId, proc, launch.fence?.state === 'fenced');
+  // The move of an account's keychain entry too: recorded in the tick of the spawn, so a process that
+  // may write the entry is seen by any delete that comes after it (`mission-fence-state.ts`).
+  recordMissionFence(missionId, proc, launch.fence?.state === 'fenced', {
+    account: splitBackendInstance(backend.name).accountId,
+    credentialStoreWritable: launch.fence?.state === 'fenced' && launch.fence.credentialStoreWritable,
+  });
   proc.once('close', () => forgetMissionFence(missionId, proc));
   journalInjectedSecrets({ missionId, agent: agentName, injected: vault?.injected ?? [] });
   requested?.consume();
@@ -2275,6 +2314,12 @@ async function spawnTurn(args: {
   // launch without a shell and file writes does not run the conversion at all.
   const confinement = readOnlyTools ? conversionBackendRefusal(backend.name) : null;
   if (confinement) throw new Error(confinement);
+  // A pre-allow the CLI will drop must not fail in silence: an autonomous
+  // mission would only show it as a denied card in the daemon log.
+  reportInertShellPreallow({
+    agent: agentName, missionId, mode: cfg.permission_mode, permissionModel: backend.permissionModel,
+    allowed: cfg.allowed_tools, modeSource: missionRow?.permission_mode_override ? 'mission' : 'agent',
+  });
   const systemPrompt = buildEffectivePrompt(agentName, cfg, backend, message, forcedSkills);
 
   // Resolve memory dir based on scope. Create it if needed.
@@ -4538,6 +4583,7 @@ export function reapStaleMissions(processTable?: readonly ProcessEntry[], now = 
         if (!isAutonomousMission(m)) continue;
         const lastActivity = dbApi.lastEventAt(m.id) ?? m.started_at;
         if (now - lastActivity < REAP_IDLE_MS()) continue;
+        dbApi.confirmClosureIgnoredReap(m.id);
         const reason = dbApi.finishMission(m.id, 'terminated', 0, 'killed');
         bus.publish({ kind: 'mission_complete', missionId: m.id, status: 'terminated', exitCode: 0, reason });
         notifyParentOnComplete(m.id, 'terminated');
@@ -4635,6 +4681,8 @@ export function reapStaleMissions(processTable?: readonly ProcessEntry[], now = 
         (background.length > 0 ? ' (background ceiling reached)' : ''),
       );
       live.terminationIntent = 'idle'; // turn finished, only free the process → terminal `completed`
+      // The one death that ends the task of a mission that ignored its closure questions.
+      dbApi.confirmClosureIgnoredReap(m.id);
       try { live.handle.kill('SIGTERM'); } catch { /* already dead */ }
       idled++;
       continue;
@@ -5250,6 +5298,9 @@ function notifyRenamedTriggers(oldName: string, newName: string, triggers: reado
           : `Check ${own.length} triggers: agent ${oldName} is now ${newName}`,
         body: `The filter of these event triggers matches the agent's name by pattern or substring and no longer reads it the same way. They were left unchanged: review each one on the Triggers page.\n${own.map((t) => `- ${t.name}`).join('\n')}`,
         ownerUserId: owner,
+        message: daemonMessage('triggers_check_after_rename', {
+          count: own.length, oldName, newName, list: own.map((t) => `- ${t.name}`).join('\n'),
+        }),
       });
     } catch (err) {
       console.warn(`[agent] rename ${oldName}→${newName}: could not notify about ${own.length} trigger(s): ${(err as Error).message}`);

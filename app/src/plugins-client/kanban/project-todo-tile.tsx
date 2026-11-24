@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Lightbulb, Plus, Settings2 } from 'lucide-react';
+import { GitPullRequest, GitPullRequestDraft, Lightbulb, Plus, Settings2 } from 'lucide-react';
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
 import { Tile } from '@/components/tile';
 import { WidgetButton, widgetButtonClass, widgetSegmentClass } from '@/components/widget-toolbar';
@@ -29,7 +29,8 @@ import { UntypedBadge, UrgencyBadge } from './project-todo-tag-chips';
 import { useStoredLayout } from '@/hooks/use-stored-layout';
 import { TODO_DISPLAY_SCOPE, readTodoDisplay, writeTodoDisplay, type TodoDisplay } from '@/lib/project-todo-display';
 import {
-  countByUrgency, filterByUrgency, toggleUrgency, visibleUrgencyKeys, URGENCY_FILTER_KEYS, type UrgencyFilterKey,
+  countByUrgency, filterByLanding, filterByUrgency, showLandingFilter, toggleUrgency, visibleUrgencyKeys,
+  LANDING_FILTER_KEYS, URGENCY_FILTER_KEYS, type LandingFilterKey, type UrgencyFilterKey,
 } from '@/lib/project-todo-filter';
 import {
   statusTotal, TODO_SURFACE_LIMIT, type ProjectTodo, type ProjectTodoCounts, type ProjectTodoListResponse,
@@ -37,6 +38,7 @@ import {
 import type { WidgetProps } from '@/components/widget-host/widget-props';
 import type { ClientRealtime } from '@/lib/plugin-host/realtime';
 import { subscribeProjectTodoChanges } from '@/lib/project-todo-realtime';
+import { movesTodoLanding, useLandingChanges } from './landing-events';
 import { cn } from '@/lib/utils';
 import { NativeViewCover } from '@/lib/native-view-cover';
 
@@ -79,7 +81,7 @@ export function ProjectTodoTile({
   realtime,
   titre,
   entete,
-  poignee,
+  handle,
   className,
   editing = false,
 }: WidgetProps & {
@@ -113,6 +115,7 @@ export function ProjectTodoTile({
   // Plain React state: the widget host keeps no per-instance options, and a
   // type filter is a glance at the list, not a setting worth a registry.
   const [types, setTypes] = useState<ReadonlySet<UrgencyFilterKey>>(() => new Set());
+  const [landing, setLanding] = useState<LandingFilterKey | null>(null);
 
   // A project scope without a slug loads NOTHING: the empty list is the right
   // answer, not the whole notebook under a header that promises a project.
@@ -141,6 +144,7 @@ export function ProjectTodoTile({
       const query = new URLSearchParams({ status: vue });
       if (projet) query.set('project', projet);
       if (typesKey) query.set('urgency', typesKey);
+      if (landing) query.set('landing', landing);
       query.set('limit', String(TODO_SURFACE_LIMIT));
       const r = await sharedGet(`/api/ui/project-todo?${query.toString()}`);
       const j = (await r.json()) as ProjectTodoListResponse;
@@ -153,13 +157,17 @@ export function ProjectTodoTile({
     } finally {
       if (tour === derniere.current) setChargement(false);
     }
-  }, [inerte, projet, vue, typesKey]);
+  }, [inerte, projet, vue, typesKey, landing]);
 
   useEffect(() => {
     const unsubscribe = subscribeProjectTodoChanges(realtime, () => { void load(); });
     void load();
     return unsubscribe;
   }, [load, realtime]);
+  // An idea's landing badge moves with its jobs, which the notebook's own
+  // signal does not announce. Not narrowed to the project: an idea may be
+  // carried out by a job of another one.
+  useLandingChanges(() => { void load(); }, movesTodoLanding);
 
   const patch = async (id: number, fields: Partial<Pick<ProjectTodo, 'text' | 'status' | 'project' | 'notes'>>) => {
     await fetch(`/api/ui/project-todo/${id}`, {
@@ -178,8 +186,8 @@ export function ProjectTodoTile({
   // The daemon already narrowed the rows; filtered again here so a view or a
   // chip just switched never shows the previous answer's rows meanwhile.
   const visibles = useMemo(
-    () => filterByUrgency(items.filter((i) => i.status === vue), types),
-    [items, vue, types],
+    () => filterByLanding(filterByUrgency(items.filter((i) => i.status === vue), types), landing),
+    [items, vue, types, landing],
   );
 
   // Each control counts what pressing it would show, given the other one:
@@ -190,7 +198,10 @@ export function ProjectTodoTile({
   const puces = visibleUrgencyKeys(parType, types);
   // One chip alone filters nothing: the row appears once there is a choice.
   const montrerFiltre = puces.length > 1 || types.size > 0;
-  const filtreVide = visibles.length === 0 && types.size > 0 && statusTotal(counts, vue) > 0;
+  const filtrant = types.size > 0 || landing !== null;
+  const filtreVide = visibles.length === 0 && filtrant && (landing !== null || statusTotal(counts, vue) > 0);
+  const montrerLanding = showLandingFilter(items, landing);
+  const clearFilters = () => { setTypes(new Set()); setLanding(null); };
 
   return (
     <Tile
@@ -243,7 +254,7 @@ export function ProjectTodoTile({
             icon={<Plus className="size-3" />}
             label={t('projectTodo.add')}
           />
-          {poignee}
+          {handle}
         </>
       }
     >
@@ -264,6 +275,27 @@ export function ProjectTodoTile({
             <span className="tabular-nums">{chargement ? '…' : faitsFiltres}</span>
           </button>
         </span>
+        {montrerLanding && (
+          <span role="group" aria-label={t('projectTodo.filterLanding')} className="inline-flex items-center gap-0.5">
+            {LANDING_FILTER_KEYS.map((k) => {
+              const actif = landing === k;
+              const Icon = k === 'open' ? GitPullRequest : GitPullRequestDraft;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={actif}
+                  data-landing-filter={k}
+                  onClick={() => setLanding(actif ? null : k)}
+                  className={cn(widgetSegmentClass(actif), SEGMENT_COMPACT)}
+                >
+                  <Icon className="size-3" aria-hidden />
+                  {t(`projectTodo.landingFilter.${k}`)}
+                </button>
+              );
+            })}
+          </span>
+        )}
         {montrerFiltre && (
           <span role="group" aria-label={t('projectTodo.filterType')} className="ml-auto flex flex-wrap items-center gap-0.5">
             {puces.map((k) => {
@@ -302,13 +334,13 @@ export function ProjectTodoTile({
               {inerte
                 ? t('projectTodo.chooseProject')
                 : filtreVide
-                  ? t('projectTodo.emptyFilter')
+                  ? t(landing ? 'projectTodo.emptyLandingFilter' : 'projectTodo.emptyFilter')
                   : projet
                     ? t('projectTodo.emptyProject', { project: projet })
                     : t('projectTodo.empty')}
             </span>
             {filtreVide && (
-              <WidgetButton onClick={() => setTypes(new Set())} label={t('projectTodo.clearFilter')} />
+              <WidgetButton onClick={clearFilters} label={t(landing ? 'projectTodo.clearAllFilters' : 'projectTodo.clearFilter')} />
             )}
           </div>
         ) : (

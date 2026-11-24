@@ -392,6 +392,11 @@ export type FenceTarget = {
   account?: string | undefined;
   /** Provider plugin holding the mission's scratch folder (`provider-runs/<plugin>/<mission>`). */
   providerPlugin?: string | undefined;
+  /**
+   * Profile the mission runs on, when it runs on no account: of the plugin's per-profile
+   * folders (`provider-cache/<plugin>/profiles/<profile>`), the only one the mission reaches.
+   */
+  providerProfile?: string | undefined;
   /** Git directories the worktree commits into (the main repository's `.git`). */
   gitDirs?: readonly string[] | undefined;
   /** Install folders of the plugins whose MCP servers the mission runs: readable and executable. */
@@ -478,6 +483,12 @@ export function missionTmpDir(timonHome: string, missionId: string): string {
 }
 
 /**
+ * Folder of `provider-cache/<plugin>/` holding one folder per profile the plugin launches
+ * (`ctx.provider.scratch.profile`). A mission reaches its own profile's folder only.
+ */
+export const PROVIDER_PROFILES = 'profiles';
+
+/**
  * Folder of `provider-cache/` holding one package cache per agent. Its name
  * starts with `.` so that no provider plugin id, which `FENCE_SEGMENT` makes
  * start with a letter or a digit, can ever be granted it as its own cache.
@@ -545,7 +556,7 @@ export function runtimeReleaseOf(timonHome: string, path: string): string | null
 const OWNER_ZONES: readonly (readonly string[])[] = Object.freeze([
   ['backend-accounts'], // backend-accounts/<account>: a sign-in, credentials included
   ['provider-runs'], // provider-runs/<plugin>/<mission>: a mission's provider home
-  ['provider-cache'], // provider-cache/<plugin>: shared by every mission of that provider; .agents/<agent>: one agent's package cache
+  ['provider-cache'], // provider-cache/<plugin>: shared by every mission of that provider, but its profiles/<profile>; .agents/<agent>: one agent's package cache
   ['codex-runs'], // codex-runs/<mission>: CODEX_HOME of one mission
   ['grok-runs'], // grok-runs/<mission>: GROK_HOME of one mission
   ['tmp', 'missions'], // tmp/missions/<mission>: TMPDIR of one mission
@@ -596,7 +607,7 @@ function timonGrantProblem(timonHome: string, path: string, access: 'ro' | 'rw',
 }
 
 /** The global fence values, relaxed by the project's then the agent's exception. */
-function fenceExceptions(iso: TimonConfig['host']['isolation'], target: FenceTarget): {
+function fenceExceptions(iso: TimonConfig['host']['isolation'], target: Pick<FenceTarget, 'agent' | 'project'>): {
   unixSockets: 'deny' | 'allow';
   writable: readonly string[];
 } {
@@ -734,6 +745,8 @@ export function resolveFence(config: TimonConfig, target: FenceTarget): FencePol
   const project = segment('project slug', target.project);
   const account = segment('account id', target.account);
   const plugin = segment('provider plugin id', target.providerPlugin);
+  // An account's mission keeps its CLI's state in the account's folder, never in a profile's.
+  const profile = plugin && !account ? segment('provider profile id', target.providerProfile) : null;
 
   if (missionId) {
     // `tmp/missions/<id>` becomes the mission's TMPDIR: a `mktemp` must not
@@ -743,7 +756,13 @@ export function resolveFence(config: TimonConfig, target: FenceTarget): FencePol
     grant(inTimon('grok-runs', missionId), 'rw', 'own');
     if (plugin) grant(inTimon('provider-runs', plugin, missionId), 'rw', 'own');
   }
+  // The plugin's cache is shared by its missions, but for the folder each profile keeps its
+  // CLI's sessions and settings in: a mission of one profile must neither read another's
+  // transcripts nor plant a hook its CLI would run. Refused whole, even before it exists
+  // (Landlock grants a folder's future entries), then the mission's own one is reopened.
+  const profiles = plugin ? inTimon('provider-cache', plugin, PROVIDER_PROFILES) : null;
   if (plugin) grant(inTimon('provider-cache', plugin), 'rw', 'own');
+  if (plugin && profile) grant(inTimon('provider-cache', plugin, PROVIDER_PROFILES, profile), 'rw', 'own');
   if (account) grant(inTimon('backend-accounts', account), 'rw', 'own');
   if (agent) {
     // Writable and executable: `npx` runs the package it installed there.
@@ -828,6 +847,7 @@ export function resolveFence(config: TimonConfig, target: FenceTarget): FencePol
   }
   deny.add(timonHome);
   deny.add(lexicalHome);
+  if (profiles) deny.add(profiles);
 
   for (const path of rw) exec.add(path);
 
@@ -870,4 +890,40 @@ export function fenceAccess(policy: FencePolicy, path: string): { read: boolean;
   const level = deepest<'none' | 'ro' | 'rw'>([[refused, 'none'], [policy.ro, 'ro'], [policy.rw, 'rw']], 'none');
   const executable = deepest<boolean>([[refused, false], [policy.exec, true]], false);
   return { read: level !== 'none', write: level === 'rw', exec: level !== 'none' && executable };
+}
+
+/**
+ * Whether a fenced mission may still write the OS credential store where a CLI
+ * keeps a subscription account's sign-in: on macOS the login keychain, a file
+ * the CLI's process rewrites itself, so a `writable` grant that reaches its
+ * folder lets the mission renew the entry in place. Such a mission writes the
+ * entry like an unfenced one (`mission-fence-state.ts`). No other platform keeps
+ * an account's sign-in there.
+ */
+export function fenceWritesCredentialStore(policy: FencePolicy, platform: NodeJS.Platform = process.platform, home: string = homedir()): boolean {
+  const folder = credentialStoreFolder(platform, home);
+  return folder !== null && [folder, join(folder, 'login.keychain-db')].some((path) => fenceAccess(policy, path).write);
+}
+
+/**
+ * The same question asked of the configuration, before the launch is built: whether a
+ * `writable` path (global, the project's exception, the agent's) reaches the login
+ * keychain's folder. `resolveFence` keeps such a grant when the path exists, so the
+ * two agree; a listed path that does not exist only makes this side the cautious one.
+ */
+export function fenceConfigWritesCredentialStore(
+  config: TimonConfig,
+  target: Pick<FenceTarget, 'agent' | 'project'>,
+  platform: NodeJS.Platform = process.platform,
+  home: string = homedir(),
+): boolean {
+  const folder = credentialStoreFolder(platform, home);
+  if (folder === null) return false;
+  return fenceExceptions(config.host.isolation, target).writable
+    .map((path) => expand(path, resolve(home)))
+    .some((path) => contains(path, folder) || contains(folder, path));
+}
+
+function credentialStoreFolder(platform: NodeJS.Platform, home: string): string | null {
+  return platform === 'darwin' ? join(resolve(home), 'Library', 'Keychains') : null;
 }

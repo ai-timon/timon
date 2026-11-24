@@ -1,5 +1,5 @@
 /**
- * The onboarding's comments are in English (AGENTS.md, « Langue »).
+ * The onboarding's comments are in English (AGENTS.md, rule 6).
  *
  * `orchestrator/src/english-comments.test.ts` only reads the daemon and its
  * CLI: the app's comments quote screen labels between « » by house style, and
@@ -7,6 +7,9 @@
  * cannot be held to it yet. This folder and the modules around it were made
  * clean and stay so. Three checks, the daemon's two plus the working words
  * of the onboarding's own briefs, which carry no accent and slipped through.
+  *
+  * french-ok: the guillemets named above and the French samples the checks must catch
+  * french-ok-file: the French samples the checks must catch
  */
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -18,7 +21,7 @@ import ts from 'typescript';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, '..', '..');
 
-/** French letters; the « » quotes of screen labels are left out on purpose. */
+/** French letters; the « » quotes of screen labels are left out on purpose. french-ok: the quotes it names */
 const FRENCH_LETTER = /[àâäçéèêëîïôöùûüÿœæÀÂÄÇÉÈÊËÎÏÔÖÙÛÜŸŒÆ]/;
 
 /** The daemon's list (`english-comments.test.ts`): three of them in one comment are a French sentence. */

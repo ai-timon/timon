@@ -1,18 +1,18 @@
 /**
- * La bascule à chaud d'un module bundled — ce que la galerie promet depuis
- * qu'elle liste le catalogue.
+ * Hot switching of a bundled module: what the gallery promises since
+ * it lists the catalogue.
  *
- * Le trou que ces tests ferment : `POST /api/plugins/vault/enabled` écrivait
- * `modules.vault` et s'arrêtait là. L'arbre Cordis, monté une fois au boot,
- * gardait le module vivant et la carte affichait "au prochain démarrage" —
- * un redémarrage que personne ne déclenche, puisqu'il tuerait les missions en
- * vol. Les plugins tiers, eux, sont à chaud depuis P.3.
+ * The gap these tests close: `POST /api/plugins/vault/enabled` wrote
+ * `modules.vault` and stopped there. The Cordis tree, mounted once at boot,
+ * kept the module alive and the card showed "at the next start":
+ * a restart nobody triggers, since it would kill the missions in
+ * flight. Third-party plugins, for their part, have been hot since P.3.
  *
- * L'arbre est composé ici comme `boot.ts` le compose, mais avec deux entrées :
- * booter le catalogue entier dans une suite de tests monterait trente modules,
- * leurs timers et leurs boucles pour observer une route qui s'éteint.
+ * The tree is composed here the way `boot.ts` composes it, but with two entries:
+ * booting the whole catalogue in a test suite would mount thirty modules,
+ * their timers and their loops to watch one route switch off.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import { paidTestLicense } from '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
@@ -34,7 +34,7 @@ const { setLicenseState } = await import('../license/runtime.js');
 import type { ModuleDescriptor } from './registry.js';
 import type { PluginPublic } from '../plugins/public.js';
 
-/** Le noyau minimal, une cobaye libre, et une cobaye vendue (licence lic-6). */
+/** The minimal kernel, a free guinea pig, and a sold guinea pig (licence lic-6). */
 const CATALOG: readonly ModuleDescriptor[] = [
   { id: '@timon/db', name: './plugins-bundled/db/index.js', tier: 'core' },
   { id: '@timon/vault', name: './plugins-bundled/vault/index.js', tier: 'opt' },
@@ -61,8 +61,8 @@ async function kernel(): Promise<Kernel> {
   const app = express();
   app.use(express.json());
   const ctx = new Context();
-  // Les noms d'entrée sont relatifs à `src/`, comme ils le sont à `dist/`
-  // depuis `boot.js`. Sous `tsx`, `./x/index.js` résout `index.ts`.
+  // Entry names are relative to `src/`, as they are to `dist/`
+  // from `boot.js`. Under `tsx`, `./x/index.js` resolves `index.ts`.
   ctx.baseUrl = new URL('../', import.meta.url).href;
   await ctx.plugin(Timer);
   await ctx.plugin(createHttpPlugin(app));
@@ -102,15 +102,15 @@ async function kernel(): Promise<Kernel> {
   };
 }
 
-/** Le serveur et l'arbre partent quoi qu'il arrive : un handle ouvert fige `node --test`. */
+/** The server and the tree go away whatever happens: an open handle freezes `node --test`. */
 async function withKernel(body: (k: Kernel) => Promise<void>): Promise<void> {
   const k = await kernel();
   try { await body(k); } finally { await k.close(); }
 }
 
 function toggle(k: Kernel, id: string, enabled: boolean): Promise<Response> {
-  // L'id porte un `/` : sans encodage, Express y voit deux segments et la
-  // route rend 404 au lieu de basculer le module.
+  // The id carries a `/`: without encoding, Express sees two segments in it and the
+  // route returns 404 instead of switching the module.
   return fetch(k.url(`/api/plugins/${encodeURIComponent(id)}/enabled`), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -122,74 +122,74 @@ function moduleActive(id: string): boolean | undefined {
   return capabilitiesPayload().modules.find((m) => m.id === id)?.active;
 }
 
-/** 400 = la route répond (paramètre invalide), 404 = le module est parti. */
+/** 400 = the route answers (invalid parameter), 404 = the module is gone. */
 function vaultProbe(k: Kernel): Promise<Response> {
   return fetch(k.url('/api/vault/note'));
 }
 
-test('éteindre un module bundled retire ses routes SANS redémarrer le daemon', async () => {
+test('turning a bundled module off removes its routes WITHOUT restarting the daemon', async () => {
   await withKernel(async (k) => {
-    assert.equal((await vaultProbe(k)).status, 400, 'vault répond avant la bascule');
+    assert.equal((await vaultProbe(k)).status, 400, 'vault answers before the switch');
 
     const off = await toggle(k, '@timon/vault', false);
     assert.equal(off.status, 200);
 
-    // Même process, aucune relecture de boot : l'arbre a été recomposé pendant
-    // la requête, donc la relecture qui suit dit déjà la vérité.
+    // Same process, no boot reread: the tree was recomposed during
+    // the request, so the reread that follows already tells the truth.
     assert.equal(moduleActive('@timon/vault'), false, '/api/capabilities suit l\'arbre');
-    assert.equal((await vaultProbe(k)).status, 404, 'la coquille du routeur est devenue inerte');
+    assert.equal((await vaultProbe(k)).status, 404, 'the router shell has gone inert');
 
     const { plugins } = await (await fetch(k.url('/api/plugins'))).json() as { plugins: PluginPublic[] };
     const vault = plugins.find((p) => p.id === '@timon/vault');
     assert.equal(vault?.state, 'disabled');
-    assert.equal(vault?.wanted, false, 'la config et l\'arbre disent la même chose');
+    assert.equal(vault?.wanted, false, 'the config and the tree say the same thing');
 
     const on = await toggle(k, '@timon/vault', true);
     assert.equal(on.status, 200);
     assert.equal(moduleActive('@timon/vault'), true);
-    assert.equal((await vaultProbe(k)).status, 400, 'rallumer remonte les routes');
+    assert.equal((await vaultProbe(k)).status, 400, 'turning it back on remounts the routes');
   });
 });
 
-test('un module core reste irrévocable, et rien n\'est recomposé', async () => {
+test('a core module stays irrevocable, and nothing is recomposed', async () => {
   await withKernel(async (k) => {
     const refused = await toggle(k, '@timon/db', false);
     assert.equal(refused.status, 403);
     assert.equal(moduleActive('@timon/db'), true);
-    assert.deepEqual(k.changes, [], 'un refus ne publie pas de recomposition');
+    assert.deepEqual(k.changes, [], 'a refusal does not publish a recomposition');
     const written = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as { modules?: Record<string, unknown> };
     assert.equal(written.modules?.['@timon/db'], undefined);
   });
 });
 
-test('une écriture qui ne touche pas `modules` ne recompose rien', async () => {
+test('a write that does not touch `modules` recomposes nothing', async () => {
   await withKernel(async (k) => {
-    // Le compteur d'events du bus ne prouverait rien : le loader de plugins
-    // tiers surveille le MÊME fichier et publie sur la même écriture. On
-    // interroge donc le réconciliateur lui-même.
+    // The bus event counter would prove nothing: the third-party plugin loader
+    // watches the SAME file and publishes on the same write. So we
+    // query the reconciler itself.
     const cfg = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as Record<string, unknown>;
     cfg.ui = { hidden: ['nav.brain'], home: 'chat' };
     writeFileSync(CONFIG_FILE, `${JSON.stringify(cfg, null, 2)}\n`);
 
-    assert.deepEqual(await k.reconcile(), [], 'aucun module n\'a changé de camp');
+    assert.deepEqual(await k.reconcile(), [], 'no module switched sides');
     assert.deepEqual(k.changes, []);
     assert.equal((await vaultProbe(k)).status, 400);
   });
 });
 
-test('une configuration illisible laisse le dernier arbre valide en place', async () => {
+test('an unreadable configuration leaves the last valid tree in place', async () => {
   await withKernel(async (k) => {
     writeFileSync(CONFIG_FILE, '{ "modules": { "@timon/vault": ');
 
-    assert.deepEqual(await k.reconcile(), [], 'un fichier à moitié écrit ne démonte rien');
-    assert.equal((await vaultProbe(k)).status, 400, 'vault tourne toujours');
+    assert.deepEqual(await k.reconcile(), [], 'a half-written file unmounts nothing');
+    assert.equal((await vaultProbe(k)).status, 400, 'vault still runs');
     assert.equal(moduleActive('@timon/vault'), true);
   });
 });
 
-test('`timon module disable` est à chaud aussi : le watcher suffit, sans requête', async () => {
+test('`timon module disable` is hot too: the watcher is enough, without a request', async () => {
   await withKernel(async (k) => {
-    // Exactement ce que fait la CLI : écrire la config, et rien d'autre.
+    // Exactly what the CLI does: write the config, and nothing else.
     // `watchFile` takes its baseline stat asynchronously, on the libuv
     // threadpool: under load, a single write can land BEFORE that baseline,
     // which then already holds the new config — no change is ever seen. A
@@ -205,22 +205,22 @@ test('`timon module disable` est à chaud aussi : le watcher suffit, sans requê
       }
       await new Promise((r) => setTimeout(r, 100));
     }
-    assert.equal((await vaultProbe(k)).status, 404, 'le watcher de config recompose sans passer par HTTP');
+    assert.equal((await vaultProbe(k)).status, 404, 'the config watcher recomposes without going through HTTP');
     assert.deepEqual(k.changes.at(-1), ['@timon/vault']);
   });
 });
 
-test('installer une licence qui couvre un module vendu le rallume sans redémarrer (lic-6)', async () => {
+test('installing a licence that covers a sold module turns it back on without a restart (lic-6)', async () => {
   await withKernel(async (k) => {
-    assert.equal(moduleActive('@timon/dreams'), false, 'non couvert au boot : aucune licence installée');
+    assert.equal(moduleActive('@timon/dreams'), false, 'not covered at boot: no licence installed');
 
     setLicenseState({
       status: 'valid', reason: null, edition: 'expert',
       modules: ['@timon/dreams'], plugins: [],
       expiresAt: null, subscriptionExpiresAt: null, paymentStatus: 'active',
     });
-    assert.deepEqual(await k.reconcile(), ['@timon/dreams'], 'le reconciler relit licenseState(), pas une valeur figée au boot');
-    assert.equal(moduleActive('@timon/dreams'), true, 'la licence installée rallume le module sans passer par un restart');
+    assert.deepEqual(await k.reconcile(), ['@timon/dreams'], 'the reconciler rereads licenseState(), not a value frozen at boot');
+    assert.equal(moduleActive('@timon/dreams'), true, 'the installed licence turns the module back on without a restart');
 
     setLicenseState(RESTRICTED_PAID);
     assert.deepEqual(await k.reconcile(), ['@timon/dreams'], 'a licence that no longer covers it removes the module just as fast');

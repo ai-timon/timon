@@ -28,7 +28,7 @@ export type ToolCallProps = {
   icon: LucideIcon;
   headHtml: string;
   /** `input.description` — the sentence the agent wrote to say what this call
-   *  is FOR ("Horodatage des commits"). Contextual where a name can only ever
+   *  is FOR ("Timestamp the commits"). Contextual where a name can only ever
    *  be generic, and required by Claude Code's Bash tool, so present on
    *  essentially every shell call. */
   intent?: string;

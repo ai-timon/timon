@@ -1,10 +1,10 @@
 /**
- * `timon wait` rend la main à la FIN DU TOUR, et ne re-télécharge pas le
- * transcript à chaque tour de boucle (fiche #101, 17/09/2026).
+ * `timon wait` returns at the END OF THE TURN, and does not download the
+ * transcript again on each loop iteration (card #101, 17/09/2026).
  *
- * Témoin HTTP sur `127.0.0.1:0`, jamais le daemon de la machine. Le serveur
- * rejoue ce qu'un backend persistant produit : `status: running` pour toujours,
- * `turn_complete` qui bascule à vrai quand l'agent a fini d'écrire.
+ * HTTP witness on `127.0.0.1:0`, never the daemon of the machine. The server
+ * replays what a persistent backend produces: `status: running` forever,
+ * `turn_complete` that flips to true when the agent has finished writing.
  *
  * `node --test --import tsx src/cli-wait.test.ts`
  */
@@ -27,8 +27,8 @@ const EVENTS = [
   { type: 'assistant', payload: { message: { content: [{ type: 'text', text: 'premier tour' }] } } },
   { type: 'user', payload: { message: { content: 'une relance' } } },
   { type: 'assistant', payload: { message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash' }] } } },
-  // Le stream persiste AUSSI ses résultats d'outil en events `user` : découper
-  // dessus ne rendrait que ce qui suit le dernier outil.
+  // The stream ALSO persists its tool results as `user` events: cutting
+  // on them would only return what follows the last tool.
   { type: 'user', payload: { message: { content: [{ type: 'tool_result', tool_use_id: 't1' }] } } },
   { type: 'assistant', payload: { message: { content: [{ type: 'text', text: 'second tour' }] } } },
   { type: 'result', payload: { subtype: 'success' } },
@@ -80,33 +80,33 @@ function runTimon(args: string[], api: string): Promise<{ code: number | null; s
   });
 }
 
-test('rend la main sur la fin du tour, sans attendre la mort du process', async () => {
+test('returns at the end of the turn, without waiting for the death of the process', async () => {
   const mock = await startMock(1);
   try {
     const r = await runTimon(['wait', MISSION, '--timeout=20'], mock.url);
     assert.equal(r.code, 0);
-    // Le tour courant seulement : un pilote qui attend deux fois la même
-    // mission ne doit pas se voir resservir tout l'historique.
+    // The current turn only: a pilot waiting twice on the same
+    // mission must not be served the whole history again.
     assert.equal(r.stdout.trim(), 'second tour');
   } finally {
     await mock.close();
   }
 });
 
-test('la boucle interroge la vue légère, le transcript une seule fois', async () => {
+test('the loop queries the light view, the transcript only once', async () => {
   const mock = await startMock(2);
   try {
     await runTimon(['wait', MISSION, '--timeout=20'], mock.url);
     const light = mock.urls.filter((u) => u.includes('view=status'));
     const full = mock.urls.filter((u) => !u.includes('view=status'));
     assert.equal(light.length, 3);
-    assert.equal(full.length, 1, 'le transcript ne se télécharge qu\'au moment de l\'imprimer');
+    assert.equal(full.length, 1, 'the transcript is only downloaded when it is printed');
   } finally {
     await mock.close();
   }
 });
 
-test('--json rend toujours la mission complète', async () => {
+test('--json still returns the full mission', async () => {
   const mock = await startMock(0);
   try {
     const r = await runTimon(['wait', MISSION, '--timeout=20', '--json'], mock.url);
@@ -118,8 +118,8 @@ test('--json rend toujours la mission complète', async () => {
   }
 });
 
-test('un tour qui finit sur un outil rend l\'historique plutôt que rien', async () => {
-  const mute = EVENTS.slice(0, 4); // pas de texte après le dernier tool_result
+test('a turn ending on a tool returns the history rather than nothing', async () => {
+  const mute = EVENTS.slice(0, 4); // no text after the last tool_result
   const mock = await startMock(1, [...mute, { type: 'result', payload: { subtype: 'success' } }]);
   try {
     const r = await runTimon(['wait', MISSION, '--timeout=20'], mock.url);

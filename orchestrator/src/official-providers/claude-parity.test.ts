@@ -35,7 +35,14 @@ test('Claude launch preserves arguments, stdin and the system prompt of the old 
       if (s.env) for (const k of ['TIMON_API_TOKEN', 'TIMON_MISSION_ID', 'TIMON_AGENT']) delete s.env[k];
     }
     args[mi] = JSON.stringify(mcp);
-    const clean = (s: string) => s.split(TIMON_HOME).join('<HOME>').replace(/[^"\s]*[\\/]bin[\\/](timon-mcp|permission-mcp)\.mjs/g, '<$1>');
+    // Serialized below, a Windows path arrives escaped once; inside the MCP
+    // config, which is JSON inside JSON, twice. What follows the home is read
+    // with forward slashes, as the golden file holds it.
+    const once = JSON.stringify(TIMON_HOME).slice(1, -1);
+    const twice = JSON.stringify(once).slice(1, -1);
+    const clean = (s: string) => s.split(twice).join('<HOME>').split(once).join('<HOME>').split(TIMON_HOME).join('<HOME>')
+      .replace(/<HOME>((?:(?:\\\\){1,2}[\w.-]+)+)/g, (_m, rest: string) => `<HOME>${rest.replace(/(?:\\\\){1,2}/g, '/')}`)
+      .replace(/[^"\s]*[\\/]+bin[\\/]+(timon-mcp|permission-mcp)\.mjs/g, '<$1>');
     actual[c.name] = JSON.parse(clean(JSON.stringify({ args, systemPrompt, stdin: spawn.initialStdin })));
   }
   if (process.env.UPDATE_CLAUDE_GOLDEN === '1') writeFileSync(golden, JSON.stringify(actual, null, 2) + '\n');

@@ -126,7 +126,7 @@ test('a DONE code task without a sha is marked merged without being closed again
   dbApi.setTaskWorktree(id, repo, `timon/task/${id}`, 'main');
   const idea = dbApi.insertProjectTodo({ text: `idea ${randomUUID()}`, ownerUserId: 'user-ada' }).id;
   dbApi.setTaskTodoId(id, idea);
-  dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'implemented\nportabilité : n/a' });
+  dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'implemented\nportabilité : n/a' }); // french-ok: the portability line agents write
   const closedAt = dbApi.getTask(id)!.updated_at;
   const dependent = randomUUID();
   dbApi.createTask(dependent, 'next', 'witness', { type: 'code', deps: [id] });
@@ -145,7 +145,7 @@ test('a DONE code task without a sha is marked merged without being closed again
   assert.equal(task.status, 'DONE');
   assert.equal(task.merged_commit_sha, onMain);
   assert.ok(task.updated_at >= closedAt);
-  assert.match(task.done_comment ?? '', /^implemented\nportabilité : n\/a\n\nMarked as merged outside Timon.*found in main[\s\S]*PR #71$/);
+  assert.match(task.done_comment ?? '', /^implemented\nportabilité : n\/a\n\nMarked as merged outside Timon.*found in main[\s\S]*PR #71$/); // french-ok: the portability line agents write
   assert.equal(gate(), true, 'the dependent is released');
   assert.equal(dbApi.getProjectTodo(idea)?.status, 'done', 'the TO DO idea lands with the sha');
 

@@ -21,6 +21,12 @@
  * deleted. A lingering worktree costs a few MB; deleted work
  * does not come back. Any unintegrated branch is left in place and reported,
  * whatever its age or the status of its task.
+ *
+ * A second guard, for chains on an integration branch (`feat/<topic>`): their
+ * task branches are in that branch, but the branch has not landed yet. Its
+ * pull request may come back with a review or a red check that the chain's
+ * worktree serves, or be closed; until the integration is 'merged'
+ * (`chain-landing.ts`) the worktree and the branch stay.
  */
 import { existsSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -31,6 +37,7 @@ import { WORKTREES_ROOT, disposeWorktree } from './worktree.js';
 import { classifyOrphan, isWithinGrace } from './worktree-gc-guards.js';
 import { purgeShell, sweepShells } from './worktree-shell.js';
 import { execFileHost } from './host/index.js';
+import { hasLanded } from './chain-landing.js';
 
 const exec = execFileHost;
 
@@ -96,7 +103,8 @@ async function branchExists(repo: string, branch: string): Promise<boolean> {
   }
 }
 
-type Outcome = { disposed: number; kept: number };
+/** `awaiting`: integrated into a branch that has not landed yet. */
+type Outcome = { disposed: number; kept: number; awaiting: number };
 
 /** Worktrees of DONE tasks whose work is integrated.
  *
@@ -105,7 +113,7 @@ type Outcome = { disposed: number; kept: number };
  *  deduplication it would be "disposed" once per task, which would inflate the
  *  count by a factor of 3 and log the same deletion three times. */
 async function collectFromTasks(graceMs: number, now: number): Promise<Outcome> {
-  const out: Outcome = { disposed: 0, kept: 0 };
+  const out: Outcome = { disposed: 0, kept: 0, awaiting: 0 };
   const seen = new Set<string>();
 
   for (const task of dbApi.listTasks()) {
@@ -118,6 +126,10 @@ async function collectFromTasks(graceMs: number, now: number): Promise<Outcome> 
 
     const repo = repoOfAgent(task.agent_name);
     if (!repo) continue;
+    if (!hasLanded(task, repo)) {
+      out.awaiting += 1;
+      continue;
+    }
 
     // A recorded merge sha is proof of integration, including when the
     // branch has already disappeared or the base was rewritten since.
@@ -176,7 +188,7 @@ async function collectFromTasks(graceMs: number, now: number): Promise<Outcome> 
  *  calls it "merged" — that is how a live task lost its worktree on
  *  2026-09-20. */
 async function collectDetachedBranches(graceMs: number, now: number): Promise<Outcome> {
-  const out: Outcome = { disposed: 0, kept: 0 };
+  const out: Outcome = { disposed: 0, kept: 0, awaiting: 0 };
   const tasks = dbApi.listTasks();
   const claimed = new Set(
     tasks.filter((t) => t.status !== 'DONE' && t.branch_name).map((t) => t.branch_name),
@@ -191,6 +203,10 @@ async function collectDetachedBranches(graceMs: number, now: number): Promise<Ou
 
     const repo = repoOfAgent(task.agent_name);
     if (!repo) continue;
+    if (!hasLanded(task, repo)) {
+      out.awaiting += 1;
+      continue;
+    }
 
     const integrated = task.merged_commit_sha
       ? true
@@ -223,7 +239,7 @@ async function collectDetachedBranches(graceMs: number, now: number): Promise<Ou
  *  deleted from the database, or worktree recreated under another path. The DB cannot
  *  see them: the disk has to be listed. */
 async function collectOrphans(known: Set<string>, graceMs: number, now: number): Promise<Outcome> {
-  const out: Outcome = { disposed: 0, kept: 0 };
+  const out: Outcome = { disposed: 0, kept: 0, awaiting: 0 };
   if (!existsSync(WORKTREES_ROOT)) return out;
 
   for (const entry of readdirSync(WORKTREES_ROOT)) {
@@ -304,14 +320,16 @@ export async function reconcileStaleWorktrees(): Promise<void> {
 
   const disposed = fromTasks.disposed + detached.disposed + orphans.disposed;
   const kept = fromTasks.kept + detached.kept + orphans.kept;
-  if (disposed === 0 && kept === 0) return;
+  const awaiting = fromTasks.awaiting + detached.awaiting;
+  if (disposed === 0 && kept === 0 && awaiting === 0) return;
 
   // The kept branches are told once per pass, aggregated: it is a piece of
   // information ("unintegrated work is lying around"), not an alert to repeat
   // line by line every two minutes.
   console.log(
     `[worktree-gc] ${disposed} worktree(s) disposed` +
-    (kept > 0 ? `, ${kept} kept — branch not merged, deletion refused` : ''),
+    (kept > 0 ? `, ${kept} kept — branch not merged, deletion refused` : '') +
+    (awaiting > 0 ? `, ${awaiting} kept — integration branch not landed yet` : ''),
   );
 
   // `worktree prune` removes the entries whose folder disappeared under git.

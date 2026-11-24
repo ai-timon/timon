@@ -14,6 +14,7 @@ const { terminalStatus } = await import('../terminal.js');
 const { getHost } = await import('./index.js');
 
 const ENV = { SystemRoot: 'C:\\Windows' };
+// french-ok-file: accented user folders the paths must keep
 
 test('win32 file: /select, with the quoted path, verbatim, backslashes', () => {
   const c = revealCommand('win32', 'C:/Users/Zoé/Mes documents/a b.txt', false, ENV);

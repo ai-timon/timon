@@ -1,13 +1,13 @@
 /**
- * 4.2c / M.5 — `TIMON_API_TOKEN` dans l'env des missions.
+ * 4.2c / M.5: `TIMON_API_TOKEN` in the env of missions.
  *
- * Un spawn factice (hôte dont `spawn` n'exécute rien) vérifie que le
- * jeton est posé au même endroit que `TIMON_MISSION_ID`, et qu'un
- * `TIMON_API_TOKEN` hérité du parent ne gagne pas. First-run (empty
+ * A fake spawn (a host whose `spawn` runs nothing) checks that the
+ * token is set in the same place as `TIMON_MISSION_ID`, and that a
+ * `TIMON_API_TOKEN` inherited from the parent does not win. First-run (empty
  * `users` table) issues a per-mission `api_tokens` row too, never the
  * daemon-token: the operator's credential would let the agent approve its own
  * permission cards (`mission-token-first-run.test.ts`). After setup, see
- * `agent-identity.test.ts`. TIMON_HOME jetable, aucun CLI réel, aucun bind.
+ * `agent-identity.test.ts`. Throwaway TIMON_HOME, no real CLI, no bind.
  */
 import './test-home.js';
 import { test } from 'node:test';
@@ -56,7 +56,7 @@ function assertMissionToken(token: string | undefined, missionId: string): void 
   assert.equal(dbApi.getApiTokenByHash(hashApiToken(token))?.mission_id, missionId);
 }
 
-test('missionEnv pose TIMON_API_TOKEN (first-run: jeton de mission), pas celui du parent', () => {
+test('missionEnv sets TIMON_API_TOKEN (first-run: mission token), not the parent one', () => {
   const previous = process.env.TIMON_API_TOKEN;
   process.env.TIMON_API_TOKEN = 'token-du-parent';
   try {
@@ -78,13 +78,13 @@ test('missionEnv pose TIMON_API_TOKEN (first-run: jeton de mission), pas celui d
   }
 });
 
-test('spawn factice first-run : le child reçoit son jeton de mission, pas le daemon-token', async () => {
+test('first-run fake spawn: the child receives its mission token, not the daemon-token', async () => {
   const previous = process.env.TIMON_API_TOKEN;
   process.env.TIMON_API_TOKEN = 'token-du-parent';
 
   upsertAgent({
     name: 'env-temoin',
-    system_prompt: 'témoin 4.2c — ne fait rien.',
+    system_prompt: 'témoin 4.2c — ne fait rien.', // french-ok: free-text sample data
     config: {
       backend: 'claude',
       cwd: tmpdir(),
@@ -108,7 +108,7 @@ test('spawn factice first-run : le child reçoit son jeton de mission, pas le da
   let missionId = '';
   try {
     missionId = await spawnAgent('env-temoin', 'ping');
-    assert.equal(calls.length, 1, 'un seul spawn, via l\'hôte');
+    assert.equal(calls.length, 1, 'a single spawn, through the host');
     const env = calls[0].env;
     assert.equal(env.TIMON_MISSION_ID, missionId);
     assert.equal(env.TIMON_AGENT, 'env-temoin');
@@ -124,9 +124,9 @@ test('spawn factice first-run : le child reçoit son jeton de mission, pas le da
   }
 });
 
-/* ── S.4 — l'env de mission n'est plus `process.env` (SECRETS-VAULT.md §6.1) ── */
+/* ── S.4: the mission env is no longer `process.env` (SECRETS-VAULT.md §6.1) ── */
 
-/** Pose un secret scellé pour sa propre ligne, comme le feront les routes S.5. */
+/** Sets a sealed secret for its own row, as the S.5 routes will. */
 function putSecret(name: string, value: string, mode: 'inject' | 'broker' = 'inject'): string {
   const key = resolveMasterKey({ keyring: null });
   // S.8 refuses a broker row without a spec at the write. The injection tests
@@ -152,21 +152,21 @@ function withEnv(vars: Record<string, string>, fn: () => void): void {
   }
 }
 
-test('missionEnv : la liste blanche remplace l\'héritage de process.env', () => {
+test('missionEnv: the allowlist replaces the inheritance of process.env', () => {
   withEnv({ SECRET_DU_DAEMON: 'fuite', PATH_TEMOIN: 'fuite', SSH_AUTH_SOCK: '/run/ssh-agent' }, () => {
     const env = missionEnv({ missionId: 'm', agentName: 'a', cwd: tmpdir() });
-    // Le trou historique : `loadSecretsAtBoot` pose les secrets dans le
-    // `process.env` du daemon, et chaque agent en héritait.
+    // The historical gap: `loadSecretsAtBoot` sets the secrets in the
+    // `process.env` of the daemon, and every agent inherited them.
     assert.equal(env.SECRET_DU_DAEMON, undefined);
-    assert.equal(env.PATH_TEMOIN, undefined, 'un préfixe ne suffit pas : PATH est un nom exact');
+    assert.equal(env.PATH_TEMOIN, undefined, 'a prefix is not enough: PATH is an exact name');
     // Windows keeps the spelling it read (`Path`): look the key up as the product does.
     assert.equal(env[pathKeyOf(env, process.platform)], process.env.PATH);
-    assert.equal(env.SSH_AUTH_SOCK, '/run/ssh-agent', 'gardé sciemment : sinon plus aucun git push SSH');
-    assert.equal(env.TIMON_HOME, process.env.TIMON_HOME, 'sinon le CLI de l\'agent vise le mauvais home');
+    assert.equal(env.SSH_AUTH_SOCK, '/run/ssh-agent', 'kept on purpose: otherwise no SSH git push at all');
+    assert.equal(env.TIMON_HOME, process.env.TIMON_HOME, "otherwise the agent's CLI targets the wrong home");
   });
 });
 
-test('missionEnv : un secret sans grant n\'entre dans l\'env d\'aucun agent', () => {
+test('missionEnv: a secret without a grant enters the env of no agent', () => {
   putSecret('SANS_GRANT', 'top-secret');
   for (const agentName of ['a', 'b.coder']) {
     const env = missionEnv({ missionId: 'm', agentName, cwd: tmpdir(), project: 'initech' });
@@ -174,7 +174,7 @@ test('missionEnv : un secret sans grant n\'entre dans l\'env d\'aucun agent', ()
   }
 });
 
-test('missionEnv : un secret broker n\'est jamais injecté, grant ou pas', () => {
+test('missionEnv: a broker secret is never injected, grant or not', () => {
   const id = putSecret('BROKER_ONLY', 'ne-sort-pas', 'broker');
   dbApi.addSecretGrant(id, 'global');
   const env = missionEnv({ missionId: 'm', agentName: 'a', cwd: tmpdir(), project: 'initech' });
@@ -185,27 +185,27 @@ test('missionEnv : un secret broker n\'est jamais injecté, grant ou pas', () =>
   assert.equal(dbApi.listSecretAccess(id).length, 0);
 });
 
-test('missionEnv : un secret agent:<nom> n\'apparaît que pour cet agent', () => {
+test('missionEnv: an agent:<name> secret only appears for that agent', () => {
   const id = putSecret('POUR_LE_CODER', 'valeur');
   dbApi.addSecretGrant(id, 'agent', 'initech.coder');
   assert.equal(missionEnv({ missionId: 'm', agentName: 'initech.coder', cwd: tmpdir() }).POUR_LE_CODER, 'valeur');
   assert.equal(missionEnv({ missionId: 'm', agentName: 'initech.reviewer', cwd: tmpdir() }).POUR_LE_CODER, undefined);
 });
 
-test('missionEnv : specEnv gagne sur un secret de même nom', () => {
+test('missionEnv: specEnv wins over a secret of the same name', () => {
   const id = putSecret('COLLISION', 'du-coffre');
   dbApi.addSecretGrant(id, 'global');
   const env = missionEnv({ missionId: 'm', agentName: 'a', cwd: tmpdir(), specEnv: { COLLISION: 'du-profil' } });
   assert.equal(env.COLLISION, 'du-profil');
 });
 
-test('missionEnv : secrets.inheritEnv = true restaure exactement l\'ancien comportement', () => {
+test('missionEnv: secrets.inheritEnv = true restores exactly the old behaviour', () => {
   const previous = config();
-  // La comparaison n'a de valeur que si le coffre a quelque chose à injecter :
-  // sur un coffre vide, la version buguée (couche coffre conservée) et la
-  // version correcte rendent le même objet et le test passe pour rien.
-  // COLLISION_HERITAGE existe des deux côtés avec des valeurs différentes :
-  // c'est lui qui distingue "couche supprimée" de "couche réordonnée".
+  // The comparison only has value if the vault has something to inject:
+  // on an empty vault, the buggy version (vault layer kept) and the
+  // correct version return the same object and the test passes for nothing.
+  // COLLISION_HERITAGE exists on both sides with different values:
+  // it is what tells "layer removed" from "layer reordered".
   const granted = putSecret('SECRET_ACCORDE', 'du-coffre');
   dbApi.addSecretGrant(granted, 'global');
   const clash = putSecret('COLLISION_HERITAGE', 'du-coffre');
@@ -220,8 +220,8 @@ test('missionEnv : secrets.inheritEnv = true restaure exactement l\'ancien compo
         cwd: tmpdir(),
         specEnv: { SPEC_TEMOIN: 'du-profil' },
       });
-      // L'ancien comportement, dans son intégralité : process.env, puis le
-      // spec, puis les variables de mission. Aucune couche coffre au milieu.
+      // The old behaviour, in full: process.env, then the
+      // spec, then the mission variables. No vault layer in between.
       const expected: NodeJS.ProcessEnv = {
         ...process.env,
         SPEC_TEMOIN: 'du-profil',
@@ -232,17 +232,17 @@ test('missionEnv : secrets.inheritEnv = true restaure exactement l\'ancien compo
         TIMON_API_TOKEN: env.TIMON_API_TOKEN,
       };
       assert.deepEqual(env, expected);
-      // `deepEqual` ignore l'ordre des clés : on le vérifie séparément, car
-      // c'est lui qui encode la précédence des couches.
+      // `deepEqual` ignores the order of keys: it is checked separately, since
+      // it is what encodes the precedence of the layers.
       assert.deepEqual(Object.keys(env), Object.keys(expected));
-      assert.equal(env.SECRET_ACCORDE, undefined, 'la soupape retire la couche coffre, elle ne la déplace pas');
+      assert.equal(env.SECRET_ACCORDE, undefined, 'the valve removes the vault layer, it does not move it');
       assert.equal(env.COLLISION_HERITAGE, 'du-daemon');
     } finally {
       setConfig(previous);
     }
   });
 
-  // Soupape refermée : le comportement par défaut revient, coffre compris.
+  // Valve closed again: the default behaviour comes back, vault included.
   withEnv({ SECRET_DU_DAEMON: 'herite', COLLISION_HERITAGE: 'du-daemon' }, () => {
     const env = missionEnv({ missionId: 'm', agentName: 'a', cwd: tmpdir() });
     assert.equal(env.SECRET_DU_DAEMON, undefined);
@@ -250,7 +250,7 @@ test('missionEnv : secrets.inheritEnv = true restaure exactement l\'ancien compo
     assert.equal(env.COLLISION_HERITAGE, 'du-coffre');
   });
 
-  // Et le spec continue de gagner sur le coffre (couche la plus spécifique).
+  // And the spec keeps winning over the vault (the most specific layer).
   const env = missionEnv({
     missionId: 'm', agentName: 'a', cwd: tmpdir(), specEnv: { COLLISION_HERITAGE: 'du-profil' },
   });

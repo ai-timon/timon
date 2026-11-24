@@ -123,6 +123,8 @@ export function notificationHref(n: Pick<NotificationRow, 'mission_id' | 'task_i
   const consent = n.anchor ? PLUGIN_SECRET_ANCHOR.exec(n.anchor) : null;
   if (consent) return `/secrets?grant=${encodeURIComponent(consent[2]!)}&plugin=${encodeURIComponent(consent[1]!)}`;
   const launch = n.anchor ? PROVIDER_LAUNCH_ANCHOR.exec(n.anchor) : null;
+  const proposal = n.anchor ? FORGE_PROPOSAL_ANCHOR.exec(n.anchor) : null;
+  if (proposal) return `/?forge-proposal=${encodeURIComponent(proposal[2]!)}&forge-project=${encodeURIComponent(proposal[1]!)}`;
   if (launch) return `/?settings=${encodeURIComponent('models/backends')}&provider=${encodeURIComponent(launch[1]!)}`;
   return null;
 }
@@ -141,6 +143,14 @@ const EGRESS_ANCHOR = /^egress:(.+)$/;
  * Backends on that provider, where the re-authorization is confirmed.
  */
 const PROVIDER_LAUNCH_ANCHOR = /^provider-launch:(.+)$/;
+
+/**
+ * A publication on GitHub proposed for approval (`forge-proposals.ts`,
+ * `forge-proposal:<project>:<id>`): the card opens the "Publish on GitHub"
+ * dialog on it, over whatever page it lands on. A slug never holds a `:`;
+ * not `?project=`, which names the workspace of the view.
+ */
+const FORGE_PROPOSAL_ANCHOR = /^forge-proposal:([a-z0-9][a-z0-9._-]*):([0-9a-f-]{36})$/i;
 
 /**
  * The consent card a plugin raises when a secret it asks for is only shared

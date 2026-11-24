@@ -61,7 +61,7 @@ export type {
 export type { ProviderRuntime } from '../../../orchestrator/src/backends/provider-runtime.js';
 export type {
   ProviderEnvPlan, ProviderMcpOptions, ProviderMcpPlan, ProviderMcpRole, ProviderMcpServer, ProviderRedact, ProviderScratch,
-  ProviderAccount, ProviderAccountContext, ProviderBinary, ProviderGeneratedMedia, ProviderMedia, ProviderOsCredentials, ProviderProbeOptions, ProviderProbeResult,
+  ProviderAccount, ProviderAccountContext, ProviderAccountOsCredential, ProviderAccountOsCredentialHold, ProviderAccountOsCredentialRemoval, ProviderBinary, ProviderGeneratedMedia, ProviderMedia, ProviderOsCredentials, ProviderProbeOptions, ProviderProbeResult,
   ProviderCredentialStore, ProviderConversation, ProviderConverseOptions, ProviderGit, ProviderServeOptions, ProviderServer,
 } from '../../../orchestrator/src/backends/provider-services.js';
 export type { CatalogModel } from '../../../orchestrator/src/backends/catalog-model.js';

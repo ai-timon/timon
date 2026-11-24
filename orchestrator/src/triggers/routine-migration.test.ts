@@ -33,7 +33,8 @@ test('legacy routines become schedule triggers with the same ids and fields', ()
   assert.deepEqual(r1, {
     id: 'r-1', name: 'Daily digest', agent_name: 'scout', prompt: 'Summarise {yesterday} as JSON {"a":1}',
     task_type: 'research', cron_expr: '0 8 * * *', enabled: 1, project: 'acme',
-    owner_user_id: null, last_run_at: 100, next_run_at: 200, created_at: 10, updated_at: 20,
+    owner_user_id: null, extra_skills: null, extra_mcp_servers: null, extra_allowed_tools: null,
+    last_run_at: 100, next_run_at: 200, created_at: 10, updated_at: 20,
   });
   assert.equal(dbApi.getRoutine('r-2')?.enabled, 0);
   assert.equal(dbApi.getRoutine('r-2')?.project, null);

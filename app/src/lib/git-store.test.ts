@@ -1,5 +1,5 @@
 /**
- * The tab's single Git state (TODO #278, volet 1).
+ * The tab's single Git state (TODO #278, part 1).
  *
  * What these tests hold: the panel, the publication card and the composer's
  * branch read through ONE invalidation, so a checkout can no longer leave one

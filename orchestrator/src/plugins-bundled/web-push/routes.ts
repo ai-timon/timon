@@ -3,6 +3,7 @@
  *
  * Bodies extracted verbatim from `plugins-bundled/notifications/routes.ts`.
  */
+import { daemonMessage } from '../../daemon-message.js';
 import type { Router } from 'express';
 import { dbApi } from '../../db.js';
 import { createNotification } from '../../notifications.js';
@@ -34,7 +35,7 @@ export function registerRoutes(app: Router): void {
     const p256dh = keys?.p256dh;
     const auth = keys?.auth;
     if (typeof endpoint !== 'string' || typeof p256dh !== 'string' || typeof auth !== 'string') {
-      res.status(400).json({ error: 'endpoint, keys.p256dh and keys.auth are required' });
+      res.status(400).json(apiError('push_subscription_invalid', 'endpoint, keys.p256dh and keys.auth are required'));
       return;
     }
     if (!isPushConfigured()) {
@@ -53,7 +54,7 @@ export function registerRoutes(app: Router): void {
 
   app.post('/api/push/unsubscribe', (req, res) => {
     const { endpoint } = req.body ?? {};
-    if (typeof endpoint !== 'string') { res.status(400).json({ error: 'endpoint is required' }); return; }
+    if (typeof endpoint !== 'string') { res.status(400).json(apiError('push_endpoint_required', 'endpoint is required')); return; }
     const removed = unsubscribeDevice(endpoint);
     res.json({ ok: true, removed });
   });
@@ -68,8 +69,9 @@ export function registerRoutes(app: Router): void {
       title: 'Timon test push',
       body: 'If you can read this on your phone, the channel works.',
       anchor: '/notifications',
+      message: daemonMessage('push_test'),
     });
-    if (!n) { res.status(503).json({ error: 'notifications module disabled' }); return; }
+    if (!n) { res.status(503).json(apiError('notifications_disabled', 'notifications module disabled')); return; }
     res.json({ ok: true, id: n.id, devices: dbApi.listPushSubscriptions().length });
   });
 }

@@ -40,8 +40,8 @@ export function apply(ctx: Context): void {
   }
   // Resource alerts go through the notification center (hence Web Push): a
   // silent OOM is a task failing with no readable reason.
-  setResourceAlertSink(({ title, body, urgent }) => {
-    createNotification({ type: 'alert', urgent, title, body });
+  setResourceAlertSink(({ title, body, urgent, message }) => {
+    createNotification({ type: 'alert', urgent, title, body, message });
   });
   // The agent must learn WHY its process died, or it reruns it identically.
   setMissionNoticeSink((missionPrefix, text) => {

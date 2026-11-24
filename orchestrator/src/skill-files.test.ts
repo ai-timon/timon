@@ -12,6 +12,7 @@ import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { SKILLS_DIR, TIMON_HOME } from './paths.js';
+import { foldsCase } from '../tests/helpers/case-folding.js';
 import { seal } from './secrets/box.js';
 import { resolveMasterKey } from './secrets/key.js';
 
@@ -153,9 +154,11 @@ test('listSkillFiles presents no name readSkillFile refuses, and a way out stays
 test('listSkillFiles and readSkillFile agree on every printable character of a name', POSIX_NAMES, () => {
   upsertSkill('nb-chars', '---\nname: nb-chars\ndescription: Every character.\n---\n\nCHARS BODY\n');
   const names: string[] = [];
+  // On a volume that folds case `aab.md` is `aAb.md`, written first: the lower letters add nothing there.
+  const folds = foldsCase(TIMON_HOME);
   for (let code = 0x20; code <= 0x7e; code++) {
     const char = String.fromCharCode(code);
-    if (char === '/') continue;
+    if (char === '/' || (folds && char >= 'a' && char <= 'z')) continue;
     names.push(`a${char}b.md`);
     put('nb-chars', `a${char}b.md`, 'TEXT\n');
   }

@@ -7,6 +7,7 @@
  * an event that built its own view would be the place a reply leaks; there is
  * none.
  */
+import { daemonMessage } from '../../daemon-message.js';
 import { z } from 'zod';
 import { bus } from '../../bus.js';
 import { createNotification } from '../../notifications.js';
@@ -247,6 +248,7 @@ export function createUiDocument(input: CreateInput): { ok: true; row: UiDocumen
       type: 'action_required',
       urgent: false,
       title: `Document to answer: ${row.origin_id ?? row.origin_kind}`,
+      message: daemonMessage('ui_document_to_answer', { origin: row.origin_id ?? row.origin_kind }),
       body: `${row.mission_title}${row.project ? ` (${row.project})` : ''} — ${row.title}`,
       missionId: mission.id,
       taskId: row.task_id,

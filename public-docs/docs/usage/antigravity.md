@@ -5,6 +5,12 @@ sidebar_position: 13.5
 
 Timon can run agents on **Google Antigravity**, through its command-line tool `agy`. It drives `agy acp` over the Agent Client Protocol; `agy` keeps its own Google sign-in, and Timon never sees or stores it.
 
+:::danger Off by default: Google suspends accounts used through an orchestrator
+Section 6 of Google's [Antigravity terms](https://antigravity.google/terms/) forbids using third-party software to access Antigravity, and Google accounts used with `agy` through an orchestrator have been suspended. A Google maintainer [made it precise](https://github.com/google-antigravity/antigravity-cli/issues/1493): `agy acp` is allowed only while a person directly drives the session, never as the worker of an autonomous agent or a background orchestrator, with no exception for personal use.
+
+Antigravity is therefore **off by default** in Timon. If you turn it on (its switch in **Settings → AI models → Providers → Antigravity (Google)**), you do so at your own risk: use it only in chats you drive yourself, never for Kanban tasks, delegated, scheduled or automated missions. A suspended account can be appealed through the form linked in Google's error message.
+:::
+
 ## What you need
 
 A **personal Google account** signed in to `agy`: the free plan works, and a Google AI Pro or Ultra plan raises its limits. Timon runs Antigravity on that sign-in only. A Gemini API key, Gemini Enterprise Agent Platform credentials and a Gemini Enterprise sign-in are not supported: the first two are billed by the token, and Timon runs AI tools on their subscriptions.
@@ -39,7 +45,9 @@ A **personal Google account** signed in to `agy`: the free plan works, and a Goo
 
    On Linux, `agy` keeps its sign-in in the system keychain unless told otherwise, and a mission cannot reach the keychain from inside its isolation. The variable in front of the command makes `agy` save it in its own folder instead (`~/.gemini/antigravity-cli/antigravity-oauth-token`, readable by your account only), which is where Timon's Antigravity agents read it. A sign-in made with a plain `agy acp --login` keeps working in your terminal, but not in Timon: run the Linux command once more.
 
-3. Restart Timon. **Antigravity (Google)** then appears in the model selectors.
+3. Turn it on, at your own risk (see the warning above): open **Antigravity (Google)** in **Settings → AI models → Providers** and switch it on at the top of its page. While it is off, Timon starts no `agy`: no model list, no quota reading.
+
+4. Restart Timon. **Antigravity (Google)** then appears in the model selectors.
 
 Timon looks for `agy` on the service's PATH, in `~/.local/bin` on Linux and macOS, and in `%LOCALAPPDATA%\agy\bin` on Windows, which is where Google's installers put it.
 

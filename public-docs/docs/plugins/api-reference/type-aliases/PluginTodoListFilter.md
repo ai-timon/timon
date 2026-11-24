@@ -7,6 +7,12 @@
 
 ## Properties
 
+### landing?
+
+> `optional` **landing?**: [`PluginTodoLandingState`](PluginTodoLandingState.md)
+
+***
+
 ### limit?
 
 > `optional` **limit?**: `number`

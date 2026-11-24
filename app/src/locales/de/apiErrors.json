@@ -60,6 +60,20 @@
     "invalid_event_id": "Die Nachrichten-ID ist ungültig.",
     "message_not_found": "Keine Nachricht mit dieser ID in dieser Unterhaltung.",
     "steer_unsupported": "Dieser Agent kann gerade nicht umgelenkt werden: Stelle die Nachricht stattdessen in die Warteschlange.",
-    "no_turn_to_steer": "Es läuft kein Turn: Sende stattdessen eine normale Nachricht."
+    "no_turn_to_steer": "Es läuft kein Turn: Sende stattdessen eine normale Nachricht.",
+    "setup_main_agent_unavailable": "In dieser Installation wurde kein Hauptagent gefunden. Fahre fort — du kannst später einen erstellen.",
+    "setup_main_agent_invalid_name": "Dieser Name enthält keinen Buchstaben und keine Ziffer, die Timon nutzen kann. Versuche einen anderen.",
+    "setup_main_agent_name_taken": "Ein Agent trägt bereits diesen Namen. Wähle einen anderen.",
+    "setup_workspace_unavailable": "Der Arbeitsordner ist nicht verfügbar. Prüfe seinen Ort und seine Zugriffsrechte und versuche es erneut.",
+    "setup_main_agent_rename_failed": "Der Agent konnte nicht umbenannt werden. Versuche es gleich erneut.",
+    "setup_main_agent_invalid_avatar": "Dieses Bild hat Timon nicht gespeichert. Lade es erneut hoch.",
+    "setup_main_agent_failed": "Dein Agent konnte nicht gespeichert werden. Versuche es erneut.",
+    "setup_invalid_identity": "Prüfe den Namen und versuche es erneut.",
+    "setup_team_backend_unavailable": "Kein Agenten-Werkzeug verfügbar. Installiere oder verbinde eines und versuche es erneut, oder fange bei null an.",
+    "setup_team_agent_conflict": "Ein Startagent wurde geändert, seit die Erstellung begonnen hat. Deine Änderungen wurden behalten; löse den Konflikt, bevor du es erneut versuchst.",
+    "setup_team_unavailable": "Die Teameinrichtung ist in dieser Installation nicht verfügbar.",
+    "setup_team_preset_locked": "Die Teamerstellung hat bereits begonnen. Setze das gewählte Team fort.",
+    "setup_team_instance_not_empty": "Timon enthält bereits eigene Agenten oder Arbeit. Wähle Bei null anfangen, um alles zu behalten, wie es ist, und die Einrichtung abzuschließen.",
+    "setup_team_failed": "Dein Team konnte nicht vollständig erstellt werden. Versuche es erneut, um dort weiterzumachen, wo es stehen blieb."
   }
 }

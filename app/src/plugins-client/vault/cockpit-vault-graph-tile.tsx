@@ -18,7 +18,7 @@ import { NativeViewCover } from '@/lib/native-view-cover';
  * container has a size of its own — hence the `min-h-0 flex-1` body under a
  * fixed-height header.
  */
-export function CockpitVaultGraphTile({ poignee, className }: WidgetProps) {
+export function CockpitVaultGraphTile({ handle, className }: WidgetProps) {
   // The magnifier and the expand button live in the header, the only place with
   // room; what they open lives elsewhere. Hence the state held here.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -84,7 +84,7 @@ export function CockpitVaultGraphTile({ poignee, className }: WidgetProps) {
         <span className="text-[11px] text-muted-foreground/50">{t('vault.graph3d')}</span>
         <div className="ml-auto flex items-center gap-1.5">
           {buttons}
-          {poignee}
+          {handle}
         </div>
       </header>
 

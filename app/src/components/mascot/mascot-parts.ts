@@ -7,7 +7,7 @@
  * part whose plugin leaves is gone from the slot, and every look that wears
  * it falls back to the job's default for that one field (`normalizeAgentLook`).
  */
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, type ComponentType } from 'react';
 import { slotEntries, slotEntry, slotVersion, subscribeSlots } from '@/lib/plugin-host/slots';
 import {
   MASCOT_PARTS_SLOT, MASCOT_PART_TYPES, isMascotPartId, mascotPartLabel,
@@ -41,6 +41,22 @@ export function mascotPartOf<T extends MascotPartType>(type: T, id: unknown): Ma
   if (!isMascotPartId(id)) return null;
   const part = slotEntry(MASCOT_PARTS_SLOT, id)?.mascotPart;
   return part && part.type === type ? part as MascotPartOf<T> : null;
+}
+
+/** A head a pack draws itself, with the plugin that registered it (for its error boundary). */
+export type MascotPackHead = { pluginId: string; Head: ComponentType };
+
+/**
+ * The head a pack draws for `shape`, or `null`: a product skull, a pack's
+ * skull of four numbers, an unknown id, a pack gone. The SDK types the
+ * component loosely (it has no React); the registry checked it is a function.
+ */
+export function mascotHeadOf(shape: unknown): MascotPackHead | null {
+  if (!isMascotPartId(shape)) return null;
+  const entry = slotEntry(MASCOT_PARTS_SLOT, shape);
+  const part = entry?.mascotPart;
+  if (!entry || part?.type !== 'shape' || !part.head) return null;
+  return { pluginId: entry.pluginId, Head: part.head as ComponentType };
 }
 
 export function isRegisteredPart(type: MascotPartType, id: unknown): id is MascotPartId {

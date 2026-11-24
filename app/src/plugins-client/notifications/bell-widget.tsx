@@ -9,16 +9,16 @@ import { NotificationsWidget } from './notifications-widget';
  *  it on the line, next to it in a column. In a wide zone (cockpit, chat
  *  column) it is the list as a card. Both forms read the same feed hook, so
  *  the badge, the list and the kind filters of the account stay one state. */
-export function BellWidget({ orientation, compact, poignee, ...props }: WidgetProps) {
+export function BellWidget({ orientation, compact, handle, ...props }: WidgetProps) {
   if (compact) {
     // The host lays the zone out (a line, or a column of icons): the grip and
     // the cross follow the bell in that direction.
     return (
       <>
         <span className="flex shrink-0 items-center self-center"><NotificationBell placement={orientation === 'horizontal' ? 'below' : 'beside'} /></span>
-        {poignee}
+        {handle}
       </>
     );
   }
-  return <NotificationsWidget poignee={poignee} {...props} />;
+  return <NotificationsWidget handle={handle} {...props} />;
 }

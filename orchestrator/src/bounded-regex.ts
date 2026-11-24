@@ -13,6 +13,7 @@
  * hand us these patterns allow the whole RegExp syntax (lookarounds, backreferences), and a server's
  * `ready` pattern hands back its first capture group, which a yes/no automaton cannot give.
  */
+import { daemonMessage } from './daemon-message.js';
 import { createContext, Script } from 'node:vm';
 
 /** A declared pattern matched against a few kilobytes takes microseconds; past this, it is backtracking out of control. */
@@ -125,7 +126,16 @@ function recordFailure(key: string, origin: PluginPatternOrigin, failure: Plugin
   alerts = alerts
     .then(() => import('./notifications.js'))
     .then(({ createNotification }) => {
-      createNotification({ type: 'alert', urgent: false, title, body, source: `plugin:${origin.pluginId}` });
+      createNotification({
+        type: 'alert', urgent: false, title, body, source: `plugin:${origin.pluginId}`,
+        message: daemonMessage('plugin_pattern_ignored', {
+          pluginId: origin.pluginId,
+          place: origin.place === 'ready' ? 'ready' : 'webhook_secret',
+          name: origin.name,
+          failure,
+          timeoutMs: REGEX_TIMEOUT_MS,
+        }),
+      });
     })
     .catch((error: unknown) => { console.warn(`[plugins] could not raise the pattern alert: ${(error as Error).message}`); });
 }

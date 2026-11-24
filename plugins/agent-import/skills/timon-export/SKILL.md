@@ -28,13 +28,26 @@ writes anything.
 
 ### In Hermes
 
-1. Find the Hermes home: the folder named by the `HERMES_HOME` environment
-   variable when it is set; otherwise `~/.hermes` on Linux and macOS, and
+1. Find the **standard folder**: `~/.hermes` on Linux and macOS,
    `%LOCALAPPDATA%\hermes` on Windows (then `%USERPROFILE%\.hermes` if that
    one does not exist).
-2. Each profile is one agent. The home itself is the profile `default`; each
-   folder `<home>/profiles/<name>` is the profile `<name>`.
-3. Per profile, read only these files (paths relative to the profile folder):
+2. Find the **active folder**, the profile you run in: the folder named by
+   the `HERMES_HOME` environment variable when it is set, otherwise the
+   standard folder. Hermes started on a named profile (`hermes -p work`) sets
+   `HERMES_HOME` to that profile's folder, not to the root.
+3. Find the **root**, the folder that holds every profile, as Hermes does:
+   - no `HERMES_HOME`, or a `HERMES_HOME` inside the standard folder
+     (`~/.hermes/profiles/work`): the standard folder;
+   - otherwise, a `HERMES_HOME` of the form `<folder>/profiles/<name>`:
+     `<folder>`;
+   - otherwise: `HERMES_HOME` itself.
+4. Each profile is one agent. The root itself is the profile `default`; each
+   folder `<root>/profiles/<name>` is the profile `<name>`. Skip the names
+   found in `<root>/profiles/.deleted`. Name a profile by **its folder**,
+   never by the folder you run in: when the active folder is
+   `<root>/profiles/work`, you are `work`, not `default`. List every profile
+   of the root, and say which one is active.
+5. Per profile, read only these files (paths relative to the profile folder):
    - `SOUL.md`: the identity. Drop its HTML comments (`<!-- … -->`); if only
      headings are left, it is empty.
    - `memories/USER.md` and `memories/MEMORY.md`: entries separated by `§`.
@@ -153,7 +166,7 @@ instructions, routines and memories have no place there: say so in
 | `source.app` | `hermes` | `grok-bot` |
 | `key` | the profile name, lowercased, every run of other characters turned into `-` (`default` stays `default`) | the Bot's name, the same way |
 | `displayName` | `Hermes` for `default`, the profile name otherwise | the Bot's name |
-| `sourceRef` | `profile:<profile name>` | `grok-bot:<the Bot's id, or its key>` |
+| `sourceRef` | `profile:<profile name>`, the name its folder gives it in step 1 (`default` only for the root) | `grok-bot:<the Bot's id, or its key>` |
 | `soul` | `SOUL.md` without comments | name, title and description |
 | `memories` | `USER.md` → `preference`, `MEMORY.md` → `decision` | what it remembers → `preference` |
 | `routines` | `cron/jobs.json`: `prompt` → `instruction`; `schedule` `{kind: cron, expr}` → `cron`, `{kind: interval, minutes}` → `interval`; `enabled` and `state` → `enabledInSource`; the `timezone` of `config.yaml` | its routines, their time zone, active or paused |

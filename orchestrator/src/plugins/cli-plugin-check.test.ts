@@ -104,8 +104,9 @@ test('--deny is repeatable and makes each word an error', async () => {
  */
 async function checkWithoutNpm(home: string): Promise<void> {
   // Windows also looks in `%APPDATA%\npm`, `Program Files\nodejs`, Volta and nvm-windows, from the account's profile.
+  // A 64-bit child gets `ProgramFiles` rebuilt from `ProgramW6432` by Windows itself: both go.
   const windows: NodeJS.ProcessEnv = process.platform === 'win32'
-    ? { USERPROFILE: home, APPDATA: '', LOCALAPPDATA: '', ProgramFiles: '', NVM_SYMLINK: '' }
+    ? { USERPROFILE: home, APPDATA: '', LOCALAPPDATA: '', ProgramFiles: '', ProgramW6432: '', NVM_SYMLINK: '' }
     : {};
   const r = await runTimon(['plugin', 'check', '--json', folder()], { PATH: '', HOME: home, NVM_DIR: '', ...windows });
   // The report carries the finding that failed: print it with stderr, or a red run says nothing.

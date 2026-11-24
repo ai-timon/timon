@@ -1,3 +1,4 @@
+// french-ok-file: accented user and folder names, the non-ASCII paths under test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { posix, win32 } from 'node:path';

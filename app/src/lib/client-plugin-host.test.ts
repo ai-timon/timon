@@ -1,12 +1,12 @@
 /**
- * Ce que ce fichier protège : le rail reste rempli HORS de `(main)`.
+ * What this file protects: the rail stays filled OUTSIDE `(main)`.
  *
- * Les tuiles et la nav sont testées dans `bundled-clients.test.ts` à partir
- * d'un `AppFrame` qui déclarait lui-même ses slots enfants. C'est justement ce
- * que `/agents`, `/multichat`, `/chat`, `/notifications` et `/events` ne
- * montent jamais : ils peignent leur propre TopBar. Ici, on déclare les slots
- * SANS occupant de `root` — le cas de ces pages — et on vérifie que les
- * moitiés client s'y inscrivent quand même.
+ * The tiles and the nav are tested in `bundled-clients.test.ts` from
+ * an `AppFrame` that declared its child slots itself. That is precisely what
+ * `/agents`, `/multichat`, `/chat`, `/notifications` and `/events` never
+ * mount: they paint their own TopBar. Here, we declare the slots
+ * WITHOUT a `root` occupant — the case of these pages — and check that the
+ * client halves register in them anyway.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -19,7 +19,7 @@ import { NAV_SECONDARY_ORDER } from '@/plugins-client/nav';
 
 const Empty = () => React.createElement('div');
 
-test('sans AppFrame, l\'hôte remplit quand même le rail — le cas /agents', () => {
+test('without AppFrame, the host fills the rail anyway — the /agents case', () => {
   resetSlotsForTests();
   declareLayoutSlots();
   mountBundledClients(null);
@@ -33,23 +33,23 @@ test('sans AppFrame, l\'hôte remplit quand même le rail — le cas /agents', (
   assert.notEqual(divider, -1, 'the rule is a nav entry, not chrome painted by the rail');
 });
 
-test('disposer l\'hôte vide le rail', () => {
+test('disposing the host empties the rail', () => {
   resetSlotsForTests();
   const dispose = declareLayoutSlots();
   mountBundledClients(null);
   assert.ok(slotEntries('nav.item').length > 0);
   dispose();
-  assert.equal(slotKind('nav.item'), null, 'éteindre ui-layout retire les slots, pas seulement leurs occupants');
+  assert.equal(slotKind('nav.item'), null, 'turning ui-layout off removes the slots, not only their occupants');
   assert.equal(slotEntries('nav.item').length, 0);
 });
 
 /**
- * Le piège d'ownership de ce correctif : `AppFrame` ne déclare plus les slots
- * enfants. S'il les déclarait encore, quitter `(main)` le disposerait et
- * effondrerait `nav.item` avec lui, alors que l'effet de l'hôte — monté à la
- * racine — ne rejouerait pas. Le rail redeviendrait vide sur /agents.
+ * The ownership trap of this fix: `AppFrame` no longer declares the child
+ * slots. If it still declared them, leaving `(main)` would dispose it and
+ * collapse `nav.item` with it, while the host effect — mounted at the
+ * root — would not replay. The rail would be empty again on /agents.
  */
-test('AppFrame ne redéclare pas les slots que l\'hôte tient déjà', () => {
+test('AppFrame does not redeclare the slots the host already holds', () => {
   resetSlotsForTests();
   declareLayoutSlots();
   mountBundledClients(null);
@@ -58,24 +58,24 @@ test('AppFrame ne redéclare pas les slots que l\'hôte tient déjà', () => {
   const leaveMain = register({ slot: 'root', pluginId: '@timon/ui-layout' }, Empty);
   assert.equal(slotEntries('nav.item').length, before, 'pas de double inscription');
   leaveMain();
-  assert.equal(slotKind('nav.item'), 'list', 'quitter (main) ne doit pas effondrer le rail');
+  assert.equal(slotKind('nav.item'), 'list', 'leaving (main) must not collapse the rail');
   assert.equal(slotEntries('nav.item').length, before);
 });
 
-test('un slot déjà déclaré par ailleurs n\'est ni redéclaré ni emporté', () => {
+test('a slot already declared elsewhere is neither redeclared nor taken away', () => {
   resetSlotsForTests();
-  // Un layout tiers a pris `page` avant l'hôte : `declareSlot` lèverait.
+  // A third-party layout took `page` before the host: `declareSlot` would throw.
   const other = register({ slot: 'root', pluginId: 'blank-layout', children: { page: 'keyed' } }, Empty);
   const dispose = declareLayoutSlots();
   assert.equal(slotKind('page'), 'keyed');
   dispose();
-  assert.equal(slotKind('page'), 'keyed', 'l\'hôte ne collapse que ce qu\'il a déclaré');
+  assert.equal(slotKind('page'), 'keyed', 'the host only collapses what it declared');
   assert.equal(slotKind('nav.item'), null);
   other();
   assert.equal(slotKind('page'), null);
 });
 
-test('l\'hôte déclare exactement les slots du layout', () => {
+test('the host declares exactly the layout slots', () => {
   resetSlotsForTests();
   declareLayoutSlots();
   for (const name of Object.keys(UI_LAYOUT_CHILD_SLOTS)) {

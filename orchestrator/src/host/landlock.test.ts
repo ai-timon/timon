@@ -147,6 +147,39 @@ test('the rendered rules grant exactly what the fence policy says, on every path
   assert.equal(rules.unixSockets, 'deny');
 });
 
+test('a mission\'s profile folder is granted alone, the other profiles stay out, the shared cache stays in', { skip: LINUX_FIXTURES }, () => {
+  const cache = `${TH}/provider-cache/provider-claude`;
+  const fs = tree({
+    '/': ['usr', 'tmp', 'home'],
+    '/home': ['u'],
+    [HOME]: ['.timon', '.claude'],
+    [`${HOME}/.claude`]: ['.credentials.json'],
+    [TH]: ['daemon-token', 'provider-cache', 'tmp'],
+    [`${TH}/provider-cache`]: ['provider-claude', 'provider-codex'],
+    [`${TH}/provider-cache/provider-codex`]: ['cache'],
+    [cache]: ['cache', 'profiles'],
+    [`${cache}/cache`]: ['models.json'],
+    [`${cache}/profiles`]: ['kimi', 'user-claude'],
+    [`${cache}/profiles/kimi`]: ['settings.json'],
+    [`${cache}/profiles/user-claude`]: ['settings.json'],
+    [`${TH}/tmp`]: ['missions'],
+    [`${TH}/tmp/missions`]: [MISSION],
+  });
+  const policy = resolveFence(cfg(), {
+    timonHome: TH, home: HOME, platform: 'linux', backend: 'kimi', missionId: MISSION,
+    providerPlugin: 'provider-claude', providerProfile: 'kimi', realpath: fs.realpath,
+  });
+  const rules = renderLandlockPolicy(policy, fs);
+  assertFaithful(policy, rules, fs.paths);
+  assert.equal(landlockLevel(rules, `${cache}/profiles/kimi/settings.json`), 'rw');
+  assert.equal(landlockLevel(rules, `${cache}/cache/models.json`), 'rw');
+  assert.equal(landlockLevel(rules, `${cache}/profiles/user-claude/settings.json`), 'none');
+  // A profile folder made after the launch is under no rule: the kernel refuses it.
+  assert.equal(landlockLevel(rules, `${cache}/profiles/made-later/settings.json`), 'none');
+  assert.equal(landlockLevel(rules, `${TH}/provider-cache/provider-codex/cache`), 'none');
+  assert.equal(landlockLevel(rules, `${TH}/daemon-token`), 'none');
+});
+
 test('a folder holding a refused path is listed instead of granted, along the way to it only', { skip: LINUX_FIXTURES }, () => {
   const rules = renderLandlockPolicy(fakePolicy(), FAKE);
   for (const level of ['/', '/home', HOME, TH]) {

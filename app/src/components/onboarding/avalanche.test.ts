@@ -1,7 +1,7 @@
 /**
  * The welcome screen's avalanche: the heaps are computed up front, every
  * mascot flies onto its own spot and the whole scene comes to rest; reduced
- * motion starts at rest; « Continue » sends everyone off screen.
+ * motion starts at rest; "Continue" sends everyone off screen.
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -95,7 +95,7 @@ test('a resize lays the heaps out again inside the new frame, already at rest', 
   assert.equal(resizeAvalanche(world, 900, 640, looks), world, 'a scattered scene is left to fly out');
 });
 
-test('« Continue » flings every mascot off screen', () => {
+test('"Continue" flings every mascot off screen', () => {
   const world = buildAvalanche({ width: 1280, height: 800, looks, rng: seededRng(11) });
   run(world, 1.2);
   scatter(world);

@@ -48,3 +48,25 @@ export function visibleUrgencyKeys(
 ): UrgencyFilterKey[] {
   return URGENCY_FILTER_KEYS.filter((k) => counts[k] > 0 || selected.has(k));
 }
+
+/**
+ * Landing filter of the TO DO widgets: the ideas whose pull request is open,
+ * or not created yet. Single choice — an idea's badge has one state — and
+ * `null` is no filter. The daemon applies the same rule (`landing=` on the
+ * list); the rows are narrowed again here so a switch never shows the
+ * previous answer's rows meanwhile.
+ */
+export const LANDING_FILTER_KEYS = ['open', 'pending'] as const;
+export type LandingFilterKey = (typeof LANDING_FILTER_KEYS)[number];
+
+type Landed = { landing?: { state: string } | null };
+
+export function filterByLanding<T extends Landed>(items: readonly T[], selected: LandingFilterKey | null): T[] {
+  if (!selected) return [...items];
+  return items.filter((item) => item.landing?.state === selected);
+}
+
+/** Worth showing once a loaded idea could match, or while a choice is on. */
+export function showLandingFilter(items: readonly Landed[], selected: LandingFilterKey | null): boolean {
+  return selected !== null || items.some((item) => LANDING_FILTER_KEYS.some((k) => item.landing?.state === k));
+}

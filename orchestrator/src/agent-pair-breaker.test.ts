@@ -1,11 +1,11 @@
 /**
- * Coupe-circuit des échanges agent↔agent (incident testeur du 07/10/2026 :
- * deux agents se réveillaient l'un l'autre en boucle, malgré des "STOP"
- * écrits — toute réponse est elle-même un message qui réveille l'autre).
+ * Circuit breaker of agent↔agent exchanges (tester incident of 07/10/2026:
+ * two agents woke each other up in a loop, despite written "STOP"s,
+ * since every answer is itself a message that wakes the other).
  *
- * Ce que ces tests protègent : une paire qui dépasse le plafond n'est plus
- * réveillée et ses messages sortent de `pending` ; une entrée humaine la
- * relance ; les retours de tasks Kanban ne comptent jamais.
+ * What these tests protect: a pair that exceeds the cap is no longer
+ * woken and its messages leave `pending`; a human input
+ * restarts it; Kanban task returns never count.
  */
 import './test-home.js';
 import assert from 'node:assert/strict';
@@ -50,36 +50,41 @@ function alertsAbout(a: string, b: string): number {
 
 beforeEach(() => clearAgentPairs());
 
-test('une paire qui dépasse le plafond n\'est plus réveillée, dans les deux sens', () => {
+test('a pair that exceeds the cap is no longer woken, in both directions', () => {
   assert.equal(send('jeff', 'nexus').woken, true);
   assert.equal(send('nexus', 'jeff').woken, true);
   assert.equal(send('jeff', 'nexus').woken, true);
   const over = send('nexus', 'jeff', 'STOP');
   assert.equal(over.woken, false);
   assert.equal(dbApi.getMessage(over.id)?.status, 'held');
-  // Retenu = hors de `pending` : ni le sweep, ni un réveil d'une autre cause,
-  // ni un agent qui relève sa boîte ne le verront.
+  // Held back = out of `pending`: neither the sweep, nor a wake from another cause,
+  // nor an agent picking up its inbox will see it.
   assert.ok(!dbApi.listInbox('jeff', { status: 'pending' }).some((m) => m.id === over.id));
 
-  // Verrouillée : la suite reste retenue, sans seconde alerte.
+  // Locked: the rest stays held back, without a second alert.
   const next = send('jeff', 'nexus', 'STOP STOP');
   assert.equal(next.woken, false);
   assert.equal(dbApi.getMessage(next.id)?.status, 'held');
   assert.equal(alertsAbout('jeff', 'nexus'), 1);
+  const alert = dbApi.listAllInbox({ limit: 500 })
+    .find((m) => m.from_agent === 'orchestrator' && m.payload.includes('jeff ↔ nexus'));
+  const payload = JSON.parse(alert?.payload ?? '{}') as { code?: string; params?: Record<string, unknown> };
+  assert.equal(payload.code, 'agent_pair_loop_stopped');
+  assert.equal(payload.params?.count, 4);
 });
 
-test('la casse du nom ne crée pas une seconde paire', () => {
+test('the case of the name does not create a second pair', () => {
   send('Ana', 'bob');
   send('bob', 'ana');
   send('ANA', 'Bob');
   assert.equal(send('bob', 'Ana').woken, false);
 });
 
-test('une entrée humaine relance la paire', () => {
+test('a human input restarts the pair', () => {
   for (let i = 0; i < 3; i++) send('alpha', 'beta');
   assert.equal(send('beta', 'alpha').woken, false);
 
-  // Un tool_result et un message injecté par le démon ne sont pas un humain.
+  // A tool_result and a message injected by the daemon are not a human.
   handleUserInput(missionOf('beta'), {
     type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't', content: 'ok' }] },
   });
@@ -93,14 +98,14 @@ test('une entrée humaine relance la paire', () => {
   assert.equal(send('beta', 'alpha').woken, true);
 });
 
-test('une idée poussée depuis la TO DO relance aussi la paire', () => {
+test('an idea pushed from the TO DO restarts the pair too', () => {
   for (let i = 0; i < 4; i++) send('gamma', 'delta');
   assert.equal(send('gamma', 'delta').woken, false);
-  assert.equal(send('cockpit', 'delta', 'Idée remontée').woken, true);
+  assert.equal(send('cockpit', 'delta', 'Idée remontée').woken, true); // french-ok: free-text sample data
   assert.equal(send('gamma', 'delta').woken, true);
 });
 
-test('les retours de tasks Kanban et de missions ne sont jamais retenus', () => {
+test('Kanban task and mission returns are never held back', () => {
   for (let i = 0; i < 10; i++) {
     const task = send('p.coder', 'p.main', JSON.stringify({ kind: 'task_closed', task_id: randomUUID(), task_status: 'DONE' }));
     assert.equal(task.woken, true);
@@ -108,11 +113,11 @@ test('les retours de tasks Kanban et de missions ne sont jamais retenus', () => 
     const mission = send('p.coder', 'p.main', JSON.stringify({ kind: 'mission_complete', status: 'completed' }));
     assert.equal(mission.woken, true);
   }
-  // Et ils n'entament pas le crédit de la paire.
+  // And they do not eat into the credit of the pair.
   for (let i = 0; i < 3; i++) assert.equal(send('p.coder', 'p.main').woken, true);
 });
 
-test('un msg libre ne réveille pas et ne compte pas contre la paire', () => {
+test('a free msg does not wake and does not count against the pair', () => {
   for (let i = 0; i < 10; i++) {
     const free = send('theta', 'iota', 'ping', randomUUID(), 'msg');
     assert.equal(free.woken, false);
@@ -121,7 +126,7 @@ test('un msg libre ne réveille pas et ne compte pas contre la paire', () => {
   for (let i = 0; i < 3; i++) assert.equal(send('theta', 'iota').woken, true);
 });
 
-test('la fenêtre glisse : les messages anciens ne comptent plus', () => {
+test('the window slides: old messages no longer count', () => {
   const t0 = 1_000_000;
   const msg = (n: number) => ({ id: `w-${n}`, from_agent: 'eps', to_agent: 'zeta', payload: 'x' });
   assert.equal(admitAgentMessage(msg(1), t0), 'wake');
@@ -130,12 +135,12 @@ test('la fenêtre glisse : les messages anciens ne comptent plus', () => {
   assert.equal(admitAgentMessage(msg(4), t0 + 600_001), 'wake');
 });
 
-test('isHumanInput : seul le texte tapé par un humain compte', () => {
+test('isHumanInput: only text typed by a human counts', () => {
   assert.equal(isHumanInput({ type: 'user', message: { role: 'user', content: 'go' } }), true);
   assert.equal(isHumanInput({
     type: 'user', message: { role: 'user', content: '/plan x' }, origin: { presentation: { parts: [] } },
   }), true);
-  // Événement brut d'un CLI (prompt de sous-agent) : clés en plus.
+  // Raw event of a CLI (sub-agent prompt): extra keys.
   assert.equal(isHumanInput({
     type: 'user', message: { role: 'user', content: 'sub' }, session_id: 's', parent_tool_use_id: 't',
   }), false);

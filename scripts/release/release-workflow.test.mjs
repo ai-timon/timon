@@ -239,7 +239,7 @@ test('the commit of the release lists passes the repository rules for a public m
   assert.equal(messages.length, 2);
   assert.match(messages[0], /^\$title$/);
   for (const message of [messages[1], 'chore(release): publish the 0.1.9 release lists']) {
-    assert.doesNotMatch(message, /[àâçéèêëîïôûùüÿœ]/i, 'messages are in English');
+    assert.doesNotMatch(message, /[àâçéèêëîïôûùüÿœ]/i, 'messages are in English'); // french-ok: the letters that betray French
     assert.doesNotMatch(message, /co-authored-by|generated (with|by)|🤖/i, 'no attribution');
     assert.doesNotMatch(message, /\b[0-9a-f]{8}-[0-9a-f]{4}-|\/home\/|TODO\s*#/i, 'no internal reference');
   }

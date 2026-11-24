@@ -12,6 +12,7 @@
  * keeps failing at every turn must not bury the centre. A launch of that plugin that goes through, or an
  * authorization given from the providers page, closes it.
  */
+import { daemonMessage } from '../daemon-message.js';
 
 const CARD_PREFIX = 'provider-launch:';
 /** Plugins whose card was raised in this process. */
@@ -68,6 +69,7 @@ export function raiseLaunchCard(pluginId: string, backend: string, reason: strin
       title: `Backend \`${backend}\` was not started: its program needs your authorization`,
       body: `${reason} Open this card to review the program on the provider's page `
         + '(Settings › AI models › Backends) and authorize it again if it is the one you expect.',
+      message: daemonMessage('backend_launch_unauthorized', { backend, reason }),
       source: `plugin:${pluginId}`,
       anchor,
     });

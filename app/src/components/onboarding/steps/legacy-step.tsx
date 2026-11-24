@@ -18,12 +18,11 @@ import { useOnboarding } from '../onboarding-context';
 
 export function legacyStep(href: string | null): ComponentType {
   function LegacyStep(): ReactElement {
-    const { next, back, direction } = useOnboarding();
+    const { skip, direction } = useOnboarding();
     useEffect(() => {
       if (href !== null) window.location.replace(href);
-      else if (direction < 0) back();
-      else next();
-    }, [next, back, direction]);
+      else skip(direction);
+    }, [skip, direction]);
     return (
       <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />

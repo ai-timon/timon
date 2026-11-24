@@ -1,3 +1,4 @@
+// french-ok-file: French dictation samples, the language the engine was captured in
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
@@ -6,39 +7,39 @@ import { mergeSegments, readResults } from './stt-transcript';
 const res = (segments: Array<[string, boolean]>) =>
   segments.map(([transcript, isFinal]) => ({ 0: { transcript }, isFinal }));
 
-test('segments disjoints : simple concaténation', () => {
+test('disjoint segments: plain concatenation', () => {
   assert.equal(mergeSegments(['ok je fais', 'un test de voix']), 'ok je fais un test de voix');
 });
 
-test('moteur qui réécrit la phrase entière : une seule copie', () => {
+test('engine that rewrites the whole sentence: a single copy', () => {
   const steps = ['ok', 'ok je', 'ok je fais', 'ok je fais un nouveau test de voix'];
   assert.equal(mergeSegments(steps), 'ok je fais un nouveau test de voix');
 });
 
-test('la ponctuation et la casse ne cassent pas la détection de réécriture', () => {
+test('punctuation and case do not break the rewrite detection', () => {
   assert.equal(mergeSegments(['ok je', 'OK, je fais.']), 'OK, je fais.');
 });
 
-test('relivraison à l’identique ignorée', () => {
+test('an identical redelivery is ignored', () => {
   assert.equal(mergeSegments(['bonjour Alice', 'bonjour Alice']), 'bonjour Alice');
 });
 
-test('segment déjà contenu en fin de texte ignoré', () => {
+test('a segment already contained at the end of the text is ignored', () => {
   assert.equal(mergeSegments(['ok je fais un test', 'un test']), 'ok je fais un test');
 });
 
-test('recouvrement partiel : seule la queue inédite est collée', () => {
+test('partial overlap: only the new tail is glued', () => {
   assert.equal(
     mergeSegments(['ok je fais un test', 'un test de voix']),
     'ok je fais un test de voix',
   );
 });
 
-test('entrées vides ignorées', () => {
+test('empty entries ignored', () => {
   assert.equal(mergeSegments(['', null, '  ', 'ok', undefined]), 'ok');
 });
 
-test('readResults sépare définitif et provisoire, sans doublon', () => {
+test('readResults separates final and interim, without duplicates', () => {
   const r = readResults(
     res([
       ['ok', true],
@@ -50,7 +51,7 @@ test('readResults sépare définitif et provisoire, sans doublon', () => {
   assert.equal(r.interim, 'ok je fais un');
 });
 
-test('readResults lit tous les résultats, pas seulement les derniers', () => {
+test('readResults reads all the results, not only the last ones', () => {
   const r = readResults(
     res([
       ['bonjour', true],
@@ -61,7 +62,7 @@ test('readResults lit tous les résultats, pas seulement les derniers', () => {
   assert.equal(r.interim, 'comment ça va');
 });
 
-test('le texte envoyé à l’agent ne répète aucun mot', () => {
+test('the text sent to the agent repeats no word', () => {
   const settled = 'ok je fais';
   const session = 'ok je fais un nouveau test de voix pour voir comment ça marche';
   const sent = mergeSegments([settled, session]);

@@ -113,7 +113,7 @@ test('the v2 events are closed too', () => {
 
 /* ── Requests ───────────────────────────────────────────────────────────── */
 
-test('finished requests become features, failures and the account limit, with the account slot only', async () => {
+test('finished requests become features and failures, with the account slot only', async () => {
   const { rt, sent } = start();
   const app = express();
   app.use((req, _res, next) => {
@@ -145,13 +145,12 @@ test('finished requests become features, failures and the account limit, with th
   }
   const events = sent.filter((p) => p.name !== 'app_started' && p.name !== 'milestone_reached');
   assert.deepEqual(sent.filter((p) => p.name === 'milestone_reached').map((p) => p.properties.milestone), ['first_agent_created'], 'once, the first success only');
-  assert.deepEqual(events.map((p) => p.name), ['feature_used', 'feature_used', 'feature_used', 'upgrade_action', 'operation_failed']);
+  assert.deepEqual(events.map((p) => p.name), ['feature_used', 'feature_used', 'feature_used', 'operation_failed'], 'the account limit comes from the bus, not a route');
   assert.deepEqual(
     events.slice(0, 3).map((p) => [p.properties.feature, p.properties.actor, p.properties.result, p.properties.failure_code, p.properties.account_slot]),
     [['agent.create', 'person', 'success', 'none', 1], ['agent.create', 'agent', 'success', 'none', 1], ['account.create', 'person', 'failure', 'user_limit', 2]],
   );
-  assert.deepEqual(events[3]!.properties.action, 'account_limit_reached');
-  assert.deepEqual([events[4]!.properties.area, events[4]!.properties.feature, events[4]!.properties.cause_code], ['missions', 'other', 'server_error']);
+  assert.deepEqual([events[3]!.properties.area, events[3]!.properties.feature, events[3]!.properties.cause_code], ['missions', 'other', 'server_error']);
   assert.ok(!JSON.stringify(sent).includes(MARKER), 'no name, path or message reaches a payload');
   assert.ok(!JSON.stringify(sent).includes(owner.id), 'the account id never leaves, only its slot');
 });
@@ -595,4 +594,104 @@ test('a backend_fallback published on the bus reaches the destination as fallbac
   } finally {
     await rt.dispose();
   }
+});
+
+test('the account provider refusing a new account reaches the destination as the account limit, with the slot only', async () => {
+  const { bus } = await import('../../bus.js');
+  const { rt, sent } = start();
+  try {
+    bus.publish({ kind: 'account_limit_reached', userId: second.id });
+    bus.publish({ kind: 'account_limit_reached', userId: null });
+    await rt.flushNow();
+    const limits = sent.filter((p) => p.name === 'upgrade_action');
+    assert.deepEqual(
+      limits.map((p) => [p.properties.action, p.properties.entry_point, p.properties.account_slot]),
+      [['account_limit_reached', 'users', 2], ['account_limit_reached', 'users', undefined]],
+    );
+    assert.ok(!JSON.stringify(sent).includes(second.id), 'the account id never leaves, only its slot');
+  } finally {
+    await rt.dispose();
+  }
+});
+
+/* ── Onboarding funnel (v6) ─────────────────────────────────────────────── */
+
+test('onboarding_step: the email code and the account\'s origin are closed words', () => {
+  assert.deepEqual(
+    validateEvent('onboarding_step', { step: 'account', action: 'code_sent', resend: true }),
+    { step: 'account', action: 'code_sent', resend: true },
+  );
+  assert.deepEqual(
+    validateEvent('onboarding_step', { step: 'account', action: 'code_failed', reason: 'email_connection_required' }),
+    { step: 'account', action: 'code_failed', reason: 'email_connection_required' },
+  );
+  assert.deepEqual(
+    validateEvent('onboarding_step', { step: 'account', action: 'completed', via: 'operator' }),
+    { step: 'account', action: 'completed', via: 'operator' },
+  );
+  assert.equal(validateEvent('onboarding_step', { step: 'account', action: 'code_failed', reason: 'SMTP 550 mailbox owner@example.com unknown' }), null);
+  assert.equal(validateEvent('onboarding_step', { step: 'account', action: 'code_failed', reason: 'other' }), null);
+  assert.equal(validateEvent('onboarding_step', { step: 'account', action: 'completed', via: 'magic-link' }), null);
+  assert.equal(validateEvent('onboarding_step', { step: 'account', action: 'code_sent', resend: 'yes' }), null);
+});
+
+test('onboarding_screen: a screen and how it was left, from closed lists only', () => {
+  assert.deepEqual(validateEvent('onboarding_screen', { screen: 'splash', action: 'viewed' }), { screen: 'splash', action: 'viewed' });
+  const llm = { screen: 'llm', action: 'completed', llm_choice: 'plan', backend: 'claude', connection: 'failed', failure_code: 'signed_out' };
+  assert.deepEqual(validateEvent('onboarding_screen', llm), llm);
+  assert.equal(validateEvent('onboarding_screen', { screen: 'settings', action: 'viewed' }), null);
+  assert.equal(validateEvent('onboarding_screen', { screen: 'llm', action: 'closed' }), null);
+  assert.equal(validateEvent('onboarding_screen', { ...llm, backend: 'https://my-proxy.example' }), null);
+  assert.equal(validateEvent('onboarding_screen', { ...llm, failure_code: 'sk-ant-api-key-rejected' }), null);
+  assert.equal(validateEvent('onboarding_screen', { ...llm, api_key: 'sk-1' }), null);
+});
+
+test('collector: the code\'s outcome and the account\'s origin reach analytics as published', async () => {
+  const { TelemetryCollector } = await import('./collector.js');
+  const emitted: [string, Record<string, unknown>][] = [];
+  const collector = new TelemetryCollector({ missionFacts: () => null, taskFacts: () => null, now: () => 0 }, (name, props) => emitted.push([name, props]));
+  collector.handle({ kind: 'onboarding_step', step: 'account', action: 'code_sent', resend: false });
+  collector.handle({ kind: 'onboarding_step', step: 'account', action: 'code_failed', reason: 'email_rate_limited' });
+  collector.handle({ kind: 'onboarding_step', step: 'account', action: 'completed', via: 'code' });
+  assert.deepEqual(emitted, [
+    ['onboarding_step', { step: 'account', action: 'code_sent', resend: false }],
+    ['onboarding_step', { step: 'account', action: 'code_failed', reason: 'email_rate_limited' }],
+    ['onboarding_step', { step: 'account', action: 'completed', via: 'code' }],
+  ]);
+  for (const [name, props] of emitted) assert.ok(validateEvent(name, props), `${name} passes the catalogue`);
+});
+
+test('trackUi: an onboarding screen leaves with its LLM outcome; a CLI that is not a product backend is other', async () => {
+  const { rt, sent } = start();
+  rt.trackUi({ name: 'onboarding_screen', surface: 'web', screen: 'account', action: 'viewed' }, { userId: null });
+  rt.trackUi({
+    name: 'onboarding_screen', surface: 'desktop', screen: 'llm', action: 'completed',
+    llmChoice: 'plan', backend: 'claude', connection: 'ok',
+  }, { userId: owner.id });
+  rt.trackUi({
+    name: 'onboarding_screen', surface: 'web', screen: 'llm', action: 'completed',
+    llmChoice: 'plan', backend: 'acme-cli', connection: 'failed', failureCode: 'not_installed',
+  }, { userId: owner.id });
+  await rt.flushNow();
+  await rt.dispose();
+  const screens = sent.filter((p) => p.name === 'onboarding_screen').map((p) => Object.fromEntries(
+    Object.entries(p.properties).filter(([key]) => !GLOBAL_KEYS.has(key)),
+  ));
+  assert.deepEqual(screens, [
+    { screen: 'account', action: 'viewed' },
+    { screen: 'llm', action: 'completed', llm_choice: 'plan', backend: 'claude', connection: 'ok' },
+    { screen: 'llm', action: 'completed', llm_choice: 'plan', backend: 'other', connection: 'failed', failure_code: 'not_installed' },
+  ]);
+});
+
+test('every screen of the app\'s onboarding is on the closed list, and nothing else', async () => {
+  const { ONBOARDING_SCREENS } = await import('../../onboarding-events.js');
+  const flow = readFileSync(new URL('../../../../app/src/components/onboarding/onboarding-flow.ts', import.meta.url), 'utf8');
+  const ids = (name: string): string[] => {
+    const list = new RegExp(`export const ${name} = \\[([^\\]]*)\\]`).exec(flow)?.[1] ?? '';
+    return [...list.matchAll(/'([a-z]+)'/g)].map((m) => m[1]!);
+  };
+  const app = [...ids('ONBOARDING_STEP_IDS'), ...ids('RETURNING_STEP_IDS')];
+  assert.ok(app.length >= 7, 'the app\'s lists were read');
+  assert.deepEqual([...app].sort(), [...ONBOARDING_SCREENS].sort());
 });

@@ -1,6 +1,6 @@
 /**
  * The onboarding's frame: the registry follows the mockup's order, the dots
- * cover the account up to the agent, « Back » goes back (sub-views first,
+ * cover the account up to the agent, "Back" goes back (sub-views first,
  * skipped steps skipped both ways), a step reopens from its URL, the language
  * applies at once, and the routes around it agree (login, gate, session).
  */
@@ -17,7 +17,7 @@ import {
 } from './onboarding-flow';
 import { signedInTarget } from './welcome-landing';
 
-test('the steps follow the mockup: welcome, background choice, account, LLM, profile, agent, « Discover Timon » — no chat step any more', () => {
+test('the steps follow the mockup: welcome, background choice, account, LLM, profile, agent, "Discover Timon" — no chat step any more', () => {
   assert.deepEqual([...ONBOARDING_STEP_IDS], ['splash', 'background', 'account', 'llm', 'profile', 'agent', 'discover']);
   assert.equal(nextStep('splash'), 'background', 'the service installs right after the welcome: its question comes first');
   assert.equal(nextStep('background'), 'account');
@@ -50,7 +50,7 @@ test('the background install starts on the account step, which lives in the onbo
   assert.ok(ONBOARDING_STEPS.every((entry) => entry.leavesPage !== true), 'no stand-in left');
 });
 
-test('the dots cover the background choice up to the agent; « Back » shows on those steps only', () => {
+test('the dots cover the background choice up to the agent; "Back" shows on those steps only', () => {
   assert.deepEqual([...DOTTED_STEPS], ['background', 'account', 'llm', 'profile', 'agent']);
   assert.equal(progressDots('splash'), null);
   assert.deepEqual(progressDots('background'), ['current', 'todo', 'todo', 'todo', 'todo']);
@@ -111,7 +111,7 @@ test('every stand-in hands over to a page the first-run gate lets through', asyn
 
 test('the main agent\'s screen knows the LLM step already showed the provider cards', () => {
   assert.equal(openedFromOnboarding(new URL(SETUP_AGENT_FROM_ONBOARDING, 'http://x').search), true);
-  assert.equal(openedFromOnboarding(''), false, 'the gate opens it bare: its own « Your AIs » stays');
+  assert.equal(openedFromOnboarding(''), false, 'the gate opens it bare: its own "Your AIs" stays');
   assert.equal(openedFromOnboarding('?from=elsewhere'), false);
 });
 

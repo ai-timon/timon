@@ -5,36 +5,60 @@ import en from '../locales/en/core.json';
 import fr from '../locales/fr/core.json';
 import { t } from './i18n';
 import { formatDateTime } from './intl';
-import { activationErrorMessage, betaLock, expiryNotices, isActivationKey, licenseNotice, submitLicense, type PublicLicense } from './license';
+import { activationErrorMessage, betaLock, expiryNotices, isActivationKey, licenseCards, submitLicense, type PublicLicense } from './license';
 
 const VALID: PublicLicense = {
   status: 'valid', reason: null, edition: 'expert', plan: 'Timon Expert', lifetime: false,
   expiresAt: '2026-09-03T12:00:00.000Z', subscriptionExpiresAt: null, paymentStatus: 'active', offlineSince: null,
 };
 
-test('an offline episode shows a banner without gating the app', () => {
-  assert.deepEqual(licenseNotice({ ...VALID, offlineSince: '2026-09-04T08:00:00.000Z' }), { kind: 'offline', since: '2026-09-04T08:00:00.000Z' });
-  // Unlicensed and past-due win over offline.
-  assert.deepEqual(licenseNotice({ ...VALID, offlineSince: '2026-09-04T08:00:00.000Z', paymentStatus: 'past_due' }), { kind: 'pastDue', until: null });
+const AT = Date.parse('2026-09-04T12:00:00.000Z');
+const CONTACT = '2026-09-04T08:00:00.000Z';
+const FREE: PublicLicense = { ...VALID, status: 'unlicensed', localFree: true, plan: 'Free', reason: 'missing', edition: 'expert', lifetime: true };
+
+test('a server out of reach within the offline tolerance shows nothing', () => {
+  assert.deepEqual(licenseCards({ ...VALID, offlineSince: CONTACT }, AT), []);
+  assert.deepEqual(licenseCards({ ...VALID, offlineSince: CONTACT, lapse: null }, AT), []);
 });
 
-test('no banner while the subscription is paid', () => {
-  assert.equal(licenseNotice(VALID), null);
-  assert.equal(licenseNotice(null), null);
+test('nothing while the subscription is paid, nor before the state is read', () => {
+  assert.deepEqual(licenseCards(VALID, AT), []);
+  assert.deepEqual(licenseCards(null, AT), []);
 });
 
-test('a late payment shows a banner without gating the app', () => {
-  assert.deepEqual(licenseNotice({ ...VALID, paymentStatus: 'past_due' }), { kind: 'pastDue', until: null });
+test('the tolerance run out: one "paused" card, keyed by the episode', () => {
+  const paused = { ...FREE, reason: 'expired', lapse: { cause: 'offline', since: CONTACT } } satisfies PublicLicense;
+  assert.deepEqual(licenseCards(paused, AT), [{ kind: 'paused', id: `license-paused-${Date.parse(CONTACT) / 1000}` }]);
+  // Without a known contact the card still shows, under a stable id.
+  assert.deepEqual(licenseCards({ ...paused, lapse: { cause: 'offline', since: null } }, AT), [{ kind: 'paused', id: 'license-paused-unknown' }]);
+});
+
+test('a licence the server refused: one "refused" card', () => {
+  const refused = { ...FREE, reason: 'revoked', lapse: { cause: 'refused', since: CONTACT } } satisfies PublicLicense;
+  assert.deepEqual(licenseCards(refused, AT), [{ kind: 'refused', id: `license-refused-${Date.parse(CONTACT) / 1000}` }]);
+});
+
+test('rights back: no card any more', () => {
+  assert.deepEqual(licenseCards({ ...VALID, lapse: null }, AT), []);
+});
+
+test('a late payment is a card, quiet during the beta', () => {
+  assert.deepEqual(licenseCards({ ...VALID, paymentStatus: 'past_due' }, AT), [{ kind: 'pastDue', id: 'license-past-due-open', until: null }]);
   assert.deepEqual(
-    licenseNotice({ ...VALID, paymentStatus: 'past_due', subscriptionExpiresAt: '2026-10-01T00:00:00.000Z' }),
-    { kind: 'pastDue', until: '2026-10-01T00:00:00.000Z' },
+    licenseCards({ ...VALID, paymentStatus: 'past_due', subscriptionExpiresAt: '2026-12-01T00:00:00.000Z' }, AT),
+    [{ kind: 'pastDue', id: 'license-past-due-2026-12-01', until: '2026-12-01T00:00:00.000Z' }],
   );
+  assert.deepEqual(licenseCards({ ...VALID, paymentStatus: 'past_due' }, AT, { beta: true }), []);
+  // A late payment while the server is out of reach is still only the payment.
+  assert.deepEqual(licenseCards({ ...VALID, paymentStatus: 'past_due', offlineSince: CONTACT }, AT).map((c) => c.kind), ['pastDue']);
 });
 
-test('an unlicensed daemon shows the activation banner, payment status aside', () => {
-  const unlicensed: PublicLicense = { ...VALID, status: 'unlicensed', reason: 'missing', edition: 'lite' };
-  assert.deepEqual(licenseNotice(unlicensed), { kind: 'unlicensed' });
-  assert.deepEqual(licenseNotice({ ...unlicensed, paymentStatus: 'past_due' }), { kind: 'unlicensed' });
+test('the licence\'s end is a card 14 days ahead, urgent at 3, with an id per stage', () => {
+  const ends = (days: number) => licenseCards({ ...VALID, subscriptionExpiresAt: new Date(AT + days * 86_400_000).toISOString() }, AT);
+  assert.deepEqual(ends(30), []);
+  assert.deepEqual(ends(10).map((c) => c.id), ['license-ends-2026-09-14']);
+  assert.deepEqual(ends(2).map((c) => c.id), ['license-ends-2026-09-06-urgent']);
+  assert.deepEqual(licenseCards({ ...VALID, lifetime: true, subscriptionExpiresAt: new Date(AT + 2 * 86_400_000).toISOString() }, AT), []);
 });
 
 test('a token minted for another machine names the expected device', () => {
@@ -62,28 +86,27 @@ test('an activation key is told apart from a JWT by the absence of a dot', () =>
   assert.equal(isActivationKey('eyJhbGciOiJFZERTQSIs.eyJzdWIiOiJhY21lIn0.c2ln'), false);
 });
 
-test('both locales cover every license key used by the banner and the activate page', () => {
+test('both locales cover the activate page; the former banner\'s keys are gone', () => {
   for (const dict of [en, fr]) {
-    for (const key of ['pastDue', 'pastDueUntil', 'notActivated', 'activate'] as const) {
-      assert.equal(typeof dict.license[key], 'string', `license.${key}`);
-    }
     assert.equal(typeof dict.activate.deviceMismatch, 'string');
-    assert.match(dict.license.pastDueUntil, /\{date\}/);
     assert.match(dict.activate.deviceMismatch, /\{device\}/);
-    assert.equal('expiredGrace' in dict.license, false);
+    assert.equal('license' in dict, false, 'the licence speaks through notice cards now');
   }
 });
 
 // `t()` merges the root dictionary with a dozen sub-files, the last one
-// winning: a key present in `en.json` can still resolve to nothing.
-test('the banner keys resolve through t()', () => {
-  assert.match(t('license.pastDueUntil', { date: '01/10/2026' }), /01\/10\/2026/);
-  assert.equal(t('license.pastDue').includes('license.pastDue'), false);
+// winning: a key present in a file can still resolve to nothing.
+test('the licence card keys resolve through t()', () => {
+  assert.match(t('notices.license.pastDue.bodyUntil', { date: '01/10/2026' }), /01\/10\/2026/);
+  assert.match(t('notices.license.ends.title', { date: '01/10/2026' }), /01\/10\/2026/);
+  for (const key of ['enterKey', 'paused.title', 'paused.body', 'refused.title', 'refused.body', 'pastDue.title', 'pastDue.body']) {
+    assert.equal(t(`notices.license.${key}`, { brand: 'Timon' }).includes('notices.license'), false, key);
+  }
 });
 
 test('commercial refusals resolve to actionable copy in both languages', () => {
   for (const dict of [en, fr]) {
-    for (const code of ['plugin_composition_fixed', 'single_superadmin_required', 'free_incompatible', 'license_changed', 'activation_key_missing', 'transfer_pending', 'free_unavailable', 'client_upgrade_required'] as const) {
+    for (const code of ['plugin_composition_fixed', 'single_superadmin_required', 'free_incompatible', 'license_changed', 'activation_key_missing', 'local_free', 'transfer_pending', 'client_upgrade_required'] as const) {
       const message = activationErrorMessage({ error: code, message: 'server detail' }, (key) => {
         assert.equal(key, `freeLicense.${code}`);
         return dict.freeLicense[code];
@@ -91,15 +114,24 @@ test('commercial refusals resolve to actionable copy in both languages', () => {
       assert.ok(message.length > 20);
       assert.notEqual(message, code);
     }
-    assert.match(dict.freeLicense.deactivateConfirm, /data|données/);
+    assert.match(dict.freeLicense.deactivateConfirm, /data|données/); // french-ok: the French locale under test
   }
 });
 
-test('normal local Free has no activation warning; a paid fallback explains lost rights', () => {
-  const free: PublicLicense = { ...VALID, status: 'unlicensed', localFree: true, plan: 'Free', reason: 'missing', edition: 'lite' };
-  assert.equal(licenseNotice(free), null);
-  assert.deepEqual(licenseNotice({ ...free, reason: 'revoked' }), { kind: 'unlicensed' });
-  assert.deepEqual(licenseNotice({ ...free, reason: 'expired' }), { kind: 'unlicensed' });
+test('Free has no warning, whatever ended the licence before it', () => {
+  // Free is an install without an activation key: the daemon then reports no lapse.
+  for (const reason of ['missing', null, 'expired', 'revoked', 'deactivated', 'invalid:format']) {
+    assert.deepEqual(licenseCards({ ...FREE, reason }, AT), [], String(reason));
+    assert.deepEqual(licenseCards({ ...FREE, reason, lapse: null, paymentStatus: 'past_due', offlineSince: CONTACT }, AT), [], String(reason));
+  }
+});
+
+test('no message speaks of activating Free any more', () => {
+  for (const dict of [en, fr]) {
+    for (const code of ['free_incompatible', 'single_superadmin_required', 'local_free'] as const) {
+      assert.doesNotMatch(dict.freeLicense[code], /\bFree\b/, code);
+    }
+  }
 });
 
 test('a pending seat transfer names the time to retry (TIM-0017)', () => {
@@ -157,9 +189,8 @@ test('only a beta build that is not valid is locked, and the reason says what to
   assert.equal(betaLock(null), null);
 });
 
-test('both locales carry the lock screen and the end-date banners', () => {
+test('both locales carry the lock screen', () => {
   const keys = [
-    'license.licenseEndsSoon', 'license.licenseEndsUrgent',
     'betaLock.build_expired_title', 'betaLock.build_expired', 'betaLock.build_expired_undated', 'betaLock.beta_ended_title',
     'betaLock.beta_ended', 'betaLock.other_title', 'betaLock.other', 'betaLock.keyTitle', 'betaLock.submit', 'betaLock.notAdmin',
     'betaLock.export', 'betaLock.exported', 'betaLock.exportFailed', 'betaLock.exportAdminOnly', 'betaLock.signOut',

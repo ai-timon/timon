@@ -33,6 +33,7 @@ import {
   publicTodoAttachment, saveTodoAttachmentBytes, type StoredTodoAttachment, type TodoAttachment,
 } from '../../attachments.js';
 import { readFileSync } from 'node:fs';
+import { aggregateTodoLandings, TODO_LANDING_STATES, type TodoLanding } from '../../todo-landing.js';
 
 export type TodoCoreFields = {
   text?: string;
@@ -129,27 +130,40 @@ function toLink(row: TodoExternalRefRow): TodoLink {
   return { provider: row.provider, ref: row.ref, url: row.url, label: row.label, plugin_id: row.plugin_id, created_at: row.created_at };
 }
 
-/** What the routes and the plugin facade add to an idea row. */
-export type TodoExtras = { links: TodoLink[]; attachment_count: number };
+/**
+ * What the routes and the plugin facade add to an idea row. `landing` is
+ * derived, read-only (`todo-landing.ts`): where the branch of its jobs stands,
+ * null when no job of the idea has an integration branch.
+ */
+export type TodoExtras = { links: TodoLink[]; attachment_count: number; landing: TodoLanding | null };
 
-/** The ideas with their links and their number of attached files, in one
- *  query and one read of the attachments root: what the routes return. The
- *  rows are already filtered for the caller, so the links follow their visibility. */
-export function withLinks<T extends ProjectTodoRow>(rows: readonly T[]): Array<T & TodoExtras> {
+/**
+ * The ideas with their links, their number of attached files and their
+ * landing: one query each and one read of the attachments root, whatever the
+ * length of the list. The rows are already filtered for the caller, so the
+ * links follow their visibility; the landing goes through the tasks `viewer`
+ * may see (undefined = the unscoped service).
+ */
+export function withLinks<T extends ProjectTodoRow>(rows: readonly T[], viewer: DbViewer | null | undefined): Array<T & TodoExtras> {
+  const ids = rows.map((t) => t.id);
   const byTodo = new Map<number, TodoLink[]>();
-  for (const r of dbApi.listTodoExternalRefs(rows.map((t) => t.id))) {
+  for (const r of dbApi.listTodoExternalRefs(ids)) {
     const list = byTodo.get(r.todo_id);
     if (list) list.push(toLink(r)); else byTodo.set(r.todo_id, [toLink(r)]);
   }
-  const files = countTodoAttachments(rows.map((t) => t.id));
-  return rows.map((t) => ({ ...t, links: byTodo.get(t.id) ?? [], attachment_count: files.get(t.id) ?? 0 }));
+  const files = countTodoAttachments(ids);
+  const landings = aggregateTodoLandings(dbApi.listTodoIntegrations(ids, viewer));
+  return rows.map((t) => ({
+    ...t, links: byTodo.get(t.id) ?? [], attachment_count: files.get(t.id) ?? 0, landing: landings.get(t.id) ?? null,
+  }));
 }
 
-export function withLinksOne<T extends ProjectTodoRow>(row: T): T & TodoExtras {
+export function withLinksOne<T extends ProjectTodoRow>(row: T, viewer: DbViewer | null | undefined): T & TodoExtras {
   return {
     ...row,
     links: dbApi.listTodoExternalRefs([row.id]).map(toLink),
     attachment_count: countTodoAttachments([row.id]).get(row.id) ?? 0,
+    landing: aggregateTodoLandings(dbApi.listTodoIntegrations([row.id], viewer)).get(row.id) ?? null,
   };
 }
 
@@ -318,6 +332,8 @@ export type TodoListFilter = {
   project?: string;
   urgency?: TodoUrgency;
   progress?: TodoProgress;
+  /** Ideas whose landing badge is this state (`open` = pull request open, `pending` = not created). */
+  landing?: TodoLanding['state'];
   limit?: number;
 };
 
@@ -326,6 +342,7 @@ const listFilterSchema = z.object({
   project: z.string().trim().min(1).optional(),
   urgency: z.enum(TODO_URGENCIES).optional(),
   progress: z.enum(TODO_PROGRESSES).optional(),
+  landing: z.enum(TODO_LANDING_STATES).optional(),
   limit: z.number().int().min(1).max(200).optional(),
 }).strict();
 
@@ -415,14 +432,14 @@ function scopedTodos(scope: TodoCallerScope): ScopedTodoApi {
   return {
     get(id) {
       const row = visible(id);
-      return row ? withLinksOne(row) : undefined;
+      return row ? withLinksOne(row, scope.viewer) : undefined;
     },
     list(filter = {}) {
       const parsed = listFilterSchema.safeParse(filter);
       if (!parsed.success) {
         throw new TodoLinkError(`invalid filter: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`, 'invalid');
       }
-      return withLinks(dbApi.listProjectTodo({ ...parsed.data, viewer: scope.viewer }));
+      return withLinks(dbApi.listProjectTodo({ ...parsed.data, viewer: scope.viewer }), scope.viewer);
     },
     create(input, links = []) {
       // Spread first, context last: a plugin passing its own owner or plugin
@@ -432,7 +449,7 @@ function scopedTodos(scope: TodoCallerScope): ScopedTodoApi {
         links.map((l) => ({ ...l, pluginId: scope.pluginId })),
         caller,
       );
-      return { item: withLinksOne(r.item), created: r.created };
+      return { item: withLinksOne(r.item, scope.viewer), created: r.created };
     },
     links: {
       list(todoId) {
@@ -447,7 +464,7 @@ function scopedTodos(scope: TodoCallerScope): ScopedTodoApi {
       findByRef(provider, ref) {
         const hit = dbApi.getTodoExternalRef(provider, ref.trim());
         const row = hit ? visible(hit.todo_id) : undefined;
-        return row ? withLinksOne(row) : undefined;
+        return row ? withLinksOne(row, scope.viewer) : undefined;
       },
     },
     update(id, patch) {
@@ -469,7 +486,7 @@ function scopedTodos(scope: TodoCallerScope): ScopedTodoApi {
       let row: ProjectTodoRow | undefined;
       try { row = patchTodo(existing, fields, patch); } catch (err) { extensionRefusal(err); }
       if (!row) throw new TodoLinkError(`idea #${id} not found`, 'not_found');
-      return withLinksOne(row);
+      return withLinksOne(row, scope.viewer);
     },
     delete(id) {
       const existing = mustSee(id);
@@ -478,10 +495,10 @@ function scopedTodos(scope: TodoCallerScope): ScopedTodoApi {
     },
     close(id) {
       const existing = mustSee(id);
-      if (existing.status === 'promoted') return withLinksOne(existing);
+      if (existing.status === 'promoted') return withLinksOne(existing, scope.viewer);
       const row = patchTodo(existing, { progress: 'done' }, {});
       if (!row) throw new TodoLinkError(`idea #${id} not found`, 'not_found');
-      return withLinksOne(row);
+      return withLinksOne(row, scope.viewer);
     },
     attachments: {
       list(todoId) {

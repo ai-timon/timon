@@ -1,3 +1,4 @@
+// french-ok-file: idea and task titles as a French user writes them
 import assert from 'node:assert/strict';
 import test from 'node:test';
 

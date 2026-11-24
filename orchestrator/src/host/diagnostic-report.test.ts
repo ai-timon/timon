@@ -60,6 +60,13 @@ test('a Windows task that never ran is named, with the Entra ID join (#342)', ()
   assert.deepEqual(ids({ ...never, platform: 'darwin' }), ['daemon-down']);
 });
 
+test('a Windows task whose last start was refused because it already ran is not a finding (TIM-0158)', () => {
+  const running = facts({
+    service: { installed: true, running: true, lines: [], details: { marked: true, lastTaskResult: 0x800710e0, lines: [] } },
+  });
+  assert.deepEqual(ids(running), []);
+});
+
 test('a task Windows refused to start, then removed, is still named from its marker (#342)', () => {
   const removed = facts({ service: { installed: false, running: false, lines: [], details: null }, serviceRefused: '2026-10-13T22:00:00.000Z' });
   assert.deepEqual(ids(removed), ['windows-service-refused']);
@@ -69,6 +76,28 @@ test('a task Windows refused to start, then removed, is still named from its mar
   const neverRan = { ...kept, service: { installed: true, running: false, lines: [], details: { marked: true, lastTaskResult: 0x41303, lines: [] } } };
   assert.deepEqual(ids(neverRan), ['windows-task-never-ran'], 'one line for one cause');
   assert.deepEqual(ids({ ...removed, platform: 'darwin' }), []);
+});
+
+test('#116: a Windows task that opens a console in the session is named, with what to do', () => {
+  const shape = { logon: 'InteractiveToken' as const, program: 'cmd.exe', triggers: ['Boot' as const, 'Time' as const], consoleVisible: true };
+  const visible = facts({ service: { installed: true, running: true, lines: [], details: { marked: true, lastTaskResult: 0, lines: [], shape } } });
+  assert.deepEqual(ids(visible), ['windows-task-console']);
+  const text = diagnosticFindings(visible)[0]!.text;
+  assert.match(text, /starts cmd\.exe in your session/);
+  assert.match(text, /Run only when user is logged on/);
+  assert.match(text, /timon service install/);
+  // Not on another OS, nor for a task that is not there any more.
+  assert.deepEqual(ids({ ...visible, platform: 'darwin' }), []);
+  assert.deepEqual(ids({ ...visible, service: { ...visible.service, installed: false } }), []);
+  // Timon.exe in the session, or the boot task: nothing to say.
+  const quiet = (over: Partial<typeof shape>) => facts({ service: { installed: true, running: true, lines: [], details: { marked: true, lastTaskResult: 0, lines: [], shape: { ...shape, ...over } } } });
+  assert.deepEqual(ids(quiet({ program: 'timon.exe', consoleVisible: false })), []);
+  assert.deepEqual(ids(quiet({ logon: 'S4U', consoleVisible: false })), []);
+  assert.deepEqual(ids(facts({ service: { installed: true, running: true, lines: [], details: { marked: true, lastTaskResult: 0, lines: [], shape: null } } })), []);
+  // A source checkout's session task is a hidden PowerShell by design; the app's never is.
+  const powershell = quiet({ program: 'powershell.exe' });
+  assert.deepEqual(ids({ ...powershell, packagedRuntime: false }), []);
+  assert.deepEqual(ids(powershell), ['windows-task-console']);
 });
 
 test('data last opened by an older release are named', () => {
@@ -247,6 +276,17 @@ test('the service marker is read from the definition each supervisor runs', () =
     assert.equal(windows.marked, true);
     assert.equal(windows.lastTaskResult, 0x41303);
     assert.ok(windows.lines.includes('last result: 267011 (0x41303)'));
+    const refused = serviceDiagnostics({ ...win, exec: () => ({ code: 0, stdout: 'LastTaskResult=2147946720\nLastRunTime=2026-11-18T19:05:05\n', stderr: '' }) });
+    assert.equal(refused.lastTaskResult, 0x800710e0);
+    assert.ok(refused.lines.includes('last result: 2147946720 (0x800710e0: an instance was already running, not a failure)'), refused.lines.join('\n'));
+    // #116: the logon, the action and the verdict, read from the task XML.
+    const consoleTask = serviceDiagnostics({ ...win, exec: (_name: string, args: string[]) => (args.includes('/XML')
+      ? { code: 0, stdout: '<Task><Principals><Principal><LogonType>InteractiveToken</LogonType></Principal></Principals><Actions><Exec><Command>cmd.exe</Command></Exec></Actions></Task>', stderr: '' }
+      : { code: 0, stdout: 'LastTaskResult=0\nLogonType=Interactive\n', stderr: '' }) });
+    assert.equal(consoleTask.shape?.consoleVisible, true);
+    assert.ok(consoleTask.lines.includes('Action: cmd.exe'), consoleTask.lines.join('\n'));
+    assert.ok(consoleTask.lines.includes('ConsoleVisible: yes'));
+    assert.equal(windows.shape, null, 'a definition that cannot be read is no shape');
 
     const mac = { ...base, platform: 'darwin' as const };
     mkdirSync(join(home, 'Library', 'LaunchAgents'), { recursive: true });

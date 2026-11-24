@@ -1,11 +1,11 @@
 /**
- * `node --test --import tsx src/worktree-gc-guards.test.ts` (ou `npm test`).
+ * `node --test --import tsx src/worktree-gc-guards.test.ts` (or `npm test`).
  *
- * On teste les gardes isolées, pas `worktree-gc.ts` : ce dernier importe
- * `db.js` et ouvrirait SQLite au chargement.
+ * The isolated guards are tested, not `worktree-gc.ts`: the latter imports
+ * `db.js` and would open SQLite on load.
  *
- * Le cas qui a motivé ces tests est le premier ci-dessous : un worktree
- * supprimé pendant le spawn de son propre agent.
+ * The case that motivated these tests is the first one below: a worktree
+ * deleted during the spawn of its own agent.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,37 +17,37 @@ import { classifyOrphan, isWithinGrace } from './worktree-gc-guards.js';
 const GRACE = 30 * 60_000;
 const NOW = 1_786_630_767_000;
 
-test('une task vivante protège son worktree même sans worktree_path en base', () => {
-  // La course réelle : le dispatcher a créé le dossier, `known` a été figé
-  // avant l'écriture de la colonne. Supprimer ici tue la mission au spawn.
+test('a live task protects its worktree even without worktree_path in the database', () => {
+  // The real race: the dispatcher created the folder, `known` was frozen
+  // before the column was written. Deleting here kills the mission at spawn.
   assert.equal(
     classifyOrphan({ isKnownPath: false, taskExists: true, withinGrace: false }),
     'skip',
   );
 });
 
-test('le chemin revendiqué par une task reste protégé', () => {
+test('the path claimed by a task stays protected', () => {
   assert.equal(
     classifyOrphan({ isKnownPath: true, taskExists: false, withinGrace: false }),
     'skip',
   );
 });
 
-test('un dossier jeune est gardé, pas supprimé — la passe suivante rejugera', () => {
+test('a young folder is kept, not deleted: the next pass will judge again', () => {
   assert.equal(
     classifyOrphan({ isKnownPath: false, taskExists: false, withinGrace: true }),
     'grace',
   );
 });
 
-test('sans task ni grâce, le dossier devient candidat', () => {
+test('without a task or grace, the folder becomes a candidate', () => {
   assert.equal(
     classifyOrphan({ isKnownPath: false, taskExists: false, withinGrace: false }),
     'candidate',
   );
 });
 
-test('isWithinGrace : un dossier créé à l’instant est dans la grâce', () => {
+test('isWithinGrace: a folder created just now is within the grace', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-gc-'));
   try {
     assert.equal(isWithinGrace(dir, GRACE, Date.now()), true);
@@ -56,7 +56,7 @@ test('isWithinGrace : un dossier créé à l’instant est dans la grâce', () =
   }
 });
 
-test('isWithinGrace : un dossier plus vieux que la grâce en sort', () => {
+test('isWithinGrace: a folder older than the grace leaves it', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-gc-'));
   try {
     const old = (Date.now() - 2 * GRACE) / 1000;
@@ -67,6 +67,6 @@ test('isWithinGrace : un dossier plus vieux que la grâce en sort', () => {
   }
 });
 
-test('isWithinGrace : un chemin illisible est réputé jeune — on s’abstient', () => {
+test('isWithinGrace: an unreadable path is deemed young, we abstain', () => {
   assert.equal(isWithinGrace(join(tmpdir(), 'timon-gc-absent-xyz'), GRACE, NOW), true);
 });

@@ -15,7 +15,7 @@ The supplied Compose file uses the `docker` profile for `app`, `telegram-poll`, 
 2. Set `TIMON_HOST_HOME` to the host daemon's data directory; Compose mounts it at `/data/.timon`.
 3. Set the app and reply worker's `ORCHESTRATOR_URL` to the daemon address reachable from containers. The supplied file uses `http://host.docker.internal:3001`; this must match your daemon. The schema's default daemon port is 3000.
 4. Confirm the reverse-proxy network exists and that the daemon's listener is reachable from the bridge, with authentication enabled. A host loopback listener is not automatically reachable through a bridge gateway.
-   The embedded browser joins the network set in **Settings → Infra → Browser docker network** (`TIMON_BROWSER_NETWORK`, default `traefik_network`) and creates it if it is missing.
+   The embedded browser joins the network set in **Settings → Access & network → Browser → Browser docker network** (`TIMON_BROWSER_NETWORK`, default `traefik_network`) and creates it if it is missing.
 
 From the checkout root, in your own terminal:
 

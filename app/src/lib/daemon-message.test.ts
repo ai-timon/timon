@@ -1,6 +1,8 @@
 /**
  * Stored daemon sentences on screen (TODO #845): a code the dictionary knows
  * reads in the reader's language; anything else keeps the stored English.
+  *
+  * french-ok-file: the French locale of the stored sentences under test
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -103,4 +105,85 @@ test('parseDaemonMessage accepts the column and the object, refuses a bad code',
   assert.deepEqual(parseDaemonMessage(MERGE), { code: 'merge_sha_abbreviated', params: { guard: 'merge', short: 'fe2dd84' } });
   assert.equal(parseDaemonMessage({ code: 'Bad-Code' }), null);
   assert.equal(parseDaemonMessage(null), null);
+});
+
+test('a blocked-task card reads its title and the coded reason that is its body', () => {
+  const stored = JSON.stringify({
+    code: 'task_blocked', params: { title: 'Export', taskId: 'abcd1234' },
+    body: { code: 'task_stopped_by_scope', params: { by: 'rom', kind: 'agent', name: 'worker' } },
+  });
+  const fr = inLocale('fr', () => daemonNotificationText(stored, { title: 'Task blocked: Export', body: 'English reason' }));
+  assert.equal(fr.title, 'Task bloquée : Export');
+  assert.equal(fr.body, 'Arrêtée par rom (timon stop agent worker)');
+  const plain = JSON.stringify({ code: 'task_blocked', params: { title: 'none', taskId: 'abcd1234' } });
+  const own = inLocale('fr', () => daemonNotificationText(plain, { title: 'Task blocked (abcd1234)', body: 'I need the key.' }));
+  assert.deepEqual(own, { title: 'Task bloquée (abcd1234)', body: 'I need the key.' });
+});
+
+test('a task return on the Messages page reads its coded reason, without the code as a field', () => {
+  const payload = JSON.stringify({
+    kind: 'task_closed', task_id: 't1', task_status: 'BLOCKED',
+    blocked_reason: 'Stopped by rom (timon stop agent worker)',
+    blocked_reason_code: { code: 'task_stopped_by_scope', params: { by: 'rom', kind: 'agent', name: 'worker' } },
+  });
+  const shown = JSON.parse(inLocale('fr', () => localizedNoticePayload(payload))) as Record<string, unknown>;
+  assert.equal(shown.blocked_reason, 'Arrêtée par rom (timon stop agent worker)');
+  assert.equal('blocked_reason_code' in shown, false);
+  const agentReason = JSON.stringify({ kind: 'task_closed', blocked_reason: 'I need the key.', blocked_reason_code: null });
+  assert.equal((JSON.parse(localizedNoticePayload(agentReason)) as Record<string, unknown>).blocked_reason, 'I need the key.');
+});
+
+test('a mission killed for memory reads its process, its ceiling and its advice', () => {
+  const stored = JSON.stringify({
+    code: 'resource_mission_killed',
+    params: { mission: 'abcd1234', cmd: 'node', pid: '4242', ceiling: '4.0 GB', whose: 'mission', rss: 'none' },
+  });
+  const fr = inLocale('fr', () => daemonNotificationText(stored, { title: 'English', body: 'English' }));
+  assert.equal(fr.title, 'OOM : mission abcd1234 — processus tué');
+  assert.match(fr.body ?? '', /Votre processus `node` \(pid 4242\) a été tué par le noyau : il utilisait plus de 4\.0 GB de mémoire, le plafond de cette mission\. Relancer/);
+  assert.match(fr.body ?? '', /npm test -- <file>/);
+});
+
+test('system cards read their branches and counts in French', () => {
+  const fr = (code: string, params: Record<string, string | number>) =>
+    inLocale('fr', () => daemonNotificationText(JSON.stringify({ code, params }), { title: 'English', body: 'English' }));
+  const seat = fr('main_seat_empty', { candidates: 'none' });
+  assert.equal(seat.title, 'Aucun orchestrateur principal');
+  assert.match(seat.body ?? '', /Aucun orchestrateur sans projet n’existe/);
+  const hosts = fr('egress_new_hosts', { count: 3, scopeKind: 'project', scopeName: 'timon', agent: 'p.coder', hosts: 'a.io, b.io', more: 1, missionId: 'm1' });
+  assert.equal(hosts.title, '3 nouveaux hôtes sortants pour le projet timon');
+  assert.match(hosts.body ?? '', /a\.io, b\.io et 1 autre\(s\)/);
+  const permission = fr('permission_required', { tool: 'Bash', agent: 'p.coder', minutes: 0 });
+  assert.equal(permission.body, 'L’agent p.coder demande l’autorisation d’utiliser `Bash`.');
+  const series = fr('series_fallback_applied', {
+    outcome: 'stuck', scope: 'none', series: 'abcd1234', tasks: 2, pilot: 'stuck', backend: 'none',
+    failure: 'none', moved: 'none', requeued: 0, trigger: 'none',
+  });
+  assert.equal(series.title, 'Quota épuisé — tasks basculées, orchestrateur NON déplacé');
+  assert.match(series.body ?? '', /ses tasks redémarrent sur des backends de secours/);
+});
+
+test('a stored sentence that sends to Settings reads the path the dialog shows now', () => {
+  const stored = JSON.stringify({ code: 'device_paired', params: { name: 'Pixel' } });
+  const english = { title: 'English', body: 'English' };
+  const en = inLocale('en', () => daemonNotificationText(stored, english));
+  assert.equal(en.body, '"Pixel" was paired with your account. If this was not you, revoke it in Settings → Access & network → Devices.');
+  const fr = inLocale('fr', () => daemonNotificationText(stored, english));
+  assert.match(fr.body ?? '', /révoquez-le dans Paramètres → Accès & réseau → Appareils\.$/);
+  const launch = inLocale('en', () => daemonNotificationText(
+    JSON.stringify({ code: 'backend_launch_unauthorized', params: { backend: 'codex', reason: 'Changed.' } }), english));
+  assert.match(launch.body ?? '', /\(Settings → AI models → Providers\)/);
+  const replay = inLocale('en', () => daemonNotificationText(
+    JSON.stringify({ code: 'integration_gave_up', params: { transport: 'telegram' } }), english));
+  assert.match(replay.body ?? '', /Replay it from Settings → Secrets → Connections\.$/);
+});
+
+test('a layout proposal card names its kind in French, with its project and note only when present', () => {
+  const english = { title: 'Island layout to review: tim', body: 'Plan (site)' };
+  const full = { code: 'layout_proposal_to_review', params: { kind: 'island_arrangement', agent: 'tim', mission: 'Plan', project: 'site', note: 'calmer' } };
+  assert.deepEqual(inLocale('fr', () => daemonNotificationText(full, english)),
+    { title: "Agencement d'îlots à examiner : tim", body: 'Plan (site) — calmer' });
+  const bare = { code: 'layout_proposal_to_review', params: { kind: 'widgets', agent: 'plugin:demo', mission: 'Plan', project: 'none', note: 'none' } };
+  assert.deepEqual(inLocale('en', () => daemonNotificationText(bare, english)),
+    { title: 'Widget arrangement to review: plugin:demo', body: 'Plan' });
 });

@@ -115,6 +115,7 @@
   !endif
   ${If} $2 == "pause"
     ${If} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
+    ${OrIf} ${FileExists} "$PROFILE\.timon\run\timon-service.json"
     ${OrIf} ${FileExists} "$PROFILE\.timon\run\timon-service.cmd"
     ${OrIf} ${FileExists} "$PROFILE\.timon\run\timon-service.vbs"
       InitPluginsDir
@@ -339,6 +340,7 @@
   ; task that no longer existed (0.1.2-rc.5 reinstall, 27/09/2026).
   ${If} $0 == 0
     Delete "$PROFILE\.timon\run\service-revision"
+    Delete "$PROFILE\.timon\run\timon-service.json"
     Delete "$PROFILE\.timon\run\timon-service.cmd"
     Delete "$PROFILE\.timon\run\timon-service.vbs"
     Delete "$PROFILE\.timon\run\session-witness.dpapi"

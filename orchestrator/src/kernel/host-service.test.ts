@@ -1,14 +1,14 @@
 /**
- * Le service `host` — l'adaptateur de plateforme vu depuis l'arbre Cordis.
+ * The `host` service: the platform adapter seen from the Cordis tree.
  *
- * Ce que ces tests protègent : qu'un module puisse obtenir l'hôte par
- * `inject: ['host']` (donc APRÈS que `boot.ts` l'ait posé, jamais avant), que
- * ce soit le MÊME objet que le singleton `getHost()` — sans quoi un module
- * injecté et un fichier hors plugin travailleraient sur deux hôtes distincts —
- * et que les capacités qui décident de l'activation des modules aient une
- * seule source : `host.capabilities()`.
+ * What these tests protect: that a module can get the host through
+ * `inject: ['host']` (hence AFTER `boot.ts` set it, never before), that
+ * it is the SAME object as the `getHost()` singleton (otherwise an injected
+ * module and a file outside a plugin would work on two distinct hosts),
+ * and that the capabilities deciding the activation of modules have a
+ * single source: `host.capabilities()`.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +20,7 @@ const { setHasSystemdForTest } = await import('../host/systemd.js');
 const { createHostPlugin } = await import('./host-service.js');
 const { diagnose } = await import('../doctor.js');
 
-test("un module qui injecte `host` reçoit l'adaptateur posé par le boot", async () => {
+test('a module that injects `host` receives the adapter set by the boot', async () => {
   const host = createHost(config());
   const root = new Context();
   await root.plugin(createHostPlugin(host));
@@ -32,30 +32,30 @@ test("un module qui injecte `host` reçoit l'adaptateur posé par le boot", asyn
     apply(ctx: Context) { seen = ctx.host; },
   });
 
-  assert.equal(seen, host, "le module doit voir l'hôte du boot, pas une copie");
+  assert.equal(seen, host, 'the module must see the boot host, not a copy');
 });
 
-test('sans fournisseur, un module qui injecte `host` reste PENDING', async () => {
+test('without a provider, a module that injects `host` stays PENDING', async () => {
   const root = new Context();
   let applied = false;
   await root.plugin({ name: 'orphelin', inject: ['host'], apply() { applied = true; } });
-  // C'est le comportement Cordis attendu, et c'est pourquoi `boot.ts` pose le
-  // service AVANT de créer les entrées du loader.
+  // That is the expected Cordis behaviour, and why `boot.ts` sets the
+  // service BEFORE creating the loader entries.
   assert.equal(applied, false);
 });
 
-test('le singleton et le service rendent le même hôte', () => {
+test('the singleton and the service return the same host', () => {
   const host = createHost(config());
   assert.equal(getHost(), host);
 });
 
-test("les capacités de l'hôte ne sont pas vides sur cette machine", () => {
+test('the host capabilities are not empty on this machine', () => {
   const caps = createHost(config()).capabilities();
-  assert.ok(caps.length > 0, 'une machine de dev sait au moins faire du git');
-  assert.ok(caps.includes('git'), 'git est présent dans le PATH de ce dépôt');
+  assert.ok(caps.length > 0, 'a dev machine can at least do git');
+  assert.ok(caps.includes('git'), 'git is on the PATH of this repository');
 });
 
-test('la capacité systemd suit la sonde du manager utilisateur', () => {
+test('the systemd capability follows the user manager probe', () => {
   // Linux does not imply systemd: `createHost` only lists it when
   // `hasSystemd()` has reached the user manager. An agent scope without
   // a session (`XDG_RUNTIME_DIR` / bus missing) fails that probe, and
@@ -90,7 +90,7 @@ test('la capacité systemd suit la sonde du manager utilisateur', () => {
   }
 });
 
-test('le diagnostic ne recalcule plus les capacités, il lit celles de l\'hôte', () => {
+test('the diagnosis no longer recomputes the capabilities, it reads the host ones', () => {
   const host = createHost(config());
   assert.deepEqual(diagnose().capabilities, host.capabilities());
 });

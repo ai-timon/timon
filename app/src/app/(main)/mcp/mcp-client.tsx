@@ -52,6 +52,8 @@ type Summary = {
   last_seen_at?: number;
   oauth_status?: OAuthStatus;
   source?: 'timon' | 'claude_ai' | 'claude_cli';
+  /** Agents are not given the server: it needs the secrets vault, which is off. */
+  held_back?: 'vault_off';
 };
 
 type StdioConfig = {
@@ -485,6 +487,7 @@ export function McpClient({ leading }: { leading?: ReactNode } = {}) {
                   <div className="flex items-center gap-1.5">
                     <StatusBadge status={s.last_status} />
                     <OAuthPill status={s.oauth_status} />
+                    <HeldBackPill heldBack={s.held_back} />
                     <button
                       type="button"
                       onClick={() => toggleExpand(s.id)}
@@ -751,6 +754,20 @@ function ToolList({ id, fallback }: { id: string; fallback?: string[] }) {
         </span>
       ))}
     </div>
+  );
+}
+
+function HeldBackPill({ heldBack }: { heldBack?: Summary['held_back'] }) {
+  if (heldBack !== 'vault_off') return null;
+  return (
+    <Badge
+      variant="outline"
+      className="gap-1.5 border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning)/0.08)] font-normal text-[hsl(var(--warning))]"
+      title={t('mcpPage.heldBack.vaultOffHint')}
+    >
+      <KeyRound className="size-3" />
+      {t('mcpPage.heldBack.vaultOff')}
+    </Badge>
   );
 }
 

@@ -36,7 +36,11 @@ test('on this host: a project skill is managed, anything else and the plugins ca
   assert.equal(isManagedPath(join(proj, 'notes', 'go.md')), false);
   assert.equal(isManagedPath(join(claudeHome, 'plugins', 'p', '.claude', 'skills', 'x', 'SKILL.md')), false);
 
-  const outside = join(proj, 'x\\.claude\\skills\\evil.md');
-  assert.throws(() => writeEntryFile(outside, 'pwned'), /unmanaged path/);
-  assert.equal(existsSync(outside), false);
+  // A backslash is only a name character outside Windows: there this path IS
+  // a project skill folder, rightly managed.
+  if (process.platform !== 'win32') {
+    const outside = join(proj, 'x\\.claude\\skills\\evil.md');
+    assert.throws(() => writeEntryFile(outside, 'pwned'), /unmanaged path/);
+    assert.equal(existsSync(outside), false);
+  }
 });

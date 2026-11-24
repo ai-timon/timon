@@ -66,6 +66,7 @@ test('the core creates the account: hashed password, never a superadmin, audited
   const row = dbApi.getUserById(account.id)!;
   assert.equal(row.is_superadmin, false);
   assert.ok(await verifyPassword('ada-password', row.password_hash), 'hashed by the core');
+  assert.equal(dbApi.userEmailUnverified(account.id), true, 'nobody proved the address: its owner confirms it with a code');
   assert.ok(dbApi.listAuditLog(20).some((a) => a.actor === 'plugin:team-plugin' && a.action === 'user.create' && a.target === `user:${account.id}`));
   assert.throws(() => provider.provision({ email: 'ada@example.com', name: 'Ada again', password: 'ada-password' }),
     (err: unknown) => err instanceof AccountProviderError && err.code === 'duplicate');
@@ -74,6 +75,34 @@ test('the core creates the account: hashed password, never a superadmin, audited
   assert.throws(() => provider.provision({ email: 'not-an-email', name: 'S', password: 'long-enough' }),
     (err: unknown) => err instanceof AccountProviderError && err.code === 'invalid');
   unload();
+});
+
+test('a creation the licence refuses is reported as the account limit, with the person who asked', async () => {
+  const { setLicenseState } = await import('../license/runtime.js');
+  const { paidTestLicense } = await import('../../tests/helpers/paid-license.js');
+  const { bus } = await import('../bus.js');
+  const caller = createTestAccount(dbApi, { email: 'limit-admin@example.com', name: 'Admin', passwordHash: 'x', isSuperadmin: true });
+  const disposers: Array<() => void> = [];
+  const provider = createAccountProviderFacade({
+    pluginId: 'limit-plugin', assertPermission: () => {}, trusted: true,
+    onUnload: (fn) => { disposers.push(fn); }, callerUserId: () => caller.id,
+  });
+  const seen: unknown[] = [];
+  const listen = (ev: { kind: string }) => { if (ev.kind === 'account_limit_reached') seen.push(ev); };
+  bus.on('event', listen);
+  setLicenseState({ ...paidTestLicense(), users: dbApi.countUsersInUse() });
+  try {
+    assert.throws(() => provider.provision({ email: 'over@example.com', name: 'Over', password: 'long-enough' }),
+      (err: unknown) => err instanceof AccountProviderError && err.code === 'refused');
+    assert.throws(() => provider.provision({ email: 'not-an-email', name: 'S', password: 'long-enough' }),
+      (err: unknown) => err instanceof AccountProviderError && err.code === 'invalid');
+  } finally {
+    setLicenseState(paidTestLicense());
+    bus.off('event', listen);
+    for (const fn of disposers.splice(0)) fn();
+  }
+  assert.deepEqual(seen, [{ kind: 'account_limit_reached', userId: caller.id }], 'once, for the licence refusal only');
+  assert.equal(dbApi.getUserByEmail('over@example.com'), undefined);
 });
 
 test('one plugin holds the provider at a time, until it is unloaded', () => {

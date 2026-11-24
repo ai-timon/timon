@@ -52,6 +52,10 @@
     {
       "pkg": "@timon-ai/plugin-theme-timon",
       "source": "../plugins/theme-timon"
+    },
+    {
+      "pkg": "@timon-ai/plugin-github-issues",
+      "source": "../plugins/github-issues"
     }
   ]
 }

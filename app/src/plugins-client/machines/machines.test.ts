@@ -169,7 +169,7 @@ test('pairing posts the address (https added to a bare host), the code and the n
 
 test('a refused code is said in words, and the form stays open', async () => {
   const realFetch = globalThis.fetch;
-  installFetch([], (url) => (url === '/api/ui/machines/pair' ? json(422, { error: 'invalid_code' }) : undefined));
+  installFetch([], (url) => (url === '/api/ui/machines/pair' ? json(422, { error: 'the machine refused this pairing code: wrong, expired or already used', code: 'invalid_code' }) : undefined));
   try {
     await withDom(async ({ React, render }) => {
       const { MachinesSettings } = await import('./settings');
@@ -188,7 +188,7 @@ test('a refused code is said in words, and the form stays open', async () => {
   }
 });
 
-test('« Add a machine… » from the switcher opens the form, even before the pane is mounted', async () => {
+test('"Add a machine…" from the switcher opens the form, even before the pane is mounted', async () => {
   const realFetch = globalThis.fetch;
   installFetch([]);
   try {
@@ -327,7 +327,7 @@ test('the rail stays expanded while the menu is open, and only then', async () =
   }
 });
 
-test('« Manage connections » opens Settings and the page still answers once it is closed (TIM-0035)', async () => {
+test('"Manage connections" opens Settings and the page still answers once it is closed (TIM-0035)', async () => {
   const realFetch = globalThis.fetch;
   installFetch([]);
   try {
@@ -481,7 +481,7 @@ test('TIM-0139: a page the desktop keeps alive names its own machine again when 
   }
 });
 
-test('TIM-0139: « Back to this computer » on a page the desktop keeps alive is not left busy', async () => {
+test('TIM-0139: "Back to this computer" on a page the desktop keeps alive is not left busy', async () => {
   const realFetch = globalThis.fetch;
   installFetch([], (url) => (url === '/api/ui/machines/active' ? json(200, { id: 'local', warning: null }) : undefined));
   try {

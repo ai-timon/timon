@@ -95,7 +95,7 @@ test('the graft paints the choices, picks through the ModelPicker, and keeps the
   };
 
   try {
-    await suite.test('the select holds the choices that name no model; no picker until « a model »', async () => {
+    await suite.test('the select holds the choices that name no model; no picker until "a model"', async () => {
       await React.act(async () => root.render(React.createElement(MissionTitleModelSettings)));
       await until(() => !!document.querySelector('select'), 'the setting to load');
       assert.equal(select().value, 'inherit');
@@ -104,7 +104,7 @@ test('the graft paints the choices, picks through the ModelPicker, and keeps the
       assert.match(document.body.textContent!, /quota or credits of the chosen backend/);
     });
 
-    await suite.test('« a model » opens the picker on the eligible list; the remote backend is named with its reason', async () => {
+    await suite.test('"a model" opens the picker on the eligible list; the remote backend is named with its reason', async () => {
       await choose('model');
       assert.deepEqual(puts, [], 'nothing is written before a pick');
       await until(() => rows().length > 0, 'the picker to open on the catalogue');
@@ -168,7 +168,7 @@ test('the graft paints the choices, picks through the ModelPicker, and keeps the
 });
 
 // After the DOM test: the module loads react-dom, which must first see a document.
-test('a mode maps to the daemon body; « model » waits for a pick', async () => {
+test('a mode maps to the daemon body; "model" waits for a pick', async () => {
   const { choiceFromMode } = await import('./title-model-settings');
   assert.equal(choiceFromMode('inherit'), null);
   assert.deepEqual(choiceFromMode('auto'), { kind: 'auto' });

@@ -1,8 +1,8 @@
 /**
  * Final report of a mission WITHOUT a task (`mission_spawn` delegation).
  *
- * Observed 11/09/2026: two delegations returned nothing but "Mission terminée
- * (terminated)" to their parent while the report — several hundred words,
+ * Observed 11/09/2026: two delegations returned nothing but
+ * `Mission terminée (terminated)` to their parent while the report — several hundred words,
  * `stop_reason: end_turn` — sat in the events table. The report is the newest
  * assistant event holding text: the very last event is a `result`, and the
  * assistant events in between often carry only a `tool_use` block.

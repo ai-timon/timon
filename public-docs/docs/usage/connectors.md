@@ -35,7 +35,7 @@ If you added an MCP server called `app-<name>` by hand, the matching card shows 
 
 **New MCP**, in the tab's toolbar, opens the MCP server form. There you can add any MCP server: a remote address with its own headers, or a program that runs on your machine.
 
-The headers of a remote server, an API key for example, are not written into the agents' configuration: the agent talks to Timon, which adds the headers when it relays each call to the server. This needs the secrets vault. If it is switched off, a remote server with headers is not given to agents until you switch the vault back on.
+The headers of a remote server, an API key for example, are kept in the secrets vault and are not written into the agents' configuration: the agent talks to Timon, which adds the headers when it relays each call to the server. Once saved, a header value shows as `***` in the form: leave it as is to keep the value, or type a new one to replace it. This needs the secrets vault. If it is switched off, the server's card reads **Needs the secrets vault** and agents do not get the server until you switch the vault back on; the headers you typed are kept and move into the vault at the next start of Timon.
 
 ## What a connector receives
 

@@ -10,6 +10,8 @@
     "elapsed": "Elapsed: {duration}",
     "newConversationEmpty": "New conversation. Type a message to start.",
     "missionEmpty": "No messages in this mission — start the conversation with {agent}.",
+    "historyPurged": "This history was deleted after {days, plural, one {# day} other {# days}} of inactivity, per your retention setting.",
+    "historyPurgedEarlier": "Earlier messages were deleted after {days, plural, one {# day} other {# days}} of inactivity, per your retention setting.",
     "patternInPath": "{pattern} in {path}",
     "patternUnderPath": "{pattern} under {path}",
     "toolError": "error",

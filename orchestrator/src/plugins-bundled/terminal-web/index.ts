@@ -12,6 +12,7 @@ import { homedir } from 'node:os';
 import { extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Context } from '@deepseek-ai/cordis';
+import { daemonShutdownState } from '../../daemon-shutdown.js';
 import { timonVersion } from '../../data-version.js';
 import type { Host } from '../../host/index.js';
 import type { ModuleManifest } from '../../kernel/registry.js';
@@ -93,10 +94,23 @@ export function apply(ctx: Context): void {
   registerRoutes(ctx.http.router(), sessions);
   const upgrade = createUpgradeHandler(sessions);
   ctx.http.upgrade(upgrade);
-  // Disabling the module must not leave shells running nobody can reach. A
-  // daemon restart never comes here: no shutdown hook disposes the modules.
   ctx.effect(() => () => {
     upgrade.close();
-    void sessions.dispose();
+    void releaseSessions(sessions);
   });
+}
+
+/**
+ * What the module leaves behind when its fiber goes. A daemon stop disposes
+ * the whole module tree too (`daemon-shutdown.ts`), and the terminal host
+ * exists so that its shells outlive the daemon: then the store only lets go,
+ * and the next daemon reconnects. Anything else (the module disabled, the
+ * plugin removed) kills every shell, which nobody could reach any more.
+ */
+export function releaseSessions(sessions: SessionStore, daemonStopping: () => boolean = () => daemonShutdownState() === 'already-stopping'): Promise<void> {
+  if (daemonStopping()) {
+    sessions.disconnect();
+    return Promise.resolve();
+  }
+  return sessions.dispose();
 }

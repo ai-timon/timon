@@ -1,14 +1,14 @@
 /**
- * `todo_later` → `project_todo` : la bascule d'une base qui existe déjà.
+ * `todo_later` → `project_todo`: the switch of a database that already exists.
  *
- * Ce test ne porte pas sur le renommage du code (tsc en voit les ratés) mais sur
- * le seul raté qui serait SILENCIEUX : le garde de renommage posé après le bloc
- * de schéma. `CREATE TABLE IF NOT EXISTS project_todo` aurait alors déjà créé
- * une table vide, le garde l'aurait vue présente, aurait sauté — et les idées
- * seraient restées dans `todo_later`, invisibles, sans erreur nulle part.
+ * This test is not about the rename of the code (tsc sees its misses) but about
+ * the only miss that would be SILENT: the rename guard placed after the schema
+ * block. `CREATE TABLE IF NOT EXISTS project_todo` would then already have created
+ * an empty table, the guard would have seen it present, would have skipped, and the ideas
+ * would have stayed in `todo_later`, invisible, without an error anywhere.
  *
- * Ce fichier pose SON home (il n'importe pas `test-home.js`) : il doit écrire la
- * base AVANT que `db.ts` ne l'ouvre, or les imports ESM sont hissés.
+ * This file sets ITS own home (it does not import `test-home.js`): it must write the
+ * database BEFORE `db.ts` opens it, and ESM imports are hoisted.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,8 +19,8 @@ import { join } from 'node:path';
 const home = mkdtempSync(join(tmpdir(), 'timon-project-todo-mig-'));
 process.env.TIMON_HOME = home;
 
-// Base "d'avant" : l'ancienne table, peuplée, avec son index et une permission
-// déjà accordée sur l'ancien nom de domaine.
+// "Before" database: the old table, populated, with its index and a permission
+// already granted on the old domain name.
 {
   const { default: Database } = await import('better-sqlite3');
   const old = new Database(join(home, 'timon.db'));
@@ -43,20 +43,20 @@ process.env.TIMON_HOME = home;
   `);
   old.prepare(
     `INSERT INTO todo_later (text, project, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-  ).run('idée d\'avant le renommage', 'timon', 1, 1);
+  ).run('idée d\'avant le renommage', 'timon', 1, 1); // french-ok: free-text sample data
   old.close();
 }
 
 const { db, dbApi } = await import('./db.js');
 
-test('une idée notée avant le renommage survit sous le nouveau nom', () => {
+test('an idea noted before the rename survives under the new name', () => {
   const items = dbApi.listProjectTodo();
-  assert.equal(items.length, 1, 'la table renommée garde ses lignes');
-  assert.equal(items[0]!.text, 'idée d\'avant le renommage');
+  assert.equal(items.length, 1, 'the renamed table keeps its rows');
+  assert.equal(items[0]!.text, 'idée d\'avant le renommage'); // french-ok: free-text sample data
   assert.equal(items[0]!.project, 'timon');
 });
 
-test('l\'ancienne table a disparu — pas deux carnets côte à côte', () => {
+test('the old table is gone: not two notebooks side by side', () => {
   const names = (db.prepare(`SELECT name FROM sqlite_master WHERE type='table'`).all() as { name: string }[])
     .map((t) => t.name);
   assert.ok(names.includes('project_todo'));
@@ -70,9 +70,9 @@ test('the granted permission leaves with the account tables, for the account plu
   assert.deepEqual(dbApi.readLegacyAccountTable('role_permissions'), [{ role_id: 'r1', permission: 'todo_later:read:all' }]);
 });
 
-test('la colonne owner_user_id a bien été posée sur la table renommée', () => {
-  // Le garde doit tenir AVANT la boucle `OWNED_TABLES`, qui interpole le nom de
-  // la table en SQL : un renommage trop tardif la ferait échouer sur l'absente.
+test('the owner_user_id column was indeed set on the renamed table', () => {
+  // The guard must hold BEFORE the `OWNED_TABLES` loop, which interpolates the name of
+  // the table into SQL: a rename coming too late would make it fail on the missing one.
   const cols = (db.prepare(`PRAGMA table_info(project_todo)`).all() as { name: string }[]).map((c) => c.name);
   assert.ok(cols.includes('owner_user_id'));
   assert.ok(cols.includes('author'));

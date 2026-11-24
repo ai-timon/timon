@@ -17,6 +17,8 @@ import type { AddressInfo } from 'node:net';
 import express from 'express';
 import type { BusEvent } from './bus.js';
 
+// french-ok-file: French sample prompts and titles the test feeds in
+
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-mission-titles-test-'));
 
 const { dbApi } = await import('./db.js');

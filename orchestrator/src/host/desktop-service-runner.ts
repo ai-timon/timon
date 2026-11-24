@@ -6,10 +6,12 @@
  * loads neither the database nor the onboarding (`packaged-upgrade-runner.test.ts`).
  */
 import { loadConfig } from '../config/load.js';
+import { cooperativeStopOf, withCooperativeStop } from './cooperative-stop.js';
+import { daemonOrigin } from './diagnostic-report.js';
 import { createGenericHost } from './generic.js';
 import { endMissionsOfStoppedDaemon } from './mission-processes.js';
 import { serviceOptsFromEnvironment } from './service-environment.js';
-import { restartService, startService, stopService } from './service-install.js';
+import { restartService, startService, stopService, type ServiceResult } from './service-install.js';
 import { actOnOwnService } from './service-ownership.js';
 
 const GESTURES = { stop: stopService, start: startService, restart: restartService } as const;
@@ -22,7 +24,11 @@ if (action !== 'stop' && action !== 'start' && action !== 'restart') {
   const cfg = loadConfig(undefined, { readonly: true });
   const host = createGenericHost(cfg);
   const opts = serviceOptsFromEnvironment(cfg, () => host);
-  const result = actOnOwnService(opts, GESTURES[action]);
+  // Windows has no stop signal to send: the daemon is asked first, then the
+  // gesture's kills end what did not leave (`cooperative-stop.ts`).
+  const ask = cooperativeStopOf(daemonOrigin(cfg), opts.timonHome);
+  const result = await actOnOwnService(opts, async (o): Promise<ServiceResult> => (
+    action === 'start' ? GESTURES.start(o) : withCooperativeStop(o, GESTURES[action], ask)));
   if (result.ok && action === 'stop') {
     const ended = await endMissionsOfStoppedDaemon(opts.timonHome, host);
     if (ended) result.lines.push(ended);

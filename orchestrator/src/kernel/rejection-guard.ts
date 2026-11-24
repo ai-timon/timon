@@ -23,6 +23,7 @@
  * the notification center — once an hour per plugin, without the error text,
  * which may carry a path or a token.
  */
+import { daemonMessage } from '../daemon-message.js';
 import { realpathSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -113,6 +114,7 @@ function notifyCenter(pluginId: string): void {
       urgent: false,
       title: `Plugin ${pluginId}: an asynchronous operation failed`,
       body: 'Timon kept running. The plugin left an error unhandled; the daemon log has the details. Update or disable the plugin if it repeats.',
+      message: daemonMessage('plugin_async_failure', { pluginId }),
       source: `plugin:${pluginId}`,
     });
   }).catch(() => { /* notification center unavailable: the log already has it */ });

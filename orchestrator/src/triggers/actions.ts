@@ -68,6 +68,23 @@ export function actionProvider(type: ProvidedActionType): ActionProvider | null 
 
 export const ACTION_UNAVAILABLE = 'unavailable: the Workflows module is not running';
 
+/**
+ * The provided action types this trigger needs and nobody serves right now:
+ * the module that registers them is not running (yet). Read from the registry
+ * itself, the same test that makes the action report `ACTION_UNAVAILABLE`,
+ * so a transient absence is told apart from a real failure without reading
+ * an error message.
+ */
+export function missingProviders(trigger: Pick<Trigger, 'actions' | 'grants'>): ProvidedActionType[] {
+  const missing = new Set<ProvidedActionType>();
+  for (const action of trigger.actions) {
+    // An action its grants refuse fails whoever serves it: waiting would not help.
+    if (action.type !== 'workflow' || !grantsAllow(trigger.grants, ACTION_PERMISSION[action.type])) continue;
+    if (!providers.has(action.type)) missing.add(action.type);
+  }
+  return [...missing];
+}
+
 export function triggerOriginOfMission(missionId: string | null | undefined): string | null {
   if (!missionId) return null;
   for (const provider of providers.values()) {

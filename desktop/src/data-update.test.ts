@@ -1,3 +1,4 @@
+// french-ok-file: the French locale of the update dialogs under test
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -10,7 +11,7 @@ import {
   DaemonStartTimeoutError, finishUpdate, LIGHT_THEME, REPLACE_BUDGET_MS, START_BUDGET_MS, readProgress, renderNotes, requestUpdate, THEME, themeFor, updateCopy, updateOffer, updatePage, updateProgressPage, updateUnauthorizedMessage,
   unmanagedDaemon, UpdateTokenMissingError, updateFailureDialog, type UpdateStatus,
 } from './data-update.js';
-import { instanceId, windowsLauncher } from './service.js';
+import { instanceId, windowsBatchLauncher } from './service.js';
 
 function fixture(t: { after: (fn: () => void) => void }) {
   const home = mkdtempSync(join(tmpdir(), 'desktop-update-'));
@@ -140,14 +141,14 @@ test('a 401 behind an unmarked Windows launcher names the service and how to rep
   const home = fixture(t);
   writeFileSync(join(home, 'update-token'), 'a'.repeat(64));
   mkdirSync(join(home, 'run'), { recursive: true });
-  writeFileSync(windowsLauncher(home), ['@echo off', 'set "TIMON_HOME=C:\\Users\\sam\\.timon"', 'set "PORT=3010"', ''].join('\r\n'));
+  writeFileSync(windowsBatchLauncher(home), ['@echo off', 'set "TIMON_HOME=C:\\Users\\sam\\.timon"', 'set "PORT=3010"', ''].join('\r\n'));
   const fetcher: typeof fetch = async () => new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 });
   const error = await requestUpdate('http://127.0.0.1:3010', home, undefined, fetcher).then(() => null, (e: Error) => e);
   assert.match(error?.message ?? '', /installed by `timon service install` from Timon 0\.1\.3 or earlier/);
   assert.match(error?.message ?? '', /accept the Windows permission prompt/);
   assert.doesNotMatch(error?.message ?? '', /older/);
   // A marked launcher is not the cause: the generic message stays.
-  writeFileSync(windowsLauncher(home), ['@echo off', 'set "TIMON_DESKTOP_SERVICE=1"', ''].join('\r\n'));
+  writeFileSync(windowsBatchLauncher(home), ['@echo off', 'set "TIMON_DESKTOP_SERVICE=1"', ''].join('\r\n'));
   assert.equal(updateUnauthorizedMessage(home), updateUnauthorizedMessage(home, false));
 });
 
@@ -228,9 +229,9 @@ for (const platform of ['win32', 'darwin', 'linux']) {
       uiLocale: () => 'fr', initShellLocale: async () => {},
       // main() writes its decisions to the desktop log (TODO #343).
       console: { log: () => {} }, originOf: () => 'http://127.0.0.1',
-      process: { platform, resourcesPath: 'resources' },
+      process: { platform, resourcesPath: 'resources', env: {} },
       verifyInstalledRelease: async () => { calls.push('verify'); }, readFileSync: () => '', join,
-      nativeImage: { createFromPath: () => ({ isEmpty: () => true }) }, APP_ICON_PATH: 'icon',
+      nativeImage: { createFromPath: () => ({ isEmpty: () => true }) }, APP_ICON_PATH: 'icon', applyDockIcon: () => false, readDockIcon: () => 'classic',
       windowScheme: () => 'dark', nativeTheme: { shouldUseDarkColors: true },
       desktopHome: 'home', packagedFirstRun: () => false, loadDesktopConfig: () => ({ home: 'home', daemon: { listen: {} } }), updateOffer: () => ({ from: '0.1.0', to: '0.2.0' }),
       probeHealth: async () => ({ ok: false, status: null }), hasDesktopService: () => false, unmanagedDaemon: () => null,
@@ -244,7 +245,7 @@ for (const platform of ['win32', 'darwin', 'linux']) {
         // Spell-check dictionaries stay local: a session setting, nothing to observe here.
         keepDictionariesLocal: () => {},
         // P3: the approval screen counts missions; the new AppImage drops the previous one.
-        localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {},
+        localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {}, previousAppImage: async () => null,
         // §10: no consent left by "Restart and install", so the approval screen asks.
         takeUpdateConsent: () => { calls.push('consent'); return null; }, consentApproves: () => false,
     };
@@ -364,9 +365,9 @@ test('§10: a consent for this exact update shows a progress only, without the m
       app: { isPackaged: true, getAppPath: () => 'app', getVersion: () => '0.2.0', quit: () => calls.push('quit') },
       uiLocale: () => 'en', initShellLocale: async () => {},
       console: { log: (line: string) => { logs.push(line); } }, originOf: () => 'http://127.0.0.1',
-      process: { platform: 'linux', resourcesPath: 'resources' },
+      process: { platform: 'linux', resourcesPath: 'resources', env: {} },
       verifyInstalledRelease: async () => {}, readFileSync: () => '', join,
-      nativeImage: { createFromPath: () => ({ isEmpty: () => true }) }, APP_ICON_PATH: 'icon',
+      nativeImage: { createFromPath: () => ({ isEmpty: () => true }) }, APP_ICON_PATH: 'icon', applyDockIcon: () => false, readDockIcon: () => 'classic',
       windowScheme: () => 'dark', nativeTheme: { shouldUseDarkColors: true },
       desktopHome: 'home', packagedFirstRun: () => false, loadDesktopConfig: () => ({ home: 'home', daemon: { listen: {} } }), updateOffer: () => offer,
       probeHealth: async () => ({ ok: false, status: null }), hasDesktopService: () => false, unmanagedDaemon: () => null,
@@ -377,7 +378,7 @@ test('§10: a consent for this exact update shows a progress only, without the m
       },
       installWindowPermissions: () => {}, session: { defaultSession: {} }, microphone: {}, installAppMenu: () => {}, installJumpList: () => {},
       installMachineHeader: () => {}, interfaceUrl: '', keepDictionariesLocal: () => {},
-      localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {},
+      localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {}, previousAppImage: async () => null,
       takeUpdateConsent: (home: string) => { calls.push(`take ${home}`); return consent; },
       consentApproves: (given: unknown, seen: unknown) => { assert.equal(given, consent); assert.equal(seen, offer); return approves; },
     };
@@ -439,6 +440,170 @@ test('§10: the pre-approved window shows a progress, answers at once and cannot
   window.close();
 });
 
+test('a refused AppImage update offers "Go back to x.y.z" between Quit and Update, only when the previous file is there', t => {
+  const home = fixture(t);
+  const offer = { from: '0.1.8', to: '0.2.0' };
+  const offered = updatePage(offer, join(home, 'missing'), 'en', 'dark', true).html;
+  assert.match(offered, /id="quit"[^>]*>Quit<\/a><a class="button" id="rollback" role="button" href="timon-update:rollback">Go back to 0\.1\.8<\/a><a class="button primary" id="approve"/);
+  assert.match(offered, /Go back to 0\.1\.8 puts that version back and opens it\./);
+  assert.doesNotMatch(offered, /reinstall its installer/);
+  assert.match(offered, /footer\{display:flex;flex-wrap:wrap;/, 'three buttons wrap in a narrow window');
+  assert.match(updatePage(offer, join(home, 'missing'), 'fr', 'dark', true).html, />Revenir à 0\.1\.8<\/a>/);
+  for (const plain of [updatePage(offer, join(home, 'missing'), 'en').html, updatePage(offer, join(home, 'missing'), 'en', 'dark', false).html]) {
+    assert.doesNotMatch(plain, /rollback|Go back to/);
+    assert.match(plain, /reinstall its installer/);
+  }
+});
+
+test('"Go back to x.y.z" refuses the update, says it is going back and locks the screen', async t => {
+  const home = fixture(t);
+  const module = readFileSync(new URL('./update-window.ts', import.meta.url), 'utf8');
+  const tree = ts.createSourceFile('window.ts', module, ts.ScriptTarget.Latest, true);
+  const cls = tree.statements.find(ts.isClassDeclaration)!;
+  const code = ts.transpileModule(cls.getText(tree).replace('export class', 'class'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  type Handler = (event: { preventDefault: () => void }, url?: string) => void;
+  for (const rollback of [true, false]) {
+    const handlers = new Map<string, Handler>();
+    const scripts: string[] = [];
+    const timers: { cleared: boolean }[] = [];
+    let asked = 0;
+    const context = {
+      updateCopy, updatePage, updateProgressPage, themeFor, MISSIONS_POLL_MS: 5000,
+      setInterval: () => { const timer = { cleared: false }; timers.push(timer); return timer; },
+      clearInterval: (timer: { cleared: boolean }) => { timer.cleared = true; },
+      shell: { openExternal: () => { throw new Error('nothing to open'); } },
+      BrowserWindow: class {
+        webContents = {
+          setWindowOpenHandler: () => {},
+          on: (name: string, fn: Handler) => handlers.set(name, fn),
+          executeJavaScript: async (s: string) => { scripts.push(s); },
+        };
+        on(name: string, fn: Handler) { handlers.set(name, fn); }
+        loadURL() { return Promise.resolve(); }
+        isDestroyed() { return false; }
+        destroy() {}
+      },
+      offer: { from: '0.1.8', to: '0.2.0' }, path: join(home, 'missing'), rollback,
+      countMissions: async () => { asked++; return 2; },
+    };
+    const window = runInNewContext(`${code}\nnew UpdateWindow(offer, path, 'en', 'dark', countMissions, false, rollback)`, context) as {
+      choice: Promise<boolean>; rollbackChosen: boolean;
+    };
+    let settled: boolean | undefined;
+    void window.choice.then(value => { settled = value; });
+    const event = { preventDefault: () => {} };
+    handlers.get('will-navigate')!(event, 'timon-update:rollback');
+    await new Promise(resolve => setImmediate(resolve));
+    if (!rollback) {
+      assert.equal(settled, undefined, 'no previous AppImage: the link does nothing');
+      assert.equal(window.rollbackChosen, false);
+      handlers.get('will-navigate')!(event, 'timon-update:quit');
+      assert.equal(await window.choice, false);
+      assert.equal(window.rollbackChosen, false);
+      continue;
+    }
+    assert.equal(settled, false);
+    assert.equal(window.rollbackChosen, true);
+    assert.equal(timers[0]!.cleared, true, 'the missions are no longer counted');
+    assert.match(scripts.at(-1)!, /Going back to Timon 0\.1\.8…/);
+    assert.match(scripts.at(-1)!, /\['approve', 'quit', 'rollback'\]/);
+    const written = scripts.length;
+    handlers.get('will-navigate')!(event, 'timon-update:approve');
+    handlers.get('did-finish-load')!(event);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(scripts.length, written, 'neither an approval nor a missions count follows the choice');
+    assert.equal(asked, 0);
+  }
+});
+
+test('main: a refused AppImage update offers the way back when the previous file is there, and takes it on request', async () => {
+  for (const [label, platform, previous, preApproved, chosen] of [
+    ['linux, previous present, going back', 'linux', '/apps/.Timon.AppImage.previous', false, true],
+    ['linux, previous present, quit', 'linux', '/apps/.Timon.AppImage.previous', false, false],
+    ['linux, no previous', 'linux', null, false, false],
+    ['linux, pre-approved', 'linux', '/apps/.Timon.AppImage.previous', true, false],
+    ['macOS', 'darwin', '/apps/.Timon.AppImage.previous', false, false],
+  ] as const) {
+    const calls: string[] = [];
+    const built: unknown[] = [];
+    const offer = { from: '0.1.8', to: '0.2.0' };
+    const context = {
+      app: { isPackaged: true, getAppPath: () => 'app', getVersion: () => '0.2.0', quit: () => calls.push('quit') },
+      uiLocale: () => 'en', initShellLocale: async () => {},
+      console: { log: () => {} }, originOf: () => 'http://127.0.0.1',
+      process: { platform, resourcesPath: 'resources', env: { APPIMAGE: '/apps/Timon.AppImage' } },
+      verifyInstalledRelease: async () => {}, readFileSync: () => '', join,
+      nativeImage: { createFromPath: () => ({ isEmpty: () => true }) }, APP_ICON_PATH: 'icon', applyDockIcon: () => false, readDockIcon: () => 'classic',
+      windowScheme: () => 'dark', nativeTheme: { shouldUseDarkColors: true },
+      desktopHome: 'home', packagedFirstRun: () => false, loadDesktopConfig: () => ({ home: 'home', daemon: { listen: {} }, app: { listen: {} } }), updateOffer: () => offer,
+      probeHealth: async () => ({ ok: false, status: null }), hasDesktopService: () => false, unmanagedDaemon: () => null,
+      updateWindow: null, updateApproved: false,
+      UpdateWindow: class {
+        choice = Promise.resolve(preApproved);
+        rollbackChosen = chosen;
+        constructor(...args: unknown[]) { built.push(args[6]); }
+      },
+      NativeBrowserEngine: class { constructor() { throw new Error('the window opens after the approval only'); } },
+      installWindowPermissions: () => {}, session: { defaultSession: {} }, microphone: {}, installAppMenu: () => {}, installJumpList: () => {},
+      installMachineHeader: () => {}, interfaceUrl: '', keepDictionariesLocal: () => {},
+      localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0,
+      removeAppImageBackup: async () => { calls.push('remove previous'); },
+      previousAppImage: async (appImage: string) => { calls.push(`look ${appImage}`); return previous; },
+      returnToPreviousAppImage: async (given: unknown) => { assert.equal(given, offer); calls.push('go back'); },
+      takeUpdateConsent: () => null, consentApproves: () => preApproved,
+    };
+    await runInNewContext(`${compiled}\nmain()`, context).catch((error: Error) => {
+      if (!preApproved) throw error;
+      assert.match(error.message, /approval only/);
+    });
+    const looked = platform === 'linux' && !preApproved;
+    assert.deepEqual(built, [looked && previous !== null], label);
+    assert.deepEqual(calls, [
+      ...(looked ? ['look /apps/Timon.AppImage'] : []),
+      ...(preApproved ? ['remove previous'] : chosen ? ['go back'] : ['quit']),
+    ], label);
+  }
+});
+
+test('going back relaunches the previous AppImage, or says what to do when it cannot', async () => {
+  const fn = parsed.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'returnToPreviousAppImage')!;
+  const code = ts.transpileModule(fn.getText(parsed), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  for (const [outcome, dialog] of [
+    [{ status: 'relaunched' }, null],
+    [{ status: 'restored', message: 'no pipe' }, { type: 'info', message: 'Timon 0.1.8 est remis en place', detail: 'Rouvrez Timon pour le lancer.' }],
+    [{ status: 'failed', message: 'EROFS' }, { type: 'error', message: 'Impossible de remettre Timon 0.1.8 en place' }],
+    [{ status: 'missing' }, { type: 'error', message: 'Impossible de remettre Timon 0.1.8 en place' }],
+  ] as const) {
+    const calls: string[] = [];
+    const shown: Record<string, string>[] = [];
+    const context = {
+      process: { platform: 'linux', env: { APPIMAGE: '/apps/Timon.AppImage' }, argv: ['/apps/Timon.AppImage'] },
+      desktopHome: 'home', uiLocale: () => 'fr', updateCopy,
+      relaunchOptions: () => ({ args: ['--flag'] }),
+      queueAppImageRelaunch: async (appImage: string, args: string[], home: string) => { calls.push(`queue ${appImage} ${args.join(' ')} ${home}`); },
+      rollBackAppImage: async (appImage: string, relaunch: (path: string) => Promise<unknown>) => {
+        calls.push(`roll back ${appImage}`);
+        if (outcome.status === 'relaunched') await relaunch(appImage);
+        return outcome;
+      },
+      updateWindow: { close: () => calls.push('close window') },
+      dialog: { showMessageBox: async (options: Record<string, string>) => { shown.push(options); calls.push('dialog'); return { response: 0 }; } },
+      app: { quit: () => calls.push('quit') },
+      console: { log: () => {} },
+    };
+    await runInNewContext(`${code}\nreturnToPreviousAppImage({ from: '0.1.8', to: '0.2.0' })`, context);
+    assert.equal(calls[0], 'roll back /apps/Timon.AppImage', outcome.status);
+    if (!dialog) {
+      assert.deepEqual(calls, ['roll back /apps/Timon.AppImage', 'queue /apps/Timon.AppImage --flag home', 'quit']);
+      assert.equal(shown.length, 0);
+      continue;
+    }
+    assert.deepEqual(calls.slice(1), ['close window', 'dialog', 'quit'], outcome.status);
+    for (const [key, value] of Object.entries(dialog)) assert.equal(shown[0]![key], value, `${outcome.status}: ${key}`);
+    if (outcome.status !== 'restored') assert.match(shown[0]!.detail!, /Vos données sont intactes/);
+  }
+});
+
 test('pending health is retained by the real HTTP probe', async t => {
   const { createServer } = await import('node:http');
   const { probeHealth } = await import('./health.js');
@@ -484,7 +649,7 @@ for (const platform of ['win32', 'darwin', 'linux']) {
         uiLocale: () => 'en', initShellLocale: async () => {},
         process: { platform, resourcesPath: 'resources', execPath: 'electron', env: {} },
         verifyInstalledRelease: async () => {}, readFileSync: () => '', join,
-        nativeImage: { createFromPath: () => ({ isEmpty: () => true }) }, APP_ICON_PATH: 'icon',
+        nativeImage: { createFromPath: () => ({ isEmpty: () => true }) }, APP_ICON_PATH: 'icon', applyDockIcon: () => false, readDockIcon: () => 'classic',
         windowScheme: () => 'dark', nativeTheme: { shouldUseDarkColors: true },
       desktopHome: 'home', packagedFirstRun: () => false, loadDesktopConfig: () => cfg,
         updateOffer: () => mode === 'none' ? null : { from: '0.1.0', to: '0.2.0' },
@@ -499,8 +664,11 @@ for (const platform of ['win32', 'darwin', 'linux']) {
         serviceRepairVerdict: () => 'task-exists', existsSync: () => true,
         windowsTaskState: async () => ({ schtasks: true, lookup: 'present', exists: true, confirmedAbsent: false }),
         forgetMissingWindowsService: () => [], repairSessionWitness: async () => 'ok',
+        // #116: what the task runs, read at launch; a plain task here, nothing to rewrite or decide.
+        readWindowsTaskShape: async () => null, windowsSessionIntent: () => undefined,
+        windowsTaskRepair: () => false, windowsRewriteDeclined: () => false, declineWindowsRewrite: () => {},
         serviceStoppedByUser: () => false, forgetServiceStopped: () => {},
-        shellDaemonRuntime: () => ({ execPath: 'node', env: {} }), upgradePackagedService: async () => { calls.push('service'); },
+        shellDaemonRuntime: () => ({ execPath: 'node', env: {} }), upgradePackagedService: async () => { calls.push('service'); return { sessionFallback: false }; },
         originOf: () => 'http://127.0.0.1', probeHealth: async () => ({ ok: true }),
         isTimon: () => true, daemonUp: false, tray: {},
         buildTray: () => { calls.push('tray'); },
@@ -513,7 +681,7 @@ for (const platform of ['win32', 'darwin', 'linux']) {
         // Spell-check dictionaries stay local: a session setting, nothing to observe here.
         keepDictionariesLocal: () => {},
         // P3: the approval screen counts missions; the new AppImage drops the previous one.
-        localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {},
+        localDaemonGet: () => async () => null, readMissionCount: async () => null, missionsAtStake: () => 0, removeAppImageBackup: async () => {}, previousAppImage: async () => null,
         takeUpdateConsent: () => null, consentApproves: () => false,
         // What a silent Windows installer left behind is said by the launch that follows it.
         reportSilentInstallFailure: (home: string) => { calls.push(`install-result ${home}`); },

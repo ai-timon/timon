@@ -16,6 +16,7 @@
  * check (SECURITY.md §9). It closes the paths a plugin takes *without having
  * to look hostile*, and it makes the hostile ones leave a trace.
  */
+import { daemonMessage, type DaemonMessage } from '../daemon-message.js';
 import { existsSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, resolve } from 'node:path';
 import { CONFIG_FILE, config, loadConfig, setConfig } from '../config/load.js';
@@ -433,7 +434,7 @@ export function closePluginSpawnCards(pluginId: string): Promise<void> {
  * CLI) must not turn a refusal into a crash, and the refusal below stands
  * either way — the card informs, it does not decide.
  */
-function raiseCard(pluginId: string, title: string, body: string): void {
+function raiseCard(pluginId: string, title: string, body: string, message: DaemonMessage): void {
   if (CARDED.has(pluginId)) return;
   CARDED.add(pluginId);
   CLEARED.delete(pluginId);
@@ -444,6 +445,7 @@ function raiseCard(pluginId: string, title: string, body: string): void {
     body,
     source: `plugin:${pluginId}`,
     anchor: spawnCardAnchor(pluginId),
+    message,
   }));
 }
 
@@ -484,6 +486,7 @@ function requireSpawnApproval(pluginId: string, via: string): void {
     `It called \`${via}\`, which consumes this machine's AI subscriptions. `
     + (unsigned ? 'It is not signed, so it is not approved automatically. ' : '')
     + `Add \`${pluginId}\` to \`pluginPolicy.spawn.approved\` in timon.config.json to allow it.`,
+    daemonMessage('plugin_spawn_requested', { pluginId, via, unsigned: unsigned ? 'yes' : 'no' }),
   );
   throw new PluginPolicyError(
     pluginId,
@@ -539,6 +542,9 @@ export function assertSpawnAllowed(pluginId: string, now: number = Date.now(), v
       `${window.length} missions in ${Math.round(policy.windowMs / 60_000)} min`
       + `${count > 1 ? `, and \`${via}\` asked for ${count} more` : ''}. `
       + 'Raise `pluginPolicy.spawn.max` if this is expected.',
+      daemonMessage('plugin_spawn_quota', {
+        pluginId, count: window.length, minutes: Math.round(policy.windowMs / 60_000), via, extra: count > 1 ? count : 0,
+      }),
     );
     throw new PluginPolicyError(
       pluginId,

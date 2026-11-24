@@ -44,14 +44,14 @@ async function mount() {
   const buttons = () => Array.from(document.querySelectorAll('button')).map((b) => b.textContent?.trim());
   const click = async (label: string) => {
     const button = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === label);
-    assert.ok(button, `no « ${label} » button`);
+    assert.ok(button, `no "${label}" button`);
     await React.act(async () => { button.click(); });
   };
   const unmount = async () => { await React.act(async () => { root.unmount(); }); };
   return { sent, calls, render, buttons, click, unmount, requestSkip, setAnswer: (fn: () => Response) => { answer = fn; } };
 }
 
-test('« Skip » is on screen while all goes well, and put forward after a refused tool', async () => {
+test('"Skip" is on screen while all goes well, and put forward after a refused tool', async () => {
   const ui = await mount();
   try {
     await ui.render({ level: 'quiet' });
@@ -68,7 +68,7 @@ test('« Skip » is on screen while all goes well, and put forward after a refus
   } finally { await ui.unmount(); }
 });
 
-test('a finished mission offers to start the conversation over, beside « Skip »', async () => {
+test('a finished mission offers to start the conversation over, beside "Skip"', async () => {
   const ui = await mount();
   try {
     await ui.render({ level: 'prominent', reason: 'ended', canRestart: true });

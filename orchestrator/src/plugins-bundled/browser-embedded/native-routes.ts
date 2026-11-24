@@ -7,7 +7,7 @@ import { isValidAgentName, normalizeAgentName } from '../../agent-name.js';
 import { resolveBrowserProject } from '../../browser-project.js';
 import { createBrowserProfile, getBrowserProfile, listBrowserProfiles, resolveBrowserProfile, resolveMissionBrowserProfile, type BrowserProfile } from '../../browser-profiles.js';
 import { requireAuth, viewerFromRequest, isPersonAuth } from '../../users/identity.js';
-import { callNativeBrowser, chromeMissingMessage, nativeBrowserCapabilities, NativeBrowserError } from '../../native-browser-provider.js';
+import { browserErrorBody, callNativeBrowser, chromeMissingError, nativeBrowserCapabilities, NativeBrowserError } from '../../native-browser-provider.js';
 import { detectChromeBinary, type ChromeDetection } from '../../host/chrome-binary.js';
 import { settingStr } from '../../settings.js';
 import { browserControls, type BrowserActor } from '../../native-browser-control.js';
@@ -17,6 +17,7 @@ import { registerBrowserCredentialRoutes } from './credential-routes.js';
 import { conversionBrowserCommand, conversionBrowserRefusal, conversionMissionOf } from '../../users/conversion-mission.js';
 import { noteCollectedBrowserRecording, saveBrowserRecording, stopBrowserRecording, type BrowserRecordingMetadata, type BrowserRecordingOrigin } from '../../browser-recordings.js';
 import { annotationStateOf, picksOf, saveBrowserAnnotations, type BrowserAnnotationOrigin } from '../../browser-annotations.js';
+import { apiError } from '../../api-error.js';
 
 // `annotateHighlight` shows a stored selector again: a rectangle comes back, never the page's words.
 // `annotateUnpin` drops the desktop bubble's pins of annotations sent or deleted elsewhere (TODO #481).
@@ -68,23 +69,23 @@ const chromeSigninUrl = z.string().max(16_384).refine((value) => {
 export const NATIVE_COMMAND_SETS = Object.freeze({ commands, reads, humanOnly, ownerOnly });
 
 function operatorOnly(req: Request): void {
-  if (!req.auth || req.auth.kind === 'api-token') throw new NativeBrowserError('This operation requires a signed-in user.', 403);
+  if (!req.auth || req.auth.kind === 'api-token') throw new NativeBrowserError(apiError('browser_sign_in_required', 'This operation requires a signed-in user.'), 403);
 }
 
 function missionProfile(req: Request): BrowserProfile {
   if (req.auth?.kind !== 'api-token' || !req.auth.missionId) {
-    throw new NativeBrowserError('A mission-bound token is required to use the agent browser.', 403);
+    throw new NativeBrowserError(apiError('browser_mission_token_required', 'A mission-bound token is required to use the agent browser.'), 403);
   }
   const mission = scopedDb(viewerFromRequest(req)).getMission(req.auth.missionId);
   if (!mission || !mission.browser_profile_resolved || !mission.browser_profile_id) {
-    throw new NativeBrowserError('No browser profile is authorized for this mission.', 403);
+    throw new NativeBrowserError(apiError('browser_mission_no_profile', 'No browser profile is authorized for this mission.'), 403);
   }
   const profile = getBrowserProfile(mission.browser_profile_id);
-  if (!profile || profile.owner_user_id !== mission.owner_user_id) throw new NativeBrowserError('Browser profile is unavailable.', 403);
+  if (!profile || profile.owner_user_id !== mission.owner_user_id) throw new NativeBrowserError(apiError('browser_profile_unavailable', 'Browser profile is unavailable.'), 403);
   const run = mission.workflow_run_id ? dbApi.getWorkflowRun(mission.workflow_run_id) : undefined;
   const workflowSlug = run ? dbApi.getWorkflow(run.workflow_id)?.slug : undefined;
   const authorized = resolveMissionBrowserProfile(mission, { workflowSlug });
-  if (!authorized) throw new NativeBrowserError('Browser access is disabled.', 403);
+  if (!authorized) throw new NativeBrowserError(apiError('browser_access_disabled', 'Browser access is disabled.'), 403);
   return authorized;
 }
 
@@ -100,7 +101,7 @@ export function registerNativeBrowserRoutes(app: Router, deps: {
   const controls = browserControls();
   const profileForRequest = (req: Request, profileId: string): BrowserProfile => {
     const profile = req.auth?.kind === 'api-token' ? missionProfile(req) : getBrowserProfile(profileId, viewerFromRequest(req));
-    if (!profile || profile.id !== profileId) throw new NativeBrowserError('Browser profile not found.', 404);
+    if (!profile || profile.id !== profileId) throw new NativeBrowserError(apiError('browser_profile_not_found', 'Browser profile not found.'), 404);
     return profile;
   };
   registerBrowserCredentialRoutes(app, { profileForRequest });
@@ -114,19 +115,19 @@ export function registerNativeBrowserRoutes(app: Router, deps: {
     if (req.auth?.missionId) return { id: `mission:${req.auth.missionId}`, kind: 'agent' };
     const clientId = req.body?.clientId;
     if (typeof clientId !== 'string' || !/^[a-zA-Z0-9_-]{8,128}$/.test(clientId)) {
-      throw new NativeBrowserError('A browser client identifier is required for control.');
+      throw new NativeBrowserError(apiError('browser_client_id_required', 'A browser client identifier is required for control.'));
     }
     return { id: `user:${viewerFromRequest(req)?.id ?? 'operator'}:${clientId}`, kind: 'human' };
   };
   const runCommand = async (req: Request, profile: BrowserProfile): Promise<unknown> => {
     const action = req.body?.action;
-    if (typeof action !== 'string' || !commands.has(action)) throw new NativeBrowserError('Unknown browser command.');
+    if (typeof action !== 'string' || !commands.has(action)) throw new NativeBrowserError(apiError('browser_command_unknown', 'Unknown browser command.'));
     if (req.auth?.kind === 'api-token' && humanOnly.has(action)) {
-      throw new NativeBrowserError('This browser operation is reserved for the user.', 403);
+      throw new NativeBrowserError(apiError('browser_command_user_only', 'This browser operation is reserved for the user.'), 403);
     }
     if (ownerOnly.has(action)
       && req.auth?.kind !== 'api-token' && (!isPersonAuth(req.auth) || profile.owner_user_id !== req.auth.user?.id)) {
-      throw new NativeBrowserError('Browser profile not found.', 404);
+      throw new NativeBrowserError(apiError('browser_profile_not_found', 'Browser profile not found.'), 404);
     }
     // A mission also sees the values its own user typed for a page (`secret_request`); a human never does.
     if (action === 'listCredentials') {
@@ -143,9 +144,9 @@ export function registerNativeBrowserRoutes(app: Router, deps: {
     // The binary the desktop launches is named here, by the daemon, and by nobody else.
     delete command.executable;
     if (action === 'chromeSigninStart') {
-      if (!chromeSigninUrl.safeParse(command.url).success) throw new NativeBrowserError('The sign-in page must be an http or https address.', 400);
+      if (!chromeSigninUrl.safeParse(command.url).success) throw new NativeBrowserError(apiError('browser_signin_url_invalid', 'The sign-in page must be an http or https address.'), 400);
       const detection = detectChrome();
-      if (!detection.found) throw new NativeBrowserError(chromeMissingMessage(detection.reason), 409);
+      if (!detection.found) throw new NativeBrowserError(chromeMissingError(detection.reason), 409);
       command.executable = detection.binary.path;
     }
     if (mediaCommands.has(action)) {
@@ -184,7 +185,7 @@ export function registerNativeBrowserRoutes(app: Router, deps: {
       // scripts never cross this public command boundary into the provider.
       if (action === 'fillCredential' && isRequestedCredentialId(req.body?.credentialId)) {
         // Bound to the mission behind the token: a person's session has no such value.
-        if (req.auth?.kind !== 'api-token') throw new NativeBrowserError('Browser credential not found.', 404);
+        if (req.auth?.kind !== 'api-token') throw new NativeBrowserError(apiError('browser_credential_not_found', 'Browser credential not found.'), 404);
         return fillRequestedCredential(profile, req.auth.missionId, req.body?.credentialId, call);
       }
       if (action === 'fillCredential') return fillBrowserCredential(profile, req.body?.credentialId, call, commandActorOf(req));
@@ -245,7 +246,7 @@ export function registerNativeBrowserRoutes(app: Router, deps: {
     res.setHeader('Cache-Control', 'no-store');
     try { res.json(await operation(req)); }
     catch (error) {
-      res.status(error instanceof NativeBrowserError ? error.status : 400).json({ error: (error as Error).message });
+      res.status(error instanceof NativeBrowserError ? error.status : 400).json(browserErrorBody(error));
     }
   };
   app.get('/api/native-browser/capabilities', handle(async () => (deps.capabilities ?? nativeBrowserCapabilities)(detectChrome)));
@@ -263,14 +264,14 @@ export function registerNativeBrowserRoutes(app: Router, deps: {
     if (typeof req.query.mission === 'string') {
       const viewer = viewerFromRequest(req);
       const mission = scopedDb(viewer).getMission(req.query.mission);
-      if (!mission) throw new NativeBrowserError('Mission not found.', 404);
+      if (!mission) throw new NativeBrowserError(apiError('mission_not_found', 'Mission not found.'), 404);
       if (!mission.browser_profile_resolved || !mission.browser_profile_id) return { profile: null };
       const profile = getBrowserProfile(mission.browser_profile_id, viewer);
-      if (!profile || profile.owner_user_id !== mission.owner_user_id) throw new NativeBrowserError('Browser profile unavailable.', 403);
+      if (!profile || profile.owner_user_id !== mission.owner_user_id) throw new NativeBrowserError(apiError('browser_profile_unavailable', 'Browser profile unavailable.'), 403);
       return { profile };
     }
     const agentName = typeof req.query.agent === 'string' ? normalizeAgentName(req.query.agent) : undefined;
-    if (agentName && !isValidAgentName(agentName)) throw new NativeBrowserError('Invalid agent.');
+    if (agentName && !isValidAgentName(agentName)) throw new NativeBrowserError(apiError('browser_agent_invalid', 'Invalid agent.'));
     const cfg = agentName ? loadConfig(agentName) : undefined;
     const project = resolveBrowserProject({ agentProject: cfg?.project, agentCwd: cfg?.cwd,
       requested: typeof req.query.project === 'string' ? req.query.project : null });

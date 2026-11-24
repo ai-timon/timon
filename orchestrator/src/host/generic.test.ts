@@ -11,7 +11,7 @@ const { createGenericHost, unresolvedBinaryPath } = await import('./generic.js')
 
 const host = createGenericHost(TimonConfigSchema.parse({}));
 
-test('generic confine conserve la commande et ses arguments', () => {
+test('generic confine keeps the command and its arguments', () => {
   assert.deepEqual(host.confine('/bin/echo', ['ok'], 'unit'), { cmd: '/bin/echo', args: ['ok'] });
 });
 
@@ -27,21 +27,24 @@ test('execAsync tells a command it stopped from a command that failed', async ()
   assert.equal(verbose.timedOut, undefined, 'an output over maxBuffer is no timeout');
 });
 
-test("generic bin trouve git dans le PATH", () => {
+test('generic bin finds git in the PATH', () => {
   assert.match(host.bin('git'), /git(?:\.exe)?$/);
 });
 
-test("generic bin nomme le binaire absent dans l'erreur", () => {
+test('generic bin names the missing binary in the error', () => {
   assert.throws(() => host.bin('binaire-inexistant'), /binaire-inexistant/);
 });
 
-test('generic spawn : un `env` fourni est l\'environnement COMPLET du child', async () => {
-  // Charnière de S.4 : tant que `spawn` refaisait `{ ...process.env, ...opts.env }`,
-  // la liste blanche de `missionEnv` était sans effet et les tests d'absence
-  // passaient pour de mauvaises raisons. Ce test échoue si quelqu'un la rétablit.
+/** The child prints its environment: Node instead of `env`, which Windows does not have. */
+const PRINT_ENV = ['-e', 'for (const [k, v] of Object.entries(process.env)) console.log(`${k}=${v}`)'];
+
+test('generic spawn: a given `env` is the FULL environment of the child', async () => {
+  // Hinge of S.4: as long as `spawn` redid `{ ...process.env, ...opts.env }`,
+  // the `missionEnv` allowlist had no effect and the absence tests
+  // passed for the wrong reasons. This test fails if someone brings it back.
   process.env.TEMOIN_DU_DAEMON = 'ne-doit-pas-passer';
   try {
-    const child = host.spawn('env', [], { env: { SEUL_CE_QUI_EST_POSE: '1' }, stdio: ['ignore', 'pipe', 'ignore'] });
+    const child = host.spawn(process.execPath, PRINT_ENV, { env: { SEUL_CE_QUI_EST_POSE: '1' }, stdio: ['ignore', 'pipe', 'ignore'] });
     const out = await new Promise<string>((resolve) => {
       let buf = '';
       child.stdout!.on('data', (chunk) => { buf += String(chunk); });
@@ -54,10 +57,10 @@ test('generic spawn : un `env` fourni est l\'environnement COMPLET du child', as
   }
 });
 
-test('generic spawn : sans `env`, le child hérite comme avant', async () => {
+test('generic spawn: without `env`, the child inherits as before', async () => {
   process.env.TEMOIN_HERITE = 'present';
   try {
-    const child = host.spawn('env', [], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const child = host.spawn(process.execPath, PRINT_ENV, { stdio: ['ignore', 'pipe', 'ignore'] });
     const out = await new Promise<string>((resolve) => {
       let buf = '';
       child.stdout!.on('data', (chunk) => { buf += String(chunk); });
@@ -69,7 +72,7 @@ test('generic spawn : sans `env`, le child hérite comme avant', async () => {
   }
 });
 
-test('generic bin (win32) : un pin vers un build Codex desktop remplacé retombe sur la détection', async (t) => {
+test('generic bin (win32): a pin to a replaced Codex desktop build falls back on detection', async (t) => {
   const { mkdirSync, rmSync, utimesSync, writeFileSync } = await import('node:fs');
   const local = mkdtempSync(join(tmpdir(), 'timon-codex-pin-'));
   t.after(() => rmSync(local, { recursive: true, force: true }));
@@ -85,12 +88,12 @@ test('generic bin (win32) : un pin vers un build Codex desktop remplacé retombe
   const hostWith = (pin: string, options: typeof win | { platform: 'linux'; path: string; homeDir: string; env: { LOCALAPPDATA: string } }) =>
     createGenericHost(TimonConfigSchema.parse({ host: { binaries: { codex: pin } } }), options);
 
-  // Sans pin : la détection trouve le build de l'app desktop.
+  // Without a pin: detection finds the desktop app build.
   assert.equal(createGenericHost(TimonConfigSchema.parse({}), win).bin('codex'), current);
-  // Pin périmé vers un ancien build : repli sur la détection.
+  // Stale pin to an old build: fallback on detection.
   assert.equal(hostWith(join(bin, 'aaaa1111', 'codex.exe'), win).bin('codex'), current);
 
-  // Hors de ce cas précis, un pin cassé reste une erreur.
+  // Outside this precise case, a broken pin stays an error.
   for (const broken of [
     join(bin, 'pas-hexa', 'codex.exe'),
     join(local, 'ailleurs', 'OpenAI', 'Codex', 'bin', 'aaaa1111', 'codex.exe'),

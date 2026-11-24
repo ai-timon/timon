@@ -31,7 +31,29 @@ export type PluginTodo = {
   links: PluginTodoLink[];
   /** Number of files attached to the idea (`attachments.list` gives them). API 15. */
   attachment_count: number;
+  /** Where the branch of the idea's jobs stands, read-only: `null` when no job
+   *  of the idea has an integration branch. Absent from an older host. */
+  landing?: PluginTodoLanding | null;
 };
+
+/** State of one job's branch: `branch` (embargo, no pull request expected),
+ *  `pending` (pull request not created), `open`, `merged`, `closed` (without a merge). */
+export type PluginTodoLandingState = 'branch' | 'pending' | 'open' | 'merged' | 'closed';
+
+/** One job (integration branch) of an idea. */
+export type PluginTodoLandingJob = {
+  /** Id of the job, the same in `/api/kanban/landings/:id`. Absent from an
+   *  older host. */
+  jobId?: string;
+  state: PluginTodoLandingState;
+  branch: string;
+  prNumber: number | null;
+  prUrl: string | null;
+};
+
+/** An idea's landing: its job furthest from landing on top (`closed`, then
+ *  `pending`, `branch`, `open`, `merged`), every job in `jobs`, oldest first. */
+export type PluginTodoLanding = PluginTodoLandingJob & { jobs: PluginTodoLandingJob[] };
 
 /** A file attached to an idea, as `ctx.kanban.todos.attachments` returns it.
  *  Never a path: the bytes are read through `attachments.read`. API 15. */
@@ -95,6 +117,8 @@ export type PluginTodoListFilter = {
   project?: string;
   urgency?: TodoUrgency;
   progress?: TodoProgress;
+  /** Ideas whose `landing.state` is this one. Ignored by an older host. */
+  landing?: PluginTodoLandingState;
   limit?: number;
 };
 

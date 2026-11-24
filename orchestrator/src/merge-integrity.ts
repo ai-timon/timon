@@ -26,6 +26,7 @@
 import { dbApi, type TaskRow } from './db.js';
 import { bus, type BusEvent } from './bus.js';
 import { notifyUser } from './notify.js';
+import { daemonMessage } from './daemon-message.js';
 import { loadConfig } from './agent.js';
 import { execFileHost } from './host/index.js';
 
@@ -161,7 +162,18 @@ function requeueForRepair(task: TaskRow, report: { deleted: string[] }, mergeSha
         `Files: ${report.deleted.slice(0, 20).join(', ')}`,
         report.deleted.length > 20 ? `… and ${report.deleted.length - 20} more` : '',
       ].filter(Boolean).join('\n'),
-      { taskId: task.id },
+      {
+        taskId: task.id,
+        message: daemonMessage('merge_repair_by_hand', {
+          title: task.title,
+          taskId: task.id,
+          count: report.deleted.length,
+          max: MAX_REPAIRS,
+          sha: mergeSha,
+          files: report.deleted.slice(0, 20).join(', '),
+          more: Math.max(0, report.deleted.length - 20),
+        }),
+      },
     );
     console.error(
       `[merge-integrity] task ${task.id}: ${report.deleted.length} unjustified ` +

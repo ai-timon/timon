@@ -372,7 +372,7 @@ test('a ticket\'s images and logs are attached to its idea and announced to the 
   assert.ok(task.description!.includes(`project_todo_attachments_list (id ${idea.id})`));
   assert.match(task.description!, /4 file\(s\) not retrieved/);
   // The notes no longer carry a files section: the idea shows its files.
-  assert.doesNotMatch(idea.notes!, /Pièces jointes|Attachments|file\(s\)|uploads/);
+  assert.doesNotMatch(idea.notes!, /Pièces jointes|Attachments|file\(s\)|uploads/); // french-ok: the French label that must not leak
   for (const text of [idea.notes!, task.description!]) {
     assert.ok(!text.includes('cdn.discordapp.com'), 'expiring links are not kept');
     assert.ok(!text.includes(files[0]!.path), 'no path of the host in a text');

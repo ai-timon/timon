@@ -46,7 +46,7 @@ function render(locale: Locale): Promise<string> {
 test('French: the provider loads the dictionary, then renders in it', async () => {
   assert.equal(isLocaleLoaded('fr'), false, 'nothing loaded French before the provider');
   const html = await render('fr');
-  assert.match(html, /Créer la tâche/);
+  assert.match(html, /Créer la tâche/); // french-ok: the French locale under test
   assert.equal(isLocaleLoaded('fr'), true);
   assert.equal(getLocale(), 'fr');
 });

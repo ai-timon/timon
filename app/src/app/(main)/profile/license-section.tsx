@@ -78,6 +78,14 @@ export function LicenseSection({ canEdit }: { canEdit: boolean }): ReactElement 
   // global stream: the state shown here follows it without a reload.
   useEffect(() => { void load(); return sseOn('license_changed', () => { void load(); }); }, [load]);
 
+  // A licence card's "Enter my key" lands here (`/profile#license`): the page
+  // paints this block after the browser looked for the anchor, so scroll once
+  // the state is in.
+  const loaded = license !== null || failed;
+  useEffect(() => {
+    if (loaded && window.location.hash === '#license') document.getElementById('license')?.scrollIntoView?.({ block: 'start' });
+  }, [loaded]);
+
   async function submit(event: FormEvent): Promise<void> {
     event.preventDefault();
     if (!value.trim()) return;
@@ -102,7 +110,7 @@ export function LicenseSection({ canEdit }: { canEdit: boolean }): ReactElement 
 
   const licensed = license?.status === 'valid';
   return (
-    <section className="rounded-xl border border-border bg-card p-5 shadow-sm" aria-labelledby="profile-license-title">
+    <section id="license" className="scroll-mt-20 rounded-xl border border-border bg-card p-5 shadow-sm" aria-labelledby="profile-license-title">
       <h2 id="profile-license-title" className="m-0 text-sm font-semibold">{t('profile.licenseTitle')}</h2>
       <p className="mt-1 text-xs text-muted-foreground">{t('profile.licenseDescription')}</p>
       <div className="mt-4">

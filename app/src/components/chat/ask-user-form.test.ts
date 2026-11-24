@@ -179,7 +179,7 @@ test('the plan card speaks the person\'s language, and the agent still reads its
   const f = await mount(ctx, [PLAN]);
   assert.match(f.text(), /Approuver le plan/);
   assert.match(f.text(), /Rejeter le plan/);
-  assert.match(f.text(), /L'agent l'exécute\./);
+  assert.match(f.text(), /L'agent l'exécute\./); // french-ok: the French locale under test
   assert.doesNotMatch(f.text(), /Approve the plan|Reject the plan|carries it out/);
   assert.match(f.text(), /Refactor/, 'the plan itself is the agent\'s: shown as written');
   await f.click(f.option('Rejeter le plan'));

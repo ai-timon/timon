@@ -26,10 +26,8 @@
     "working": "Processando…",
     "failed": "Falha ao entrar",
     "setupFailed": "A configuração foi recusada",
-    "freeUnavailable": "O cadastro gratuito ainda não está aberto para esta versão. Tente novamente mais tarde ou use uma chave de licença existente.",
     "clientUpgradeRequired": "Atualize o Timon para uma versão compatível e tente novamente.",
     "transferPending": "O token da máquina anterior ainda não expirou. Aguarde antes de ativar esta máquina.",
-    "freeIncompatible": "O Free não pode ser ativado com as contas ou os plugins atuais. Seus dados foram mantidos.",
-    "freeAccountRestricted": "O Free permite apenas o primeiro superadmin ativo. Sua conta e seus dados estão preservados. Peça a esse administrador que ative uma licença para restaurar o acesso."
+    "freeIncompatible": "Esta licença não pode ser aplicada com as contas ou os plugins atuais. Seus dados foram mantidos."
   }
 }

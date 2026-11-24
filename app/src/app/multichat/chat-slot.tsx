@@ -234,7 +234,7 @@ export function ChatSlot({
           // Mount ChatClient in compact mode. Key on agent+mission (or
           // agent+new:N for a fresh chat) so any switch fully remounts
           // — avoids state bleed and forces a clean remount when the
-          // user clicks "Nouvelle" several times in a row.
+          // user clicks "New" several times in a row.
           <div className="flex h-full min-h-0 flex-col">
             <ChatClient
               key={

@@ -146,6 +146,19 @@ export function discardChatAttachments(saved: readonly PersistedAttachment[]): v
   }
 }
 
+/**
+ * Creates the folder the attachments of `missionId` are saved to, empty, and
+ * returns it. The fence opens it to the mission at launch, and a persistent
+ * CLI keeps the rules it was launched with: a folder the first attachment
+ * created afterwards stayed closed to it until the process was restarted.
+ * An empty one costs nothing: the purge takes it with the mission's.
+ */
+export function ensureChatAttachmentsDir(missionId: string): string {
+  const dir = join(chatAttachmentsRoot(), safeAttachmentName(missionId));
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  return dir;
+}
+
 /** Root of everything this module writes. Exported: the cleanup reads it again. */
 export function chatAttachmentsRoot(): string {
   return join(TIMON_HOME, 'uploads', 'chat');

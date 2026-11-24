@@ -1,5 +1,5 @@
 /**
- * The «Injections» tab of the agent editor: the steps come as a timeline in the
+ * The "Injections" tab of the agent editor: the steps come as a timeline in the
  * order the daemon gave, the step picked is read in the middle, and a file of
  * the project is shown with its path but never offers an editor.
  */

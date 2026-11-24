@@ -1,5 +1,5 @@
 /**
- * The TIMs list follows an agent saved elsewhere: « New TIM » opens the shared
+ * The TIMs list follows an agent saved elsewhere: "New TIM" opens the shared
  * agent editor, which announces the save (`AGENTS_CHANGED_EVENT`), and the
  * list re-reads at once — the new TIM no longer waits for a reload.
  */

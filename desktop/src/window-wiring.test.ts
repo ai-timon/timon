@@ -13,6 +13,9 @@ import { ViewPool } from './view-pool.js';
 import { machineForDetachedWindow, parseOpenWindowRequest } from './window-open.js';
 import { launchedOtherBuild } from './shell-build.js';
 import { parseWindowSchemeReport } from './appearance.js';
+import {
+  UI_ZOOM_CHANNELS, UI_ZOOM_STEPS, parseUiZoomSetRequest, parseUiZoomStepRequest, stepUiZoom, zoomShortcut, type UiZoomFactor,
+} from './ui-zoom.js';
 
 // The wiring lives in main.ts, which cannot load outside Electron: these run its real code with fake Electron objects.
 const source = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
@@ -185,12 +188,12 @@ test('V3: Ctrl+Shift+N (Cmd+Shift+N on macOS) opens a new window', () => {
   assert.equal(newWindowShortcut(key({ control: true, type: 'keyUp' }), 'linux'), false);
 });
 
-test('V3: the macOS File menu offers « New window », and only then replaces Electron\'s', () => {
+test('V3: the macOS File menu offers "New window", and only then replaces Electron\'s', () => {
   let opened = 0;
   const flatten = (items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
     items.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? flatten(item.submenu) : [])]);
   const items = appMenuTemplate({ platform: 'darwin', appName: 'Timon', locale: 'fr-FR', onAbout: () => {}, onNewWindow: () => { opened += 1; } })!;
-  const entry = flatten(items).find((item) => item.label === 'Nouvelle fenêtre');
+  const entry = flatten(items).find((item) => item.label === 'Nouvelle fenêtre'); // french-ok: the French menu label under test
   assert.ok(entry);
   assert.equal(entry.registerAccelerator, false, 'the window\'s key handler opens it, once');
   entry.click?.({} as never, undefined, {} as never);
@@ -241,8 +244,8 @@ test('V3: a second launch opens a new window, unless the interface is failing or
 });
 
 /**
- * 01/11/2026: « Open in a new window » answered « No handler registered for
- * 'timon:open-window' ». The shell had been running for four days; each
+ * 01/11/2026: "Open in a new window" answered "No handler registered for
+ * 'timon:open-window'". The shell had been running for four days; each
  * `npm start` after a rebuild only handed over to it, and its new pages read
  * the rebuilt preload, whose bridge the old main process did not serve.
  */
@@ -251,7 +254,7 @@ test('a second launch of another build shows the window and asks for a restart i
   assert.deepEqual(secondLaunch({ daemonUp: true, failed: false, launch: { build: '0.1.6' } }), ['notice', 'show']);
 });
 
-/** The handler of « Open in a new window », run as main.ts has it, for a page of a window. */
+/** The handler of "Open in a new window", run as main.ts has it, for a page of a window. */
 function openWindowHandler(windows: ReturnType<typeof fleet>, state: { releasePending?: boolean } = {}) {
   const opened: { window: number; url: string; machine: string | null }[] = [];
   const context = {
@@ -634,7 +637,7 @@ test('TODO #758: a quit holds while a window has pages, closing them before anyt
   assert.equal(world.holdQuit(), false, 'an empty window no longer holds the quit');
 });
 
-test('TODO #758: « Stay » during a quit calls it off before anything was stopped', async () => {
+test('TODO #758: "Stay" during a quit calls it off before anything was stopped', async () => {
   const world = pageWorld({ refuse: new Set(['a']) });
   world.enter('a'); world.enter('b');
   world.context.quitInProgress = true;
@@ -694,4 +697,202 @@ test('each machine its mode: only a page of a Timon window reports, and only a m
   }
   assert.deepEqual(recorded, []);
   assert.deepEqual(painted, []);
+});
+
+// Interface size (desktop zoom): one factor for every page of every window, never for a browser panel.
+
+test('zoom: the macOS View menu sizes the interface, shown with its keys but not registering them', () => {
+  const steps: string[] = [];
+  const flatten = (items: MenuItemConstructorOptions[]): MenuItemConstructorOptions[] =>
+    items.flatMap((item) => [item, ...(Array.isArray(item.submenu) ? flatten(item.submenu) : [])]);
+  const items = appMenuTemplate({ platform: 'darwin', appName: 'Timon', locale: 'en', onAbout: () => {}, onZoom: (d) => { steps.push(d); } })!;
+  const view = items.find((item) => item.role === 'viewMenu')!;
+  assert.equal(view.label, 'View');
+  assert.ok(Array.isArray(view.submenu));
+  const entries = view.submenu;
+  assert.deepEqual(entries.filter((item) => item.role).map((item) => item.role), ['reload', 'forceReload', 'toggleDevTools', 'togglefullscreen']);
+  assert.ok(!flatten(items).some((item) => item.role === 'zoomIn' || item.role === 'zoomOut' || item.role === 'resetZoom'),
+    'Electron\'s own zoom would size one page only');
+  for (const [label, accelerator, direction] of [['Actual Size', 'CmdOrCtrl+0', 'reset'], ['Zoom In', 'CmdOrCtrl+Plus', 'in'], ['Zoom Out', 'CmdOrCtrl+-', 'out']] as const) {
+    const entry = entries.find((item) => item.label === label);
+    assert.ok(entry, label);
+    assert.equal(entry.accelerator, accelerator);
+    assert.equal(entry.registerAccelerator, false, 'shown, not registered: a key sizes every page once');
+    entry.click?.({} as never, undefined, {} as never);
+    assert.equal(steps.at(-1), direction);
+  }
+  const french = appMenuTemplate({ platform: 'darwin', appName: 'Timon', locale: 'fr-FR', onAbout: () => {}, onZoom: () => {} })!;
+  assert.ok(flatten(french).some((item) => item.label === 'Zoom avant'), 'the entries speak the language of the app'); // french-ok: the French menu label under test
+  const plain = appMenuTemplate({ platform: 'darwin', appName: 'Timon', locale: 'en', onAbout: () => {} })!;
+  assert.deepEqual(plain.find((item) => item.role === 'viewMenu'), { role: 'viewMenu' }, 'without a handler, Electron\'s View menu stays');
+});
+
+type ZoomContents = { id: number; destroyed: boolean; log: string[] };
+const zoomContents = (id: number, destroyed = false): ZoomContents => ({ id, destroyed, log: [] });
+
+function zoomApplier(records: { pages: ZoomContents[] }[]) {
+  const written: number[] = [];
+  /** Every call on every page, in the order they happened. */
+  const calls: string[] = [];
+  const context: Record<string, unknown> = {
+    currentUiZoom: 1, desktopHome: 'home', UI_ZOOM_CHANNELS,
+    liveWindows: () => records.map((record) => ({ pages: { list: () => record.pages.map((contents) => ({ contents })) } })),
+    contentsOf: (page: { contents: ZoomContents }) => ({
+      isDestroyed: () => page.contents.destroyed,
+      send: (channel: string, payload: { factor: number }) => {
+        page.contents.log.push(`send ${channel} ${payload.factor}`);
+        calls.push(`send ${page.contents.id}`);
+      },
+      setZoomFactor: (factor: number) => {
+        page.contents.log.push(`zoom ${factor}`);
+        calls.push(`zoom ${page.contents.id}`);
+      },
+    }),
+    writeUiZoom: (_home: string, factor: number) => { written.push(factor); return true; },
+    console: { warn: () => {} },
+  };
+  runInNewContext(compile(functionText('applyUiZoom')), context);
+  const apply = runInNewContext('applyUiZoom', context) as (factor: UiZoomFactor, persist: boolean) => number;
+  return { apply, written, calls, current: () => runInNewContext('currentUiZoom', context) as number };
+}
+
+test('zoom: every page of every window takes the size, told first so its next resize measures with it', () => {
+  const pages = [zoomContents(10), zoomContents(11), zoomContents(20), zoomContents(30, true)];
+  const { apply, written, current } = zoomApplier([{ pages: pages.slice(0, 2) }, { pages: pages.slice(2) }]);
+  assert.equal(apply(1.25, true), 1.25);
+  assert.equal(current(), 1.25);
+  for (const page of pages.slice(0, 3)) assert.deepEqual(page.log, [`send ${UI_ZOOM_CHANNELS.changed} 1.25`, 'zoom 1.25']);
+  assert.deepEqual(pages[3]!.log, [], 'a destroyed page is left alone');
+  assert.deepEqual(written, [1.25]);
+  apply(1, false);
+  assert.deepEqual(written, [1.25], 'a size not meant to persist is not written');
+});
+
+test('zoom: every page of every window is told before any page is zoomed', () => {
+  const pages = [zoomContents(10), zoomContents(11), zoomContents(20)];
+  const { apply, calls } = zoomApplier([{ pages: pages.slice(0, 2) }, { pages: pages.slice(2) }]);
+  apply(1.5, true);
+  // Chromium zooms every page of a host at once: the second window must already know the size.
+  assert.deepEqual(calls, ['send 10', 'send 11', 'send 20', 'zoom 10', 'zoom 11', 'zoom 20']);
+});
+
+test('zoom: the size the interface already has changes nothing, sends nothing and writes nothing', () => {
+  const pages = [zoomContents(10), zoomContents(20)];
+  const { apply, written, calls, current } = zoomApplier([{ pages: pages.slice(0, 1) }, { pages: pages.slice(1) }]);
+  assert.equal(apply(1, true), 1, 'Ctrl+0 at 100 %');
+  assert.deepEqual(written, []);
+  assert.deepEqual(calls, []);
+  apply(2, true);
+  calls.length = 0;
+  for (let tick = 0; tick < 5; tick += 1) assert.equal(apply(2, true), 2, 'a wheel held at 200 %');
+  assert.deepEqual(written, [2], 'written once');
+  assert.deepEqual(calls, []);
+  assert.equal(current(), 2);
+});
+
+test('zoom: applying the size never reaches the native browser or its overlays', () => {
+  const body = functionText('applyUiZoom');
+  assert.doesNotMatch(body, /nativeBrowser|annotation|overlay/i);
+  assert.match(body, /record\.pages\.list\(\)/);
+});
+
+/** The listener createPage registers with `contents.on(<event>, …)`. */
+function pageListener(name: string): string {
+  const createPage = parsed.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === 'createPage')!;
+  let found = '';
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && node.expression.getText(parsed) === 'contents.on' && node.arguments[0]?.getText(parsed) === `'${name}'`) {
+      found = node.arguments[1]!.getText(parsed);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(createPage);
+  assert.ok(found, name);
+  return found;
+}
+
+function pageKeys(platform: NodeJS.Platform) {
+  const applied: number[] = [];
+  const reloads: string[] = [];
+  const context = {
+    currentUiZoom: 1.2, process: { platform }, zoomShortcut, stepUiZoom,
+    applyUiZoom: (factor: number, persist: boolean) => { assert.equal(persist, true); applied.push(factor); return factor; },
+    newWindowShortcut: () => false, openNewWindow: () => {},
+    reloadShortcut: () => null,
+    contents: { reload: () => { reloads.push('reload'); }, reloadIgnoringCache: () => { reloads.push('force'); } },
+  };
+  const keys = runInNewContext(compile(`(${pageListener('before-input-event')})`), context) as (event: { preventDefault: () => void }, input: unknown) => void;
+  const wheel = runInNewContext(compile(`(${pageListener('zoom-changed')})`), context) as (event: unknown, direction: string) => void;
+  return { keys, wheel, applied, reloads };
+}
+
+test('zoom: Ctrl (Cmd on macOS) with plus, minus or zero sizes the interface, and the key goes no further', () => {
+  const press = (key: string, code: string, mods: Record<string, boolean>) => ({ type: 'keyDown', key, code, control: false, meta: false, shift: false, alt: false, ...mods });
+  for (const [platform, mods] of [['linux', { control: true }], ['win32', { control: true }], ['darwin', { meta: true }]] as const) {
+    const { keys, applied } = pageKeys(platform);
+    let prevented = 0;
+    const event = { preventDefault: () => { prevented += 1; } };
+    keys(event, press('=', 'Equal', mods));
+    keys(event, press('-', 'Digit6', mods));
+    keys(event, press('à', 'Digit0', mods)); // french-ok: the AZERTY character of the zero key
+    keys(event, press(')', 'Minus', mods));
+    assert.deepEqual(applied, [1.25, 1.1, 1], platform);
+    assert.equal(prevented, 3, `${platform}: Ctrl+) on AZERTY stays the page's`);
+  }
+});
+
+test('zoom: Ctrl+wheel steps one stop at a time', () => {
+  const { wheel, applied } = pageKeys('linux');
+  wheel({}, 'in');
+  wheel({}, 'out');
+  assert.deepEqual(applied, [1.25, 1.1]);
+});
+
+test('zoom: each page is sized before it loads and again once it has, the size told to it', () => {
+  const body = functionText('createPage');
+  assert.match(body, /zoomFactor: currentUiZoom,/, 'the first paint is at the size');
+  assert.match(body, /contents\.setZoomFactor\(currentUiZoom\);\n\s*contents\.on\('did-navigate', \(\) => \{ contents\.setZoomFactor\(currentUiZoom\); \}\);\n\s*contents\.on\('dom-ready'/,
+    'a cross-origin commit (the waiting page to the interface) takes the size again');
+  const finished = body.split("contents.on('did-finish-load'").slice(1).join('');
+  assert.match(finished, /setZoomFactor\(currentUiZoom\)/);
+  assert.match(finished, /send\(UI_ZOOM_CHANNELS\.changed, \{ factor: currentUiZoom \}\)/);
+  assert.match(source, /currentUiZoom = readUiZoom\(desktopHome\);/, 'the saved size is read at launch');
+});
+
+function zoomHandlers(windows: ReturnType<typeof fleet>) {
+  const applied: { factor: number; persist: boolean }[] = [];
+  const context: Record<string, unknown> = {
+    windows, canReadAppInfo, UI_ZOOM_STEPS, parseUiZoomSetRequest, parseUiZoomStepRequest, stepUiZoom,
+    currentUiZoom: 1.1,
+    senderPage: pageFor(windows),
+    senderOf: (e: ReturnType<typeof event>) => ({ isWindow: windows.pageOf(e.sender.id) !== null, isMainFrame: true, url: e.senderFrame.url }),
+    applyUiZoom: (factor: number, persist: boolean) => { applied.push({ factor, persist }); return factor; },
+  };
+  runInNewContext(compile(functionText('zoomCaller')), context);
+  const handler = (channel: string) => runInNewContext(compile(`(${handlerOf(channel)})`), context) as (e: unknown, input?: unknown) => unknown;
+  return {
+    get: handler('UI_ZOOM_CHANNELS.get'), set: handler('UI_ZOOM_CHANNELS.set'), step: handler('UI_ZOOM_CHANNELS.step'), applied,
+  };
+}
+
+test('zoom: any page of a Timon window, local or remote, reads and changes the size of this screen', () => {
+  const windows = fleet();
+  const { get, set, step, applied } = zoomHandlers(windows);
+  assert.equal(JSON.stringify(get(event(10))), JSON.stringify({ factor: 1.1, steps: UI_ZOOM_STEPS }));
+  assert.equal(JSON.stringify(set(event(20), { factor: 1.24 })), '{"factor":1.25}', 'a page of another machine too, snapped to a stop');
+  assert.equal(JSON.stringify(step(event(10), { direction: 'in' })), '{"factor":1.2}');
+  assert.deepEqual(applied, [{ factor: 1.25, persist: true }, { factor: 1.2, persist: true }]);
+});
+
+test('zoom: only a page of a Timon window sizes the interface, and only with a size or a direction', () => {
+  const windows = fleet();
+  const { get, set, step, applied } = zoomHandlers(windows);
+  for (const handle of [get, set, step]) {
+    assert.throws(() => handle(event(1), { factor: 1.25, direction: 'in' }), /Only a Timon window/, 'the window\'s own blank webContents');
+    assert.throws(() => handle(event(9), { factor: 1.25, direction: 'in' }), /Only a Timon window/, 'a stranger webContents');
+    assert.throws(() => handle(event(10, 'https://evil.example/'), { factor: 1.25, direction: 'in' }), /Only a Timon window/, 'another origin');
+  }
+  for (const bad of [{ factor: 10 }, { factor: '1.25' }, 1.25, null]) assert.throws(() => set(event(10), bad), /between 0\.5 and 3/);
+  for (const bad of [{ direction: 'up' }, 'in', null]) assert.throws(() => step(event(10), bad), /in, out or back/);
+  assert.deepEqual(applied, []);
 });

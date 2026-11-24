@@ -69,5 +69,6 @@ test('the platform comes from userAgentData, else navigator.platform', () => {
   assert.equal(detectTerminalPlatform({ userAgentData: { platform: 'Windows' }, platform: 'Win32' }), 'windows');
   assert.equal(detectTerminalPlatform({ platform: 'Win32' }), 'windows');
   assert.equal(detectTerminalPlatform({ platform: 'Linux x86_64' }), 'other');
-  assert.equal(detectTerminalPlatform(undefined), 'other');
+  // An explicit `undefined` takes the default, the real navigator (Node has one): an empty one stands for none.
+  assert.equal(detectTerminalPlatform({}), 'other');
 });

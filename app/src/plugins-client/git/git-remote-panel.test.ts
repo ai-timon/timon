@@ -91,8 +91,9 @@ async function render(
   }
 }
 
+// Its text, or its aria-label for a button drawn as an icon (Fetch, Remotes).
 const button = (host: HTMLElement, label: RegExp): HTMLButtonElement => {
-  const found = Array.from(host.querySelectorAll('button')).find((b) => label.test(b.textContent ?? ''));
+  const found = Array.from(host.querySelectorAll('button')).find((b) => label.test(b.textContent || b.getAttribute('aria-label') || ''));
   assert.ok(found, `a button reads ${label}`);
   return found;
 };

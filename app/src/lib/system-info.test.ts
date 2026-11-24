@@ -15,6 +15,13 @@ test('serviceState: stale wins over running, no supervisor is its own state', ()
   assert.equal(serviceState({ ...SERVICE, supervisor: null, installed: false }), 'unsupported');
 });
 
+test('serviceState (#116): a stale task that opens a console says so; an older daemon reads plain stale', () => {
+  const windows = { revision: '6', expected: '6', launcherMarked: true };
+  assert.equal(serviceState({ ...SERVICE, stale: true, windows: { ...windows, opensConsole: true } }), 'console');
+  assert.equal(serviceState({ ...SERVICE, stale: true, windows }), 'stale');
+  assert.equal(serviceState({ ...SERVICE, stale: false, windows: { ...windows, opensConsole: false } }), 'running');
+});
+
 test('versionGap: only an app that reports a different version', () => {
   assert.equal(versionGap('0.1.5', '0.1.5'), false);
   assert.equal(versionGap('0.1.3', '0.1.5'), true);

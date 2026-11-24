@@ -54,7 +54,7 @@ test('model editor renders aligned persistent column headings only for model row
 
     setLocale('fr');
     await render([{ slug: 'deepseek-chat', label: 'DeepSeek Chat' }]);
-    assert.match(document.querySelector('[data-model-column-headings]')!.textContent!, /Slug.*Libellé.*Fenêtre de contexte/);
+    assert.match(document.querySelector('[data-model-column-headings]')!.textContent!, /Slug.*Libellé.*Fenêtre de contexte/); // french-ok: the French locale under test
   } finally {
     setLocale('en');
     await React.act(async () => root.unmount());

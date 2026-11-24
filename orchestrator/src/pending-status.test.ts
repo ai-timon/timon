@@ -65,18 +65,18 @@ await import('../tests/helpers/claude-provider.js');
 const { createDaemonAuthMiddleware } = await import('./plugins-bundled/http/auth.js');
 const { registerRoutes: registerKanban } = await import('./plugins-bundled/kanban/routes.js');
 
-test('une base écrite avant le renommage remonte ses lignes en PENDING', () => {
+test('a database written before the rename brings its rows up as PENDING', () => {
   assert.equal(dbApi.getTask(LEGACY_A)?.status, 'PENDING');
-  // Les autres statuts ne bougent pas : la migration ne touche que TODO.
+  // The other statuses do not move: the migration only touches TODO.
   assert.equal(dbApi.getTask(LEGACY_B)?.status, 'DONE');
-  // Et la task migrée est de nouveau visible du dispatcher.
+  // And the migrated task is visible to the dispatcher again.
   assert.ok(dbApi.listPendingReady().some((t) => t.id === LEGACY_A));
 });
 
-test('TODO en entrée est un alias de PENDING, jamais rendu en sortie', () => {
+test('TODO as input is an alias of PENDING, never returned as output', () => {
   assert.equal(normalizeTaskStatusInput('TODO'), 'PENDING');
   assert.equal(normalizeTaskStatusInput('PENDING'), 'PENDING');
-  // Traduction, pas validation : un statut inconnu passe tel quel.
+  // Translation, not validation: an unknown status goes through as is.
   assert.equal(normalizeTaskStatusInput('BLOCKED'), 'BLOCKED');
   assert.equal(normalizeTaskStatusInput(undefined), undefined);
 });
@@ -89,15 +89,15 @@ registerKanban(app);
 const server = app.listen(0, '127.0.0.1');
 await once(server, 'listening');
 const { port } = server.address() as AddressInfo;
-assert.notEqual(port, 3000, 'le témoin ne prend pas le port de production');
+assert.notEqual(port, 3000, 'the witness does not take the production port');
 const base = `http://127.0.0.1:${port}`;
 test.after(() => { server.close(); });
 
 const auth = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
 
-test('?status=TODO rend la même file que ?status=PENDING, sans jamais écrire TODO', async () => {
+test('?status=TODO returns the same queue as ?status=PENDING, without ever writing TODO', async () => {
   const fresh = randomUUID();
-  dbApi.createTask(fresh, 'task fraîche', 'w.coder');
+  dbApi.createTask(fresh, 'task fraîche', 'w.coder'); // french-ok: free-text sample data
 
   const viaAlias = await fetch(`${base}/api/tasks?status=TODO`, { headers: auth });
   const viaAliasText = await viaAlias.text();
@@ -108,13 +108,13 @@ test('?status=TODO rend la même file que ?status=PENDING, sans jamais écrire T
     (JSON.parse(text) as { tasks: { id: string }[] }).tasks.map((t) => t.id).sort();
   assert.deepEqual(ids(viaAliasText), ids(viaNameText));
   assert.ok(ids(viaAliasText).includes(fresh));
-  assert.ok(!viaAliasText.includes('"TODO"'), 'aucune sortie ne rend le vieux nom');
+  assert.ok(!viaAliasText.includes('"TODO"'), 'no output returns the old name');
 });
 
-test('PUT status=TODO ramène la task en file sans la laisser en TODO', async () => {
+test('PUT status=TODO puts the task back in the queue without leaving it in TODO', async () => {
   const id = randomUUID();
-  dbApi.createTask(id, 'task à renvoyer en file', 'w.coder');
-  dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'témoin' });
+  dbApi.createTask(id, 'task à renvoyer en file', 'w.coder'); // french-ok: free-text sample data
+  dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'témoin' }); // french-ok: free-text sample data
   assert.equal(dbApi.getTask(id)?.status, 'BLOCKED');
 
   const r = await fetch(`${base}/api/tasks/${id}`, {

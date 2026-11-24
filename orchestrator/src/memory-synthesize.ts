@@ -15,6 +15,7 @@
  * the transcripts). Spread over the credit window. Runs under a CLI subscription
  * (not the API). Gating: TIMON_MEMORY_SYNTH_ENABLED != '0' (ON by default).
  */
+import { daemonMessage } from './daemon-message.js';
 import { randomUUID } from 'node:crypto';
 import { dbApi, type LearningRow, type MemoryRuleRow } from './db.js';
 import { loadConfig, type AgentConfig } from './agent.js';
@@ -261,6 +262,9 @@ async function curateProject(slug: string | null): Promise<void> {
       type: 'report',
       title: `Memory curated — ${label}`,
       body: `+${stats.added} rule(s), ${stats.merged} merge(s), ${stats.superseded} replaced, ${stats.rejected} rejected. You can veto them in /memory.`,
+      message: daemonMessage('memory_curated', {
+        label, added: stats.added, merged: stats.merged, superseded: stats.superseded, rejected: stats.rejected,
+      }),
       // Anchor to THIS pass: /memory opens the detail of the run's decisions
       // (rules added/merged/rejected) instead of the whole corpus. The
       // run_id is the one set on the memory_audit rows by applyCuration.

@@ -29,8 +29,8 @@ import { readLicenseStore, writeLicenseStore } from './store.js';
 const ENDED: readonly LicenseReason[] = ['expired', 'revoked', 'deactivated'];
 
 /**
- * The locked state reuses the fixed-composition machinery Free already goes
- * through, with no module and no plugin: non-core modules switch off, their
+ * The locked state reuses the fixed-composition machinery a paid offer may
+ * carry, with no module and no plugin: non-core modules switch off, their
  * routes answer 403, and `assertLicensedExecution` refuses every agent turn —
  * including the ones the daemon starts on its own (routines, dispatcher).
  * `localFree` is false: this is not a lesser licence, it is none.

@@ -1,16 +1,16 @@
 /**
- * Recherche plein-texte dans l'historique des missions.
+ * Full-text search in the mission history.
  *
- * Ce qu'on protège : avant le 2026-08-23, retrouver "la conversation où on a
- * parlé de X" demandait un LIKE manuel au sqlite3 sur 1,3 Go de payloads, sans
- * aucun outil officiel. Les pièges de cette implémentation :
- *   - indexer les `tool_result` (1 Go sur 1,3) noierait la pertinence ;
- *   - une requête OR (celle du recall mémoire) rendrait toutes les missions qui
- *     contiennent l'un des mots — un humain qui tape deux mots en attend un ET ;
- *   - une ponctuation non assainie fait échouer le parseur FTS5 avec une
- *     SqliteError que personne ne peut interpréter ;
- *   - un rattrapage non reprenable ne couvrirait que les missions postérieures
- *     au déploiement, en rendant zéro sans le dire.
+ * What is protected: before 2026-08-23, finding "the conversation where we
+ * talked about X" required a manual LIKE in sqlite3 over 1.3 GB of payloads, without
+ * any official tool. The traps of this implementation:
+ *   - indexing the `tool_result`s (1 GB out of 1.3) would drown the relevance;
+ *   - an OR query (the one of the memory recall) would return every mission that
+ *     holds one of the words; a human typing two words expects an AND;
+ *   - unsanitised punctuation makes the FTS5 parser fail with an
+ *     SqliteError nobody can interpret;
+ *   - a non-resumable backfill would only cover the missions after
+ *     the deployment, returning zero without saying so.
  *
  * `node --test --import tsx src/mission-search.test.ts`
  */
@@ -21,6 +21,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+// french-ok-file: French sample prompts and titles the test feeds in
+
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-mission-search-test-'));
 
 const { extractSearchFragments, toMissionFtsQuery, parseTimeBound } = await import('./mission-search.js');
@@ -30,7 +32,7 @@ const { dbApi, db } = await import('./db.js');
 
 const assistantMsg = (blocks: unknown[]) => ({ type: 'assistant', message: { role: 'assistant', content: blocks } });
 
-test('un bloc text assistant est indexé', () => {
+test('an assistant text block is indexed', () => {
   const f = extractSearchFragments('assistant', assistantMsg([{ type: 'text', text: 'on a choisi FTS5' }]));
   assert.deepEqual(f, [{ role: 'assistant', text: 'on a choisi FTS5' }]);
 });
@@ -52,12 +54,12 @@ test('thinking, tool_use et tool_result restent HORS index', () => {
   );
 });
 
-test('un message user en texte brut (string) est indexé', () => {
+test('a user message in raw text (string) is indexed', () => {
   const f = extractSearchFragments('user', { type: 'user', message: { role: 'user', content: 'relance le merge' } });
   assert.deepEqual(f, [{ role: 'user', text: 'relance le merge' }]);
 });
 
-test('un payload malformé ne jette pas — l’indexation ne doit jamais casser l’écriture de l’event', () => {
+test('a malformed payload does not throw: indexing must never break the write of the event', () => {
   for (const bad of [null, undefined, 42, 'texte', { message: null }, { message: { content: 7 } }]) {
     assert.deepEqual(extractSearchFragments('assistant', bad), []);
   }
@@ -76,34 +78,34 @@ test('a spoken GPT-Live turn is indexed under its speaker', () => {
   assert.deepEqual(extractSearchFragments('voice_transcript', null), []);
 });
 
-/* ── requête FTS ────────────────────────────────────────────────────────── */
+/* ── FTS query ────────────────────────────────────────────────────────── */
 
-test('deux mots = un ET, pas un OU', () => {
+test('two words = an AND, not an OR', () => {
   assert.equal(toMissionFtsQuery('fallback quota'), '"fallback" AND "quota"');
 });
 
-test('les guillemets délimitent une phrase exacte', () => {
+test('quotes delimit an exact phrase', () => {
   assert.equal(toMissionFtsQuery('"rate limit" worktree'), '"rate limit" AND "worktree"');
 });
 
-test('le suffixe * reste un préfixe FTS5', () => {
+test('the * suffix stays an FTS5 prefix', () => {
   assert.equal(toMissionFtsQuery('worktree*'), '"worktree" *');
 });
 
-test('la ponctuation est neutralisée au lieu de faire échouer le parseur', () => {
+test('punctuation is neutralised instead of making the parser fail', () => {
   const q = toMissionFtsQuery('timon:task -- (merge)');
   assert.ok(q);
   assert.doesNotThrow(() => db.prepare(`SELECT 1 FROM mission_search_fts WHERE text MATCH ?`).all(q));
 });
 
-test('une requête sans terme exploitable rend null', () => {
+test('a query without a usable term returns null', () => {
   assert.equal(toMissionFtsQuery('   '), null);
   assert.equal(toMissionFtsQuery('--- !!'), null);
 });
 
 /* ── bornes temporelles ─────────────────────────────────────────────────── */
 
-test('parseTimeBound comprend le relatif, l’ISO et les ms', () => {
+test('parseTimeBound understands relative, ISO and ms', () => {
   const now = Date.parse('2026-08-23T10:00:00Z');
   assert.equal(parseTimeBound('2d', now), now - 2 * 86_400_000);
   assert.equal(parseTimeBound('12h', now), now - 12 * 3_600_000);
@@ -113,7 +115,7 @@ test('parseTimeBound comprend le relatif, l’ISO et les ms', () => {
   assert.equal(parseTimeBound('n’importe quoi', now), null);
 });
 
-/* ── bout en bout sur la base ───────────────────────────────────────────── */
+/* ── end to end on the database ───────────────────────────────────────────── */
 
 function seed(agent: string, prompt: string, texts: string[]): string {
   const id = randomUUID();
@@ -129,20 +131,20 @@ const m1 = seed('alpha.main', 'audit du fallback de quota', [
 const m2 = seed('beta.main', 'refonte du worktree de merge', [
   'la branche est intégrée depuis le worktree, jamais depuis l’arbre principal',
 ]);
-// Bruit : un tool_result volumineux qui contient le mot cherché ne doit PAS
-// remonter — c'est précisément ce qu'on refuse d'indexer.
+// Noise: a large tool_result holding the searched word must NOT
+// come up: that is precisely what is refused for indexing.
 dbApi.insertEvent(m2, 'user', {
   type: 'user',
   message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'y', content: 'quota quota quota' }] },
 });
 
-test('le prompt initial de la mission est cherchable', () => {
+test("the mission's initial prompt is searchable", () => {
   const hits = dbApi.searchMissions({ q: 'audit fallback' });
   assert.deepEqual(hits.map((h) => h.mission_id), [m1]);
   assert.equal(hits[0]?.role, 'prompt');
 });
 
-test('le texte d’un tour assistant est cherchable, avec extrait et agent', () => {
+test('the text of an assistant turn is searchable, with excerpt and agent', () => {
   const hits = dbApi.searchMissions({ q: 'arbre principal' });
   assert.equal(hits.length, 1);
   assert.equal(hits[0]?.mission_id, m2);
@@ -150,37 +152,37 @@ test('le texte d’un tour assistant est cherchable, avec extrait et agent', () 
   assert.ok(hits[0]?.snippet.includes('principal'));
 });
 
-test('un tool_result n’est jamais un résultat, même s’il contient le mot', () => {
+test('a tool_result is never a result, even if it holds the word', () => {
   const hits = dbApi.searchMissions({ q: 'quota' });
-  assert.ok(hits.every((h) => h.mission_id === m1), 'seule la mission qui en PARLE remonte');
+  assert.ok(hits.every((h) => h.mission_id === m1), 'only the mission that TALKS about it comes up');
 });
 
-test('une mission qui parle du sujet plusieurs fois rend un hit par fragment', () => {
-  // "worktree" est dans le prompt de m2 ET dans un de ses tours assistant :
-  // deux extraits distincts, chacun rouvrable à son endroit.
+test('a mission talking about the subject several times returns one hit per fragment', () => {
+  // "worktree" is in the prompt of m2 AND in one of its assistant turns:
+  // two distinct excerpts, each reopenable at its place.
   const hits = dbApi.searchMissions({ q: 'worktree' });
   assert.equal(hits.length, 2);
   assert.deepEqual(new Set(hits.map((h) => h.mission_id)), new Set([m2]));
   assert.deepEqual(new Set(hits.map((h) => h.role)), new Set(['prompt', 'assistant']));
 });
 
-test('le filtre par agent restreint sans écraser la requête', () => {
+test('the agent filter narrows without overriding the query', () => {
   assert.deepEqual(dbApi.searchMissions({ q: 'worktree', agents: ['alpha.main'] }), []);
   assert.equal(dbApi.searchMissions({ q: 'worktree', agents: ['beta.main'] }).length, 2);
   assert.deepEqual(dbApi.searchMissions({ q: 'worktree', agents: [] }), []);
 });
 
-test('les bornes temporelles filtrent sur la date du fragment', () => {
+test('time bounds filter on the date of the fragment', () => {
   const now = Date.now();
   assert.equal(dbApi.searchMissions({ q: 'worktree', since: now + 60_000 }).length, 0);
   assert.equal(dbApi.searchMissions({ q: 'worktree', until: now - 60_000 }).length, 0);
   assert.equal(dbApi.searchMissions({ q: 'worktree', since: now - 60_000 }).length, 2);
 });
 
-test('le rattrapage est idempotent : le rejouer ne duplique aucun résultat', () => {
+test('the backfill is idempotent: replaying it duplicates no result', () => {
   const before = dbApi.searchMissions({ q: 'worktree' }).length;
   assert.equal(before, 2);
-  // curseur remis à zéro = tout l'historique repassé à l'indexeur
+  // cursor reset to zero = the whole history passed through the indexer again
   db.prepare(`UPDATE mission_search_state SET v = 0 WHERE k = 'event_cursor'`).run();
   let guard = 0;
   while (!dbApi.reindexMissionSearch(50).done && guard++ < 100) { /* boucle de rattrapage */ }
@@ -188,7 +190,7 @@ test('le rattrapage est idempotent : le rejouer ne duplique aucun résultat', ()
   assert.equal(dbApi.missionSearchProgress().done, true);
 });
 
-test('un event supprimé de l’index ne laisse pas de fragment orphelin', () => {
+test('an event deleted from the index leaves no orphan fragment', () => {
   const id = seed('gamma.main', 'mission jetable', ['terme éphémère indexé']);
   assert.equal(dbApi.searchMissions({ q: 'éphémère' }).length, 1);
   db.prepare(`DELETE FROM mission_search WHERE mission_id = ?`).run(id);

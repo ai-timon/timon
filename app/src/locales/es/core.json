@@ -845,15 +845,6 @@
     "doneBody": "Ahora inicias sesión con {email}.",
     "signIn": "Iniciar sesión"
   },
-  "license": {
-    "pastDue": "Pago vencido: renueva tu suscripción",
-    "pastDueUntil": "Pago vencido: la suscripción termina el {date}",
-    "notActivated": "Free está activo: las cuentas adicionales necesitan una licencia",
-    "activate": "Activar",
-    "offlineSince": "Servidor de licencias inaccesible desde el {date}: los derechos de pago siguen disponibles durante la tolerancia sin conexión; después Timon vuelve a Free.",
-    "licenseEndsSoon": "Tu licencia termina el {date}. Introduce una clave nueva antes de esa fecha.",
-    "licenseEndsUrgent": "Tu licencia termina el {date}. Introduce ya una clave nueva."
-  },
   "betaLock": {
     "eyebrow": "Beta",
     "build_expired_title": "Esta versión ha caducado",
@@ -984,6 +975,12 @@
   },
   "appearance": {
     "title": "Apariencia",
+    "zoomTitle": "Tamaño de la interfaz",
+    "zoomHint": "Agranda o reduce el texto y los controles en todas las ventanas de Timon de este ordenador. Atajos: Ctrl y +, Ctrl y −, y Ctrl y 0 para restablecer; en macOS, Cmd en lugar de Ctrl en los tres. En Windows y Linux, también Ctrl y la rueda del ratón.",
+    "zoomIn": "Más grande",
+    "zoomOut": "Más pequeño",
+    "zoomReset": "Restablecer",
+    "zoomError": "No se pudo cambiar el tamaño de la interfaz.",
     "theme": "Tema",
     "layout": "Diseño",
     "themeHint": "Tokens de color aplicados a esta cuenta.",
@@ -1076,6 +1073,13 @@
     "mascotsStyle2dHint": "El dibujo plano, más ligero para ordenadores antiguos.",
     "mascotsStyleNoWebgl": "Este navegador no puede dibujar en 3D (WebGL2 está desactivado o no existe): las mascotas se dibujan en 2D.",
     "mascotsStyleShared": "Se aplica a todas las mascotas. Puedes cambiarlo más tarde en {settingsPath}.",
+    "dockIconTitle": "Icono del Dock",
+    "dockIconHint": "El icono que macOS muestra para Timon en el Dock mientras la app está abierta. El Finder y el Dock antes del inicio conservan el clásico.",
+    "dockIconClassic": "Clásico",
+    "dockIconClassicHint": "Los colores de Timon.",
+    "dockIconDark": "Oscuro",
+    "dockIconDarkHint": "En blanco y negro.",
+    "dockIconError": "No se pudo cambiar el icono del Dock.",
     "variants": {
       "coral": {
         "name": "Coral",
@@ -1295,12 +1299,10 @@
     "categories": "Categorías",
     "selectCategory": "Categoría",
     "modified": "modificado",
+    "defaultValue": "Por defecto: {value}",
     "definedInConfig": "definido en timon.config.json",
     "forcedByEnv": "forzado por el entorno",
-    "default": "por defecto",
     "empty": "(vacío)",
-    "enabled": "Activado",
-    "disabled": "Desactivado",
     "save": "Guardar",
     "defaultBtn": "Por defecto",
     "outOfRange": "Entre {min} y {max}",
@@ -1541,6 +1543,10 @@
   },
   "settingsDialog": {
     "backToSettings": "Volver a la configuración",
+    "navGroup": {
+      "agents": "Agentes",
+      "machine": "Este equipo"
+    },
     "close": "Cerrar",
     "unsavedKept": "Tu último cambio aún no está guardado. Guárdalo o ciérralo con × o Esc para descartarlo.",
     "category": {
@@ -1601,7 +1607,7 @@
         "installation": "Instalación",
         "updates": "Actualizaciones",
         "backup": "Copias y papelera",
-        "diagnostics": "Diagnóstico",
+        "diagnostics": "Registros y retención",
         "desktop": "App de escritorio",
         "privacy": "Privacidad"
       },
@@ -1665,7 +1671,7 @@
         "installation": "versión acerca de instalación servicio daemon tarea launchagent systemd ruta carpeta de datos registro puerto exportar importar copia actualización",
         "updates": "actualización actualizar nueva versión comprobar descargar instalador notas automática",
         "backup": "copia copias archivo nocturna restaurar conservar retención días papelera eliminado agente recuperar deshacer purgar",
-        "diagnostics": "registros logs depuración debug infra solución de problemas",
+        "diagnostics": "diagnóstico registros logs depuración debug infra solución de problemas",
         "desktop": "desinstalar quitar eliminar electron aplicación",
         "privacy": "privacidad telemetría analítica estadísticas de uso anónimo seguimiento rechazar"
       },
@@ -2560,9 +2566,17 @@
       "title": "Archivos",
       "description": "Explora y edita los archivos de la carpeta de trabajo del proyecto."
     },
-    "git": {
-      "title": "Git",
-      "description": "Las ramas, el grafo de commits y la publicación del proyecto: cambia de rama, consulta el historial y los worktrees, haz push."
+    "gitBranches": {
+      "title": "Ramas",
+      "description": "El árbol de trabajo y las ramas del repositorio: ver los cambios, cambiar de rama."
+    },
+    "gitGraph": {
+      "title": "Grafo",
+      "description": "El grafo de commits del repositorio, con sus ramas y worktrees."
+    },
+    "gitPublish": {
+      "title": "Publicar",
+      "description": "El estado de publicación del repositorio: remoto, commits por enviar, push y fetch."
     },
     "agentTasks": {
       "title": "Lista de tareas del agente",
@@ -3083,14 +3097,11 @@
   },
   "freeLicense": {
     "restrictedAccounts": "{count, plural, one {# cuenta adicional suspendida} other {# cuentas adicionales suspendidas}}. El primer superadmin activo conserva el acceso; no se eliminó ninguna cuenta ni dato.",
-    "retainedData": "Tras volver a Free, las cuentas adicionales permanecen guardadas pero no disponibles. Todas las funciones y plugins siguen disponibles. Una licencia válida restaura las cuentas que cubre.",
-    "local_free": "Free es local y no tiene activación de equipo que gestionar.",
-    "free_unavailable": "El registro de Free aún no está abierto para esta versión. Vuelve a intentarlo más tarde o usa una clave de licencia existente.",
+    "local_free": "No hay ninguna licencia que gestionar en este equipo.",
     "client_upgrade_required": "Actualiza Timon a una versión compatible y vuelve a intentarlo.",
-    "summary": "Free funciona en local sin clave ni renovación: todas las funciones y plugins, para un superadmin activo.",
     "plugin_composition_fixed": "Esta oferta tiene una composición de plugins fija. Configura los plugins incluidos o pasa a una oferta superior para cambiarla.",
-    "single_superadmin_required": "Free permite una cuenta activa, que debe ser superadmin.",
-    "free_incompatible": "Se rechazó la activación de Free. Conserva un superadmin activo y desactiva las demás cuentas, luego vuelve a intentarlo. Se han conservado tus datos y tu licencia actual.",
+    "single_superadmin_required": "Esta licencia permite una cuenta activa, que debe ser superadmin.",
+    "free_incompatible": "Esta licencia no se puede aplicar a la instalación actual. Conserva un superadmin activo y desactiva las demás cuentas, luego vuelve a intentarlo. Se han conservado tus datos y tu licencia actual.",
     "license_changed": "La licencia cambió durante esta solicitud. Recarga y vuelve a intentarlo.",
     "activation_key_missing": "No hay ninguna clave de activación guardada en este dispositivo. Usa tu cuenta de licencia o contacta con soporte para liberarla.",
     "deactivate": "Desactivar este equipo",
@@ -3587,6 +3598,9 @@
     "cron": "Expresión cron *",
     "project": "Proyecto (slug, opcional)",
     "enabled": "Activada",
+    "mcpServers": "Servidores MCP de cada tarea",
+    "mcpServersHint": "Una tarea empieza sin servidor MCP: elige los que el agente necesita en cada ejecución.",
+    "noMcpServers": "Ningún servidor MCP configurado",
     "cancel": "Cancelar",
     "saving": "Guardando…",
     "creating": "Creando…",
@@ -4351,18 +4365,14 @@
   "telemetrySettings": {
     "tab": "Privacidad",
     "title": "Estadísticas de uso anónimas",
-    "description": "Timon puede informar a su equipo de cómo se usa la aplicación (qué funciones, con qué frecuencia tienen éxito los turnos, dónde se detiene la configuración) para saber qué corregir primero. Es anónimo: un identificador aleatorio generado en este equipo, nunca tu cuenta ni tu máquina.",
     "share": "Compartir estadísticas de uso anónimas",
-    "shareDescription": "Activado por defecto. Al desactivarlo se detiene todo envío de inmediato; un último mensaje registra que lo desactivaste.",
     "lockedEnv": "Definido por la variable de entorno TIMON_TELEMETRY: cámbialo allí.",
     "lockedEnvMalformed": "TIMON_TELEMETRY contiene un valor que no es ni yes ni no: el uso compartido está desactivado.",
     "lockedConfig": "Definido por telemetry.enabled en timon.config.json: cámbialo allí.",
     "lockedConfigMalformed": "telemetry.enabled en timon.config.json no es ni true ni false: el uso compartido está desactivado.",
     "inactiveBuild": "Esta compilación de Timon no envía nada, sea cual sea este ajuste.",
     "sentTitle": "Qué se envía",
-    "sent": "Versión de la aplicación, sistema operativo, nivel de licencia; inicios y actualizaciones de la aplicación; pasos de configuración; turnos, su duración, resultado y número de tokens; qué herramientas integradas y proveedores se usan; acciones de tareas, plugins, licencia y navegador, solo como recuentos.",
     "neverTitle": "Qué nunca se envía",
-    "never": "Tus prompts, respuestas o archivos; nombres de tus proyectos, agentes, skills, rutinas o servidores MCP; rutas, URL y comandos; mensajes de error; tu correo, nombre de usuario, nombre del equipo o dirección.",
     "learnMore": "Leer el aviso de privacidad",
     "loadFailed": "No se pudo leer este ajuste.",
     "saveFailed": "No se pudo guardar este ajuste.",

@@ -17,6 +17,34 @@
  * revision `installService` records is what marks it done.
  */
 import type { ServiceOpts, ServiceResult } from './service-install.js';
+import { isServiceSessionMode, type ServiceSessionMode } from './service-session-mode.js';
+
+/**
+ * Windows: what the desktop read the task in place was meant to do, handed to
+ * the runner it starts. A task switched to the interactive token by hand
+ * still carries the boot trigger of an off-session task (#116): read back,
+ * its logon alone would rewrite it for the session. The desktop's copy lives
+ * in `desktop/src/upgrade.ts`.
+ */
+export const DESKTOP_SESSION_INTENT_ENV = 'TIMON_DESKTOP_SESSION_INTENT';
+
+/**
+ * The line the runner prints when the rewrite kept the task for the session
+ * only (`UpgradeResult.sessionFallback`): the desktop reads it from the
+ * runner's output to say it once. Its copy lives in `desktop/src/upgrade.ts`.
+ */
+export const UPGRADE_SESSION_FALLBACK_LINE = 'timon-upgrade: session-fallback';
+
+/**
+ * The session mode the rewrite should use: the desktop's intent, only when
+ * the user never answered the question (`service-session-mode`), whose answer
+ * always wins. `undefined` leaves the install to read the recorded answer or
+ * the task in place, as before.
+ */
+export function upgradeSessionMode(intent: string | undefined, recorded: ServiceSessionMode | null): ServiceSessionMode | undefined {
+  if (recorded !== null || !isServiceSessionMode(intent)) return undefined;
+  return intent;
+}
 
 export type UpgradeDeps = {
   platform: NodeJS.Platform;
@@ -33,6 +61,10 @@ export type UpgradeDeps = {
   healthy: () => Promise<boolean>;
   mark: () => Promise<void>;
   prune: () => Promise<void>;
+  /** Windows: what the previous task ran and the new one does not, removed
+   *  once the new one answers (`retireBatchLauncher`). Never before: a
+   *  rollback restores the previous task. */
+  retire?: (opts: ServiceOpts) => void;
   warn?: (message: string, error: unknown) => void;
 };
 
@@ -41,7 +73,14 @@ export type UpgradeDeps = {
  * previous one could not be put back), so the desktop must start its embedded
  * daemon rather than wait on a supervisor.
  */
-export type UpgradeResult = { ok: boolean; lines: string[]; reason: string | null; fallback: boolean };
+export type UpgradeResult = {
+  ok: boolean; lines: string[]; reason: string | null; fallback: boolean;
+  /**
+   * Windows: the task was asked to run logged out, Windows kept it for the
+   * session only, and the session task now serves (`ServiceResult.sessionFallback`).
+   */
+  sessionFallback?: boolean;
+};
 
 const detail = (result: ServiceResult, otherwise: string): string =>
   result.reason ?? result.lines.at(-1) ?? otherwise;
@@ -102,7 +141,15 @@ export async function upgradeDesktopService(deps: UpgradeDeps): Promise<UpgradeR
   if (installed.refused) return failed(detail(installed, 'Windows never started the service'), true);
   if (!installed.ok) return rollback(`the service could not be rewritten: ${detail(installed, 'refused')}`);
   if (!await deps.healthy()) return rollback('the new release of the service did not answer');
-  if (!releases) return { ok: true, lines, reason: null, fallback: false };
+  if (!releases) {
+    // Best effort, like the prune: a leftover file must not fail an upgrade that succeeded.
+    try {
+      deps.retire?.(opts);
+    } catch (error) {
+      (deps.warn ?? console.warn)('[desktop-runtime] could not remove the previous launcher', error);
+    }
+    return { ok: true, lines, reason: null, fallback: false, ...(installed.sessionFallback ? { sessionFallback: true } : {}) };
+  }
 
   try {
     await deps.mark();

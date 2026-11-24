@@ -68,7 +68,7 @@ function sessionUserId(req: Request, res: Response): string | null {
   const auth = req.auth;
   if (!auth) { res.status(401).json({ error: 'unauthorized' }); return null; }
   if (!isPersonAuth(auth) || !auth.user || !USER_ID.test(auth.user.id)) {
-    res.status(403).json({ error: 'session_required', message: 'a notification sound belongs to a signed-in account' });
+    res.status(403).json(apiError('sound_session_required', 'a notification sound belongs to a signed-in account'));
     return null;
   }
   return auth.user.id;
@@ -124,20 +124,18 @@ export function registerSoundRoutes(router: Router): void {
     raw(req, res, (err?: unknown) => {
       if (err) {
         const status = (err as { status?: number }).status;
-        res.status(status === 413 ? 413 : 400).json({
-          error: status === 413 ? 'too_large' : 'invalid_body',
-          message: status === 413 ? `a sound is at most ${SOUND_MAX_BYTES / 1024} KiB` : 'could not read the sound',
-        });
+        if (status === 413) res.status(413).json(apiError('sound_too_large', `a sound is at most ${SOUND_MAX_BYTES / 1024} KiB`, { max: SOUND_MAX_BYTES / 1024 }));
+        else res.status(400).json(apiError('sound_unreadable', 'could not read the sound'));
         return;
       }
       const body: unknown = req.body;
       if (!Buffer.isBuffer(body) || body.length === 0) {
-        res.status(400).json({ error: 'invalid_body', message: 'expected the sound bytes' });
+        res.status(400).json(apiError('sound_empty', 'expected the sound bytes'));
         return;
       }
       const mime = sniffAudio(body);
       if (!mime) {
-        res.status(415).json({ error: 'unsupported_format', message: 'not a known audio file (WAV, MP3, OGG, FLAC, AAC/M4A, WebM)' });
+        res.status(415).json(apiError('sound_format_unsupported', 'not a known audio file (WAV, MP3, OGG, FLAC, AAC/M4A, WebM)'));
         return;
       }
       const file = fileOf(userId, event.data);

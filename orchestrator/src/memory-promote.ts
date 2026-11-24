@@ -15,6 +15,7 @@ import { listAgents, readMemory, writeMemory, appendMemory } from './agent.js';
 import { readProjectMemory, appendProjectMemory } from './projects.js';
 import { decayLearnings, parseSalience } from './memory-view.js';
 import { notifyUser } from './notify.js';
+import { daemonMessage } from './daemon-message.js';
 import { settingBool, settingNum } from './settings.js';
 
 
@@ -106,7 +107,11 @@ export function runPromotionScan(): void {
       `Memory ${slug}: ${bucket.items.length} recurring fact(s) to review`,
       `These facts recur ≥${settingNum('TIMON_MEMORY_PROMOTE_THRESHOLD')}× and are proposed for promotion (proposals.md of project \`${slug}\`). ` +
       `Approve them by copying them into the suggested curated file through the project memory UI/API.\n\n${top}`,
-      {},
+      {
+        message: daemonMessage('memory_proposals_to_review', {
+          slug, count: bucket.items.length, threshold: settingNum('TIMON_MEMORY_PROMOTE_THRESHOLD'), top,
+        }),
+      },
     );
     console.log(`[memory-promote] project ${slug}: ${bucket.items.length} proposal(s)`);
   }

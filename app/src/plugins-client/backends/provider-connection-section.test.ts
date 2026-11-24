@@ -57,7 +57,7 @@ test('the Connection section signs this computer in and manages the accounts of 
     const url = String(input);
     const method = init?.method ?? 'GET';
     if (url === '/api/ui/auth/me') return Response.json({ user: { id: 'owner', email: 'o@x', name: 'Owner', is_superadmin: true }, needsSetup: false });
-    if (url === '/api/ui/users') return Response.json({ users: [] });
+    if (url === '/api/ui/users/directory') return Response.json({ users: [] });
     if (url === '/api/ui/providers/overview') {
       overviewReads += 1;
       return Response.json({

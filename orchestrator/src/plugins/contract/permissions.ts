@@ -105,4 +105,6 @@ export type PluginPermission =
   | 'chat:media'
   | 'chat:command'
   | 'onboarding:read'
-  | 'dictation:engine';
+  | 'dictation:engine'
+  | 'forge:read'
+  | 'forge:propose';

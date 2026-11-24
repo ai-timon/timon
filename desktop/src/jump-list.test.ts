@@ -7,7 +7,7 @@ const EXE = 'C:\\Program Files\\Timon\\Timon.exe';
 
 test('Windows: the jump list of a package relaunches Timon with --new-window, in the user\'s language', () => {
   assert.deepEqual(windowsUserTasks({ platform: 'win32', packaged: true, execPath: EXE, locale: 'fr-FR' }), [{
-    program: EXE, arguments: '--new-window', title: 'Nouvelle fenêtre', description: 'Nouvelle fenêtre', iconPath: EXE, iconIndex: 0,
+    program: EXE, arguments: '--new-window', title: 'Nouvelle fenêtre', description: 'Nouvelle fenêtre', iconPath: EXE, iconIndex: 0, // french-ok: the French locale under test
   }]);
   assert.equal(windowsUserTasks({ platform: 'win32', packaged: true, execPath: EXE, locale: 'en-US' })![0]!.title, 'New window');
 });

@@ -218,7 +218,7 @@ test('input / output are cut to state.maxBytes and flagged as truncated', () => 
   assert.ok(out && out.endsWith(TRUNCATION_MARK));
   assert.ok(Buffer.byteLength(out.slice(0, -TRUNCATION_MARK.length), 'utf8') <= 64);
   // multi-byte text respects the BYTE budget, not the character count
-  const accented = 'é'.repeat(100);
+  const accented = 'é'.repeat(100); // french-ok: a two-byte letter
   const cut = spanPayload(accented, 50);
   assert.ok(cut && Buffer.byteLength(cut.slice(0, -TRUNCATION_MARK.length), 'utf8') <= 50);
   assert.equal(spanPayload(null, 10), null);

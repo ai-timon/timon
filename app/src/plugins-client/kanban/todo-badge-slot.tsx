@@ -19,9 +19,14 @@ export const TODO_BADGE_SLOT = 'kanban.todo.badge';
 
 const TodoItemContext = createContext<ProjectTodo | null>(null);
 
-/** The idea a `kanban.todo.badge` occupant is rendered for. */
+/** The idea a `kanban.todo.badge` or `kanban.todo.landing` occupant is rendered for. */
 export function useTodoItem(): ProjectTodo | null {
   return useContext(TodoItemContext);
+}
+
+/** Puts `item` where `useTodoItem()` reads it. */
+export function TodoItemProvider({ item, children }: { item: ProjectTodo; children: React.ReactNode }): React.ReactElement {
+  return <TodoItemContext.Provider value={item}>{children}</TodoItemContext.Provider>;
 }
 
 /** Paints nothing at all while no plugin holds a badge: a stock line keeps its

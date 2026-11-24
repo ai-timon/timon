@@ -1,4 +1,4 @@
-/** Fixture : jamais importée — son manifeste est refusé avant tout import. */
+/** Fixture: never imported, its manifest is refused before any import. */
 ;(globalThis.__timonFixtureTrace ??= []).push('bad-manifest:imported')
 
 export function apply() {}

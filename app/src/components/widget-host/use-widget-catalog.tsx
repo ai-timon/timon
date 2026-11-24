@@ -53,7 +53,7 @@ function PluginCard({
   title,
   pluginId,
   Component,
-  poignee,
+  handle,
   className,
   compact,
 }: WidgetProps & { title: string; pluginId: string; Component: React.ComponentType }) {
@@ -66,12 +66,12 @@ function PluginCard({
         <PluginBoundary pluginId={pluginId}>
           <Component />
         </PluginBoundary>
-        {poignee}
+        {handle}
       </>
     );
   }
   return (
-    <Tile title={title} actions={poignee} className={cn(className)} bodyClassName="p-0">
+    <Tile title={title} actions={handle} className={cn(className)} bodyClassName="p-0">
       <PluginBoundary pluginId={pluginId}>
         <Component />
       </PluginBoundary>
@@ -129,14 +129,16 @@ export function useWidgetCatalog(): WidgetCatalog {
       // whose header carries a live subtitle and the handle. It then receives the
       // same props as a native one; framing it as well would give two borders and
       // two titles.
-      const Component = registration.Component as ComponentType<WidgetProps>;
+      // The controls go under `handle`, the SDK's name since API 17, and under
+      // `poignee` too, the name a widget written for an earlier API reads.
+      const Component = registration.Component as ComponentType<WidgetProps & { poignee: ReactNode }>;
       const bare = registration.widget?.frame === 'none';
       byId.set(entry.id, {
         ...entry,
         render: (props) =>
           bare ? (
             <PluginBoundary pluginId={registration.pluginId}>
-              <Component {...props} />
+              <Component {...props} poignee={props.handle} />
             </PluginBoundary>
           ) : (
             <PluginCard

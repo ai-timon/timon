@@ -1,13 +1,13 @@
 /**
- * Bascule de backend sur quota épuisé, et identité des séries Kanban.
+ * Backend switch on an exhausted quota, and identity of Kanban series.
  *
- * Ce qui est vérifié ici est ce qui a manqué le 2026-08-20 : un backend à sec
- * doit devenir un ÉTAT connu du système (sinon chaque spawn repart dans le
- * mur), et un chantier doit garder une identité stable quand son pilote change
- * (sinon on ne sait plus quelles tasks déplacer, ni où livrer les retours).
+ * What is checked here is what was missing on 2026-08-20: a backend running dry
+ * must become a KNOWN STATE of the system (otherwise each spawn hits the
+ * wall again), and a work must keep a stable identity when its pilot changes
+ * (otherwise one no longer knows which tasks to move, nor where to deliver the returns).
  *
- * La base est ouverte dans un TIMON_HOME temporaire : les imports sont donc
- * dynamiques, APRÈS avoir posé l'environnement.
+ * The database is opened in a temporary TIMON_HOME: the imports are therefore
+ * dynamic, AFTER the environment is set.
  *
  * `node --test --import tsx src/backend-fallback.test.ts`
  */
@@ -63,7 +63,7 @@ const hit = (
   ...over,
 });
 
-test('un solde épuisé (402) écarte le backend plus longtemps qu’un quota, et le 429 suivant ne le raccourcit pas', () => {
+test('an exhausted balance (402) sets the backend aside longer than a quota, and the next 429 does not shorten it', () => {
   clearBackendCooldown('grok');
   const quotaWindow = Date.now() + 3600_000;
 
@@ -71,22 +71,22 @@ test('un solde épuisé (402) écarte le backend plus longtemps qu’un quota, e
   const dry = dbApi.getBackendCooldown('grok');
   assert.equal(dry?.kind, 'exhausted');
   assert.equal(isBackendCoolingDown('grok'), true);
-  // Le cooldown "sans crédit" a sa propre durée (24 h par défaut), bien
-  // au-delà de la fenêtre de quota configurée ici à 1 h.
+  // The "no credit" cooldown has its own duration (24 h by default), well
+  // beyond the quota window configured here at 1 h.
   assert.ok((dry?.until ?? 0) > quotaWindow);
 
-  // Un 429 postérieur — même avec l'heure exacte du provider — ne fait pas
-  // revenir un compte à sec dans la rotation : rien ne s'est rechargé.
+  // A later 429, even with the exact time of the provider, does not bring
+  // an account running dry back into rotation: nothing was recharged.
   noteBackendRateLimit('grok', hit({ resetsAt: quotaWindow }));
   assert.equal(dbApi.getBackendCooldown('grok')?.until, dry?.until);
   assert.equal(dbApi.getBackendCooldown('grok')?.kind, 'exhausted');
 
-  // Seul un tour qui aboutit lève l'exclusion : preuve empirique du rechargement.
+  // Only a turn that succeeds lifts the exclusion: empirical proof of the recharge.
   clearBackendCooldown('grok');
   assert.equal(isBackendCoolingDown('grok'), false);
 });
 
-test('un quota épuisé écarte le backend, un tour réussi le réintègre', () => {
+test('an exhausted quota sets the backend aside, a successful turn brings it back', () => {
   clearBackendCooldown('claude');
   assert.equal(isBackendCoolingDown('claude'), false);
 
@@ -97,25 +97,25 @@ test('un quota épuisé écarte le backend, un tour réussi le réintègre', () 
   assert.equal(isBackendCoolingDown('claude'), false);
 });
 
-test("l'heure de réouverture du provider fait foi, et un cooldown en cours n'est jamais raccourci", () => {
+test("the provider's reopening time prevails, and a running cooldown is never shortened", () => {
   clearBackendCooldown('claude');
   const far = Date.now() + 4 * 60 * 60 * 1000;
   noteBackendRateLimit('claude', hit({ resetsAt: far }));
   assert.equal(dbApi.getBackendCooldown('claude')?.until, far);
 
-  // Un second hit annonçant plus tôt ne doit pas relancer les missions dans le
-  // mur avant l'heure connue la plus tardive.
+  // A second hit announcing earlier must not restart the missions against the
+  // wall before the latest known time.
   noteBackendRateLimit('claude', hit({ resetsAt: Date.now() + 60_000 }));
   assert.equal(dbApi.getBackendCooldown('claude')?.until, far);
   clearBackendCooldown('claude');
 });
 
-test("une estimation ne prolonge pas l'heure exacte annoncée par le provider", () => {
+test('an estimate does not extend the exact time announced by the provider', () => {
   clearBackendCooldown('claude');
-  // Le scénario du 2026-08-22 : l'event `five_hour` annonce 04:40, puis les 429
-  // qui suivent n'ont plus d'horodatage. L'estimation "maintenant + cooldown"
-  // (1 h dans ce test) tombe APRÈS 04:40 et l'écrasait à chaque 429 — le
-  // backend restait écarté des heures après sa réouverture réelle.
+  // The scenario of 2026-08-22: the `five_hour` event announces 04:40, then the 429s
+  // that follow have no timestamp any more. The "now + cooldown" estimate
+  // (1 h in this test) falls AFTER 04:40 and overwrote it on each 429: the
+  // backend stayed set aside for hours after its real reopening.
   const exact = Date.now() + 20 * 60 * 1000;
   noteBackendRateLimit('claude', hit({ resetsAt: exact }));
   assert.equal(dbApi.getBackendCooldown('claude')?.until, exact);
@@ -129,13 +129,13 @@ test("une estimation ne prolonge pas l'heure exacte annoncée par le provider", 
   clearBackendCooldown('claude');
 });
 
-test("une heure exacte corrige une estimation, même pour la raccourcir", () => {
+test('an exact time corrects an estimate, even to shorten it', () => {
   clearBackendCooldown('claude');
   noteBackendRateLimit('claude', hit({ resetsAt: null, source: 'status' }));
   const estimated = dbApi.getBackendCooldown('claude')!.until;
 
-  // Le provider finit par annoncer une réouverture PLUS PROCHE que notre
-  // estimation : se priver du backend jusqu'à l'estimation serait absurde.
+  // The provider ends up announcing a reopening CLOSER than our
+  // estimate: doing without the backend until the estimate would be absurd.
   const exact = Date.now() + 5 * 60 * 1000;
   assert.ok(exact < estimated);
   noteBackendRateLimit('claude', hit({ resetsAt: exact }));
@@ -144,40 +144,40 @@ test("une heure exacte corrige une estimation, même pour la raccourcir", () => 
   clearBackendCooldown('claude');
 });
 
-test('un cooldown périmé est purgé à la lecture', () => {
+test('a stale cooldown is purged on read', () => {
   dbApi.setBackendCooldown('claude', Date.now() - 1_000, 'five_hour');
   assert.equal(isBackendCoolingDown('claude'), false);
   assert.equal(dbApi.getBackendCooldown('claude'), undefined);
 });
 
-test('une requête mise en file ne compte pas comme un quota épuisé', () => {
+test('a queued request does not count as an exhausted quota', () => {
   clearBackendCooldown('claude');
-  // `pending` = le tour peut encore aboutir : écarter le backend serait prématuré.
+  // `pending` = the turn can still succeed: setting the backend aside would be premature.
   noteBackendRateLimit('claude', hit({ pending: true }));
   assert.equal(isBackendCoolingDown('claude'), false);
 });
 
-test('le secours ne se substitue pas à lui-même, ni à un backend qui a du quota', () => {
+test('the fallback does not stand in for itself, nor for a backend that has quota', () => {
   clearBackendCooldown('claude');
   clearBackendCooldown('codex');
-  // Fuir codex pour aller sur codex n'a aucun sens : le réglage fixe pointe
-  // pourtant sur codex, donc la cascade doit l'écarter et proposer autre chose.
+  // Fleeing codex to go to codex makes no sense: the fixed setting nevertheless
+  // points at codex, so the cascade must rule it out and offer something else.
   clearBackendCooldown('grok');
   assert.notEqual(fallbackFor('codex')?.backend, 'codex');
-  // Backend intact : rien à rediriger.
+  // Intact backend: nothing to redirect.
   assert.equal(redirectIfExhausted('claude'), null);
 
   noteBackendRateLimit('claude', hit());
   assert.deepEqual(redirectIfExhausted('claude')?.backend, 'codex');
 
-  // Secours lui-même à sec : on descend d'un cran dans la cascade plutôt que
-  // d'abandonner — il reste peut-être un backend avec du quota.
+  // Fallback itself running dry: go down one step in the cascade rather than
+  // give up; there may still be a backend with quota.
   noteBackendRateLimit('codex', hit());
   clearBackendCooldown('grok');
   assert.equal(redirectIfExhausted('claude')?.backend, 'grok');
 
-  // Plus AUCUN backend praticable : là seulement, ne rien promettre. Basculer
-  // d'un mur vers un autre mur ne ferait que déplacer l'échec.
+  // NO practicable backend left: only then, promise nothing. Switching
+  // from one wall to another would only move the failure.
   noteBackendRateLimit('grok', hit());
   assert.equal(redirectIfExhausted('claude'), null);
   clearBackendCooldown('claude');
@@ -185,7 +185,7 @@ test('le secours ne se substitue pas à lui-même, ni à un backend qui a du quo
   clearBackendCooldown('grok');
 });
 
-test("une série garde son identité quand son pilote change d'une mission à l'autre", () => {
+test('a series keeps its identity when its pilot changes from one mission to the next', () => {
   const pilot1 = randomUUID();
   const pilot2 = randomUUID();
   const t1 = randomUUID();
@@ -195,41 +195,41 @@ test("une série garde son identité quand son pilote change d'une mission à l'
   dbApi.createTask(t2, 'volet 2', 'a.coder', { creatorMissionId: pilot1, type: 'code' });
 
   const seriesId = dbApi.getTask(t1)?.series_id;
-  assert.equal(seriesId, pilot1, 'la série prend l\'identité de sa première mission pilote');
-  assert.equal(dbApi.getTask(t2)?.series_id, seriesId, 'même pilote → même série');
+  assert.equal(seriesId, pilot1, 'the series takes the identity of its first pilot mission');
+  assert.equal(dbApi.getTask(t2)?.series_id, seriesId, 'same pilot → same series');
 
-  // Le pilote change (bascule de backend, ou mission de réveil qui reprend la
-  // barre) : les tasks non terminales suivent, l'identité de la série ne bouge pas.
+  // The pilot changes (backend switch, or a wake mission taking over the
+  // helm): the non-terminal tasks follow, the identity of the series does not move.
   const moved = dbApi.remapSeriesOrchestratorMission(seriesId!, pilot1, pilot2);
   assert.equal(moved, 2);
   assert.equal(dbApi.getTask(t1)?.creator_mission_id, pilot2);
   assert.equal(dbApi.getTask(t1)?.series_id, seriesId);
   assert.equal(dbApi.seriesIdForMission(pilot2), seriesId);
 
-  // Une task créée ensuite par le NOUVEAU pilote rejoint la même série — sans
-  // ça, un chantier se scinderait en deux à chaque bascule.
+  // A task then created by the NEW pilot joins the same series; without
+  // that, a work would split in two at each switch.
   const t3 = randomUUID();
   dbApi.createTask(t3, 'volet 3', 'a.coder', { creatorMissionId: pilot2, type: 'code' });
   assert.equal(dbApi.getTask(t3)?.series_id, seriesId);
 });
 
-test('la bascule LLM d\'une série épargne les tasks en vol', () => {
+test("a series's LLM switch spares the tasks in flight", () => {
   const pilot = randomUUID();
   const todo = randomUUID();
   const running = randomUUID();
-  dbApi.createTask(todo, 'pas encore lancée', 'a.coder', { creatorMissionId: pilot, type: 'code' });
+  dbApi.createTask(todo, 'pas encore lancée', 'a.coder', { creatorMissionId: pilot, type: 'code' }); // french-ok: free-text sample data
   dbApi.createTask(running, 'en vol', 'a.coder', { creatorMissionId: pilot, type: 'code' });
   dbApi.setTaskStatusOnly(running, 'IN_PROGRESS');
 
   const changed = dbApi.setSeriesLlmOverride(pilot, 'code', 'codex', 'gpt-5.6-sol');
-  assert.equal(changed, 1, 'seule la task PENDING est repointée');
+  assert.equal(changed, 1, 'only the PENDING task is repointed');
   assert.equal(dbApi.getTask(todo)?.backend_override, 'codex');
-  // Couper une task qui tourne perdrait son travail alors qu'elle a peut-être
-  // encore du quota sur son propre backend.
+  // Cutting a running task would lose its work while it may still
+  // have quota on its own backend.
   assert.equal(dbApi.getTask(running)?.backend_override, null);
 });
 
-test('la bascule ne touche que le type visé', () => {
+test('the switch only touches the targeted type', () => {
   const pilot = randomUUID();
   const code = randomUUID();
   const review = randomUUID();
@@ -238,108 +238,108 @@ test('la bascule ne touche que le type visé', () => {
 
   dbApi.setSeriesLlmOverride(pilot, 'code', 'codex', 'gpt-5.6-sol');
   assert.equal(dbApi.getTask(code)?.model_override, 'gpt-5.6-sol');
-  // Un chantier long ne veut pas le même repli pour son coder et pour ses
-  // reviews : c'est toute la raison d'être du plan par portée.
+  // A long work does not want the same fallback for its coder and for its
+  // reviews: that is the whole point of the plan by scope.
   assert.equal(dbApi.getTask(review)?.backend_override, null);
 });
 
-test('le plan de série prime sur le réglage global, portée par portée', () => {
+test('the series plan wins over the global setting, scope by scope', () => {
   clearBackendCooldown('claude');
   const seriesId = randomUUID();
-  // Le global dit codex ; la série veut grok pour son coder.
+  // The global says codex; the series wants grok for its coder.
   dbApi.setSeriesFallback(seriesId, 'code', 'grok', 'grok-4.6');
   assert.deepEqual(fallbackFor('claude', { seriesId, scope: 'code' }), {
     backend: 'grok',
     model: 'grok-4.6',
   });
-  // Portée non citée : le global s'applique toujours.
+  // Scope not mentioned: the global still applies.
   assert.equal(fallbackFor('claude', { seriesId, scope: 'review' })?.backend, 'codex');
 });
 
-test("le joker '*' couvre les types non cités, mais jamais l'orchestrateur", () => {
+test("the '*' wildcard covers the types not mentioned, but never the orchestrator", () => {
   const seriesId = randomUUID();
   dbApi.setSeriesFallback(seriesId, '*', 'grok', 'grok-4.6');
   assert.equal(fallbackFor('claude', { seriesId, scope: 'review' })?.backend, 'grok');
   assert.equal(fallbackFor('claude', { seriesId, scope: 'doc' })?.backend, 'grok');
-  // Le repli choisi pour des reviews (souvent un petit modèle) ne convient pas à
-  // celui qui tient le plan du chantier : il retombe sur le global, pas sur '*'.
+  // The fallback chosen for reviews (often a small model) does not suit
+  // the one holding the plan of the work: it falls back on the global, not on '*'.
   assert.equal(fallbackFor('claude', { seriesId, scope: 'orchestrator' })?.backend, 'codex');
 });
 
-test('une règle sans backend est un refus explicite de basculer', () => {
+test('a rule without a backend is an explicit refusal to switch', () => {
   const seriesId = randomUUID();
   dbApi.setSeriesFallback(seriesId, 'code', null, null);
-  // Distinct de "pas de règle" : ici on veut que ça s'arrête plutôt que de
-  // continuer sur un modèle qui produira du code à refaire.
+  // Distinct from "no rule": here we want it to stop rather than
+  // carry on with a model that will produce code to redo.
   assert.equal(fallbackFor('claude', { seriesId, scope: 'code' }), null);
   assert.equal(fallbackFor('claude', { seriesId, scope: 'review' })?.backend, 'codex');
 });
 
-test("un plan qui pointe vers un backend à sec fait descendre d'un cran, pas échouer", () => {
+test('a plan pointing at a backend running dry goes down one step, it does not fail', () => {
   const seriesId = randomUUID();
   dbApi.setSeriesFallback(seriesId, 'code', 'grok', null);
   noteBackendRateLimit('grok', hit());
   clearBackendCooldown('codex');
-  // "Sinon" veut dire sinon : la décision de l'orchestrateur est
-  // inapplicable (sa cible n'a plus de quota), donc l'équivalence prend le
-  // relais. Renvoyer null ici arrêtait le chantier alors qu'un backend était
-  // disponible.
+  // "Otherwise" means otherwise: the orchestrator's decision is
+  // inapplicable (its target has no quota left), so the equivalence takes
+  // over. Returning null here stopped the work while a backend was
+  // available.
   const target = fallbackFor('claude', { seriesId, scope: 'code' });
   assert.equal(target?.backend, 'codex');
 
-  // Un refus EXPLICITE, lui, ne cascade jamais : c'est une décision, pas un
-  // empêchement.
+  // An EXPLICIT refusal never cascades: it is a decision, not an
+  // impediment.
   const refused = randomUUID();
   dbApi.setSeriesFallback(refused, 'code', null, null);
   assert.equal(fallbackFor('claude', { seriesId: refused, scope: 'code' }), null);
   clearBackendCooldown('grok');
 });
 
-test("le secours posé sur UNE task prime sur la série et sur le réglage global", () => {
+test('the fallback set on ONE task wins over the series and the global setting', () => {
   const seriesId = randomUUID();
   dbApi.setSeriesFallback(seriesId, 'code', 'grok', 'grok-4.6');
-  // La task veut codex/gpt-5.6-terra, la série dit grok, le global dit codex
-  // (sans modèle précis) : c'est le modèle EXPLICITE de la task qui doit
-  // ressortir, pas celui déduit de la série ou du défaut backend.
+  // The task wants codex/gpt-5.6-terra, the series says grok, the global says codex
+  // (without a precise model): the EXPLICIT model of the task is what must
+  // come out, not the one inferred from the series or the backend default.
   assert.deepEqual(
     fallbackFor('claude', { seriesId, scope: 'code' }, { backend: 'codex', model: 'gpt-5.6-terra' }),
     { backend: 'codex', model: 'gpt-5.6-terra' },
   );
 });
 
-test("le sentinel 'none' au niveau task est un refus explicite, même si la série ou le global proposent un secours", () => {
+test("the 'none' sentinel at task level is an explicit refusal, even if the series or the global offer a fallback", () => {
   const seriesId = randomUUID();
   dbApi.setSeriesFallback(seriesId, 'code', 'grok', 'grok-4.6');
   assert.equal(fallbackFor('claude', { seriesId, scope: 'code' }, { backend: 'none', model: null }), null);
-  // Sans override task (backend null = "pas d'avis"), la série reprend la main.
+  // Without a task override (backend null = "no opinion"), the series takes over again.
   assert.equal(fallbackFor('claude', { seriesId, scope: 'code' }, { backend: null, model: null })?.backend, 'grok');
 });
 
-test("l'équivalence passe AVANT le réglage fixe : le calibre d'origine est préservé", () => {
+test('the equivalence comes BEFORE the fixed setting: the original calibre is kept', () => {
   clearBackendCooldown('claude');
   clearBackendCooldown('codex');
-  // TIMON_FALLBACK_BACKEND vaut 'codex' sans modèle : le réglage fixe seul
-  // enverrait un petit haiku sur gpt-5.6-sol, le flagship du compte. La
-  // matrice, consultée d'abord, respecte le tier d'origine.
+  // TIMON_FALLBACK_BACKEND is 'codex' without a model: the fixed setting alone
+  // would send a small haiku onto gpt-5.6-sol, the flagship of the account. The
+  // matrix, consulted first, respects the original tier.
   const target = fallbackFor('claude', {
     seriesId: null,
     scope: 'orchestrator',
     fromModel: 'haiku',
   });
   assert.equal(target?.backend, 'codex');
-  assert.equal(target?.model, 'gpt-5.6-luna', 'un small doit retomber sur un small');
+  assert.equal(target?.model, 'gpt-5.6-luna', 'a small one must fall back on a small one');
   assert.notEqual(target?.model, 'gpt-5.6-sol');
 });
 
-test("le réglage fixe reste le dernier recours quand l'équivalence ne trouve rien", async () => {
+test('the fixed setting stays the last resort when the equivalence finds nothing', async () => {
   const { invalidateSettingsCache } = await import('./settings.js');
   clearBackendCooldown('claude');
-  // `ollama-cloud` est délibérément absent de FALLBACK_PRIORITY : la matrice
-  // ne le choisira JAMAIS d'elle-même (pas de modèles catalogués — trop
-  // incertain pour une bascule automatique). L'obtenir prouve donc qu'on est
-  // bien descendu jusqu'au réglage fixe, et pas passé par l'équivalence.
-  // L'env prime sur la base (cf. buildCache) : c'est lui qu'il faut bouger
-  // ici, `setSetting` seul resterait sans effet.
+  // `ollama-cloud` is deliberately missing from FALLBACK_PRIORITY: the matrix
+  // will NEVER pick it on its own (no catalogued models, too
+  // uncertain for an automatic switch). Getting it therefore proves one did
+  // go down to the fixed setting, and not through the equivalence.
+  // The env wins over the database (see buildCache): it is what must move
+  // here, `setSetting` alone would have no effect.
   process.env.TIMON_FALLBACK_BACKEND = 'ollama-cloud';
   invalidateSettingsCache();
   noteBackendRateLimit('codex', hit());
@@ -355,38 +355,38 @@ test("le réglage fixe reste le dernier recours quand l'équivalence ne trouve r
   }
 });
 
-test("aucune config manuelle nulle part : la matrice d'équivalence prend le relais, à tier égal", async () => {
+test('no manual config anywhere: the equivalence matrix takes over, at an equal tier', async () => {
   const { invalidateSettingsCache } = await import('./settings.js');
-  // Vider AUSSI l'env : il écrase la base, et tant qu'il vaut 'codex' c'est le
-  // réglage fixe qui répond — ce test passait alors sans jamais atteindre la
-  // matrice qu'il prétend vérifier.
+  // Empty the env TOO: it overrides the database, and as long as it is 'codex' the
+  // fixed setting answers; this test then passed without ever reaching the
+  // matrix it claims to check.
   delete process.env.TIMON_FALLBACK_BACKEND;
   invalidateSettingsCache();
   try {
     clearBackendCooldown('codex');
     clearBackendCooldown('grok');
-    // opus (flagship claude) → un flagship ailleurs, jamais un petit modèle.
+    // opus (claude flagship) → a flagship elsewhere, never a small model.
     const target = fallbackFor('claude', { seriesId: null, scope: 'orchestrator', fromModel: 'opus' });
-    assert.ok(target, 'un secours automatique doit être trouvé');
+    assert.ok(target, 'an automatic fallback must be found');
     assert.notEqual(target?.backend, 'claude');
-    assert.equal(target?.model, 'gpt-5.6-sol', 'un flagship doit retomber sur un flagship');
+    assert.equal(target?.model, 'gpt-5.6-sol', 'a flagship must fall back on a flagship');
   } finally {
     process.env.TIMON_FALLBACK_BACKEND = 'codex';
     invalidateSettingsCache();
   }
 });
 
-test("le pilote ne bouge que si l'orchestrateur est visé ou si SON backend est à sec", async () => {
+test('the pilot only moves if the orchestrator is targeted or if ITS backend is running dry', async () => {
   const { pilotIsGoverned } = await import('./backend-fallback.js');
-  // Chemin automatique (pas de portée) : codex à sec sur les reviews, pilote sur claude.
+  // Automatic path (no scope): codex dry on the reviews, pilot on claude.
   assert.equal(pilotIsGoverned(undefined, false), false);
-  assert.equal(pilotIsGoverned(undefined, true), true, 'son propre backend est à sec : il part');
+  assert.equal(pilotIsGoverned(undefined, true), true, 'its own backend is running dry: it leaves');
   assert.equal(pilotIsGoverned('code', false), false);
   assert.equal(pilotIsGoverned('code', true), true);
-  assert.equal(pilotIsGoverned('orchestrator', false), true, 'une règle posée pour lui le déplace');
+  assert.equal(pilotIsGoverned('orchestrator', false), true, 'a rule set for it moves it');
 });
 
-test("codex à sec sur une task : les tasks basculent, le pilote resté sur claude ne bouge pas", async () => {
+test('codex dry on a task: the tasks switch, the pilot left on claude does not move', async () => {
   const { switchSeriesToFallback } = await import('./backend-fallback.js');
   const pilot = randomUUID();
   dbApi.createMission(pilot, 'a.main', 'pilote');
@@ -400,10 +400,10 @@ test("codex à sec sur une task : les tasks basculent, le pilote resté sur clau
   clearBackendCooldown('grok');
   noteBackendRateLimit('codex', hit());
   try {
-    await switchSeriesToFallback(seriesId, { pilotMissionId: pilot, reason: 'codex à sec' });
-    assert.equal(dbApi.getMission(pilot)?.backend_override, 'claude', 'le pilote garde son backend');
+    await switchSeriesToFallback(seriesId, { pilotMissionId: pilot, reason: 'codex à sec' }); // french-ok: free-text sample data
+    assert.equal(dbApi.getMission(pilot)?.backend_override, 'claude', 'the pilot keeps its backend');
     assert.equal(dbApi.getMission(pilot)?.model_override, 'claude-opus-5-5');
-    assert.notEqual(dbApi.getTask(review)?.backend_override, 'codex', 'la task, elle, quitte le backend à sec');
+    assert.notEqual(dbApi.getTask(review)?.backend_override, 'codex', 'the task, for its part, leaves the backend running dry');
   } finally {
     clearBackendCooldown('codex');
   }

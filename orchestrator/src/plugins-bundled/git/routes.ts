@@ -125,7 +125,7 @@ function parseOr400<T>(schema: z.ZodType<T>, value: unknown, res: Response): T |
   const parsed = schema.safeParse(value ?? {});
   if (parsed.success) return parsed.data;
   const issues = parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`).join('; ');
-  res.status(400).json({ error: `invalid request: ${issues}` });
+  res.status(400).json(apiError('invalid_detail', `invalid request: ${issues}`, { detail: issues }));
   return null;
 }
 
@@ -160,7 +160,7 @@ export function registerRoutes(app: Router): void {
       const info = await gitInfo(params.name, projectCwd);
       res.json(info);
     } catch (err) {
-      res.status(err instanceof GitNoAnswerError ? 503 : 500).json({ error: (err as Error).message });
+      res.status(err instanceof GitNoAnswerError ? 503 : 500).json(apiError('git_info_failed', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 
@@ -171,7 +171,7 @@ export function registerRoutes(app: Router): void {
     const query = params && parseOr400(RepoQuery, req.query, res);
     if (!params || !query) return;
     try { res.json({ git: await getGitRemoteStatus(params.slug, query.repo) }); }
-    catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    catch (err) { res.status(400).json(apiError('git_remote_status_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   // Creating the GitHub repository publishes the project under the account
@@ -185,7 +185,7 @@ export function registerRoutes(app: Router): void {
     if (!params || !query || !body) return;
     try {
       res.json({ git: await createGitRemote(params.slug, body, query.repo) });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('git_remote_create_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.get('/api/git-remote/:slug/remotes', async (req, res) => {
@@ -195,7 +195,7 @@ export function registerRoutes(app: Router): void {
     const query = params && parseOr400(RepoQuery, req.query, res);
     if (!params || !query) return;
     try { res.json({ remotes: await listRemotes(params.slug, query.repo) }); }
-    catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    catch (err) { res.status(400).json(apiError('git_remotes_list_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   // Changing a remote decides where the project's code is pushed: the same
@@ -208,7 +208,7 @@ export function registerRoutes(app: Router): void {
     const body = query && parseOr400(AddRemoteBody, req.body, res);
     if (!params || !query || !body) return;
     try { res.json(await addRemote(params.slug, body, query.repo)); }
-    catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    catch (err) { res.status(400).json(apiError('git_remote_add_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.patch('/api/git-remote/:slug/remotes/:name', async (req, res) => {
@@ -219,7 +219,7 @@ export function registerRoutes(app: Router): void {
     const body = query && parseOr400(SetRemoteUrlBody, req.body, res);
     if (!params || !query || !body) return;
     try { res.json(await setRemoteUrl(params.slug, { name: params.name, ...body }, query.repo)); }
-    catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    catch (err) { res.status(400).json(apiError('git_remote_update_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.delete('/api/git-remote/:slug/remotes/:name', async (req, res) => {
@@ -229,7 +229,7 @@ export function registerRoutes(app: Router): void {
     const query = params && parseOr400(RepoQuery, req.query, res);
     if (!params || !query || !parseOr400(EmptyBody, req.body, res)) return;
     try { res.json(await removeRemote(params.slug, params.name, query.repo)); }
-    catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    catch (err) { res.status(400).json(apiError('git_remote_remove_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   // Push and fetch run under the host's git credentials and rewrite refs, on
@@ -243,7 +243,7 @@ export function registerRoutes(app: Router): void {
     if (!params || !query || !body) return;
     try {
       res.json({ git: await gitRemotePush(params.slug, body.branch || undefined, query.repo, body.remote) });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('git_push_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/git-remote/:slug/fetch', async (req, res) => {
@@ -253,7 +253,7 @@ export function registerRoutes(app: Router): void {
     const query = params && parseOr400(RepoQuery, req.query, res);
     if (!params || !query || !parseOr400(EmptyBody, req.body, res)) return;
     try { res.json({ git: await gitRemoteFetch(params.slug, query.repo) }); }
-    catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    catch (err) { res.status(400).json(apiError('git_fetch_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.get('/api/git/status', async (req, res) => {

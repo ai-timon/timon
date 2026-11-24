@@ -125,11 +125,11 @@ test('invalid toggle inputs return explicit field errors without changing config
   assert.equal(readFileSync(CONFIG_FILE, 'utf8'), before);
 });
 
-test('session superadmin without groups cannot bypass the fixed Free composition', async () => {
+test('session superadmin without groups cannot bypass a fixed paid composition', async () => {
   const { licenseState, setLicenseState } = await import('./license/runtime.js');
   const before = licenseState();
   const configBefore = readFileSync(CONFIG_FILE, 'utf8');
-  setLicenseState({ ...before, status: 'valid', plan: 'free', users: 1,
+  setLicenseState({ ...before, status: 'valid', plan: 'solo', planId: 'solo', users: 1,
     expiresAt: new Date(Date.now() + 900_000).toISOString(),
     capabilities: { version: 1, plugins: 'fixed', accounts: 'single-superadmin' } });
   try {

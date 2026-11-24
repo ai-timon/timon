@@ -47,7 +47,7 @@ async function renderMission(setup: boolean, asked = true): Promise<Rendered> {
   const question = {
     id: 'q1',
     tool_name: 'ask_user',
-    input: { questions: [{ header: 'Language', question: 'Which language do you prefer?', options: [{ label: 'English' }, { label: 'Français' }] }] },
+    input: { questions: [{ header: 'Language', question: 'Which language do you prefer?', options: [{ label: 'English' }, { label: 'Français' }] }] }, // french-ok: the name of a language option
   };
   const MISSION = {
     // Mid-turn: the agent's `question` call is still in flight, waiting for the card.

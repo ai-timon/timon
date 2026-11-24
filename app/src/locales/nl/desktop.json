@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "Nieuw venster",
+      "view": "Weergave",
+      "zoomReset": "Ware grootte",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom uit",
       "open": "{appName} openen",
       "daemon": "Daemon: {state, select, running {actief} other {onbereikbaar}} ({origin})",
       "quit": "Afsluiten"
@@ -102,8 +106,8 @@
       "stopFailedDetail": "Timon blijft open en de dienst blijft draaien.",
       "startFailed": "De achtergronddienst is gestopt en kon niet opnieuw worden gestart.",
       "startFailedDetail": "Je hebt hem gestopt met ‘Afsluiten en de achtergronddienst stoppen’. Open Timon opnieuw en sta de vraag toe, of voer timon service start uit. Je gegevens in {home} zijn intact.",
-      "handoverKept": "De achtergronddienst van Timon antwoordde niet.",
-      "handoverKeptDetail": "De configuratie gaat verder met Timon zoals het in dit venster draait. Sluit Timon af en open het opnieuw zodra de configuratie klaar is: het probeert de dienst dan opnieuw. Je gegevens blijven in {home}.",
+      "handoverKept": "De achtergronddienst van Timon start traag.",
+      "handoverKeptDetail": "De configuratie gaat verder met Timon zoals het in dit venster draait. Timon geeft vanzelf over aan de dienst zodra die klaar is, of bij de volgende start: je hoeft niets te doen. Je gegevens blijven in {home}.",
       "refused": "Windows start de achtergronddienst van Timon niet voor dit account.",
       "refusedDetail": "De geplande taak TimonOrchestrator is geregistreerd, maar Windows heeft haar nooit uitgevoerd. Dit gebeurt bij werk- of schoolaccounts op een pc die lid is van Microsoft Entra ID. Timon gebruikt in plaats daarvan zijn ingebouwde daemon: die start met de app en stopt als je haar sluit of je afmeldt. Om de ongebruikte taak te verwijderen: timon service uninstall (Windows vraagt om toestemming).",
       "repair": "De achtergronddienst van Timon is niet meer geïnstalleerd.",

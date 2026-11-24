@@ -52,7 +52,7 @@ test('the clear text of the steps is not in plugin_kv: only sealed envelopes and
 
 test('review operations are destructive and decide whether a recording may be learned', () => {
   const meta = saveBrowserRecording(newProfile(), raw(steps), user);
-  assert.match(learnRefusal(meta)!, /flagged/);
+  assert.equal(learnRefusal(meta)?.code, 'browser_recording_flagged');
   assert.throws(() => patchBrowserRecording(meta, [{ op: 'drop', step: 99 }], user), /Step 99/);
   assert.equal(getBrowserRecording(meta.id)!.steps, 4, 'a failed batch changes nothing');
   const masked = patchBrowserRecording(meta, [{ op: 'mask', step: 3 }, { op: 'param', step: 2, name: 'query' },

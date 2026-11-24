@@ -22,7 +22,10 @@
  * macOS claude is the exception: the CLI keeps the sign-in in the keychain,
  * under a service name derived from the config directory path, which a move
  * cannot carry. There the CLI signs in in the account directory itself, and a
- * refused identity is signed out again and left to reconnect.
+ * refused identity is signed out again and left to reconnect. Every flow holds
+ * its account (`account-signin.ts`) until it finished and its CLI exited, so a
+ * launch never moves that entry out of the keychain while the CLI may rewrite
+ * it.
  *
  * Nothing the CLI prints leaves this module except the URL and the device
  * code the person needs: its output carries the OAuth state, and a failure is
@@ -39,6 +42,7 @@ import { ensurePrivateDir } from '../host/private-dir.js';
 import { systemEnv } from '../secrets/env.js';
 import { clearBackendCooldown } from '../backend-fallback.js';
 import { resetBreaker } from '../backend-breaker.js';
+import { beginAccountSignIn } from './account-signin.js';
 import {
   BackendAccountIdentityTakenError, LOGIN_STAGING_DIR, accountInstance, accountLoginStagingDir,
   ensureAccountConfigDir, findBackendAccountByIdentity, getBackendAccount, setBackendAccountIdentity,
@@ -120,6 +124,10 @@ type Flow = {
   output: string;
   timers: NodeJS.Timeout[];
   done: boolean;
+  /** The CLI is gone (or never started): it can no longer write the account's credential. */
+  exited: boolean;
+  /** Lets go of the account's sign-in hold; idempotent. */
+  release: () => void;
 };
 
 export type LoginOptions = {
@@ -140,6 +148,8 @@ export type LoginOptions = {
 };
 
 const OUTPUT_CAP = 64 * 1024;
+/** A CLI that ignores even SIGKILL must not keep its account held until the daemon stops. */
+const RELEASE_GRACE_MS = 15_000;
 // A provider that says nothing about it: a code is short-lived.
 const DEFAULT_TTL_MS = 10 * 60_000;
 
@@ -280,11 +290,21 @@ function removeStaging(dir: string): void {
   }
 }
 
+/** The hold ends once nothing of the flow can write the credential any more. */
+function releaseWhenSettled(flow: Flow): void {
+  if (flow.done && flow.exited) flow.release();
+}
+
 function finish(flow: Flow, state: 'connected' | 'failed', failure: LoginFailure | null, identity: string | null = null): void {
   if (flow.done) return;
   flow.done = true;
   flow.view = { ...flow.view, state, failure, identity, prompt: null };
   cleanup(flow);
+  releaseWhenSettled(flow);
+  if (!flow.exited) {
+    const grace = setTimeout(flow.release, RELEASE_GRACE_MS);
+    grace.unref();
+  }
   if (state === 'failed') console.warn(`[account-login] ${flow.view.backend} account ${flow.view.accountId}: ${failure}`);
   const retain = setTimeout(() => {
     if (flows.get(flow.view.accountId) === flow) flows.delete(flow.view.accountId);
@@ -379,6 +399,7 @@ export function startAccountLogin(account: BackendAccountRow, initiator: LoginIn
       identity: null, codeSent: false, startedAt, expiresAt: startedAt + ttlMs,
     },
     initiator, driver, dir, inPlace, child: null, output: '', timers: [], done: false,
+    exited: false, release: beginAccountSignIn(account.id),
   };
   flows.set(account.id, flow);
 
@@ -386,6 +407,7 @@ export function startAccountLogin(account: BackendAccountRow, initiator: LoginIn
   try {
     child = options.spawn(cmd, driver.args(account.identity_label), { env: driver.env(dir), cwd: dir });
   } catch {
+    flow.exited = true;
     finish(flow, 'failed', 'cli_missing');
     return snapshot(flow);
   }
@@ -402,9 +424,14 @@ export function startAccountLogin(account: BackendAccountRow, initiator: LoginIn
   child.stderr?.on('data', onData);
   child.stdin?.on('error', () => { /* the CLI left: its exit says how */ });
   child.on('error', (err: NodeJS.ErrnoException) => {
+    // `error` without a process (ENOENT) is never followed by `exit`.
+    if (child.pid === undefined) flow.exited = true;
     finish(flow, 'failed', err.code === 'ENOENT' ? 'cli_missing' : 'cli_failed');
+    releaseWhenSettled(flow);
   });
   child.on('exit', (code) => {
+    flow.exited = true;
+    releaseWhenSettled(flow);
     if (flow.done) return;
     flow.child = null;
     // A 0 without a pasted code is a sign-in that completed through the CLI's

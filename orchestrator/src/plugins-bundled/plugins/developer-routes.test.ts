@@ -217,7 +217,6 @@ test('every refusal the daemon can produce is a fixed composition', () => {
   const fixed = { version: 1, plugins: 'fixed', accounts: 'standard' } as const;
   const inputs = [
     paidTestLicense(),
-    { ...paidTestLicense(), planId: 'free' },
     { ...paidTestLicense(), capabilities: fixed, expiresAt: future },
     { ...paidTestLicense(), capabilities: fixed, expiresAt: past },
     { ...paidTestLicense(), capabilities: fixed },

@@ -75,3 +75,25 @@ test('an edit that keeps the text leaves the audit untouched', () => {
   assert.ok(editMemoryRule(id, { tier: 'core' }));
   assert.equal(auditOf(id)[0]?.candidate_text, text);
 });
+
+test('the journal says which empty texts went with their deleted rule', () => {
+  const text = uniq('a rule that will go');
+  const id = newRule(text);
+  const kept = uniq('a rule that stays');
+  const keptId = newRule(kept);
+  const runId = randomUUID();
+  dbApi.logMemoryAudit({ runId, action: 'new', ruleId: id, candidateText: text });
+  dbApi.logMemoryAudit({ runId, action: 'merge', targetRuleId: id, candidateText: `${text} (merged)` });
+  dbApi.logMemoryAudit({ runId, action: 'new', ruleId: keptId, candidateText: kept });
+  dbApi.logMemoryAudit({ runId, action: 'reject', candidateText: null });
+
+  assert.ok(removeMemoryRule(id));
+
+  const rows = dbApi.listMemoryAudit({ runId });
+  const flag = (action: string, ruleId: number | null) =>
+    rows.find((r) => r.action === action && (r.rule_id === ruleId || r.target_rule_id === ruleId))?.rule_deleted;
+  assert.equal(flag('new', id), 1);
+  assert.equal(flag('merge', id), 1);
+  assert.equal(flag('new', keptId), 0);
+  assert.equal(rows.find((r) => r.action === 'reject')?.rule_deleted, 0);
+});

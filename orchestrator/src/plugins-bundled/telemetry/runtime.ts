@@ -30,6 +30,9 @@ import { listSkills } from '../../skills.js';
 import { listMcp } from '../../mcp.js';
 import { TelemetryCollector, missionFactsFrom, type CollectorDeps } from './collector.js';
 import { installationUsageKind } from '../../onboarding-usage-kind.js';
+import type {
+  ONBOARDING_LLM_CHOICES, ONBOARDING_LLM_CONNECTIONS, ONBOARDING_LLM_FAILURES, OnboardingScreen, OnboardingScreenAction,
+} from '../../onboarding-events.js';
 import {
   EVENT_SCHEMA_VERSION, archValue, backendValue, licenseTierValue, platformValue, validateEvent, validateGlobals, versionValue,
   type GlobalProperties, type TelemetryEventName,
@@ -38,7 +41,7 @@ import { resolvePreference, type PreferenceSources, type TelemetryPreference } f
 import { loadTelemetryState, saveTelemetryState, type TelemetryState } from './state.js';
 import { TelemetryTransport, telemetryDestination } from './transport.js';
 import {
-  ACCOUNT_LIMIT_CODES, FEATURE_MILESTONES, apiAreaOf, causeOf, cpuClassOf, featureOf, installAgeOf, pageSectionOf,
+  FEATURE_MILESTONES, apiAreaOf, causeOf, cpuClassOf, featureOf, installAgeOf, pageSectionOf,
   ramClassOf, type Actor, type Milestone,
 } from './features.js';
 
@@ -62,7 +65,12 @@ export type UiEvent =
   | { name: 'app_opened'; surface: 'web' | 'desktop'; setupCompleted: boolean; loadMs?: number }
   | { name: 'ui_error'; surface: 'web' | 'desktop'; path: string }
   | { name: 'page_viewed'; surface: 'web' | 'desktop'; path: string }
-  | { name: 'upgrade_action'; surface: 'web' | 'desktop'; action: 'plans_viewed' | 'buy_opened'; entryPoint: 'license_page' | 'users' | 'settings' | 'banner' | 'other' };
+  | { name: 'upgrade_action'; surface: 'web' | 'desktop'; action: 'plans_viewed' | 'buy_opened'; entryPoint: 'license_page' | 'users' | 'settings' | 'banner' | 'other' }
+  | {
+    name: 'onboarding_screen'; surface: 'web' | 'desktop'; screen: OnboardingScreen; action: OnboardingScreenAction;
+    llmChoice?: (typeof ONBOARDING_LLM_CHOICES)[number]; backend?: string;
+    connection?: (typeof ONBOARDING_LLM_CONNECTIONS)[number]; failureCode?: (typeof ONBOARDING_LLM_FAILURES)[number];
+  };
 
 const ACTOR_OF: Record<FinishedRequest['actor'], Actor> = { person: 'person', mission: 'agent', daemon: 'cli', other: 'other' };
 
@@ -307,6 +315,15 @@ export function startTelemetry(opts: TelemetryOptions = {}): TelemetryRuntime {
         const section = pageSectionOf(event.path);
         enqueue('page_viewed', { section }, event.surface, context, true);
         enqueue('screen_view', { section, __path: `/${section}` }, event.surface, context, true);
+      } else if (event.name === 'onboarding_screen') {
+        enqueue('onboarding_screen', {
+          screen: event.screen, action: event.action,
+          ...(event.llmChoice ? { llm_choice: event.llmChoice } : {}),
+          // The CLI the app names counts as its product backend; anything else is `other`.
+          ...(event.backend ? { backend: backendValue(event.backend) } : {}),
+          ...(event.connection ? { connection: event.connection } : {}),
+          ...(event.failureCode ? { failure_code: event.failureCode } : {}),
+        }, event.surface, context, true);
       } else {
         enqueue('upgrade_action', { action: event.action, entry_point: event.entryPoint }, event.surface, context, true);
       }
@@ -337,9 +354,6 @@ export function startTelemetry(opts: TelemetryOptions = {}): TelemetryRuntime {
       }, 'daemon', context);
       const milestone = FEATURE_MILESTONES[feature];
       if (milestone && request.status < 400) reachMilestone(milestone);
-      if ((feature === 'account.create' || feature === 'account.invite') && ACCOUNT_LIMIT_CODES.includes(failureCode)) {
-        track('upgrade_action', { action: 'account_limit_reached', entry_point: 'users' }, 'daemon', context);
-      }
     }
     if (request.status >= 500) {
       track('operation_failed', {

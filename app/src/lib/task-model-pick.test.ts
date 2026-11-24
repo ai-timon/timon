@@ -1,6 +1,6 @@
 /**
  * A task's `backend_override` + `model_override` read and written through the
- * ModelPicker (`task-model-pick.ts`): « inherit » clears both halves, a pick
+ * ModelPicker (`task-model-pick.ts`): "inherit" clears both halves, a pick
  * sets both, a half-pair saved by an older form still shows what it runs on,
  * and only a queued or blocked task can change.
  */

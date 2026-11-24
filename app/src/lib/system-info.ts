@@ -18,7 +18,8 @@ export type ServiceReport = {
   installed: boolean;
   running: boolean;
   reason: string | null;
-  windows: { revision: string | null; expected: string; launcherMarked: boolean | null } | null;
+  /** `opensConsole`: the task opens a console window a reinstall removes (#116). Absent from an older daemon. */
+  windows: { revision: string | null; expected: string; launcherMarked: boolean | null; opensConsole?: boolean } | null;
   stale: boolean;
   action: 'install' | 'repair' | null;
   actionHere: boolean;
@@ -54,11 +55,13 @@ export type SystemInfo = {
   importCommands: string[];
 };
 
-export type ServiceState = 'unsupported' | 'absent' | 'stale' | 'stopped' | 'running';
+export type ServiceState = 'unsupported' | 'absent' | 'console' | 'stale' | 'stopped' | 'running';
 
 export function serviceState(service: ServiceReport): ServiceState {
   if (service.supervisor === null) return 'unsupported';
   if (!service.installed) return 'absent';
+  // Its revision reads current: the status line says why it needs a repair.
+  if (service.stale && service.windows?.opensConsole === true) return 'console';
   if (service.stale) return 'stale';
   return service.running ? 'running' : 'stopped';
 }

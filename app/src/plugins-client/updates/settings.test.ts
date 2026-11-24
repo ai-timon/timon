@@ -28,8 +28,10 @@ type Answer = { status: number; body: unknown };
 async function mount({ status, canWrite, check, notices = true }: { status: UpdateStatus; canWrite: boolean; check?: () => Answer; notices?: boolean }) {
   let noticesValue = notices;
   const { JSDOM } = await import('jsdom');
-  const options = { url: 'http://localhost/', pretendToBeVisual: true, userAgent: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130' };
-  const dom = new JSDOM('<html><body><div id="root"></div></body></html>', options as ConstructorParameters<typeof JSDOM>[1]);
+  const dom = new JSDOM('<html><body><div id="root"></div></body></html>', { url: 'http://localhost/', pretendToBeVisual: true });
+  // A browser on Linux. Set on the navigator: jsdom ignores a `userAgent`
+  // option, and its own names the host (`(darwin)`, `(win32)`).
+  Object.defineProperty(dom.window.navigator, 'userAgent', { value: 'Mozilla/5.0 (X11; Linux x86_64) Chrome/130', configurable: true });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   const install = (key: string, value: unknown) => {
     if (!saved.has(key)) saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key));

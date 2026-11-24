@@ -73,16 +73,16 @@ test('what is written is valid JSON, and reloadable by the config loader', async
 });
 
 /**
- * Ce que le fichier doit HÉRITER de l'environnement (étape 5.7.6).
+ * What the file must INHERIT from the environment (step 5.7.6).
  *
- * Au premier lancement d'un paquet, il n'y a pas de config : le shell choisit
- * les ports (3010/3110, libres de la v1 et du home de dev) et les passe par
- * l'env. Dès que ce fichier existe, ces surcharges ne sont plus injectées — le
- * shell rend la décision au fichier. Un fichier qui ne les porte pas ramène
- * donc l'installation aux défauts du schéma : le daemon déménage, le client
- * continue de chercher là où il était, la fenêtre s'ouvre sur rien.
+ * At the first launch of a package, there is no config: the shell picks
+ * the ports (3010/3110, free of v1 and of the dev home) and passes them through
+ * the env. As soon as this file exists, these overrides are no longer injected: the
+ * shell hands the decision back to the file. A file that does not carry them therefore brings
+ * the install back to the schema defaults: the daemon moves, the client
+ * keeps looking where it was, the window opens on nothing.
  */
-test('les ports décidés par l\'environnement sont écrits dans le fichier', () => {
+test('the ports decided by the environment are written into the file', () => {
   const cfg = buildSetupConfig({
     edition: 'expert',
     envDecisions: { daemonPort: 3010, appPort: 3110, appEnabled: true },
@@ -92,29 +92,29 @@ test('les ports décidés par l\'environnement sont écrits dans le fichier', ()
   assert.equal(cfg.app?.enabled, true);
 });
 
-test("une réponse explicite de l'utilisateur gagne sur l'héritage", () => {
+test("an explicit answer of the user wins over the inheritance", () => {
   const cfg = buildSetupConfig({
     appEnabled: false,
     supervisor: 'systemd-user',
     envDecisions: { daemonPort: 3010, appEnabled: true },
   }) as { daemon?: { supervisor?: string; listen?: { port?: number } }; app?: { enabled?: boolean } };
-  assert.equal(cfg.app?.enabled, false, "la case décochée est une réponse, pas une absence");
-  // Le superviseur répondu et le port hérité cohabitent dans la même section.
+  assert.equal(cfg.app?.enabled, false, 'the unticked box is an answer, not an absence');
+  // The answered supervisor and the inherited port live side by side in the same section.
   assert.equal(cfg.daemon?.supervisor, 'systemd-user');
   assert.equal(cfg.daemon?.listen?.port, 3010);
 });
 
-test("sans décision d'environnement, rien de plus n'est écrit", () => {
+test('without an environment decision, nothing more is written', () => {
   const cfg = buildSetupConfig({ edition: 'lite', envDecisions: {} });
   assert.deepEqual(Object.keys(cfg).sort(), ['edition', 'profile', 'version']);
 });
 
 /**
- * `daemon.installDir` n'est JAMAIS hérité : dans une AppImage c'est un chemin
- * `/tmp/.mount_XXXX` qui change à chaque lancement, l'écrire serait faux dès
- * le lendemain.
+ * `daemon.installDir` is NEVER inherited: in an AppImage it is a
+ * `/tmp/.mount_XXXX` path that changes at each launch, writing it would be wrong from
+ * the next day.
  */
-test("le dossier d'installation n'est jamais figé dans le fichier", () => {
+test('the install folder is never frozen in the file', () => {
   const cfg = buildSetupConfig({
     envDecisions: { daemonPort: 3010 },
   }) as { daemon?: Record<string, unknown> };
@@ -122,26 +122,26 @@ test("le dossier d'installation n'est jamais figé dans le fichier", () => {
 });
 
 /**
- * Étape 5.9.4 : l'assistant demande aussi où vit le vault — dans la clé que le
- * code lit vraiment. Le dossier des projets, lui, n'est plus écrit : sans
- * `workspacesRoot`, les agents de l'onboarding travaillent dans
- * `<TIMON_HOME>/workspace`, et un ancien onglet qui envoie encore la clé
- * n'écrit rien.
+ * Step 5.9.4: the wizard also asks where the vault lives, in the key the
+ * code really reads. The projects folder, for its part, is no longer written: without
+ * `workspacesRoot`, the onboarding agents work in
+ * `<TIMON_HOME>/workspace`, and an old tab still sending the key
+ * writes nothing.
  */
-test("les chemins vont dans les clés que le code lit vraiment", () => {
+test('the paths go into the keys the code really reads', () => {
   const cfg = buildSetupConfig({
     workspacesRoot: '~/projets',
     vaultPath: '/home/user/brain/vault',
     envDecisions: {},
   } as Parameters<typeof buildSetupConfig>[0]) as { workspacesRoot?: string; settings?: Record<string, string> };
   assert.equal(cfg.workspacesRoot, undefined);
-  // `TIMON_BRAIN_VAULT` (registre de réglages) et NON `modules['@timon/vault'].path` :
-  // cette dernière est étendue par le loader et lue par personne — elle aurait
-  // eu l'air configurée sans rien configurer.
+  // `TIMON_BRAIN_VAULT` (settings registry) and NOT `modules['@timon/vault'].path`:
+  // the latter is expanded by the loader and read by nobody; it would have
+  // looked configured without configuring anything.
   assert.equal(cfg.settings?.TIMON_BRAIN_VAULT, '/home/user/brain/vault');
 });
 
-test('un chemin laissé vide ne crée pas de clé', () => {
+test('a path left empty creates no key', () => {
   const cfg = buildSetupConfig({ vaultPath: '', envDecisions: {} });
   assert.deepEqual(Object.keys(cfg).sort(), ['edition', 'profile', 'version']);
 });

@@ -24,6 +24,7 @@
  *    no overlap by default, a global ceiling on concurrent runs, and the
  *    trigger switched off after consecutive failures.
  */
+import { daemonMessage, type DaemonMessage } from '../daemon-message.js';
 import { randomUUID } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import { realpathSync } from 'node:fs';
@@ -281,10 +282,10 @@ function failingStreak(triggerId: string): boolean {
   return rows.length >= SCRIPT_DISABLE_AFTER && rows.every((row) => row.status === 'error');
 }
 
-function alert(trigger: Trigger, title: string, body: string): void {
+function alert(trigger: Trigger, title: string, body: string, message: DaemonMessage): void {
   try {
     // `trigger:<id>` as source: an event trigger never fires on its own alerts.
-    createNotification({ type: 'alert', title, body, ownerUserId: trigger.ownerUserId, source: `trigger:${trigger.id}` });
+    createNotification({ type: 'alert', title, body, ownerUserId: trigger.ownerUserId, source: `trigger:${trigger.id}`, message });
   } catch (err) {
     console.warn(`[triggers] script alert for ${trigger.id} not sent: ${(err as Error).message}`);
   }
@@ -313,14 +314,16 @@ function finish(trigger: Trigger, action: ScriptAction, result: ScriptResult, er
   });
   if (!error) return;
   if (unapproved) {
-    if (!repeated) alert(trigger, `Script not run: ${trigger.name}`, error);
+    if (!repeated) alert(trigger, `Script not run: ${trigger.name}`, error, daemonMessage('trigger_script_not_run', { name: trigger.name, error }));
   } else if (action.notify_on_failure !== false) {
     const output = [result.stderr_tail, result.stdout_tail].filter(Boolean).join('\n\n');
-    alert(trigger, `Script failed: ${trigger.name}`, `${error}${output ? `\n\n${tail(output, SCRIPT_TAIL_CHARS)}` : ''}`);
+    alert(trigger, `Script failed: ${trigger.name}`, `${error}${output ? `\n\n${tail(output, SCRIPT_TAIL_CHARS)}` : ''}`,
+      daemonMessage('trigger_script_failed', { name: trigger.name, error, output: output ? tail(output, SCRIPT_TAIL_CHARS) : 'none' }));
   }
   if (failingStreak(trigger.id) && disableTriggerRow(trigger.id)) {
     alert(trigger, `Trigger switched off: ${trigger.name}`,
-      `Its script failed ${SCRIPT_DISABLE_AFTER} times in a row. Fix it, then switch the trigger back on.`);
+      `Its script failed ${SCRIPT_DISABLE_AFTER} times in a row. Fix it, then switch the trigger back on.`,
+      daemonMessage('trigger_switched_off', { name: trigger.name, times: SCRIPT_DISABLE_AFTER }));
   }
 }
 

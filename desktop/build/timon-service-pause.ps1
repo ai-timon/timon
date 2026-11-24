@@ -181,9 +181,15 @@ $end = {
 # Interactive task) and wherever it is installed. The daemon names its entry
 # point on its command line; the window (no boot.js) is left to the installer's
 # own "close the application".
+# A launcher is the batch of task revisions 2 to 5 (cmd.exe), or, since
+# revision 6, the program whose command line names the launcher configuration:
+# the Node of the launcher script, or Timon.exe --timon-service in the session
+# (LAUNCHER_PROGRAMS, host/service-install.ts). Never this script itself.
+$launcherPrograms = @('cmd.exe', 'node.exe', 'timon.exe', 'powershell.exe', 'electron.exe')
 $launchers = @(& $processes | Where-Object {
-  $_.Name -eq 'cmd.exe' -and $_.CommandLine -and
-  $_.CommandLine.ToLowerInvariant().Contains('\run\timon-service.cmd') -and (& $mine $_)
+  $launcherPrograms -contains $_.Name -and $_.ProcessId -ne $PID -and $_.CommandLine -and
+  ($_.CommandLine.ToLowerInvariant().Contains('\run\timon-service.cmd') -or
+   $_.CommandLine.ToLowerInvariant().Contains('\run\timon-service.json')) -and (& $mine $_)
 })
 & $note ("pause: {0} service launcher(s) of this account" -f $launchers.Count)
 $launchers | ForEach-Object { & $end $_ 'a service launcher' }

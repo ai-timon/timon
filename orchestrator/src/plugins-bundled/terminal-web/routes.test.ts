@@ -119,7 +119,7 @@ test.describe('terminal-web access', { concurrency: false }, () => {
       method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: '{}',
     });
     assert.equal(res.status, 403);
-    assert.deepEqual(await res.json(), { error: 'session_required' });
+    assert.deepEqual(await res.json(), { error: 'the terminal opens from a signed-in browser', code: 'terminal_session_required' });
   });
 
   test('a user without terminal:open is refused, and told why', async () => {
@@ -172,7 +172,7 @@ test.describe('terminal-web access', { concurrency: false }, () => {
     t.after(() => setSetting('TIMON_TERMINAL_WEB_ENABLED', 'true'));
     const res = await create(admin);
     assert.equal(res.status, 403);
-    assert.deepEqual(await res.json(), { error: 'disabled' });
+    assert.deepEqual(await res.json(), { error: 'the web terminal is turned off', code: 'terminal_disabled' });
   });
 
   test('WebSocket: owner on the same origin streams; every other caller is refused', { timeout: 8000 }, async () => {

@@ -132,7 +132,7 @@ test("a mission's token gets no code and cannot list devices", async () => {
   assert.equal(issuedCodes(), 0);
 });
 
-test('a bare --user is refused rather than read as « my own account »', async () => {
+test('a bare --user is refused rather than read as "my own account"', async () => {
   const r = await timon(['pair', '--user'], TOKEN);
   assert.equal(r.code, 64);
   assert.equal(issuedCodes(), 0);

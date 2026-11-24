@@ -13,6 +13,7 @@
  * `TIMON_NOTICES_CHECK` stops the notice feed alone. A build run from the
  * sources (`dev`) and the test runner never check.
  */
+import { daemonMessage } from '../../daemon-message.js';
 import type { Context } from '@deepseek-ai/cordis';
 import type { ModuleManifest } from '../../kernel/registry.js';
 import { liveMissionCount, workingMissionCount } from '../../agent.js';
@@ -90,6 +91,7 @@ export function announce(target: UpdateChecker, offer: UpdateOffer, channel: 'be
     title: `Timon ${offer.version} is available`,
     body: `You run ${timonVersion()}. Open Timon to see what changed and download the installer.`,
     anchor: `timon-update:${offer.version}`,
+    message: daemonMessage('update_available', { version: offer.version, current: timonVersion() }),
   });
 }
 

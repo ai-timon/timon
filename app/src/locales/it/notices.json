@@ -6,6 +6,11 @@
       "title": "Una stella su GitHub?",
       "action": "Metti una stella su GitHub"
     },
+    "confirmEmail": {
+      "title": "Conferma il tuo indirizzo email",
+      "body": "Ti permette di reimpostare la password via email.",
+      "action": "Conferma"
+    },
     "feed": {
       "open": "Scopri di più"
     },
@@ -18,6 +23,43 @@
       "feed": {
         "title": "Demo dal vivo giovedì",
         "body": "Agenti e plugin, un'ora."
+      },
+      "update": {
+        "highlight1": "Gli aggiornamenti si scaricano, verificano e installano dall'app.",
+        "highlight2": "Le missioni riprendono da dove si erano fermate dopo un riavvio.",
+        "highlight3": "Le conversazioni lunghe scorrono più velocemente.",
+        "highlight4": "I plugin possono aggiungere una propria pagina di impostazioni.",
+        "states": "Anteprima",
+        "state": {
+          "downloading": "Download",
+          "verified": "Verificato",
+          "missions": "Missioni",
+          "network": "Errore di rete",
+          "cancelled": "Password annullata"
+        },
+        "done": "Anteprima: non è stato installato nulla."
+      }
+    },
+    "license": {
+      "enterKey": "Inserisci la mia chiave",
+      "paused": {
+        "title": "Funzioni a pagamento in pausa",
+        "body": "Tornano non appena {brand} raggiunge il server delle licenze.",
+        "action": "Scopri di più"
+      },
+      "refused": {
+        "title": "La tua licenza non è più attiva",
+        "body": "{brand} continua in Free. Inserisci una chiave per riavere le funzioni a pagamento."
+      },
+      "pastDue": {
+        "title": "Pagamento in ritardo",
+        "body": "Rinnova l’abbonamento per mantenere le funzioni a pagamento.",
+        "bodyUntil": "Rinnova l’abbonamento entro il {date} per mantenere le funzioni a pagamento.",
+        "action": "Vedi la mia licenza"
+      },
+      "ends": {
+        "title": "La tua licenza scade il {date}",
+        "body": "Inserisci una nuova chiave entro quella data per mantenere le funzioni a pagamento."
       }
     }
   }

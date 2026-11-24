@@ -32,7 +32,7 @@ function fixture() {
   write(locales, 'de/meta.json', { name: 'Deutsch' });
   write(locales, 'de/core.json', { nav: { home: 'Start' }, old: 'Alt', stray: 'x' });
   write(locales, 'de/desktop.json', { tray: { quit: 'Beenden' } });
-  write(locales, 'pt-BR/meta.json', { name: 'Português (Brasil)' });
+  write(locales, 'pt-BR/meta.json', { name: 'Português (Brasil)' }); // french-ok: the native name of a language
   const code = join(root, 'src');
   write(code, 'page.tsx', [
     "import { t } from '@/lib/i18n';",
@@ -48,7 +48,7 @@ test('coverage per language against English, English first, the desktop shell ap
   assert.deepEqual(languages.map((l) => [l.tag, l.name, l.have, l.total]), [
     ['en', 'English', 4, 4],
     ['de', 'Deutsch', 2, 4],
-    ['pt-BR', 'Português (Brasil)', 0, 4],
+    ['pt-BR', 'Português (Brasil)', 0, 4], // french-ok: the native name of a language
   ]);
   assert.equal(languages[1].coverage, 0.5);
   assert.deepEqual(languages.map((l) => l.desktop), [{ have: 2, total: 2 }, { have: 1, total: 2 }, { have: 0, total: 2 }]);
@@ -72,7 +72,7 @@ test('the text report: one line per language, then the requested gaps and the un
   const lines = text.split('\n');
   assert.match(lines[0], /^en English\s+100 %\s+4\/4\s+desktop\s+100 %$/);
   assert.match(lines[1], /^de Deutsch\s+50 %\s+2\/4\s+desktop\s+50 %$/);
-  assert.match(lines[2], /^pt-BR Português \(Brasil\)\s+0 %\s+0\/4/);
+  assert.match(lines[2], /^pt-BR Português \(Brasil\)\s+0 %\s+0\/4/); // french-ok: the native name of a language
   assert.ok(text.includes('de: missing, by English file\n  core.json (1)\n    nav.help'));
   assert.ok(text.includes('xx: no such language'));
   assert.ok(text.includes('English messages no code seems to read: 1'));

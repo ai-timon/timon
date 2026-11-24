@@ -99,8 +99,39 @@ import { reservedRouteSegment } from './reserved-routes.js';
  * `useUpdateDialog`, the update window (§116). A manifest naming one of the
  * new slots must declare 17 (`SLOT_API_VERSIONS`). No member of the host's
  * `PluginContext` changes.
+ *
+ * 18 — `ctx.provider.scratch.profile(profile)`: the private folder a provider
+ * keeps for one profile it launches, across its missions (the CLI's sessions
+ * and settings), which only that profile's missions reach through the fence.
+ * API 17 shipped in 0.1.9, so a new member opens a new wave
+ * (docs/SDK-COMPAT.md §121).
+ *
+ * 19 — the Kanban to pull request wave. The `kanban.todo.landing` slot: the
+ * badge that says where the branch of a TO DO idea's jobs stands (pull
+ * request not created, open, merged, closed), read from
+ * `useTodoItem().landing`; `PluginTodo.landing` and the `landing` filter of
+ * `ctx.kanban.todos.list`. The `kanban.job.dialog` slot (a job's window,
+ * `useJobDialog`) and the `forge.publish.dialog` slot (the "Publish on
+ * GitHub" window, `usePublishDialog`, whose gestures go through the
+ * signed-in person's session). `ctx.forge`, the GitHub repository of a
+ * project whose integration opens pull requests, for a plugin that has
+ * neither `gh` nor the project's account: `forge:read` reads its issues, open
+ * pull requests and checks; `forge:propose` stores a proposed comment that a
+ * signed-in person publishes or discards in the "Publish on GitHub" window,
+ * never a write. Both sensitive. A manifest declaring either must declare 19.
+ * The same wave opens the `project.settings` slot (a plugin's row in a
+ * project's settings, `useProjectSettings`), gives a widget of the "Git"
+ * stack its project (`useGitStackProject`) and the way to a TO DO idea
+ * (`useTodoOpener`), which the browser half of the built-in `github-issues`
+ * plugin reads, and a stacked widget its tab name, count, dot and menu.
+ * These were numbered 18 and 19 while unreleased; `main` took 18 for the
+ * provider profile folder first, so they all moved to 19
+ * (docs/SDK-COMPAT.md §118-§120, §129).
  */
-export const PLUGIN_API_VERSION = 17;
+export const PLUGIN_API_VERSION = 19;
+
+/** First contract that knows `ctx.forge` and the `forge:read` / `forge:propose` permissions. */
+export const FORGE_API_VERSION = 19;
 
 /** First contract that knows `kind: dictation` and its manifest block. */
 export const DICTATION_API_VERSION = 14;
@@ -121,6 +152,10 @@ export const SLOT_API_VERSIONS: Readonly<Record<string, number>> = Object.freeze
   notices: 17,
   'notices.card': 17,
   'updates.dialog': 17,
+  'kanban.todo.landing': 19,
+  'kanban.job.dialog': 19,
+  'forge.publish.dialog': 19,
+  'project.settings': 19,
 });
 
 /** A public path relative to the plugin prefix: lowercase segments or `:name` parameters, never a wildcard. */
@@ -260,6 +295,9 @@ export const PLUGIN_PERMISSIONS = [
   'onboarding:read',
   // API 14 — a dictation engine hears the user's voice (TODO #484). Sensitive.
   'dictation:engine',
+  // API 19 — the GitHub repository of a project (`ctx.forge`). Both sensitive.
+  'forge:read',
+  'forge:propose',
 ] as const;
 export type PluginPermission = (typeof PLUGIN_PERMISSIONS)[number];
 
@@ -332,6 +370,8 @@ export const SENSITIVE_PLUGIN_PERMISSIONS = Object.freeze([
   'browser:annotations:read', // what the user pointed at in their browser, what they said about it and what the page showed
   'browser:annotations:write', // resolves, links and deletes those annotations
   'dictation:engine', // hears the user's voice and turns it into text, which may leave the window
+  'forge:read', // a project's issues and pull requests, read with the project's GitHub account, private repositories included
+  'forge:propose', // puts a public comment, to be published under the project's GitHub account, before a person
 ] as const satisfies readonly PluginPermission[]);
 
 /**
@@ -1067,6 +1107,11 @@ export function readManifest(
   }
   if (manifest.webhooks?.length && !manifest.permissions.includes('webhooks:receive')) {
     return fail('manifest', '`webhooks` requires permission `webhooks:receive`');
+  }
+  // `ctx.forge` is contract 19: a manifest written for an older one cannot know it.
+  const forge = manifest.permissions.find((permission) => permission === 'forge:read' || permission === 'forge:propose');
+  if (forge && manifest.apiVersion < FORGE_API_VERSION) {
+    return fail('manifest', `permission \`${forge}\` needs \`apiVersion: ${FORGE_API_VERSION}\` or later`);
   }
   // A format other than `standard` is contract 8: a daemon that predates it
   // refuses the manifest on its apiVersion, with a message naming the cause.

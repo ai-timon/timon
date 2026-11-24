@@ -56,7 +56,7 @@ import { noteAuthFailure, sendThrottled, testCredential, throttleKeys } from '..
 import { verifyAccountPassword } from '../../users/password.js';
 import { auditRequest } from '../../users/audit-actor.js';
 import { ProvideBody, provideSecretRequest, raiseSecretRequest, refuseSecretRequest, type Deliver } from './requests.js';
-import { apiError } from '../../api-error.js';
+import { apiError, type ApiErrorBody } from '../../api-error.js';
 
 /**
  * Store failures map to a status, never to a stack trace: an error body that
@@ -64,14 +64,30 @@ import { apiError } from '../../api-error.js';
  */
 function fail(res: Response, e: unknown): void {
   if (e instanceof SecretStoreError) {
-    const status = e.code === 'not-found' ? 404
-      : e.code === 'unavailable' ? 503
-      : e.code === 'duplicate' ? 409
-      : 400;
-    res.status(status).json({ error: e.message, code: e.code });
-    return;
+    // One literal per code: the translation check reads them.
+    switch (e.code) {
+      case 'not-found': res.status(404).json(apiError('secret_unknown', e.message)); return;
+      case 'unavailable': res.status(503).json(apiError('vault_unavailable', e.message)); return;
+      case 'duplicate': res.status(409).json(apiError('secret_duplicate', e.message)); return;
+      case 'invalid-name': res.status(400).json(apiError('secret_name_invalid', e.message)); return;
+      case 'invalid-mode': res.status(400).json(apiError('secret_mode_invalid', e.message)); return;
+      case 'invalid-scope': res.status(400).json(apiError('secret_scope_invalid', e.message)); return;
+      case 'broker-spec-required': res.status(400).json(apiError('secret_broker_spec_required', e.message)); return;
+      default: res.status(400).json(apiError('secret_value_required', e.message)); return;
+    }
   }
-  res.status(400).json({ error: (e as Error).message });
+  res.status(400).json(apiError('secret_refused', (e as Error).message, { detail: (e as Error).message }));
+}
+
+/** A refused answer to a secret request, as the card reads it. */
+function answerRefusal(out: { error: string; message?: string }): ApiErrorBody {
+  switch (out.error) {
+    case 'not_found': return apiError('secret_request_not_found', 'this secret request does not exist');
+    case 'already_decided': return apiError('secret_request_decided', 'this secret request was already answered');
+    case 'expired': return apiError('secret_request_expired', 'this secret request expired');
+    case 'duplicate': return apiError('secret_request_duplicate', out.message ?? 'duplicate');
+    default: return apiError('secret_request_not_stored', 'the value could not be stored in the vault');
+  }
 }
 
 function body(req: Request): Record<string, unknown> {
@@ -157,7 +173,7 @@ export type SecretRouteOptions = {
 function sessionUserId(req: Request, res: Response): string | null {
   if (!req.auth) { res.status(401).json({ error: 'unauthorized' }); return null; }
   if (!isPersonAuth(req.auth) || !req.auth.user) {
-    res.status(403).json({ error: 'session_required', message: 'a secret request is answered from a browser session' });
+    res.status(403).json(apiError('secret_request_session_required', 'a secret request is answered from a browser session'));
     return null;
   }
   return req.auth.user.id;
@@ -246,7 +262,8 @@ export function registerRoutes(router: Router, opts: SecretRouteOptions = {}): v
     if (rejectUnlessAny(req, res, ['secrets:create', 'secrets:manage'])) return;
     const parsed = PROVISION_BODY.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'invalid body' });
+      const detail = parsed.error.issues[0]?.message ?? 'invalid body';
+      res.status(400).json(apiError('invalid_detail', detail, { detail }));
       return;
     }
     const caller = callerFromRequest(req);
@@ -287,11 +304,11 @@ export function registerRoutes(router: Router, opts: SecretRouteOptions = {}): v
     const parsed = ProvideBody.safeParse(req.body ?? {});
     if (!id.success || !parsed.success) {
       // Never the zod issue: it may quote the input.
-      res.status(400).json({ error: 'invalid_request', message: 'expected { value } (1 to 16384 characters)' });
+      res.status(400).json(apiError('secret_request_value_invalid', 'expected { value } (1 to 16384 characters)'));
       return;
     }
     const out = provideSecretRequest(id.data.toLowerCase(), userId, parsed.data.value, opts.deliver);
-    if (!out.ok) { res.status(out.status).json({ error: out.error, ...(out.message ? { message: out.message } : {}) }); return; }
+    if (!out.ok) { res.status(out.status).json(answerRefusal(out)); return; }
     auditRequest(req, 'secret.request.provide', `secret-request:${out.request.id}`);
     res.json({ ok: true, request: out.request });
   });
@@ -300,9 +317,9 @@ export function registerRoutes(router: Router, opts: SecretRouteOptions = {}): v
     const userId = sessionUserId(req, res);
     if (!userId) return;
     const id = RequestId.safeParse(req.params['id']);
-    if (!id.success) { res.status(400).json({ error: 'invalid_request' }); return; }
+    if (!id.success) { res.status(400).json(apiError('invalid_request', 'invalid_request')); return; }
     const out = refuseSecretRequest(id.data.toLowerCase(), userId, opts.deliver);
-    if (!out.ok) { res.status(out.status).json({ error: out.error }); return; }
+    if (!out.ok) { res.status(out.status).json(answerRefusal(out)); return; }
     auditRequest(req, 'secret.request.refuse', `secret-request:${out.request.id}`);
     res.json({ ok: true, request: out.request });
   });
@@ -409,7 +426,7 @@ export function registerRoutes(router: Router, opts: SecretRouteOptions = {}): v
    */
   router.post('/api/secrets/:id/reveal', async (req, res) => {
     if (!isPersonAuth(req.auth) || !req.auth.user) {
-      res.status(403).json({ error: 'a signed-in session is required', code: 'session-required' });
+      res.status(403).json(apiError('secret_reveal_session_required', 'a signed-in session is required'));
       return;
     }
     if (!requireSuperadmin(req, res)) return;
@@ -422,7 +439,7 @@ export function registerRoutes(router: Router, opts: SecretRouteOptions = {}): v
     }
     const parsed = REVEAL_BODY.safeParse(req.body ?? {});
     if (!parsed.success) {
-      res.status(400).json({ error: 'password required' });
+      res.status(400).json(apiError('password_required', 'password required'));
       return;
     }
     const id = String(req.params['id'] ?? '');

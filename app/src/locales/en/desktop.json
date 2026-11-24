@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "New window",
+      "view": "View",
+      "zoomReset": "Actual Size",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
       "open": "Open {appName}",
       "daemon": "Daemon: {state, select, running {running} other {unreachable}} ({origin})",
       "quit": "Quit"
@@ -94,8 +98,8 @@
       "stopFailedDetail": "Timon stays open and the service keeps running.",
       "startFailed": "The background service is stopped and could not be started again.",
       "startFailedDetail": "You stopped it with “Quit and stop the background service”. Open Timon again and allow the prompt, or run timon service start. Your data in {home} is intact.",
-      "handoverKept": "The Timon background service did not answer.",
-      "handoverKeptDetail": "Setup continues with Timon as it runs in this window. Quit and reopen Timon once setup is finished: it tries the service again. Your data remains in {home}.",
+      "handoverKept": "The Timon background service is slow to start.",
+      "handoverKeptDetail": "Setup continues with Timon as it runs in this window. Timon hands over to the service on its own once it is ready, or at the next launch: there is nothing to do. Your data remains in {home}.",
       "refused": "Windows does not start the Timon background service for this account.",
       "refusedDetail": "The TimonOrchestrator scheduled task is registered, but Windows has never run it. This happens with work or school accounts on a PC joined to Microsoft Entra ID. Timon runs its built-in daemon instead: it starts with the app and stops when you close it or sign out. To remove the unused task: timon service uninstall (Windows asks for permission).",
       "repair": "The Timon background service is no longer installed.",
@@ -103,7 +107,9 @@
       "repairConfirm": "Reinstall the service",
       "repairLater": "Not now",
       "repairFailed": "The background service could not be reinstalled.",
-      "repairFailedDetail": "Timon runs its built-in daemon for this session and will offer it again at the next launch. Your data in {home} was not modified."
+      "repairFailedDetail": "Timon runs its built-in daemon for this session and will offer it again at the next launch. Your data in {home} was not modified.",
+      "sessionFallback": "The Timon background service now runs only while you are signed in.",
+      "sessionFallbackDetail": "Windows would not keep the TimonOrchestrator task running with nobody signed in for this account, so Timon registered it for your session instead, without a console window. It stops when you sign out and starts again at your next sign-in."
     },
     "staleShell": {
       "message": "Another version of {appName} was launched.",
@@ -133,8 +139,15 @@
       "detail": "Timon will prepare the service, back up your data, then migrate them for this version.",
       "intact": "Before approval, the database and its journals, configuration, plugins and their data, version and approval markers, service and installed releases remain intact. Only the data directory and Electron profile/cache may be created.",
       "quitDetail": "Quitting leaves your data intact. To return to the previous version, reinstall its installer.",
+      "quitDetailRollback": "Quitting leaves your data intact. Go back to {from} puts that version back and opens it.",
       "approve": "Update",
       "quit": "Quit",
+      "rollback": "Go back to {from}",
+      "rollbackRestarting": "Going back to Timon {from}…",
+      "rolledBack": "Timon {from} is back in place",
+      "rolledBackDetail": "Open Timon again to start it.",
+      "rollbackFailed": "Timon {from} could not be put back",
+      "rollbackFailedDetail": "Your data are unchanged. To go back by hand, see “Going back to a previous version” in the documentation.",
       "missions": "{count, plural, one {# mission is running} other {# missions are running}} on Timon {from}. Updating now stops {count, plural, one {it} other {them}}. Wait quits this window and leaves {count, plural, one {it} other {them}} running: open Timon again once {count, plural, one {it is} other {they are}} done.",
       "wait": "Wait",
       "approveAnyway": "Update anyway",

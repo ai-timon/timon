@@ -14,6 +14,8 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
+// french-ok-file: French sample prompts and titles the test feeds in
+
 const home = mkdtempSync(join(tmpdir(), 'timon-mission-titles-migration-'));
 process.env.TIMON_HOME = home;
 

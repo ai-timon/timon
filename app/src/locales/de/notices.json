@@ -6,6 +6,11 @@
       "title": "Ein Stern auf GitHub?",
       "action": "Auf GitHub einen Stern geben"
     },
+    "confirmEmail": {
+      "title": "Bestätige deine E-Mail-Adresse",
+      "body": "Damit kannst du dein Passwort per E-Mail zurücksetzen.",
+      "action": "Bestätigen"
+    },
     "feed": {
       "open": "Mehr erfahren"
     },
@@ -18,6 +23,43 @@
       "feed": {
         "title": "Live-Demo am Donnerstag",
         "body": "Agenten und Plugins, eine Stunde."
+      },
+      "update": {
+        "highlight1": "Updates werden in der App heruntergeladen, geprüft und installiert.",
+        "highlight2": "Missionen machen nach einem Neustart dort weiter, wo sie aufgehört haben.",
+        "highlight3": "Lange Unterhaltungen scrollen schneller.",
+        "highlight4": "Plugins können eine eigene Einstellungsseite hinzufügen.",
+        "states": "Vorschau",
+        "state": {
+          "downloading": "Download",
+          "verified": "Geprüft",
+          "missions": "Missionen",
+          "network": "Netzwerkfehler",
+          "cancelled": "Passwort abgebrochen"
+        },
+        "done": "Vorschau: Es wurde nichts installiert."
+      }
+    },
+    "license": {
+      "enterKey": "Schlüssel eingeben",
+      "paused": {
+        "title": "Kostenpflichtige Funktionen pausiert",
+        "body": "Sie kehren zurück, sobald {brand} den Lizenzserver erreicht.",
+        "action": "Mehr erfahren"
+      },
+      "refused": {
+        "title": "Ihre Lizenz ist nicht mehr aktiv",
+        "body": "{brand} läuft als Free weiter. Geben Sie einen Schlüssel ein, um die kostenpflichtigen Funktionen zurückzuerhalten."
+      },
+      "pastDue": {
+        "title": "Zahlung überfällig",
+        "body": "Verlängern Sie Ihr Abonnement, um die kostenpflichtigen Funktionen zu behalten.",
+        "bodyUntil": "Verlängern Sie Ihr Abonnement vor dem {date}, um die kostenpflichtigen Funktionen zu behalten.",
+        "action": "Meine Lizenz ansehen"
+      },
+      "ends": {
+        "title": "Ihre Lizenz endet am {date}",
+        "body": "Geben Sie bis dahin einen neuen Schlüssel ein, um die kostenpflichtigen Funktionen zu behalten."
       }
     }
   }

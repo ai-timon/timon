@@ -33,8 +33,8 @@ const dialect = ctx.registered.dialect('grok') as import('../backends/types.js')
 process.on('exit', () => ctx.cleanup());
 
 const PROFILE: ProfileRuntime = { id: 'grok', cmd: 'grok', env: {} };
-const SYSTEM_PROMPT = 'Tu es un agent TIMON. Réponds en français.';
-const MESSAGE = 'Résume src/index.ts.';
+const SYSTEM_PROMPT = 'Tu es un agent TIMON. Réponds en français.'; // french-ok: a sample prompt
+const MESSAGE = 'Résume src/index.ts.'; // french-ok: a sample prompt
 
 function opts(over: Partial<BuildSpawnOpts> = {}): BuildSpawnOpts {
   return {
@@ -352,7 +352,7 @@ test('TODO #401: the sign-in file reaches the mission when the OS refuses symbol
 
 test('a folder with spaces, a # and accents passes prompt.json cleanly via --prompt-file', async () => {
   const png: ImageAttachment = { media_type: 'image/png', data: Buffer.from('x').toString('base64') };
-  const { custom, launch } = contextWithScratch((id) => join(TMP_HOME, 'dossier avec espace #é', id));
+  const { custom, launch } = contextWithScratch((id) => join(TMP_HOME, 'dossier avec espace #é', id)); // french-ok: an awkward folder name
   const sp = await launch.call(undefined, opts({ images: [png] }), PROFILE);
   const file = argAfter(sp.args, '--prompt-file')!;
   assert.ok(file.endsWith('prompt.json') && existsSync(file), 'prompt.json written inside special-char folder');

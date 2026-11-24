@@ -6,6 +6,11 @@
       "title": "在 GitHub 上点个星？",
       "action": "在 GitHub 上点个星"
     },
+    "confirmEmail": {
+      "title": "确认你的电子邮件地址",
+      "body": "这样你就可以通过电子邮件重置密码。",
+      "action": "确认"
+    },
     "feed": {
       "open": "了解更多"
     },
@@ -18,6 +23,43 @@
       "feed": {
         "title": "周四直播演示",
         "body": "智能体与插件,一小时。"
+      },
+      "update": {
+        "highlight1": "更新可在应用内下载、校验并安装。",
+        "highlight2": "重启后，任务会从中断处继续。",
+        "highlight3": "长对话滚动更快。",
+        "highlight4": "插件可以添加自己的设置页面。",
+        "states": "预览",
+        "state": {
+          "downloading": "下载",
+          "verified": "已校验",
+          "missions": "任务",
+          "network": "网络错误",
+          "cancelled": "已取消密码"
+        },
+        "done": "预览：未安装任何内容。"
+      }
+    },
+    "license": {
+      "enterKey": "输入我的密钥",
+      "paused": {
+        "title": "付费功能已暂停",
+        "body": "{brand} 一旦连上许可证服务器即会恢复。",
+        "action": "了解更多"
+      },
+      "refused": {
+        "title": "您的许可证已失效",
+        "body": "{brand} 将继续以 Free 运行。输入密钥即可恢复付费功能。"
+      },
+      "pastDue": {
+        "title": "付款逾期",
+        "body": "请续订以保留付费功能。",
+        "bodyUntil": "请在 {date} 之前续订以保留付费功能。",
+        "action": "查看我的许可证"
+      },
+      "ends": {
+        "title": "您的许可证将于 {date} 到期",
+        "body": "请在此之前输入新密钥以保留付费功能。"
       }
     }
   }

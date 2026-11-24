@@ -4,14 +4,11 @@ import { canonicalizeIds, isRetiredModuleId } from '../kernel/legacy-ids.js';
 import { dbApi } from '../db.js';
 import { installedPackages } from '../plugins/loader.js';
 import { fixedComposition, singleSuperadmin, compositionWritePending, LicenseCapabilityError } from './capabilities.js';
-import { unlicensed, type LicenseState } from './license.js';
+import type { LicenseState } from './license.js';
 
 /** A refused downgrade leaves accounts, plugin data and the old token intact. */
-export function assertLicenseCompatible(signed: LicenseState): void {
-  if (signed.status !== 'valid') return;
-  // A Free token is never applied as signed: the runtime swaps it for the
-  // local Free state, so that is the state the installation must fit.
-  const next = signed.planId === 'free' ? unlicensed('missing') : signed;
+export function assertLicenseCompatible(next: LicenseState): void {
+  if (next.status !== 'valid') return;
   const problems: string[] = [];
   if (singleSuperadmin(next)) {
     const users = dbApi.listUsers().filter((u) => u.status !== 'disabled');

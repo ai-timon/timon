@@ -26,6 +26,7 @@ import { bus } from '../../bus.js';
 import { db, dbApi, type CardOriginKind, type LayoutProposalRow, type LayoutProposalStatus, type MissionRow, type UserRow } from '../../db.js';
 import { deliverLate } from '../../late-delivery.js';
 import { createNotification } from '../../notifications.js';
+import { daemonMessage } from '../../daemon-message.js';
 import { auditRequest } from '../../users/audit-actor.js';
 import { proposalOrigin } from '../terminal-web/command-requests.js';
 import type { ProposalProblem } from './widget-model.js';
@@ -171,6 +172,12 @@ export function createLayoutProposal(input: {
     urgent: false,
     title: `${label[0]!.toUpperCase()}${label.slice(1)} to review: ${row.agent}`,
     body: `${row.mission_title}${row.project ? ` (${row.project})` : ''}${row.note ? ` — ${row.note}` : ''}`,
+    // Every kind is registered by a bundled plugin: the webview words it by its id
+    // (`none` stands for an absent project or note, as the message's select reads it).
+    message: daemonMessage('layout_proposal_to_review', {
+      kind: input.kind.replace(/-/g, '_'), agent: row.agent,
+      mission: row.mission_title, project: row.project || 'none', note: row.note || 'none',
+    }),
     missionId: mission.id,
     taskId: row.task_id,
     // The card's id: the notification is dismissed with it, and deep-links to it.

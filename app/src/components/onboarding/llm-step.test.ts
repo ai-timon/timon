@@ -1,9 +1,9 @@
 /**
- * « Choose your LLM » (docs/ONBOARDING-LLM.md): the header stays, only the
+ * "Choose your LLM" (docs/ONBOARDING-LLM.md): the header stays, only the
  * block under it changes; the subscription block shows the providers list's
- * own rows and opens « Continue » on the same rule as `/setup/agent`;
- * the local block shows Ollama; « Back » first returns to the two choices.
- * And the pure parts: what « Back » does, what the status line says, how the
+ * own rows and opens "Continue" on the same rule as `/setup/agent`;
+ * the local block shows Ollama; "Back" first returns to the two choices.
+ * And the pure parts: what "Back" does, what the status line says, how the
  * legal sentence is cut around its links.
  */
 import '@/lib/i18n-test-locales';
@@ -13,7 +13,7 @@ import { getLocale, setLocale, t } from '@/lib/i18n';
 import type { InstallJob, ProviderCli } from '@/lib/provider-clis';
 import { waitUntil } from '@/lib/test-wait';
 import { formatList } from '@/lib/intl';
-import { LEGAL_LINKS, llmBack, planStatus, readyNames, splitAtSlots, subscriptionProviders } from './llm-choice';
+import { LEGAL_LINKS, llmBack, llmOutcome, planStatus, readyNames, splitAtSlots, subscriptionProviders } from './llm-choice';
 
 function cli(name: string, over: Partial<ProviderCli> = {}): ProviderCli {
   return {
@@ -23,13 +23,13 @@ function cli(name: string, over: Partial<ProviderCli> = {}): ProviderCli {
   };
 }
 
-test('« Back » leaves a block for the two choices, then the step', () => {
+test('"Back" leaves a block for the two choices, then the step', () => {
   assert.equal(llmBack('plan'), 'choose');
   assert.equal(llmBack('local'), 'choose');
   assert.equal(llmBack('choose'), null);
 });
 
-test('the status line and « Continue » follow the provider list', () => {
+test('the status line and "Continue" follow the provider list', () => {
   assert.deepEqual(planStatus(undefined), { canContinue: false, anyway: false, line: null }, 'still looking: nothing to say yet');
   assert.deepEqual(planStatus(null), { canContinue: true, anyway: false, line: null }, 'a refused list does not hold the onboarding');
   const none = planStatus([cli('claude'), cli('codex', { path: '/bin/codex', signedIn: false })]);
@@ -38,10 +38,28 @@ test('the status line and « Continue » follow the provider list', () => {
     cli('claude', { label: 'Claude Code', path: '/bin/claude', signedIn: true }),
     cli('codex', { label: 'Codex', path: '/bin/codex', signedIn: false }),
   ]);
-  assert.deepEqual(ready, { canContinue: true, anyway: false, line: { kind: 'ready', names: ['Claude Code'] } }, '« Continue anyway » goes once an AI is there');
+  assert.deepEqual(ready, { canContinue: true, anyway: false, line: { kind: 'ready', names: ['Claude Code'] } }, '"Continue anyway" goes once an AI is there');
 });
 
-test('« Ready with … » names only what « Continue » counts, signed-in ones first', () => {
+test('the funnel hears the choice, the CLI the chat would start on, or why there is none', () => {
+  assert.deepEqual(llmOutcome('local', undefined), { llmChoice: 'local', connection: 'unknown' });
+  assert.deepEqual(llmOutcome('plan', null), { llmChoice: 'plan', connection: 'failed', failureCode: 'unreachable' });
+  assert.deepEqual(llmOutcome('plan', [
+    cli('codex', { path: '/bin/codex', signedIn: null }),
+    cli('claude', { path: '/bin/claude', signedIn: true }),
+  ]), { llmChoice: 'plan', connection: 'ok', backend: 'claude' }, 'a signed-in CLI first');
+  assert.deepEqual(llmOutcome('plan', [cli('claude'), cli('codex', { path: '/bin/codex', signedIn: false })]),
+    { llmChoice: 'plan', connection: 'failed', failureCode: 'signed_out', backend: 'codex' });
+  assert.deepEqual(llmOutcome('plan', [cli('claude'), cli('codex')]),
+    { llmChoice: 'plan', connection: 'failed', failureCode: 'not_installed' });
+  // A name outside the shape the daemon accepts is left out, so the event is not refused whole.
+  assert.deepEqual(llmOutcome('plan', [cli('My CLI', { path: '/opt/x', signedIn: true })]), { llmChoice: 'plan', connection: 'ok' });
+  for (const detail of [llmOutcome('plan', [cli('claude', { path: '/home/someone/.local/bin/claude', signedIn: true })])]) {
+    assert.equal(JSON.stringify(detail).includes('/'), false, 'never a path');
+  }
+});
+
+test('"Ready with …" names only what "Continue" counts, signed-in ones first', () => {
   assert.deepEqual(readyNames([
     cli('grok', { label: 'Grok', path: '/bin/grok', signedIn: null }),
     cli('claude', { label: 'Claude Code', path: '/bin/claude', signedIn: true }),
@@ -198,7 +216,7 @@ test('the two choices, the legal links and no statistics box under a fixed heade
   });
 });
 
-test('the subscription: rows, « Continue anyway » until an AI is ready, then « Ready with … »', async () => {
+test('the subscription: rows, "Continue anyway" until an AI is ready, then "Ready with …"', async () => {
   const server: Server = {
     list: [
       cli('claude', { label: 'Claude Code', path: '/bin/claude', signedIn: false }),
@@ -223,14 +241,14 @@ test('the subscription: rows, « Continue anyway » until an AI is ready, then �
     assert.equal(ui.$('section[aria-label="Codex"] [data-provider-status]')?.getAttribute('data-provider-status'), 'not-installed');
     assert.equal(ui.text().includes('/bin/claude'), false, 'no path on the onboarding');
     assert.equal((ui.$('[data-continue]') as HTMLButtonElement | null)?.disabled, true);
-    assert.ok(ui.$('[data-anyway]'), '« Continue anyway » while no AI is connected');
+    assert.ok(ui.$('[data-anyway]'), '"Continue anyway" while no AI is connected');
     assert.ok(ui.text().includes(t('onboarding.llm.plan.none')));
 
     // One click starts the vendor's installer from its row.
     await ui.click(ui.$('section[aria-label="Codex"] button'));
     await ui.until(() => ui.$('section[aria-label="Codex"]')?.getAttribute('data-state') === 'installing', 'the install running');
 
-    // Claude signed in elsewhere; « Try again » reads the list again.
+    // Claude signed in elsewhere; "Try again" reads the list again.
     server.list = [cli('claude', { label: 'Claude Code', path: '/bin/claude', signedIn: true }), cli('codex', { label: 'Codex' })];
     const retry = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.includes(t('providerClis.retry')));
     await ui.click(retry);
@@ -239,7 +257,7 @@ test('the subscription: rows, « Continue anyway » until an AI is ready, then �
     assert.ok(!ui.$('section[aria-label="Claude Code"] button'), 'nothing left to do on a connected row');
     assert.equal(ui.$('[data-plan-status]')?.getAttribute('data-plan-status'), 'ready');
     assert.ok(ui.text().includes(t('onboarding.llm.plan.ready', { names: 'Claude Code' })));
-    assert.equal(ui.$('[data-anyway]'), null, '« Continue anyway » is gone once an AI is connected');
+    assert.equal(ui.$('[data-anyway]'), null, '"Continue anyway" is gone once an AI is connected');
     assert.equal((ui.$('[data-continue]') as HTMLButtonElement | null)?.disabled, false);
 
     await ui.click(ui.$('[data-continue]'));
@@ -247,7 +265,7 @@ test('the subscription: rows, « Continue anyway » until an AI is ready, then �
   });
 });
 
-test('« Back » returns to the two choices on the same screen before leaving the step', async () => {
+test('"Back" returns to the two choices on the same screen before leaving the step', async () => {
   await mountStep({ list: [], requests: 0, job: null }, async (ui) => {
     await ui.click(ui.$('[data-choice="local"]'));
     assert.equal(ui.$('[data-view]')?.getAttribute('data-view'), 'local');

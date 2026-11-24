@@ -1,3 +1,4 @@
+// french-ok-file: the French locale of the install prompt under test
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {

@@ -19,6 +19,12 @@ export interface DaemonMessage {
   /** snake_case, a key segment under `daemonMessages`. */
   code: string;
   params: DaemonMessageParams;
+  /**
+   * A notification whose body is another stored sentence (the blocked reason of
+   * a task): read under that message's own key, one level deep. Absent when the
+   * body is the code's own `.body`, or the stored English.
+   */
+  body?: DaemonMessage;
 }
 
 /**
@@ -47,26 +53,39 @@ export function encodeDaemonMessage(
   return message ? JSON.stringify(redactDaemonMessage(message, redact)) : null;
 }
 
-/** `message` with every string param passed through `redact`. */
+/** `message` with every string param passed through `redact`, its body's too. */
 export function redactDaemonMessage(message: DaemonMessage, redact: (text: string) => string): DaemonMessage {
   const params: Record<string, string | number> = {};
   for (const [name, value] of Object.entries(message.params)) {
     params[name] = typeof value === 'string' ? redact(value) : value;
   }
-  return { code: message.code, params };
+  const out: DaemonMessage = { code: message.code, params };
+  if (message.body) out.body = redactDaemonMessage({ code: message.body.code, params: message.body.params }, redact);
+  return out;
+}
+
+/** `message` whose body reads `body` (a stored blocked reason); `message` itself when there is none. */
+export function withDaemonMessageBody(message: DaemonMessage, body: DaemonMessage | null | undefined): DaemonMessage {
+  return body ? { ...message, body: { code: body.code, params: body.params } } : message;
 }
 
 /** The stored value read back; `null` for a NULL, a malformed or a foreign value. */
 export function decodeDaemonMessage(raw: string | null | undefined): DaemonMessage | null {
   if (!raw) return null;
   try {
-    const value = JSON.parse(raw) as { code?: unknown; params?: unknown };
-    if (typeof value.code !== 'string' || !API_ERROR_CODE.test(value.code)) return null;
-    const params = value.params && typeof value.params === 'object' && !Array.isArray(value.params)
-      ? value.params as Record<string, unknown>
-      : {};
-    return daemonMessage(value.code, params);
+    return fromStored(JSON.parse(raw) as unknown, true);
   } catch {
     return null;
   }
+}
+
+function fromStored(raw: unknown, withBody: boolean): DaemonMessage | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as { code?: unknown; params?: unknown; body?: unknown };
+  if (typeof value.code !== 'string' || !API_ERROR_CODE.test(value.code)) return null;
+  const params = value.params && typeof value.params === 'object' && !Array.isArray(value.params)
+    ? value.params as Record<string, unknown>
+    : {};
+  const message = daemonMessage(value.code, params);
+  return withBody ? withDaemonMessageBody(message, fromStored(value.body, false)) : message;
 }

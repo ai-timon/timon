@@ -585,6 +585,11 @@
     "emailLinkCopy": "Copy the link",
     "emailLinkCopied": "Link copied.",
     "emailLinkCopyFailed": "Could not copy the link.",
+    "confirmEmailTitle": "Confirm your address",
+    "confirmEmailStatus": "Not confirmed yet. Needed to reset your password by email.",
+    "confirmEmailSend": "Send the code",
+    "confirmEmailSending": "Sending…",
+    "confirmEmailDone": "Email address confirmed.",
     "licenseTitle": "License key",
     "licenseDescription": "Timon is free: every feature and plugin, for one account. A license key adds a paid plan, for more accounts on this machine.",
     "licensePlan": "Plan",
@@ -638,15 +643,6 @@
     "doneTitle": "Address confirmed",
     "doneBody": "You now sign in with {email}.",
     "signIn": "Sign in"
-  },
-  "license": {
-    "pastDue": "Payment overdue — renew your subscription",
-    "pastDueUntil": "Payment overdue — subscription ends on {date}",
-    "notActivated": "Free is active — additional accounts need a license",
-    "activate": "Activate",
-    "offlineSince": "License server unreachable since {date} — paid rights remain available during the offline tolerance, then Timon returns to Free.",
-    "licenseEndsSoon": "Your licence ends on {date}. Enter a new key before then.",
-    "licenseEndsUrgent": "Your licence ends on {date}. Enter a new key now."
   },
   "betaLock": {
     "eyebrow": "Beta",
@@ -755,6 +751,12 @@
   },
   "appearance": {
     "title": "Appearance",
+    "zoomTitle": "Interface size",
+    "zoomHint": "Makes text and controls larger or smaller in every Timon window on this computer. Shortcuts: Ctrl and +, Ctrl and −, and Ctrl and 0 to reset; on macOS, Cmd instead of Ctrl for all three. On Windows and Linux, Ctrl and the mouse wheel too.",
+    "zoomIn": "Larger",
+    "zoomOut": "Smaller",
+    "zoomReset": "Reset",
+    "zoomError": "The interface size could not be changed.",
     "theme": "Theme",
     "layout": "Layout",
     "themeHint": "Colour tokens painted for this account.",
@@ -847,6 +849,13 @@
     "mascotsStyle2dHint": "The flat drawing, lighter for older computers.",
     "mascotsStyleNoWebgl": "This browser cannot draw in 3D (WebGL2 is off or missing): mascots are drawn in 2D.",
     "mascotsStyleShared": "Applies to every mascot. You can change it later in {settingsPath}.",
+    "dockIconTitle": "Dock icon",
+    "dockIconHint": "The icon macOS shows for Timon in the Dock while the app runs. Finder and the Dock before launch keep the classic one.",
+    "dockIconClassic": "Classic",
+    "dockIconClassicHint": "The Timon colours.",
+    "dockIconDark": "Dark",
+    "dockIconDarkHint": "Black and white.",
+    "dockIconError": "The Dock icon could not be changed.",
     "variants": {
       "coral": {
         "name": "Coral",
@@ -1066,12 +1075,10 @@
     "categories": "Categories",
     "selectCategory": "Category",
     "modified": "modified",
+    "defaultValue": "Default: {value}",
     "definedInConfig": "defined in timon.config.json",
     "forcedByEnv": "forced by environment",
-    "default": "default",
     "empty": "(empty)",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
     "save": "Save",
     "defaultBtn": "Default",
     "outOfRange": "Between {min} and {max}",
@@ -1312,6 +1319,10 @@
   },
   "settingsDialog": {
     "backToSettings": "Back to settings",
+    "navGroup": {
+      "agents": "Agents",
+      "machine": "This computer"
+    },
     "close": "Close",
     "unsavedKept": "Your last change is not saved yet. Save it, or close with × or Escape to discard it.",
     "category": {
@@ -1374,7 +1385,7 @@
         "updates": "Updates",
         "security": "Security",
         "backup": "Backups & trash",
-        "diagnostics": "Diagnostics",
+        "diagnostics": "Logs & retention",
         "desktop": "Desktop app",
         "privacy": "Privacy"
       },
@@ -1440,9 +1451,9 @@
         "updates": "update upgrade new version release check download installer changelog notes automatic",
         "security": "security isolation fence sandbox confinement landlock seatbelt mission unix sockets docker ssh agent exception enforce",
         "backup": "backup backups archive nightly restore keep retention days trash deleted agent recover undo purge",
-        "diagnostics": "logs debug misc infra troubleshooting",
+        "diagnostics": "diagnostics logs debug misc infra troubleshooting retention",
         "desktop": "uninstall remove delete electron app",
-        "privacy": "privacy telemetry analytics usage statistics anonymous tracking opt out"
+        "privacy": "privacy telemetry analytics usage statistics anonymous tracking opt out retention history delete keep data memory facts days"
       },
       "secrets": {
         "vault": "api keys tokens passwords credentials vault environment variables",
@@ -1844,6 +1855,7 @@
     "perMissionOverride": "Per-mission override; does not affect the agent's config",
     "thinkingLevelIcon": "Reasoning level",
     "composerProject": "Project {name}",
+    "projectSettings": "Project settings…",
     "copyMarkdown": "Copy as Markdown",
     "reply": "Reply",
     "replyToAgent": "In reply to the agent",
@@ -2295,6 +2307,7 @@
     "topbarCenterWidgets": "Middle of the top bar"
   },
   "widgetCatalog": {
+    "jobs": {"title": "Jobs", "description": "The Kanban jobs that land through a pull request, by what they wait for: state, checks, and a preview of the diff before the push."},
     "botsRail": {
       "title": "TIMs",
       "description": "Your TIMs, grouped by team: pick one to open its chat."
@@ -2330,6 +2343,11 @@
     "projectTodo": {
       "title": "Project TO DO",
       "description": "The TO DO notebook of one project: ideas to sort, turn into tasks or close."
+    },
+    "pullRequests": {
+      "title": "Pull requests",
+      "tab": "PR",
+      "description": "The pull requests open on one project's repository, their diff and the brief of their review."
     },
     "workflowRuns": {
       "title": "Workflow runs",
@@ -2375,9 +2393,17 @@
       "title": "Files",
       "description": "Browse and edit the files of the project's working folder."
     },
-    "git": {
-      "title": "Git",
-      "description": "The project's branches, commit graph and publication: switch branch, see the history and the worktrees, push."
+    "gitBranches": {
+      "title": "Branches",
+      "description": "The repository's working tree and branches: see the changes, switch branch."
+    },
+    "gitGraph": {
+      "title": "Graph",
+      "description": "The repository's commit graph, with its branches and worktrees."
+    },
+    "gitPublish": {
+      "title": "Publish",
+      "description": "Where the repository's publication stands: remote, commits to push, push and fetch."
     },
     "agentTasks": {
       "title": "Agent task list",
@@ -2806,6 +2832,7 @@
       "unsupported": "No supported service manager on this machine",
       "absent": "Not installed",
       "stale": "Installed, out of date",
+      "console": "A console window opens: repair the background task",
       "stopped": "Installed, not running",
       "running": "Installed and running"
     },
@@ -2896,14 +2923,11 @@
 },
   "freeLicense": {
     "restrictedAccounts": "{count, plural, one {# additional account} other {# additional accounts}} suspended. The first active superadmin keeps access; no account or data was deleted.",
-    "retainedData": "After a return to Free, additional accounts remain stored but unavailable. Every feature and plugin stays available. A valid license restores the accounts it covers.",
-    "local_free": "Free is local and has no machine activation to manage.",
-    "free_unavailable": "Free registration is not open for this version yet. Try again later or use an existing licence key.",
+    "local_free": "There is no license on this machine to manage.",
     "client_upgrade_required": "Update Timon to a supported release, then try again.",
-    "summary": "Free works locally without a key or renewal: every feature and plugin, for one active superadmin.",
     "plugin_composition_fixed": "This offer has a fixed plugin composition. Configure the included plugins or upgrade to change it.",
-    "single_superadmin_required": "Free allows one active account, which must be a superadmin.",
-    "free_incompatible": "Free activation was refused. Keep one active superadmin and disable the other accounts, then retry. Your data and current licence have been kept.",
+    "single_superadmin_required": "This license allows one active account, which must be a superadmin.",
+    "free_incompatible": "This license cannot be applied to the current installation. Keep one active superadmin and disable the other accounts, then retry. Your data and current license have been kept.",
     "license_changed": "The licence changed during this request. Reload and retry.",
     "activation_key_missing": "No activation key is stored on this device. Use your licence account or contact support to release it.",
     "deactivate": "Deactivate this machine",
@@ -2934,7 +2958,75 @@
     "saved": "Outcome saved",
     "saveError": "Could not save the outcome"
   },
+  "pullRequests": {
+    "openDetail": "Open pull request #{number}: {title}",
+    "detail": {"noDescription": "No description provided.", "textCut": "Cut here: the rest is on GitHub.", "more": {"timeline": "{count, plural, one {# earlier entry not shown} other {# earlier entries not shown}}", "threads": "{count, plural, one {# more thread on GitHub} other {# more threads on GitHub}}", "commits": "{count, plural, one {# more commit on GitHub} other {# more commits on GitHub}}", "files": "{count, plural, one {# more file on GitHub} other {# more files on GitHub}}", "checks": "{count, plural, one {# more check on GitHub} other {# more checks on GitHub}}", "comments": "{count, plural, one {# more reply on GitHub} other {# more replies on GitHub}}", "people": "and {count} more"}, "reviewState": {"approved": "Approved", "changes_requested": "Changes requested", "commented": "Reviewed", "dismissed": "Dismissed", "pending": "Pending"}, "hiddenComment": "This comment was hidden on GitHub.", "thread": {"resolved": "Resolved", "open": "Unresolved", "outdated": "Outdated", "noFile": "Whole pull request", "line": "line {line}"}, "threadsTitle": "Review threads", "threadsCount": "{open} unresolved of {total}", "threadsError": "The review threads could not be read: {detail}", "noCommits": "No commits.", "openCommit": "Open the commit on GitHub", "checkLog": "Show the end of the log", "openCheck": "Open the check on GitHub", "emptyLog": "The log is empty.", "logCut": "Only the end of the log is shown.", "noChecks": "No checks on this pull request.", "checksSummary": "{fail} failed · {pending} pending · {pass} passed · {skipped} skipped", "fileCut": "This file's diff is cut here: the rest is on GitHub.", "noFiles": "No files changed.", "filesSummary": "{files, plural, one {# file changed} other {# files changed}}", "fileThreads": "{count, plural, one {# thread} other {# threads}}", "noPatch": "No diff for this file (binary, renamed, or past the diff's limit).", "reviewers": "Reviewers", "assignees": "Assignees", "labels": "Labels", "milestone": "Milestone", "issues": "Issues it closes", "job": "Timon job", "refresh": "Read again from GitHub", "description": "The pull request as GitHub shows it: conversation, commits, checks and files.", "state": {"open": "Open", "draft": "Draft", "merged": "Merged", "closed": "Closed"}, "branches": "wants to merge {commits, plural, one {# commit} other {# commits}} into {base} from {head}", "opened": "opened", "actions": "Actions on the pull request", "box": {"label": "Merge status", "showChecks": "Show the checks", "reading": "Reading the pull request on GitHub…", "checks": {"none": "No checks", "failed": "Some checks failed", "pending": "Some checks are still running", "passed": "All checks passed"}, "checksCount": "{pass} passed · {fail} failed · {pending} running", "merge": {"ready": "No conflicts with the base branch", "conflict": "This branch has conflicts with the base branch", "behind": "This branch is behind the base branch", "blocked": "Merging is blocked by the base branch's rules", "draft": "This pull request is still a draft", "unknown": "GitHub is still checking whether it can merge", "merged": "Merged", "closed": "Closed without being merged"}, "decision": {"approved": "Approved", "changes_requested": "Changes requested", "review_required": "A review is required"}}, "timonVerdict": "Timon: {verdict}", "retry": "Try again", "tab": {"conversation": "Conversation", "commits": "Commits", "checks": "Checks", "files": "Files"}},
+    "proposeComment": "Propose a comment…",
+    "showJob": "Show the job",
+    "title": "Pull requests",
+    "selectProject": "Project",
+    "noProjectOption": "Project…",
+    "chooseProject": "Choose a project to see its pull requests.",
+    "loading": "Loading…",
+    "empty": "No open pull request.",
+    "emptyAuthor": "No open pull request from this author.",
+    "filterAuthor": "Filter by author",
+    "allAuthors": "All authors",
+    "deletedAuthor": "deleted account",
+    "draft": "draft",
+    "reviewBrief": "Review brief",
+    "briefPreparing": "Writing the brief…",
+    "reviewing": "Reviewing…",
+    "more": "More actions",
+    "openOnForge": "Open on GitHub",
+    "showReport": "Show the report",
+    "outdated": "The pull request changed after this review",
+    "briefError": "The review brief could not be written",
+    "verdict": {
+      "mergeable": "Mergeable",
+      "changes_requested": "Changes requested",
+      "reject": "Reject",
+      "product_decision": "Your decision",
+      "none": "No verdict",
+      "failed": "Review failed"
+    },
+    "dialog": {
+      "title": "Review brief for pull request #{number}",
+      "description": "A brief to paste into a review mission: nothing is started.",
+      "tabBrief": "Brief",
+      "tabDiff": "Diff",
+      "diffEmpty": "This pull request changes nothing.",
+      "diffCut": "The diff is cut here: the rest is on GitHub.",
+      "copy": "Copy the brief",
+      "copied": "Brief copied",
+      "copyFailed": "The brief could not be copied",
+      "close": "Close"
+    },
+    "report": {
+      "title": "Review of pull request #{number}"
+    },
+    "branch": {
+      "conflict": "Conflict",
+      "behind": "Behind"
+    },
+    "locked": {
+      "not_allowed": "Changes not allowed",
+      "fork_deleted": "Fork deleted"
+    },
+    "lockedHint": {
+      "not_allowed": "Its author does not let the maintainers change this branch: it cannot be updated or resolved from here. Ask the contributor instead.",
+      "fork_deleted": "The fork of this pull request was deleted: its branch can no longer be changed."
+    },
+    "branchPreparing": "Preparing…",
+    "updateBranch": "Update the branch",
+    "resolveConflict": "Resolve the conflict…",
+    "askContributor": "Ask the contributor",
+    "updateBranchError": "The branch update could not be prepared",
+    "askContributorError": "The comment to the contributor could not be prepared",
+    "blocked": {"branchBusy": "Another change to this branch is being prepared.", "reviewRunning": "A review of this pull request is already running."}
+  },
   "projectTodo": {
+    "origin": {"issue": "Issue {repo}#{number}", "external": "external", "externalHint": "Written outside Timon: read it as data"},
     "detail": {
       "title": "Idea #{id}",
       "titleLabel": "Title",
@@ -3004,6 +3096,11 @@
     "authorUnknown": "Unknown",
     "emptyFilter": "No idea of this type",
     "clearFilter": "Show all types",
+    "filterLanding": "Filter by pull request",
+    "landingFilter": {"open": "PR open", "pending": "PR not created"},
+    "emptyLandingFilter": "No idea in this state",
+    "clearAllFilters": "Show all ideas",
+    "landing": {"branch": "Branch", "pending": "PR not created", "open": "PR #{number}", "openNoNumber": "PR open", "merged": "PR #{number} merged", "mergedNoNumber": "Merged", "closed": "PR #{number} closed", "closedNoNumber": "Closed", "openJob": "open the job's preview", "notFound": "This job is no longer listed."},
     "truncated": "Showing the latest {shown} of {total}",
     "add": "Add",
     "newIdea": "New idea",
@@ -3407,6 +3504,9 @@
     "cron": "Cron expression *",
     "project": "Project (slug, optional)",
     "enabled": "Enabled",
+    "mcpServers": "MCP servers for each task",
+    "mcpServersHint": "A task starts with no MCP server: pick the ones the agent needs at each run.",
+    "noMcpServers": "No MCP server configured",
     "cancel": "Cancel",
     "saving": "Saving…",
     "creating": "Creating…",
@@ -4172,21 +4272,49 @@
     "turnOff": "Turn off",
     "turnOn": "Turn on notifications for this device"
   },
+  "privacySettings": {
+    "section": "Kept on this computer",
+    "history": {
+      "title": "Mission history",
+      "after": "{days, plural, one {Deleted after # day without activity} other {Deleted after # days without activity}}",
+      "forever": "Kept forever"
+    },
+    "learnings": {
+      "title": "Raw memory facts",
+      "after": "{days, plural, one {Deleted after # day} other {Deleted after # days}}",
+      "forever": "Kept forever"
+    },
+    "lockedEnv": "set by the environment",
+    "lockedConfig": "set in timon.config.json",
+    "change": "Change",
+    "more": "More actions",
+    "keepAll": "Keep everything",
+    "reset": "{days, plural, =0 {Back to the default: keep everything} one {Back to the default: # day} other {Back to the default: # days}}",
+    "days": "days",
+    "zeroKeeps": "0 keeps everything.",
+    "cancel": "Cancel",
+    "save": "Save"
+  },
   "telemetrySettings": {
     "tab": "Privacy",
     "title": "Anonymous usage statistics",
-    "description": "Timon can tell its team how the app is used — which features, how often turns succeed, where setup stops — so we know what to fix first. It is anonymous: a random identifier drawn on this computer, never your account or your machine.",
     "share": "Share anonymous usage statistics",
-    "shareDescription": "On by default. Turning it off stops all sending right away; one last message records that you turned it off.",
+    "statusOn": "On: anonymous, never your content",
+    "statusOff": "Off: nothing is sent",
+    "turnOff": "Turn off",
+    "turnOn": "Turn on",
+    "details": "What is sent",
+    "more": "More actions",
+    "close": "Close",
     "lockedEnv": "Set by the TIMON_TELEMETRY environment variable: change it there.",
     "lockedEnvMalformed": "TIMON_TELEMETRY holds a value that is neither yes nor no: sharing is off.",
     "lockedConfig": "Set by telemetry.enabled in timon.config.json: change it there.",
     "lockedConfigMalformed": "telemetry.enabled in timon.config.json is neither true nor false: sharing is off.",
     "inactiveBuild": "This build of Timon sends nothing, whatever this setting says.",
     "sentTitle": "What is sent",
-    "sent": "App version, operating system, licence tier; app starts and updates; setup steps; turns, their duration, outcome and token counts; which built-in tools and providers are used; task, plugin, licence and browser actions as counts.",
+    "sent": "App version, operating system, processor type and licence tier; app starts and updates; which parts of the app are opened; setup steps; features used and whether they worked; turns, their duration, outcome and token counts; which built-in tools and AI providers are used; a daily count of agents, projects and plugins; task, plugin, licence and browser actions.",
     "neverTitle": "What is never sent",
-    "never": "Your prompts, answers or files; names of your projects, agents, skills, routines or MCP servers; paths, URLs and commands; error messages; your email, user name, computer name or address.",
+    "never": "Your prompts, answers or files; names of your projects, agents, skills, routines or MCP servers; paths, URLs and commands; error messages; your email, user name or computer name. Your network address is never put in an event, though the server sees it, like any server.",
     "learnMore": "Read the privacy notice",
     "loadFailed": "Could not read this setting.",
     "saveFailed": "Could not save this setting.",
@@ -4365,5 +4493,10 @@
       "generic": "The mission isolation could not be saved (error {status})."
     }
   },
-  "agencyOffer": {"label": "Partners", "title": "Agency offer", "status": {"subscribed": "Subscribed · {email}", "none": "Not subscribed", "pending": "Waiting to be sent · {email}", "withdrawing": "Withdrawal waiting to be sent", "invalid": "Address refused · {email}", "refused": "Not sent · {email}"}, "withdraw": "Withdraw", "subscribe": "Subscribe", "more": "More", "changeEmail": "Change the address", "dialogTitle": "Get the agency offer", "emailLabel": "Email address", "notice": "Only this offer, sent by Timon to this address. Withdraw anytime here.", "submit": "Send me the offer", "cancel": "Cancel", "loadFailed": "The agency offer could not be read.", "failed": "The request could not be recorded. Try again.", "invalidEmail": "Enter a valid email address.", "withdrawn": "Withdrawn: Timon will no longer send you the agency offer.", "recorded": "Request recorded."}
+  "agencyOffer": {"label": "Partners", "title": "Agency offer", "status": {"subscribed": "Subscribed · {email}", "none": "Not subscribed", "pending": "Waiting to be sent · {email}", "withdrawing": "Withdrawal waiting to be sent", "invalid": "Address refused · {email}", "refused": "Not sent · {email}"}, "withdraw": "Withdraw", "subscribe": "Subscribe", "more": "More", "changeEmail": "Change the address", "dialogTitle": "Get the agency offer", "emailLabel": "Email address", "notice": "Only this offer, sent by Timon to this address. Withdraw anytime here.", "submit": "Send me the offer", "cancel": "Cancel", "loadFailed": "The agency offer could not be read.", "failed": "The request could not be recorded. Try again.", "invalidEmail": "Enter a valid email address.", "withdrawn": "Withdrawn: Timon will no longer send you the agency offer.", "recorded": "Request recorded."},
+  "landings": {"title": "Jobs", "groups": {"attention": "Needs action", "review": "In review", "progress": "In progress", "landed": "Landed · 7 days", "kept": "Kept on a branch"}, "allProjects": "All projects", "selectProject": "Project", "reload": "Refresh", "loading": "Loading…", "empty": "No job lands through a pull request yet.", "local": {"text": "This project merges its jobs locally.", "setUp": "Set up pull requests"}, "into": "into {target}", "preview": "Preview", "more": "More actions", "openPr": "Open the pull request", "refresh": "Refresh the checks", "conflict": "Conflict", "draft": "Draft", "state": {"branch": "Not pushed", "open": "PR #{number}", "merged": "Merged", "landed": "Landed", "closed": "Closed", "kept": "Kept", "keptOn": "Kept on {branch}"}, "checks": {"pass": "{count, plural, one {# check passed} other {# checks passed}}", "fail": "{count, plural, one {# check failed} other {# checks failed}}", "pending": "{count, plural, one {# check running} other {# checks running}}"}, "review": {"approved": "Approved", "changes_requested": "Changes requested", "review_required": "Review required"}, "precheck": {"branch_name": "Branch name", "account": "Account", "remote_url": "Remote URL", "target": "Target branch", "commits": "Commits", "commit_identity": "Identity", "commit_messages": "Messages", "pr_text": "Title and description", "private_paths": "Ignored files", "public_tree": "Public tree", "remote_branch": "Remote branch"}, "previewDialog": {"description": "The commits, the diff and the pre-checks of the job's pull request, before anything is pushed.", "summary": "{commits, plural, one {# commit} other {# commits}}, {files, plural, one {# file} other {# files}}", "conflict": {"clean": "Merges cleanly into {target}", "conflicting": "Conflicts with {target}", "unknown": "Merge with {target} not checked"}, "conflictFiles": "Files in conflict: {files}", "tabChanges": "Changes", "tabCommits": "Commits", "tabChecks": "Pre-checks", "binary": "Binary file", "noPatch": "Diff not shown", "fileCut": "This file's diff is cut.", "filesCut": "{shown} of {total} files shown.", "patchCut": "The diff is cut: read the rest on the branch.", "commitsCut": "{shown} of {total} commits shown.", "nothing": "The branch brings nothing beyond {target}.", "ready": "Ready to open", "refused": "{count, plural, one {# check refuses} other {# checks refuse}}", "prechecksNotRun": "Pre-checks not run: {reason}", "skipped": "skipped"}, "links": {"title": "Links", "todo": "{count, plural, one {TO DO} other {TO DOs}}", "issue": "{count, plural, one {Issue} other {Issues}}", "job": "Job", "openMission": "Open the mission", "branch": "Branch", "closes": "closes", "issueCloses": "{ref}, closed by the pull request when merged", "showTodo": "Show the TO DO (#{id})", "openJob": "Open the job", "todoGone": "TO DO #{id} cannot be shown."}, "repair": {"checks": "Fix the checks", "comments": "Address the comments", "conflict": "Resolve the conflict", "hint": {"checks": "Runs the job's agent with the failing checks as data", "comments": "Runs the job's agent with the review comments as data", "conflict": "Runs the job's agent to merge {target} into the branch"}, "started": "Repair started", "notStarted": "The repair did not start", "running": "Repair {used}/{max}", "runningTitle": "{kind}: repair {used} of {max} under way", "counter": "Repairs {used}/{max}", "spentTitle": "{used} of {max} repairs used: take the job over by hand", "counterLabel": "Automatic repairs", "underWay": "Under way: {kind}", "last": {"running": "Last repair under way", "pushed": "Last repair pushed", "unchanged": "Last repair changed nothing", "failed": "Last repair not pushed"}, "takeOver": "Take over by hand", "takeOverTitle": "No repair left: open the pull request and take the job over by hand"}, "checksIsland": {"title": "Checks", "none": "Not read yet", "status": {"pass": "ok", "fail": "failed", "pending": "running", "skipped": "skipped"}}, "kept": {"waiting": "{count, plural, one {# TO DO waits for the landing} other {# TO DOs wait for the landing}}", "lastMergeTitle": "Last merge into {branch}: {sha}, {date}"}, "land": {"merge": "Merge into {target}", "openPr": "Open the PR", "underWay": "{count, plural, one {# task of the job is still running: land it once it is done} other {# tasks of the job are still running: land it once they are done}}", "confirmMerge": "Merge {branch} into {target}?", "confirmPr": "Open the pull request of {branch} into {target}?", "commits": "{count, plural, =0 {No commit beyond {target}.} one {# commit lands in {target}.} other {# commits land in {target}.}}", "notMerged": "Not merged", "notOpened": "Pull request not opened", "conflict": "The branch conflicts with {target} on {files}: resolve it on the branch, then land again. Nothing was merged.", "merged": "{branch} merged into {target}", "prOpened": "Pull request opened", "titleLabel": "Title of the pull request"}},
+  "contributorConflicts": {"personRequired": "Only a person signed in to Timon lets it resolve contributors' conflicts.", "title": "Contributors' conflicts", "dialogTitle": "Contributors' conflicts · {project}", "configure": "Configure", "mode": {"ask": "Ask the contributor", "resolve": "Let Timon resolve them"}, "hint": {"ask": "A comment you publish asks the author to merge the base.", "resolve": "Merged here without a working tree, pushed once you approve."}, "cancel": "Cancel", "save": "Save", "saving": "Saving…"},
+  "prSetting": {"title": "Pull requests", "dialogTitle": "Pull requests · {project}", "more": "More actions", "setUp": "Set up", "configure": "Configure", "verify": "Check gh's sign-in", "backToLocal": "Go back to the local merge", "status": {"local": "Jobs merge locally", "pr": "Pull request to {base} · account {account}", "prNoAccount": "Pull request to {base}", "invalid": "Setting no longer valid: configure it again", "restricted": "Visible to accounts that manage projects", "loading": "Reading the setting…"}, "field": {"remote": "Remote", "target": "Target branch", "remoteUrl": "Push URL of the remote", "account": "GitHub account", "accountPlaceholder": "The login gh signs in as", "branchPrefix": "Branch prefix", "ghConfigDir": "gh configuration folder", "ghConfigDirPlaceholder": "Optional: gh's default sign-in"}, "check": {"run": "Check", "matches": "gh signs in as {login}.", "mismatch": "gh signs in as {login}, not {account}.", "noAccount": "gh signs in as {login}. Enter it as the account if it is the right one.", "code": {"gh_missing": "The GitHub CLI (gh) was not found on the machine that runs Timon.", "gh_failed": "gh could not answer.", "timed_out": "gh did not answer in time.", "unexpected_answer": "gh did not answer a GitHub login."}}, "checking": "Checking…", "cancel": "Cancel", "save": "Save", "enable": "Turn on", "saving": "Saving…"},
+  "forgeConflict": {"title": "Resolve the conflict · #{number} {branch}", "titleLoading": "Resolve the conflict · #{number}", "files": "{count, plural, one {# file} other {# files}}", "preparing": "Merging without a working tree…", "steps": {"title": "Steps", "checks": "Checks", "resolution": "Resolution", "preview": "Commit preview", "publish": "Publish"}, "checks": {"title": "Checks (no code of the contributor runs)", "account": "Account that will push", "noAccount": "none set", "method": "Method", "methodValue": "merge without checkout (no working tree)"}, "file": {"blocks": "{count, plural, one {# block} other {# blocks}}", "sensitive": "sensitive", "sensitiveHint": "A workflow or a Git setting: read it twice.", "state": {"todo": "to resolve", "contributor": "theirs kept", "target": "{base} kept", "text": "edited"}, "keepContributor": "Keep theirs", "keepTarget": "Keep {base}", "edit": "Edit by hand", "suggest": "Suggest (agent without tools)", "suggesting": "The agent is reading…", "unreadable": "This version cannot be shown.", "resolutionDiff": "What the commit changes on the contributor's branch", "noChange": "No change: the contributor's version is kept.", "suggestion": "Suggested by an agent without tools, not applied: read it first.", "apply": "Apply", "ignore": "Ignore", "save": "Save", "saving": "Saving…", "cancel": "Cancel", "markersLeft": "Remove the conflict markers first.", "editLabel": "Resolved text of {path}"}, "gap": "{count, plural, one {# unchanged line} other {# unchanged lines}}", "hidden": "{count, plural, one {# more line not shown} other {# more lines not shown}}", "preview": {"title": "Commit preview: only the files that were in conflict", "commit": "Commit", "cut": "The diff is cut here.", "unavailable": "The diff could not be read again."}, "note": "Nothing is pushed before step 4 and your approval.", "close": "Close", "discard": "Discard", "discarding": "Discarding…", "discarded": "Resolution discarded", "next": "Commit preview", "committing": "Committing…", "left": "{count, plural, one {# file left to resolve} other {# files left to resolve}}", "publish": "Propose the publication"},
+  "forgePublish": {"conflictChanged": "The pull request or the project's remote changed since this push was prepared: nothing was pushed. Choose Do not push, then resolve the conflict again.", "title": "Publish on GitHub", "description": "The exact text that would be published on GitHub, where it goes and as which account.", "state": {"pending": "to approve", "published": "published", "discarded": "discarded", "publishing": "publishing"}, "onIssue": "issue #{number}", "onPull": "pull request #{number}", "commentOn": "Comment on {where} (public)", "preparedHint": "Draft prepared by Timon: read it, edit it before it leaves.", "preparedByPlugin": "Written by a plugin, not by Timon: read every word before it leaves.", "problem": {"empty": "The text is empty.", "tooLong": "Too long: GitHub takes 8,000 characters at most.", "control": "The text holds control characters.", "marker": "The text holds a publication marker."}, "lastError": "The last attempt failed: {reason}", "whatLeaves": "What leaves", "where": "Where", "account": "Account", "noAccount": "No account set on the project", "triggeredBy": "Prepared by", "trigger": {"person": "You", "landing": "A landed job", "todo_resolved": "A resolved TO DO", "plugin": "Plugin {plugin}"}, "once": "Once only", "onceValue": "no duplicate", "cancel": "Cancel", "keep": "Keep for later", "saving": "Saving…", "save": "Save", "edit": "Edit", "discard": "Do not publish", "discarding": "Closing…", "publish": "Publish", "publishing": "Publishing…", "close": "Close", "published": "Published on GitHub", "saved": "Draft kept", "openComment": "Open the comment", "noTarget": "Nothing to publish on.", "tabWaiting": "{count, plural, one {# publication to approve} other {# publications to approve}}", "toApprove": "{count, plural, one {to approve} other {# to approve}}", "heading": {"update_branch": "Update the branch of {where}", "conflict_push": "Push to the contributor's branch of {where}"}, "update": {"branch": "Branch", "merges": "GitHub merges", "mergesValue": "{base} into the branch", "head": "Expected head", "runs": "On this machine", "runsValue": "nothing runs"}, "push": {"to": "Pushes to", "toValue": "{repository} on {host}", "branch": "Branch", "commit": "Commit", "files": "Resolves", "filesValue": "{count, plural, one {# file} other {# files}} in conflict with {base}", "head": "Expected head"}, "discardKind": {"comment": "Do not publish", "update_branch": "Do not update", "conflict_push": "Do not push"}, "publishKind": {"comment": "Publish", "update_branch": "Update the branch", "conflict_push": "Push and comment"}}
 }

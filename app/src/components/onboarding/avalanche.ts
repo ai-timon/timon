@@ -94,10 +94,14 @@ const CROWD_COLORS: readonly MascotColor[] = [
  * The avalanche's cast: a few dozen distinct looks, each rasterised once and
  * reused at any size. Every skull, every pair of eyes, two heads in three
  * holding a tool — `fit`, so the tool stays inside the bitmap.
+ *
+ * `heads`: the heads mascot packs draw themselves. One look in four wears
+ * one, so an installed pack shows in the crowd without taking it over.
  */
-export function avalancheLooks(count = 24): AgentLook[] {
+export function avalancheLooks(count = 24, heads: readonly AgentLook['shape'][] = []): AgentLook[] {
   return Array.from({ length: count }, (_, i) => ({
-    shape: SHAPES[(i * 3) % SHAPES.length] ?? 'squircle',
+    shape: (heads.length > 0 && i % 4 === 3 ? heads[Math.floor(i / 4) % heads.length] : undefined)
+      ?? SHAPES[(i * 3) % SHAPES.length] ?? 'squircle',
     color: CROWD_COLORS[i % CROWD_COLORS.length] ?? '#7a4f35',
     eyes: EYES[(i * 5) % EYES.length] ?? 'pill',
     acc: i % 3 === 2 ? 'none' : ACC[1 + ((i * 7) % (ACC.length - 1))] ?? 'none',

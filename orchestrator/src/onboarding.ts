@@ -85,6 +85,10 @@ export type OnboardingResult = {
   sessionMode?: ServiceSessionMode | null;
   /** `service-status`: the answer changes something on this OS (`sessionModeSupported`). */
   sessionModeSupported?: boolean;
+  /** `install-service`, Windows: asked to keep running when logged out, the
+   *  service was registered for the session instead and stops at logout
+   *  (`ServiceResult.sessionFallback`; `lines` says it in words). */
+  sessionFallback?: boolean;
 };
 
 export class OnboardingError extends Error {}
@@ -96,9 +100,9 @@ export class OnboardingError extends Error {}
  */
 export function runInstallService(
   opts: ServiceOpts,
-  install: (o: ServiceOpts) => { ok: boolean; lines: string[] } = installService,
+  install: (o: ServiceOpts) => { ok: boolean; lines: string[]; sessionFallback?: boolean } = installService,
 ): OnboardingResult {
-  let result: { ok: boolean; lines: string[] };
+  let result: { ok: boolean; lines: string[]; sessionFallback?: boolean };
   try {
     result = install(opts);
   } catch (e) {
@@ -109,7 +113,9 @@ export function runInstallService(
       reason: (e as Error).message,
     };
   }
-  if (result.ok) return { ok: true, installed: true, lines: result.lines, command: null, reason: null };
+  if (result.ok) {
+    return { ok: true, installed: true, lines: result.lines, command: null, reason: null, ...(result.sessionFallback ? { sessionFallback: true } : {}) };
+  }
   return {
     ok: false,
     lines: result.lines,
@@ -281,6 +287,9 @@ export function setupBackends(
     const signIn = cli.signInCommand ?? name;
     // The vendor's line starts with the program: it is replaced by the path the daemon resolved.
     const [program = name, ...rest] = signIn.split(' ');
+    // A line may name a sibling of the card's binary (`hermes setup` beside `hermes-acp`): that
+    // program is resolved on its own, since the card's path would run the wrong one (TIM-0159).
+    const programPath = program === name ? path : locate(program);
     const version = versions(name, path);
     // A generation the provider does not support: its installer would replace it, so none is offered.
     const plan = cli.installer && !version.unsupportedVersion ? installBackendPlanFor(name, platform) : null;
@@ -295,7 +304,7 @@ export function setupBackends(
       installable: plan !== null,
       installCommand: plan?.display ?? null,
       installDocs: cli.installDocs ?? null,
-      signInCommand: signInLine([invocation(path, program, platform), ...rest].join(' '), cli.signInEnv, platform),
+      signInCommand: signInLine([invocation(programPath, program, platform), ...rest].join(' '), cli.signInEnv, platform),
       signInThen: cli.signInThen ?? null,
       seedsMainAgent: cli.seedsMainAgent,
       ...version,

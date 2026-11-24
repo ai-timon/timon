@@ -71,6 +71,7 @@ import { thirdPartyPluginVisible } from '../users/surfaces.js';
 import { DICTATION_DAEMON_BODY_LIMIT, registerRouteBodyLimit } from './route-body-limit.js';
 import {
   currentPluginOwnerUserId,
+  pluginCallByPerson,
   pluginCallUnattended,
   currentPluginUser,
   currentPluginViewer,
@@ -172,6 +173,7 @@ import {
 import {
   worktreesFor, type ScopedWorktrees, type WorktreeCallerScope,
 } from './worktrees-facade.js';
+import { forgeFor, type ForgeCallerScope, type PluginForgeProposalInput, type ScopedForge } from './forge-facade.js';
 import { agentDocsFor, type PluginAgentDoc, type ScopedAgentDocs } from './agent-docs-facade.js';
 import { agentExportFor, type PluginAgentExport, type ScopedAgentExport } from './agent-export-facade.js';
 import {
@@ -339,6 +341,11 @@ export type {
 export { PluginSeriesError } from './series-facade.js';
 export type { PluginWorktree, PluginWorktreeErrorCode } from './worktrees-facade.js';
 export { PluginWorktreeError } from './worktrees-facade.js';
+export type {
+  PluginForgeChecks, PluginForgeErrorCode, PluginForgeIssue, PluginForgeIssueDetails, PluginForgeProposal,
+  PluginForgeProposalInput, PluginForgeProposeResult, PluginForgePull, PluginForgePullDetails, PluginForgeRepository,
+} from './forge-facade.js';
+export { PluginForgeError } from './forge-facade.js';
 export type { PluginAgentDoc } from './agent-docs-facade.js';
 export type {
   PluginAgentCreatedEvent, PluginAgentDeletedEvent, PluginAgentEvent, PluginAgentEventKind, PluginAgentEventMap,
@@ -512,6 +519,8 @@ export type PluginHost = {
   series?: { open(scope: SeriesCallerScope): ScopedSeries };
   /** Task worktrees (`worktrees-facade.ts`). Optional on test hosts. */
   worktrees?: { open(scope: WorktreeCallerScope): ScopedWorktrees };
+  /** A project's GitHub repository, read and proposed on (`forge-facade.ts`). Optional on test hosts. */
+  forge?: { open(scope: ForgeCallerScope): ScopedForge };
   /** Browser recording events for a plugin (`browser-recording-events.ts`). Optional on test hosts. */
   browserRecordingEvents?: {
     subscribe(pluginId: string, kind: PluginBrowserRecordingEventKind, handler: PluginBrowserRecordingEventHandler): () => void;
@@ -933,6 +942,20 @@ export function createPluginContext(
     const viewer = ownedCaller(wanted);
     if (!host.worktrees) throw new Error('Worktree host unavailable');
     return host.worktrees.open({ pluginId: id, viewer });
+  };
+  // In a request the account needs `projects:manage`, as the routes over the
+  // same data do. A proposal needs the plugin itself (a job, an unattended
+  // callback) or a person at a screen: never the daemon token, a mission's
+  // token or a plugin's, so an agent cannot propose through a plugin's route.
+  const forge = (permission: 'forge:read' | 'forge:propose'): ScopedForge => {
+    composition();
+    assert(permission);
+    const owner = currentPluginOwnerUserId(id);
+    if (!owner) throw new PluginCallerError(id, permission);
+    const job = owner === `plugin:${id}`;
+    if (!job && !pluginCallerAllows(currentPluginViewer(id), 'projects:manage')) throw new PluginCallerError(id, permission);
+    if (!host.forge) throw new Error('Forge host unavailable');
+    return host.forge.open({ pluginId: id, mayPropose: job || pluginCallUnattended() || pluginCallByPerson() });
   };
   /**
    * Who acts, for the facades of API 10: the permission is declared, an
@@ -1383,10 +1406,10 @@ export function createPluginContext(
       },
       async list(filter: PluginTaskFilter = {}): Promise<PluginTask[]> {
         assert('kanban:read');
-        if (filter.project !== undefined || filter.mirror !== undefined || filter.limit !== undefined) {
+        if (filter.project !== undefined || filter.mirror !== undefined || filter.limit !== undefined || Array.isArray(filter.status)) {
           return tasks('kanban:read').list(filter);
         }
-        return host.kanban.list(filter.status, taskScope()) as PluginTask[];
+        return host.kanban.list(filter.status as string | undefined, taskScope()) as PluginTask[];
       },
       async get(taskId: string): Promise<PluginTask | undefined> { return tasks('kanban:read').get(taskId); },
       async ensure(task: PluginTaskInput, links: readonly PluginTaskLinkInput[]) {
@@ -1578,6 +1601,23 @@ export function createPluginContext(
         async list(seriesId: string) { return series(false).role.list(seriesId); },
         async set(seriesId: string, choice: PluginSeriesRoleInput) { return series(true).role.set(seriesId, choice); },
         async clear(seriesId: string, scope: string, group: string | null = null) { return series(true).role.clear(seriesId, scope, group); },
+      },
+    },
+    forge: {
+      async repository(project: string) { return forge('forge:read').repository(project); },
+      issues: {
+        async list(project: string, opts: { label: string }) { return forge('forge:read').issues.list(project, opts); },
+        async get(project: string, number: number) { return forge('forge:read').issues.get(project, number); },
+      },
+      pulls: {
+        async list(project: string) { return forge('forge:read').pulls.list(project); },
+        async get(project: string, number: number) { return forge('forge:read').pulls.get(project, number); },
+        async checks(project: string, number: number) { return forge('forge:read').pulls.checks(project, number); },
+      },
+      async propose(project: string, input: PluginForgeProposalInput) { return forge('forge:propose').propose(project, input); },
+      proposals: {
+        async list(project: string) { return forge('forge:propose').proposals.list(project); },
+        async get(project: string, proposalId: string) { return forge('forge:propose').proposals.get(project, proposalId); },
       },
     },
     worktrees: {
@@ -2084,6 +2124,7 @@ export function daemonHost(ctx: Context): PluginHost {
     projects: { open: projectsFor },
     series: { open: seriesFor },
     worktrees: { open: worktreesFor },
+    forge: { open: (scope: ForgeCallerScope) => forgeFor(scope) },
     projectEvents: { subscribe: subscribePluginProjectEvent },
     browserRecordingEvents: { subscribe: subscribePluginBrowserRecordingEvent },
     browserAnnotationEvents: { subscribe: subscribePluginBrowserAnnotationEvent },

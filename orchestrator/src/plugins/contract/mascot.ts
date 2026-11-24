@@ -1,6 +1,7 @@
 /**
  * A part of a mascot pack (client API 15): a skull, a fur, eyes or an
- * accessory that a plugin adds to the mascot configurator, as data.
+ * accessory that a plugin adds to the mascot configurator, as data — or a
+ * whole head the pack draws with its own component (`head`).
  *
  * Declare each part's slug in the manifest (`timon.mascot`, by look field),
  * then register its drawing from the browser half:
@@ -15,6 +16,13 @@ export type MascotPartLabel = string | Readonly<Record<string, string>>;
 /** A point of an eye outline, in eye units: the screen is 29 high, an eye about 12; x and y within ±9. */
 export type MascotPoint = readonly [number, number];
 
+/**
+ * A head a pack draws itself: a component that takes no props and reads
+ * `useAgentMascot()` from `@timon/ui`, like an `agent.mascot` occupant, but
+ * only for the agents whose look wears this shape.
+ */
+export type MascotHeadComponent = (props: Record<string, never>) => unknown;
+
 export type MascotPart =
   | {
     type: 'shape';
@@ -26,6 +34,18 @@ export type MascotPart =
      * placed from them.
      */
     skull: { top: number; bottom: number; height: number; radius: number };
+    head?: never;
+  }
+  | {
+    type: 'shape';
+    label: MascotPartLabel;
+    /**
+     * The whole head of an agent wearing this shape, drawn by the pack
+     * instead of Timon, whatever the 2D / 3D mascot style. A head that throws
+     * is replaced by Timon's default head for that agent.
+     */
+    head: MascotHeadComponent;
+    skull?: never;
   }
   | {
     type: 'color';

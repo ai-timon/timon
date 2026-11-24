@@ -72,23 +72,23 @@ function doctor(over: Partial<SetupDoctor> = {}): SetupDoctor {
   };
 }
 
-/** La machine dicte la réponse : ce n'est plus un menu déroulant. */
-test('le superviseur écrit est celui que la machine impose', () => {
+/** The machine dictates the answer: it is no longer a drop-down menu. */
+test('the written supervisor is the one the machine imposes', () => {
   assert.equal(supervisorToWrite({ supervisor: 'systemd-user' }), 'systemd-user');
   assert.equal(supervisorToWrite({ supervisor: 'launchd' }), 'launchd');
   assert.equal(supervisorToWrite({ supervisor: 'windows' }), 'windows');
-  // Aucun superviseur installable (Linux sans systemd) : mode portable.
+  // No installable supervisor (Linux without systemd): portable mode.
   assert.equal(supervisorToWrite({ supervisor: null }), 'none');
   assert.equal(serviceInstallable({ supervisor: null }), false);
 });
 
-test('les prérequis manquants sont listés, les bloquants en premier', () => {
+test('the missing prerequisites are listed, the blocking ones first', () => {
   const missing = missingPrerequisites(doctor());
-  // Claude est déjà présent : Codex, Grok et Docker ne polluent pas l'onboarding.
+  // Claude is already there: Codex, Grok and Docker do not clutter the onboarding.
   assert.deepEqual(missing, []);
 });
 
-test('sans aucun backend, Codex est proposé comme unique installation automatique', () => {
+test('with no backend at all, Codex is offered as the only automatic install', () => {
   const d = doctor();
   const claude = d.binaries.find((b) => b.name === 'claude');
   if (claude) { claude.ok = false; claude.path = null; }
@@ -96,15 +96,15 @@ test('sans aucun backend, Codex est proposé comme unique installation automatiq
   assert.deepEqual(missing.filter((m) => m.required).map((m) => m.name), ['codex']);
 });
 
-test('node manquant est bloquant, et vient en tête', () => {
+test('a missing node is blocking, and comes first', () => {
   const d = doctor();
   for (const b of d.binaries) if (b.name === 'node' || b.name === 'git') { b.ok = false; b.path = null; }
   const missing = missingPrerequisites(d);
   assert.deepEqual(missing.map((m) => [m.name, m.required]), [['node', true], ['git', false]]);
 });
 
-/** TODO #275 : sans git, Timon et son Kanban tournent ; git est proposé, jamais exigé. */
-test('git manquant est recommandé, jamais bloquant', () => {
+/** TODO #275: without git, Timon and its Kanban run; git is offered, never required. */
+test('a missing git is recommended, never blocking', () => {
   const d = doctor();
   const git = d.binaries.find((b) => b.name === 'git');
   if (git) { git.ok = false; git.path = null; }
@@ -114,32 +114,32 @@ test('git manquant est recommandé, jamais bloquant', () => {
 });
 
 /**
- * Le cœur de l'étape : l'écran BLOQUE tant que le service ne répond pas. Un
- * écran qui laissait passer avec un daemon mort produisait une installation
- * qui avait l'air faite et ne faisait rien.
+ * The heart of the step: the screen BLOCKS as long as the service does not answer. A
+ * screen that let you through with a dead daemon produced an install that
+ * looked done and did nothing.
  */
-test("on ne peut pas finir tant qu'aucun superviseur n'est enregistré", () => {
+test('you cannot finish as long as no supervisor is registered', () => {
   assert.equal(canFinish({ doctor: doctor(), serviceInstalled: false, serviceRunning: false }), false);
   assert.equal(canFinish({ doctor: doctor(), serviceInstalled: true, serviceRunning: true }), true);
   assert.equal(canFinish({ doctor: null, serviceInstalled: true, serviceRunning: true }), false);
 });
 
 /**
- * Le piège de l'étape 5.7.6 : au premier lancement d'un paquet, le daemon qui
- * SERT cet écran est l'embarqué, et il tient le port que le service veut. Le
- * service ne peut donc pas démarrer avant que l'utilisateur relance. Bloquer
- * sur « tourne » verrouillerait l'écran exactement là où il compte le plus.
+ * The trap of step 5.7.6: on the first launch of a package, the daemon that
+ * SERVES this screen is the embedded one, and it holds the port the service wants. The
+ * service therefore cannot start before the user relaunches. Blocking
+ * on "running" would lock the screen exactly where it matters most.
  */
-test('un service installé mais pas encore démarré laisse finir, et demande la relève', () => {
+test('a service installed but not started yet lets you finish, and asks for the handover', () => {
   const state = { doctor: doctor(), serviceInstalled: true, serviceRunning: false };
   assert.equal(canFinish(state), true);
   assert.equal(needsHandover(state), true);
   assert.equal(needsHandover({ ...state, serviceRunning: true }), false);
 });
 
-test("une machine sans superviseur possible n'est pas enfermée dehors", () => {
-  // Refuser ici verrouillerait l'utilisateur pour un fait qu'il ne peut pas
-  // changer : il obtient le mode portable, et l'écran le dit.
+test('a machine with no possible supervisor is not locked out', () => {
+  // Refusing here would lock the user out over a fact they cannot
+  // change: they get the portable mode, and the screen says so.
   assert.equal(
     canFinish({ doctor: doctor({ supervisor: null }), serviceInstalled: false, serviceRunning: false }),
     true,
@@ -147,23 +147,23 @@ test("une machine sans superviseur possible n'est pas enfermée dehors", () => {
 });
 
 /**
- * `canFinish` porte AUSSI la révélation du reste de l'écran (onboarding.2) :
- * tant qu'il est faux, seul le bloc « Daemon service » est affiché.
+ * `canFinish` ALSO carries the reveal of the rest of the screen (onboarding.2):
+ * as long as it is false, only the "Daemon service" block is shown.
  *
- * D'où ce test : sur une machine sans superviseur, le bloc service n'est pas
- * rendu du tout (`serviceInstallable` est faux) et `serviceInstalled` ne
- * pourra JAMAIS devenir vrai. Révéler sur `serviceInstalled` y afficherait une
- * page vide, sans le moindre moyen d'en sortir.
+ * Hence this test: on a machine with no supervisor, the service block is not
+ * rendered at all (`serviceInstallable` is false) and `serviceInstalled` can
+ * NEVER become true. Revealing on `serviceInstalled` would show an
+ * empty page there, with no way out of it.
  */
-test('le mode portable voit le reste de l\'écran, faute de quoi il ne voit rien', () => {
+test('the portable mode sees the rest of the screen, otherwise it would see nothing', () => {
   const portable = doctor({ supervisor: null });
   assert.equal(serviceInstallable(portable), false);
   assert.equal(canFinish({ doctor: portable, serviceInstalled: false, serviceRunning: false }), true);
-  // Et le cas normal reste fermé tant que le service n'a pas répondu.
+  // And the normal case stays closed as long as the service has not answered.
   assert.equal(canFinish({ doctor: doctor(), serviceInstalled: false, serviceRunning: false }), false);
 });
 
-test('un échec montre le motif ET la commande à coller', () => {
+test('a failure shows the reason AND the command to paste', () => {
   const msg = answerMessage({
     ok: false,
     reason: 'systemctl refused: Interactive authentication required.',
@@ -172,55 +172,55 @@ test('un échec montre le motif ET la commande à coller', () => {
   assert.match(msg.text, /Interactive authentication required/);
   assert.equal(msg.command, 'timon service install');
 
-  // Un succès n'affiche aucune commande à coller.
+  // A success shows no command to paste.
   assert.deepEqual(answerMessage({ ok: true, lines: ['service installed'] }), {
     text: 'service installed',
     command: null,
   });
 });
 
-test('aucun dossier de travail n’est demandé, le vault reste vide par défaut', () => {
+test('no work folder is asked for, the vault stays empty by default', () => {
   assert.deepEqual(Object.keys(PATH_DEFAULTS), ['vaultPath']);
-  // Vide = détection automatique par le daemon.
+  // Empty = automatic detection by the daemon.
   assert.equal(PATH_DEFAULTS.vaultPath, '');
 });
 
 /**
- * La règle d'erreur des backends appartient au daemon, pas à l'écran.
+ * The backend error rule belongs to the daemon, not to the screen.
  *
- * `doctor.ts` ne pousse `no LLM backend installed (...)` dans `blockers` que si
- * AUCUN des trois n'est trouvé. L'écran lit ce verdict ; il ne recalcule pas la
- * condition, sinon les deux implémentations divergent et l'UI alarme sur une
- * machine que le daemon juge saine (ou se tait sur une qu'il refuse).
+ * `doctor.ts` pushes `no LLM backend installed (...)` into `blockers` only if
+ * NONE of the three is found. The screen reads that verdict; it does not recompute the
+ * condition, otherwise the two implementations drift and the UI raises an alarm on a
+ * machine the daemon deems healthy (or stays quiet on one it refuses).
  */
-test('le recours backend suit le blocker du daemon, jamais un second calcul', () => {
-  // La chaîne exacte que produit orchestrator/src/doctor.ts.
+test('the backend fallback follows the daemon blocker, never a second computation', () => {
+  // The exact string orchestrator/src/doctor.ts produces.
   const none = doctor({ blockers: ['no LLM backend installed (claude, codex, grok, copilot)'] });
   assert.equal(noBackendInstalled(none), true);
 
-  // Un seul backend présent : le daemon ne bloque pas, l'écran non plus — même
-  // si les deux autres binaires sont absents de `binaries`.
+  // A single backend present: the daemon does not block, neither does the screen — even
+  // if the two other binaries are missing from `binaries`.
   assert.equal(noBackendInstalled(doctor()), false);
   assert.equal(doctor().binaries.filter((b) => ['claude', 'codex', 'grok'].includes(b.name) && b.ok).length, 1);
 
-  // Un autre blocker ne déclenche pas le recours.
+  // Another blocker does not trigger the fallback.
   assert.equal(noBackendInstalled(doctor({ blockers: ['git not found'] })), false);
 });
 
-test('les cartes de backend sont celles que le daemon déclare, dans son ordre', () => {
+test('the backend cards are the ones the daemon declares, in its order', () => {
   const all = doctor({ binaries: Object.keys(PROVIDERS).reverse().map((name) => binary(name, false)).concat([binary('node', true)]) });
   const cards = backendCards(all);
   assert.deepEqual(cards.map((c) => c.name), ['codex', 'claude', 'grok', 'copilot', 'opencode', 'hermes-acp', 'pi']);
-  // Une marque par carte : `BrandMark` les rend depuis brand-icons, sans asset
-  // supplémentaire.
+  // One brand per card: `BrandMark` renders them from brand-icons, without an extra
+  // asset.
   assert.deepEqual(cards.map((c) => c.brand), ['openai', 'anthropic', 'xai', 'github', 'opencode', 'nous', 'pi']);
   assert.deepEqual(cards.map((c) => c.label), ['GPT', 'Claude', 'Grok', 'Copilot', 'opencode', 'Hermes', 'Pi']);
-  // Un binaire sans fournisseur n'est pas une carte ; un fournisseur d'un tiers qui se déclare l'est.
+  // A binary without a provider is not a card; a third-party provider that declares itself is.
   const third = binary('acme', false);
   assert.deepEqual(backendCards(doctor({ binaries: [third, { ...third, name: 'acme-agent', provider: { id: 'acme', label: 'Acme', brand: null, order: 8, suggested: false, seedsMainAgent: false } }] })).map((c) => c.name), ['acme-agent']);
 });
 
-test('les cartes à clé d\'API nomment le CLI qui les porte', () => {
+test('the API key cards name the CLI that carries them', () => {
   const apiKeyProviders = [
     { id: 'deepseek', label: 'DeepSeek', brand: 'deepseek', via: 'claude', viaLabel: 'Claude' },
     { id: 'ollama-cloud', label: 'Ollama Cloud', brand: 'ollama', via: 'codex', viaLabel: 'Codex' },
@@ -229,7 +229,7 @@ test('les cartes à clé d\'API nomment le CLI qui les porte', () => {
   assert.deepEqual(apiKeyCards(doctor()), []);
 });
 
-test('le bloc des backends se masque dès qu\'un backend marche tel quel', () => {
+test('the backend block hides as soon as a backend works as is', () => {
   assert.equal(backendReady(null), false);
   assert.equal(backendReady(doctor()), true);
   const codexOnly = doctor({ binaries: [binary('codex', true)] });
@@ -240,22 +240,22 @@ test('le bloc des backends se masque dès qu\'un backend marche tel quel', () =>
     binary: 'codex', name: 'Codex', command: 'codex login', path: '/h/.codex/auth.json', detail: 'd',
   });
   assert.equal(missingLogin({ ...codexOnly, auth: auth(true) }), null);
-  // Un fournisseur dont le CLI est absent n'a pas de connexion à réclamer.
+  // A provider whose CLI is missing has no connection to claim.
   assert.equal(missingLogin({ ...doctor(), auth: auth(false) }), null);
-  // opencode seul ne porte pas l'agent principal : la liste reste visible.
+  // opencode alone does not carry the main agent: the list stays visible.
   assert.equal(backendReady(doctor({ binaries: [binary('opencode', true)] })), false);
 });
 
-test('la configuration s\'écrit seule quand il ne reste rien à décider', () => {
+test('the configuration writes itself when there is nothing left to decide', () => {
   const base = { doctor: doctor({ desktop: true }), revealed: true, ready: true, missing: 0, resumable: false, message: null };
   assert.equal(shouldAutoWrite(base), true);
-  assert.equal(shouldAutoWrite({ ...base, revealed: false }), false, 'service pas encore là');
-  assert.equal(shouldAutoWrite({ ...base, ready: false }), false, 'aucun backend prêt');
-  assert.equal(shouldAutoWrite({ ...base, missing: 1 }), false, 'un prérequis à installer');
+  assert.equal(shouldAutoWrite({ ...base, revealed: false }), false, 'service not there yet');
+  assert.equal(shouldAutoWrite({ ...base, ready: false }), false, 'no backend ready');
+  assert.equal(shouldAutoWrite({ ...base, missing: 1 }), false, 'a prerequisite to install');
   assert.equal(shouldAutoWrite({ ...base, resumable: null }), false, 'reprise pas encore connue');
-  assert.equal(shouldAutoWrite({ ...base, resumable: true }), false, 'une install existante est un choix');
-  assert.equal(shouldAutoWrite({ ...base, message: 'boom' }), false, 'une erreur affichée');
-  assert.equal(shouldAutoWrite({ ...base, doctor: doctor() }), false, 'assistant web : il reste la case de l\'app');
+  assert.equal(shouldAutoWrite({ ...base, resumable: true }), false, 'an existing install is a choice');
+  assert.equal(shouldAutoWrite({ ...base, message: 'boom' }), false, 'an error shown');
+  assert.equal(shouldAutoWrite({ ...base, doctor: doctor() }), false, 'web assistant: the app box is still there');
 });
 
 
@@ -331,7 +331,7 @@ test('the agent step is the service step, and only it: the welcome that follows 
   assert.deepEqual([...SERVICE_STEPS], ['agent']);
   for (const step of ['splash', 'account', 'llm', 'profile']) assert.equal(stepNeedsService(step), false, step);
   assert.equal(stepNeedsService('agent'), true);
-  // Ready = registered, running, portable or already configured — never « still installing ».
+  // Ready = registered, running, portable or already configured — never "still installing".
   assert.deepEqual(
     (['checking', 'missing', 'installing', 'installed', 'running', 'portable', 'failed', 'account', 'configured'] as ServicePhase[]).filter(serviceReady),
     ['installed', 'running', 'portable', 'configured'],
@@ -341,7 +341,7 @@ test('the agent step is the service step, and only it: the welcome that follows 
 test('the preparation starts past the welcome, and the card steps aside on the service steps', () => {
   assert.equal(preparationStarts('splash', true), false);
   assert.equal(preparationStarts('background', true), false, 'the install carries the answer of this step: it waits for it');
-  assert.equal(preparationVisible('background', true, true), false, 'reached again through « Back »: no card over the question');
+  assert.equal(preparationVisible('background', true, true), false, 'reached again through "Back": no card over the question');
   assert.equal(preparationStarts('account', true), true);
   for (const step of ['signin', 'mascot']) assert.equal(preparationStarts(step, true), false, `${step}: an install that already runs`);
   assert.equal(preparationVisible('account', false, true), false, 'not before it started');

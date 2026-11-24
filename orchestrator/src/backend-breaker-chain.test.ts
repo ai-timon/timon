@@ -1,12 +1,12 @@
 /**
- * Bout en bout du coupe-circuit : trois missions renvoyées instantanément
- * écartent le backend ET déplacent la série, SANS qu'aucun message d'erreur
- * ne soit lisible.
+ * End to end of the circuit breaker: three missions sent back instantly
+ * set the backend aside AND move the series, WITHOUT any readable error
+ * message.
  *
- * C'est la reconstitution de la nuit du 2026-09-01, débarrassée de ce qui l'a
- * fait échouer : le payload de l'incident est repris tel quel mais vidé de son
- * `errors[]`. Si la chaîne se remet à dépendre d'une phrase de fournisseur, ces
- * tests tombent — c'est exactement leur raison d'être.
+ * It is the reconstruction of the night of 2026-09-01, rid of what made it
+ * fail: the incident payload is taken as is but emptied of its
+ * `errors[]`. If the chain starts depending on a provider sentence again, these
+ * tests fall: that is exactly their reason to be.
  *
  * `node --test --import tsx src/backend-breaker-chain.test.ts`
  */
@@ -37,7 +37,7 @@ const { noteBackendUnavailable, isBackendCoolingDown, clearBackendCooldown } =
   await import('./backend-fallback.js');
 const { watchMissionComplete } = await import('./dispatcher.js');
 
-/** Le `result` de l'incident, PRIVÉ de son message : 0 tour, 0 token, 300 ms. */
+/** The `result` of the incident, STRIPPED of its message: 0 turns, 0 tokens, 300 ms. */
 const MUTE_BOUNCE = {
   type: 'result',
   subtype: 'error_during_execution',
@@ -48,20 +48,20 @@ const MUTE_BOUNCE = {
   usage: { input_tokens: 0, output_tokens: 0 },
 };
 
-/** Les trois rebonds de la nuit, tels que les verrait `agent.ts`. */
+/** The three bounces of the night, as `agent.ts` would see them. */
 function bounceThreeTimes(backend: string): void {
   for (let i = 0; i < 3; i++) {
     const signature = sterileResultSignature('result', MUTE_BOUNCE);
-    assert.ok(signature, 'chaque rebond doit être reconnu sur sa seule forme');
+    assert.ok(signature, 'each bounce must be recognised by its shape alone');
     const trip = noteSterileTurn(backend, signature);
     if (trip) noteBackendUnavailable(trip);
   }
 }
 
-test('trois rebonds muets écartent le backend, sans aucun message à lire', () => {
+test('three mute bounces set the backend aside, without any message to read', () => {
   resetBreakers();
   clearBackendCooldown('grok');
-  // Le préalable de tout le test : la détection par le texte ne voit RIEN ici.
+  // The precondition of the whole test: text detection sees NOTHING here.
   assert.equal(rateLimitFromEvent('result', MUTE_BOUNCE), null);
   assert.equal(isBackendCoolingDown('grok'), false);
 
@@ -73,7 +73,7 @@ test('trois rebonds muets écartent le backend, sans aucun message à lire', () 
   assert.equal(isBackendCoolingDown('grok'), true);
 });
 
-test('un cooldown mieux informé (402) n’est pas raccourci par le coupe-circuit', () => {
+test('a better-informed cooldown (402) is not shortened by the circuit breaker', () => {
   resetBreakers();
   clearBackendCooldown('grok');
   const dry = Date.now() + 24 * 3600_000;
@@ -81,15 +81,15 @@ test('un cooldown mieux informé (402) n’est pas raccourci par le coupe-circui
 
   bounceThreeTimes('grok');
 
-  // Le solde épuisé sait POURQUOI ; le coupe-circuit ne sait pas. Ramener le
-  // backend dans la rotation dans 30 min le remettrait dans le mur.
+  // The exhausted balance knows WHY; the circuit breaker does not. Bringing the
+  // backend back into rotation in 30 min would put it back against the wall.
   const cooldown = dbApi.getBackendCooldown('grok');
   assert.equal(cooldown?.kind, 'exhausted');
   assert.equal(cooldown?.until, dry);
   clearBackendCooldown('grok');
 });
 
-test('une mission morte du coupe-circuit bascule sa série sur son repli', async () => {
+test('a mission killed by the circuit breaker switches its series to its fallback', async () => {
   resetBreakers();
   clearBackendCooldown('grok');
   const stop = watchMissionComplete();
@@ -110,42 +110,42 @@ test('une mission morte du coupe-circuit bascule sa série sur son repli', async
 
     const blocked = dbApi.getTask(taskId);
     assert.equal(blocked?.status, 'BLOCKED');
-    // Cause qualifiée, et non le `crash` générique qui faisait rejouer la task
-    // à l'identique sur le backend mort.
+    // A qualified cause, not the generic `crash` that made the task replay
+    // identically on the dead backend.
     assert.equal(blocked?.interrupted_reason, 'backend_unavailable');
     assert.ok(
       (blocked?.blocked_reason ?? '').includes('backend structurally unavailable'),
-      'le motif au Kanban doit dire ce qui s’est passé',
+      'the reason on the Kanban must say what happened',
     );
 
-    // La bascule de série est asynchrone (import paresseux d'agent.ts).
+    // The series switch is asynchronous (lazy import of agent.ts).
     await new Promise((r) => setTimeout(r, 200));
     const moved = dbApi.getTask(taskId);
-    assert.equal(moved?.backend_override, 'codex', 'la série doit repartir sur son repli');
-    // Et la task, bloquée par l'état du BACKEND et non par son travail, est
-    // remise en file plutôt que laissée à attendre un humain.
+    assert.equal(moved?.backend_override, 'codex', 'the series must restart on its fallback');
+    // And the task, blocked by the state of the BACKEND and not by its work, is
+    // requeued rather than left waiting for a human.
     assert.equal(moved?.status, 'PENDING');
   } finally {
     stop();
   }
 });
 
-test('un backend qui n’a jamais produit un tour n’est écarté que brièvement (TIM-0009)', () => {
+test('a backend that never produced a turn is only set aside briefly (TIM-0009)', () => {
   resetBreakers();
   clearBackendCooldown('grok');
   const before = Date.now();
   bounceThreeTimes('grok');
   const unproven = dbApi.getBackendCooldown('grok');
   assert.equal(unproven?.kind, 'unavailable');
-  // 5 min, pas les 30 min du réglage : le testeur qui vient de corriger son
-  // login ou sa version de CLI doit pouvoir réessayer sans rien réarmer.
-  assert.ok(unproven!.until - before <= 5 * 60_000 + 1000, `écarté trop longtemps : ${unproven!.until - before} ms`);
+  // 5 min, not the 30 min of the setting: the tester who just fixed their
+  // login or CLI version must be able to retry without rearming anything.
+  assert.ok(unproven!.until - before <= 5 * 60_000 + 1000, `set aside too long: ${unproven!.until - before} ms`);
 
-  // Le même backend, une fois qu'il a produit un tour, retrouve le cooldown plein.
+  // The same backend, once it has produced a turn, gets the full cooldown back.
   resetBreakers();
   clearBackendCooldown('grok');
   noteProductiveTurn('grok');
   bounceThreeTimes('grok');
   const proven = dbApi.getBackendCooldown('grok');
-  assert.ok(proven!.until - before >= 25 * 60_000, `cooldown plein attendu : ${proven!.until - before} ms`);
+  assert.ok(proven!.until - before >= 25 * 60_000, `full cooldown expected: ${proven!.until - before} ms`);
 });

@@ -60,16 +60,21 @@ export const MACHINE_URL_MAX = 2048;
 
 const BASE = '/api/ui/machines';
 
-/** `error` is the machine-readable code, never shown as is; `detail` the machine status of an unreachable one. */
+/**
+ * `error` is the machine-readable code, never shown as is: the daemon's
+ * `code`, or the `error` of an older daemon and of this app's own relays;
+ * `detail` the machine status of an unreachable one.
+ */
 export type FleetFailure = { ok: false; status: number; error: string | null; detail: string | null };
 export type FleetResult<T> = { ok: true; value: T } | FleetFailure;
 
 async function failure(response: Response): Promise<FleetFailure> {
-  const body = await response.json().catch(() => ({})) as { error?: unknown; status?: unknown };
+  const body = await response.json().catch(() => ({})) as { error?: unknown; code?: unknown; status?: unknown };
+  const code = typeof body.code === 'string' ? body.code : typeof body.error === 'string' ? body.error : null;
   return {
     ok: false,
     status: response.status,
-    error: typeof body.error === 'string' ? body.error : null,
+    error: code,
     detail: typeof body.status === 'string' ? body.status : null,
   };
 }

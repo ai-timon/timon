@@ -1,18 +1,18 @@
 /**
- * Fin de tour observable depuis l'API — ce dont `timon wait` a besoin.
+ * End of turn observable from the API: what `timon wait` needs.
  *
- * Défaut corrigé (17/09/2026, fiche #101) : `cmdWait` bouclait tant que le
- * statut valait `running`. Avec un backend persistant, le process reste vivant
- * après la fin du tour jusqu'au reap d'inactivité (`TIMON_REAP_IDLE_MS`), donc
- * `wait` ne rendait la main qu'au reap — dix minutes plus tard — ou jamais.
- * Pire, le pilote bloqué dans `wait` gardait un tour actif, et le retour de la
- * sous-mission est justement DIFFÉRÉ tant qu'un tour est actif (`wake.ts`,
- * `MAX_ROUTE_DEFERRALS`) : chacun attendait l'autre.
+ * Defect fixed (17/09/2026, card #101): `cmdWait` looped as long as the
+ * status was `running`. With a persistent backend, the process stays alive
+ * after the end of the turn until the idle reap (`TIMON_REAP_IDLE_MS`), so
+ * `wait` only returned at the reap (ten minutes later) or never.
+ * Worse, the pilot blocked in `wait` kept a turn active, and the return of the
+ * sub-mission is precisely DEFERRED while a turn is active (`wake.ts`,
+ * `MAX_ROUTE_DEFERRALS`): each one waited for the other.
  *
- * L'observable retenue est celle qui fait déjà foi côté daemon : un event
- * `result` postérieur à la dernière entrée utilisateur. Elle est persistée —
- * elle survit à un redémarrage de l'orchestrateur, contrairement à
- * `turn_active`, qui vit en mémoire.
+ * The observable chosen is the one that already prevails on the daemon side: a
+ * `result` event later than the last user input. It is persisted:
+ * it survives a restart of the orchestrator, unlike
+ * `turn_active`, which lives in memory.
  *
  * `node --test --import tsx src/mission-turn-end.test.ts`
  */
@@ -68,11 +68,11 @@ async function get(path: string): Promise<{ status: number; body: MissionView }>
 
 function mission(): string {
   const id = randomUUID();
-  dbApi.createMission(id, 'timon.coder', 'un brief délégué');
+  dbApi.createMission(id, 'timon.coder', 'un brief délégué'); // french-ok: free-text sample data
   return id;
 }
 
-test('aucun tour terminé tant qu\'aucun `result` n\'est tombé', () => {
+test('no turn finished as long as no `result` has come in', () => {
   const id = mission();
   assert.equal(dbApi.missionTurnEnded(id), false);
   dbApi.insertEvent(id, 'assistant', {
@@ -81,12 +81,12 @@ test('aucun tour terminé tant qu\'aucun `result` n\'est tombé', () => {
   assert.equal(dbApi.missionTurnEnded(id), false);
 });
 
-test('un `result` termine le tour ; une entrée utilisateur en rouvre un', () => {
+test('a `result` ends the turn; a user input opens a new one', () => {
   const id = mission();
   dbApi.insertEvent(id, 'result', { subtype: 'success' });
   assert.equal(dbApi.missionTurnEnded(id), true);
 
-  // `timon send` : nouveau tour, le précédent `result` ne vaut plus rien.
+  // `timon send`: a new turn, the previous `result` is worth nothing any more.
   dbApi.insertEvent(id, 'user', { message: { content: 'une relance' } });
   assert.equal(dbApi.missionTurnEnded(id), false);
 
@@ -94,7 +94,7 @@ test('un `result` termine le tour ; une entrée utilisateur en rouvre un', () =>
   assert.equal(dbApi.missionTurnEnded(id), true);
 });
 
-test('vue légère : le statut sans le transcript', async () => {
+test('light view: the status without the transcript', async () => {
   const id = mission();
   dbApi.insertEvent(id, 'result', { subtype: 'success' });
 
@@ -103,12 +103,12 @@ test('vue légère : le statut sans le transcript', async () => {
   assert.equal(light.body.id, id);
   assert.equal(light.body.status, 'running');
   assert.equal(light.body.turn_complete, true);
-  // Le transcript entier est précisément ce qu'on ne veut pas re-télécharger
-  // toutes les 1,5 s : 2,2 Mo par appel mesurés le 17/09/2026.
+  // The full transcript is precisely what we do not want to download again
+  // every 1.5 s: 2.2 MB per call measured on 17/09/2026.
   assert.equal(light.body.events, undefined);
 });
 
-test('vue par défaut inchangée : le transcript est toujours là', async () => {
+test('default view unchanged: the transcript is always there', async () => {
   const id = mission();
   dbApi.insertEvent(id, 'result', { subtype: 'success' });
 
@@ -119,7 +119,7 @@ test('vue par défaut inchangée : le transcript est toujours là', async () => 
   assert.equal(full.body.turn_complete, true);
 });
 
-test('la vue légère passe par le même contrôle d\'accès : mission inconnue → 404', async () => {
+test('the light view goes through the same access check: unknown mission → 404', async () => {
   const unknown = await get(`/api/missions/${randomUUID()}?view=status`);
   assert.equal(unknown.status, 404);
   assert.equal(unknown.body.error, 'mission not found');

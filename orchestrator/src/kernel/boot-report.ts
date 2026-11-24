@@ -5,6 +5,7 @@
  * message of the daemon — the plugin failure title reaches every tester's
  * notification centre.
  */
+import { daemonMessage, type DaemonMessage } from '../daemon-message.js';
 import type { EntryDecision } from './registry.js';
 
 /** The one boot line that sums up the module plan. */
@@ -29,6 +30,7 @@ export function pluginFailureNotification(id: string, message: string): {
   title: string;
   body: string;
   source: string;
+  message: DaemonMessage;
 } {
   return {
     type: 'alert',
@@ -36,5 +38,6 @@ export function pluginFailureNotification(id: string, message: string): {
     title: `Plugin ${id} failed`,
     body: message,
     source: `plugin:${id}`,
+    message: daemonMessage('plugin_failed', { id }),
   };
 }

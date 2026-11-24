@@ -1,13 +1,13 @@
 /**
- * Le module projets, monté pour de vrai — pas seulement décidé.
+ * The projects module, really mounted, not only decided.
  *
- * "Fin du tier core" lui donne un id namespacé, et ce module se nomme
- * lui-même auprès de Cordis : `ctx.provide('@timon/projects')`. Un jeton de
- * service qui contient `@` et `/` n'est vérifié par aucun typage — `declare
- * module` accepte n'importe quelle clé, donc un `tsc` vert ne dit rien de ce
- * que Cordis en fait au boot. On applique donc le module sur un contexte réel
- * et on relit le jeton, sinon la seule façon de découvrir un refus serait un
- * daemon qui ne démarre pas.
+ * "End of the core tier" gives it a namespaced id, and this module names
+ * itself to Cordis: `ctx.provide('@timon/projects')`. A service
+ * token holding `@` and `/` is checked by no typing (`declare
+ * module` accepts any key), so a green `tsc` says nothing of what
+ * Cordis does with it at boot. So the module is applied on a real context
+ * and the token read back, otherwise the only way to discover a refusal would be a
+ * daemon that does not start.
  */
 import '../../test-home.js';
 import { test } from 'node:test';
@@ -19,7 +19,7 @@ const { createHttpPlugin } = await import('../../kernel/http-service.js');
 const { apply, name } = await import('./index.js');
 const { CATALOG } = await import('../../kernel/catalog.js');
 
-test('le module s\'applique sous son id namespacé et sert ses routes', async () => {
+test('the module applies under its namespaced id and serves its routes', async () => {
   const app = express();
   app.use(express.json());
   const ctx = new Context();
@@ -30,7 +30,7 @@ test('le module s\'applique sous son id namespacé et sert ses routes', async ()
   try {
     assert.equal(name, '@timon/projects');
     apply(ctx);
-    assert.ok(ctx['@timon/projects'], 'le jeton de service doit se résoudre sous son nom namespacé');
+    assert.ok(ctx['@timon/projects'], 'the service token must resolve under its namespaced name');
     assert.equal((await fetch(`http://127.0.0.1:${port}/api/projects`)).status, 200);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
@@ -38,9 +38,9 @@ test('le module s\'applique sous son id namespacé et sert ses routes', async ()
   }
 });
 
-test('le module est du catalogue, hors noyau donc désactivable', () => {
+test('the module is in the catalogue, outside the kernel, hence can be disabled', () => {
   const entry = CATALOG.find((m) => m.id === '@timon/projects');
-  assert.ok(entry, '@timon/projects doit figurer au catalogue');
+  assert.ok(entry, '@timon/projects must be in the catalogue');
   assert.equal(entry.tier, 'std');
   assert.equal(entry.name, './plugins-bundled/projects/index.js');
 });

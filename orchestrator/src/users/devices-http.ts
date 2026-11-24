@@ -18,6 +18,7 @@
  * rights) but may not mint a code: a stolen device token must not be able to
  * plant a second one that survives its own revocation.
  */
+import { daemonMessage } from '../daemon-message.js';
 import type { IncomingHttpHeaders } from 'node:http';
 import type { Request, Response, Router } from 'express';
 import { z } from 'zod';
@@ -398,6 +399,7 @@ export function registerDeviceRoutes(app: Router, opts: DeviceRoutesOptions = {}
       title: 'New device connected',
       body: `"${device.name}" was paired with your account. If this was not you, revoke it in Settings → Access & network → Devices.`,
       ownerUserId: user.id,
+      message: daemonMessage('device_paired', { name: device.name }),
     });
     const payload: DeviceRedeemResponse = {
       device: { id: device.id, name: device.name, created_at: device.created_at },

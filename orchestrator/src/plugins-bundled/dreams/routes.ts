@@ -11,13 +11,14 @@ import { scopedDb } from '../../users/scoped-db.js';
 import { closeDreamsCardIfDone, isDreamEnabled, readDreamInstructionsRaw, runDreamNow, setDreamEnabled, writeDreamInstructions } from '../../dreaming.js';
 import { runScoringNow } from '../../memory-score.js';
 import { autoColorFor, readMeta } from '../../projects.js';
+import { apiError } from '../../api-error.js';
 
 export function registerRoutes(app: Router): void {
   app.post('/api/projects/score', (req, res) => {
     const force = req.query.force !== '0';
     runScoringNow(force)
       .then((r) => res.json({ ok: true, ...r }))
-      .catch((err) => res.status(500).json({ error: (err as Error).message }));
+      .catch((err) => res.status(500).json(apiError('project_scoring_failed', (err as Error).message, { detail: (err as Error).message })));
   });
 
   app.get('/api/dreams', (req, res) => {
@@ -31,7 +32,7 @@ export function registerRoutes(app: Router): void {
           ? scope.listDreamProposals({})
           : scope.listDreamProposals({ status });
       res.json({ dreams: rows, active: scope.countActiveDreams() });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('dreams_read_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/dreams/:id/decide', (req, res) => {
@@ -39,17 +40,17 @@ export function registerRoutes(app: Router): void {
     const body = (req.body ?? {}) as { status?: string; snooze_days?: number };
     const status = body.status;
     if (status !== 'accepted' && status !== 'rejected' && status !== 'snoozed') {
-      res.status(400).json({ error: 'status must be accepted|rejected|snoozed' });
+      res.status(400).json(apiError('dream_status_invalid', 'status must be accepted|rejected|snoozed'));
       return;
     }
     const snoozeUntil = status === 'snoozed'
       ? Date.now() + (Number(body.snooze_days) || 14) * 86400_000
       : null;
     if (!scopedDb(viewerFromRequest(req)).getDreamProposal(id)) {
-      res.status(404).json({ error: 'dream not found' }); return;
+      res.status(404).json(apiError('dream_not_found', 'dream not found')); return;
     }
     const row = dbApi.decideDream(id, status, snoozeUntil);
-    if (!row) { res.status(404).json({ error: 'dream not found' }); return; }
+    if (!row) { res.status(404).json(apiError('dream_not_found', 'dream not found')); return; }
     // The "N tracks to review" card has nothing left to ask once the queue is empty.
     closeDreamsCardIfDone();
     res.json({ ok: true, dream: row });
@@ -58,7 +59,7 @@ export function registerRoutes(app: Router): void {
   app.post('/api/dreams/run', (_req, res) => {
     runDreamNow()
       .then((r) => res.json({ ok: true, ...r }))
-      .catch((err) => res.status(500).json({ error: (err as Error).message }));
+      .catch((err) => res.status(500).json(apiError('dream_run_failed', (err as Error).message, { detail: (err as Error).message })));
   });
 
   app.get('/api/dreams/instructions', (_req, res) => {
@@ -70,7 +71,7 @@ export function registerRoutes(app: Router): void {
       const text = typeof req.body === 'string' ? req.body : '';
       writeDreamInstructions(text);
       res.json({ ok: true });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('dream_instructions_save_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.get('/api/dreams/config', (_req, res) => {
@@ -80,10 +81,10 @@ export function registerRoutes(app: Router): void {
   app.put('/api/dreams/config', (req, res) => {
     try {
       const enabled = (req.body as { enabled?: unknown } | undefined)?.enabled;
-      if (typeof enabled !== 'boolean') { res.status(400).json({ error: 'enabled (boolean) required' }); return; }
+      if (typeof enabled !== 'boolean') { res.status(400).json(apiError('enabled_required', 'enabled (boolean) required')); return; }
       setDreamEnabled(enabled);
       res.json({ enabled });
-    } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(500).json(apiError('dream_config_save_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.get('/api/projects/scores', (_req, res) => {
@@ -107,7 +108,7 @@ export function registerRoutes(app: Router): void {
       });
       res.json({ projects });
     } catch (err) {
-      res.status(500).json({ error: (err as Error).message });
+      res.status(500).json(apiError('project_scores_read_failed', (err as Error).message, { detail: (err as Error).message }));
     }
   });
 }

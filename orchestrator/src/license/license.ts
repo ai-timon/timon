@@ -6,7 +6,7 @@ import { CommercialCapabilitiesSchema, type CommercialCapabilities } from './cap
 import { deviceId } from './device.js';
 import { fingerprint } from './fingerprint.js';
 import { activeKeyring, type LicensePublicKey } from './pubkey.js';
-import { fileClockAnchor, readLicenseStore, writeFileDurably, writeLicenseStore, type ClockAnchor } from './store.js';
+import { fileClockAnchor, readLicenseStore, writeFileDurably, type ClockAnchor } from './store.js';
 
 /**
  * Short-lived token issued by the license server (contract: `timon-site`
@@ -66,25 +66,10 @@ const ClaimsSchema = z.object({
   // the first superadmin's included, so it is a malformed token.
   users: z.number().int().min(1).nullable().optional(),
   capabilities: CommercialCapabilitiesSchema.optional(),
-}).superRefine((claims, ctx) => {
-  if (claims.plan !== 'free' && claims.capabilities?.accounts !== 'single-superadmin') return;
-  // Free grants every module and plugin (the maintainer's decision, 03/11/2026): only
-  // the account axis is constrained, so the composition claims stay free-form.
-  if (!claims.capabilities || claims.capabilities.accounts !== 'single-superadmin'
-      || claims.users !== 1 || claims.seats !== 1 || !claims.fph) {
-    ctx.addIssue({ code: 'custom', message: 'Free requires explicit capabilities, one machine and one superadmin.' });
-  }
-  if (claims.exp - claims.iat !== 900 || claims.iat - claims.nbf !== 60) {
-    ctx.addIssue({ code: 'custom', message: 'Free requires a 900-second token lifetime and a 60-second not-before offset.' });
-  }
-  // Contract v5: Free is never billed, so the server only ever mints it
-  // `active` and without an end of subscription. A Free token carrying
-  // `past_due` or a dated `sub_exp` was not issued by that server — unlike a
-  // paid one, where `past_due` is a banner and `sub_exp` a real date.
-  if (claims.status !== 'active' || claims.sub_exp !== null) {
-    ctx.addIssue({ code: 'custom', message: 'Free is issued active and without a subscription end.' });
-  }
 });
+/** Plan id of the retired server-issued Free tokens. */
+const RETIRED_FREE_PLAN = 'free';
+
 /** `{ alg: "EdDSA", typ: "JWT", kid }`. Unknown fields ignored: the pinned
  *  `kid` and `alg` are what verification rests on, an extra field changes
  *  nothing and must not brick a daemon. */
@@ -198,8 +183,6 @@ export type VerifyOptions = {
    *  until this instant. Set by the boot from the last successful server
    *  contact plus the plan's `offlineHours`. */
   graceUntil?: number;
-  /** Internal restriction receipt verification, never used to grant rights. */
-  restrictionOnly?: boolean;
 };
 
 /**
@@ -269,7 +252,16 @@ export function verifyLicenseToken(token: string, opts: VerifyOptions = {}): Lic
   let claims: LicenseClaims;
   try {
     header = HeaderSchema.parse(JSON.parse(decodeBase64Url(encodedHeader).toString('utf8')) as unknown);
-    claims = ClaimsSchema.parse(JSON.parse(decodeBase64Url(encodedClaims).toString('utf8')) as unknown);
+    const payload = JSON.parse(decodeBase64Url(encodedClaims).toString('utf8')) as unknown;
+    // The licence server once issued Free tokens; Free is now simply having no
+    // licence (the maintainer's decision, 17/11/2026). One still on disk reads
+    // as no licence at all: no error, no alert, nothing to renew. Checked
+    // before the signature on purpose: such a token can grant nothing that
+    // having no licence does not already give.
+    if (typeof payload === 'object' && payload !== null && (payload as { plan?: unknown }).plan === RETIRED_FREE_PLAN) {
+      return unlicensed('missing');
+    }
+    claims = ClaimsSchema.parse(payload);
   } catch { return unlicensed('invalid:format'); }
   const key = (opts.keys ?? activeKeyring()).find((candidate) => candidate.keyId === header.kid);
   if (!key) return unlicensed('invalid:key');
@@ -294,7 +286,7 @@ export function verifyLicenseToken(token: string, opts: VerifyOptions = {}): Lic
   // expiry" (≤ 15 min). Offline tolerance is the caller's `graceUntil`, fed
   // from the last successful server contact — never a constant here.
   const lifetime = claims.sub_exp === null;
-  if (!opts.restrictionOnly && now > claims.exp + CLOCK_SKEW_SECONDS && !(claims.capabilities?.plugins !== 'fixed' && opts.graceUntil !== undefined && now <= opts.graceUntil)) {
+  if (now > claims.exp + CLOCK_SKEW_SECONDS && !(claims.capabilities?.plugins !== 'fixed' && opts.graceUntil !== undefined && now <= opts.graceUntil)) {
     return unlicensed('expired');
   }
   // Device binding is not optional: a token is issued FOR one machine. Without
@@ -336,9 +328,8 @@ export function verifyLicenseToken(token: string, opts: VerifyOptions = {}): Lic
     paymentStatus: claims.status,
     offlineSince: null,
   };
-  // Keys the caller brought prove nothing to the runtime; nor does a check
-  // that skipped the expiry (`restrictionOnly` reads old receipts, never grants).
-  if (opts.keys === undefined && !opts.restrictionOnly) rememberVerified(state);
+  // Keys the caller brought prove nothing to the runtime.
+  if (opts.keys === undefined) rememberVerified(state);
   return state;
 }
 
@@ -346,19 +337,6 @@ export function verifyLicenseToken(token: string, opts: VerifyOptions = {}): Lic
 const withAnchor = (opts: VerifyOptions): VerifyOptions => ({ anchor: fileClockAnchor(), ...opts });
 
 export function readLicense(file = LICENSE_FILE, opts: VerifyOptions = {}): LicenseState {
-  const state = readLicenseFile(file, opts);
-  if (file !== LICENSE_FILE) return state;
-  if (state.status === 'valid') return state.planId === 'free' ? unlicensed('missing') : state;
-  // Old Free credentials are historical records only. Even an expired receipt
-  // needs no renewal: the same fixed rights are now part of the local product.
-  try {
-    const old = verifyLicenseToken(readFileSync(file, 'utf8'), { ...opts, fresh: false, anchor: undefined, restrictionOnly: true });
-    if (old.status === 'valid' && old.planId === 'free') return unlicensed('missing');
-  } catch { /* Missing credentials are the normal Free installation. */ }
-  return state;
-}
-
-function readLicenseFile(file: string, opts: VerifyOptions): LicenseState {
   const keyring = opts.keys ?? activeKeyring();
   if (!existsSync(file)) return unlicensed('missing');
   if (keyring.length === 0) return unlicensed('invalid:key');
@@ -400,6 +378,5 @@ export function installLicenseToken(
     : withAnchor(verifyOpts));
   if (state.status === 'unlicensed' || dryRun) return state;
   writeFileDurably(file, token.trim() + '\n');
-  if (file === LICENSE_FILE) writeLicenseStore({ restrictionToken: state.capabilities?.plugins === 'fixed' ? token.trim() : null });
   return state;
 }

@@ -40,6 +40,7 @@ import {
   ArchiveError, extractTarGz, extractZip, installRaw, type ExtractLimits, DEFAULT_EXTRACT_LIMITS,
 } from './archive.js';
 import { DownloadError, downloadVerified, type Fetcher } from './download.js';
+import { fetchIcon, readIcon, writeIcon } from './icon.js';
 import {
   archiveKind, parseRegistry, REGISTRY_URL, supportOf, type AgentSupport, type ParsedRegistry, type RegistryAgent,
 } from './schema.js';
@@ -103,8 +104,8 @@ export type ServiceOptions = {
   now?: () => number;
   limits?: ExtractLimits;
   maxDownloadBytes?: number;
-  /** Tests stand in for the profile registry. */
-  register?: (agent: InstalledAgent, command: string) => () => void;
+  /** Tests stand in for the profile registry. `icon` is the checked SVG logo, or null. */
+  register?: (agent: InstalledAgent, command: string, icon: string | null) => () => void;
   /** Tests stand in for the agent: what its `initialize` answers as `authMethods`. */
   inspect?: (agent: InstalledAgent, command: string) => Promise<unknown>;
 };
@@ -137,7 +138,7 @@ export function dialectIdOf(agentId: string): string {
  * left unregistered with a warning. It was only a warning when every agent shared
  * the product's dialect, which nothing could contradict.
  */
-function defaultRegister(agent: InstalledAgent, command: string): () => void {
+function defaultRegister(agent: InstalledAgent, command: string, icon: string | null): () => void {
   const profileId = profileIdOf(agent.id);
   const dialectId = dialectIdOf(agent.id);
   const profile: BackendProfile = {
@@ -177,6 +178,8 @@ function defaultRegister(agent: InstalledAgent, command: string): () => void {
     // so Timon never starts one by itself. The sentence says which step to take, never a billed one.
     signIn: registrySignIn(agent.name, command, agent.authMethods ?? null),
     modelProbe: 'session-new',
+    // The registry logo, already checked (`icon.ts`): the catalogue serves it as a data URL, the browser fetches nothing.
+    ...(icon ? { declares: { brand: { svg: icon } } } : {}),
   });
   let offProvider: () => void;
   try {
@@ -214,7 +217,7 @@ export class AcpRegistryService {
   private readonly now: () => number;
   private readonly limits: ExtractLimits;
   private readonly maxDownload: number;
-  private readonly register: (agent: InstalledAgent, command: string) => () => void;
+  private readonly register: (agent: InstalledAgent, command: string, icon: string | null) => () => void;
   private readonly inspect: (agent: InstalledAgent, command: string) => Promise<unknown>;
   private readonly live = new Map<string, () => void>();
   private readonly health = new Map<string, InstallState>();
@@ -413,8 +416,16 @@ export class AcpRegistryService {
       // that does not answer is still installed, and the settings screen can ask again.
       const methods = await this.readMethods(next, program).catch(() => null);
       if (methods) next.authMethods = methods;
+      // The logo: decoration, so a failure only costs the logo, never the install. What the registry says now wins: a
+      // valid icon replaces the kept one; an unsafe or invalid one, or no icon at all (an off-host one is dropped by the
+      // schema), deletes it, so an agent never keeps wearing a logo its registry entry no longer vouches for. Only an
+      // UNREACHABLE icon keeps the one already kept: it was checked when kept, and is checked again on read.
+      const icon = await fetchIcon(agent.icon, work, this.fetchFn);
+      if (icon.kind === 'refused' || icon.kind === 'unreachable') console.warn(`[acp-registry] ${agent.id}: logo not kept: ${icon.reason}`);
+      const iconFile = this.paths.iconFile(agent.id);
+      const iconSvg = icon.kind === 'svg' ? icon.svg : icon.kind === 'unreachable' ? readIcon(iconFile) : null;
       try {
-        this.swapIn(next, program);
+        this.swapIn(next, program, iconSvg);
       } catch (err) {
         // Nothing points at the new folder: do not leave it behind.
         if (current?.version !== agent.version) rmSync(final, { recursive: true, force: true });
@@ -422,6 +433,13 @@ export class AcpRegistryService {
       }
       this.health.set(agent.id, 'ok');
       writeState(this.paths, { ...state, [agent.id]: next });
+      try {
+        if (icon.kind === 'svg') writeIcon(iconFile, icon.svg);
+        else if (icon.kind !== 'unreachable') rmSync(iconFile, { force: true });
+      } catch {
+        // The agent is live already: a logo that cannot be kept on disk only costs the logo at the next restore.
+        console.warn(`[acp-registry] ${agent.id}: logo could not be kept on disk`);
+      }
       this.prune(next);
       return this.view(agent, next);
     } finally {
@@ -480,13 +498,16 @@ export class AcpRegistryService {
     return { absolute, relative: parts.join('/') };
   }
 
-  /** Replaces the live registration atomically: the backend never disappears. */
-  private swapIn(agent: InstalledAgent, command: string): void {
+  /**
+   * Replaces the live registration atomically: the backend never disappears. The logo defaults to the one kept on
+   * disk, read with no network call (restore, a sign-in change).
+   */
+  private swapIn(agent: InstalledAgent, command: string, icon: string | null = readIcon(this.paths.iconFile(agent.id))): void {
     const end = beginProviderSwap(ACP_REGISTRY_OWNER);
     try {
       this.live.get(agent.id)?.();
       this.live.delete(agent.id);
-      this.live.set(agent.id, this.register(agent, command));
+      this.live.set(agent.id, this.register(agent, command, icon));
     } finally {
       end();
     }
@@ -514,6 +535,7 @@ export class AcpRegistryService {
       this.health.delete(agentId);
       const { [agentId]: _gone, ...rest } = state;
       writeState(this.paths, rest);
+      rmSync(this.paths.iconFile(agentId), { force: true });
       try { rmSync(join(this.paths.agents, agentId), { recursive: true, force: true }); } catch { /* in use on Windows: the state no longer lists it */ }
     });
   }

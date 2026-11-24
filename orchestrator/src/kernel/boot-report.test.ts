@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { kernelBootSummary, pluginFailureNotification } from './boot-report.js';
 import type { EntryDecision } from './registry.js';
 
-const FRENCH = /[àâäçéèêëîïôöùûüÿœæ]|a échoué|profil=|édition=|capacités=|désactivé|actif\(s\)/i;
+const FRENCH = /[àâäçéèêëîïôöùûüÿœæ]|a échoué|profil=|édition=|capacités=|désactivé|actif\(s\)/i; // french-ok: the French the boot report used to print
 
 function decision(id: string, disabled: boolean, reason: string | null = null): EntryDecision {
   return { id, name: `@timon/${id}`, tier: 'opt', disabled, reason, missing: [], config: {} };
@@ -19,6 +19,7 @@ test('a failing plugin raises an English alert that names it', () => {
   assert.equal(n.body, 'boom');
   assert.equal(n.source, 'plugin:acme-widget');
   assert.equal(n.type, 'alert');
+  assert.deepEqual(n.message, { code: 'plugin_failed', params: { id: 'acme-widget' } });
   assert.doesNotMatch(n.title, FRENCH);
 });
 

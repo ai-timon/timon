@@ -135,7 +135,7 @@ test.describe('command requests', { concurrency: false }, () => {
     assert.equal((await propose(agentOf('m-owned'), { command: 'x'.repeat(2_001) })).status, 400, 'too long');
     assert.equal(seen.length, 0);
     assert.equal(isSingleLineCommand('git status --short'), true);
-    assert.equal(isSingleLineCommand('echo "é ü 漢"'), true);
+    assert.equal(isSingleLineCommand('echo "é ü 漢"'), true); // french-ok: non-ASCII letters in a command
   });
 
   test('a mission without an owner, or an owner who cannot open a terminal, is refused', async () => {

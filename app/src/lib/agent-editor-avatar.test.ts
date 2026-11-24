@@ -224,7 +224,7 @@ test('the Avatar tab\'s mascot is the `agent.lookstyler` slot: a plugin that tak
   });
 });
 
-test('« Change avatar » in the right-click menu opens the editor on the Avatar tab', async () => {
+test('"Change avatar" in the right-click menu opens the editor on the Avatar tab', async () => {
   const { openAgentEditor } = await import('../components/agent-editor/agent-editor-modal');
   const { AgentContextMenu } = await import('../plugins-client/agent-chat/agent-context-menu');
   await withEditor(async ({ React, click, q }) => {

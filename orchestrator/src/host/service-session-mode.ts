@@ -17,7 +17,7 @@
  * an install made before the choice existed. Its supervisor is left as it was
  * rather than changed behind the user's back.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 export const SERVICE_SESSION_MODES = ['session', 'always'] as const;
@@ -43,10 +43,27 @@ export function readServiceSessionMode(timonHome: string): ServiceSessionMode | 
   }
 }
 
+/**
+ * Windows: written when the host asked for the off-session task (S4U) and
+ * Windows kept it for the session only, so the session task replaced it
+ * (`ServiceResult.sessionFallback`, #116). Holds the date. While it is there,
+ * a rewrite nobody explicitly asked to run off session registers the session
+ * task directly instead of trying S4U again on an account that refuses it.
+ */
+export function serviceS4uRefusedPath(timonHome: string): string {
+  return join(timonHome, 'run', 'service-s4u-refused');
+}
+
+/**
+ * Records the user's answer. Only the user's own gesture lands here (the
+ * onboarding question, Settings › System, `timon service session-mode`): an
+ * explicit "always" is a request to try S4U again, so it forgets the refusal.
+ */
 export function writeServiceSessionMode(timonHome: string, mode: ServiceSessionMode): void {
   const file = serviceSessionModePath(timonHome);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, `${mode}\n`, 'utf8');
+  if (mode === 'always') rmSync(serviceS4uRefusedPath(timonHome), { force: true });
 }
 
 /** Where the choice changes what the supervisor does. */

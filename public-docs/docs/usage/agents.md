@@ -273,6 +273,12 @@ An approval belongs to you and to that agent: it does not open the agent's missi
 
 The **Permissions** tab of the agent lists your always-allowed tools and commands under **Always allowed**. The bin icon revokes one: the next request asks again. Deleting the agent removes them.
 
+### Pre-allowed tools
+
+An agent's **allowed tools** (`timon agent update <name> --allowed-tools …`) run without a card. A bare tool name covers every use of it: `Bash` pre-allows every shell command, `Read` every file read. A pattern narrows it: `Bash(git:*)` covers the commands that start with `git`, `Bash(npm test)` that exact command.
+
+In **auto** mode, Claude Code ignores a rule that pre-allows every shell command (`Bash`, `Bash(*)`, `PowerShell`) and lets its classifier judge each command instead. A command the classifier cannot judge then waits for an approval, and an unattended mission is denied once the card's delay runs out. To keep such a rule, run the agent in **acceptEdits**, and its project role too if that role sets a mode: a Kanban task runs in its role's mode, not in the agent's. Narrow patterns such as `Bash(git:*)` keep working in auto mode. A Kanban task can also run on another agent than the one it names (a role pinned to an agent, or a task the agent created for itself goes to the project's agent for that role): it then has that agent's allowed tools, not the named one's. Timon warns you when you save such an agent, and once per agent in the notifications when one of its missions starts in auto mode or when its task runs on an agent without the rule.
+
 Codex has no permission cards: its rights are fixed by its sandbox when the mission starts. Agents that remember approvals themselves, such as Hermes, keep doing so on their side.
 
 ### Agents read this documentation

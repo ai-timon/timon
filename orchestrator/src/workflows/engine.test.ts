@@ -225,3 +225,75 @@ test('a notify node fails when no notification could be written', async () => {
     assert.equal(dbApi.getWorkflowRun(run.id)?.status, 'failed');
   } finally { resetActiveModules(); }
 });
+
+// A scheduled start, a five-minute pause, and a manual start beside it, both into a join in any mode.
+const twoStarts = { schemaVersion: 1 as const, nodes: [
+  { id: 'schedule', type: 'trigger.schedule', config: { cron: '0 9 * * *' } }, { id: 'pause', type: 'wait', config: { ms: 300_000 } },
+  { id: 'manual', type: 'trigger.manual', config: {} },
+  { id: 'join', type: 'join', config: { mode: 'any' } }, { id: 'result', type: 'output', config: { template: 'joined' } },
+], edges: [
+  { id: 'a', from: 'schedule', fromPort: 'out', to: 'pause', toPort: 'in' }, { id: 'b', from: 'pause', fromPort: 'out', to: 'join', toPort: 'in' },
+  { id: 'c', from: 'manual', fromPort: 'out', to: 'join', toPort: 'in' }, { id: 'd', from: 'join', fromPort: 'out', to: 'result', toPort: 'in' },
+], variables: [], settings: { maxParallel: 3, onError: 'fail' as const } };
+
+const nodeStatus = (runId: string) => Object.fromEntries(dbApi.listWorkflowRunNodes(runId).map((node) => [node.node_id, node.status]));
+async function settle(runId: string) { for (let i = 0; i < 8 && dbApi.getWorkflowRun(runId)?.status === 'running'; i += 1) await advance(runId); }
+
+test('a scheduled run leaves the manual trigger out and waits for its pause', async () => {
+  const run = createRun(seed(twoStarts), { trigger: { kind: 'schedule', node_id: 'schedule' } });
+  await settle(run.id);
+  let status = nodeStatus(run.id);
+  assert.equal(status.manual, 'skipped');
+  assert.equal(status.schedule, 'ok');
+  assert.equal(status.pause, 'waiting');
+  assert.equal(status.join, 'pending');
+  assert.notEqual(dbApi.getWorkflowRun(run.id)?.status, 'completed');
+  // The pause is over: the join leaves only now.
+  dbApi.updateWorkflowRunNode(run.id, 'pause', { output: JSON.stringify({ next_run_at: Date.now() - 1 }) });
+  await advance(run.id); await settle(run.id);
+  status = nodeStatus(run.id);
+  assert.equal(status.pause, 'ok');
+  assert.equal(status.join, 'ok');
+  assert.equal(dbApi.getWorkflowRun(run.id)?.status, 'completed');
+});
+
+test('a manual run leaves the scheduled trigger and its pause out and joins at once', async () => {
+  // The shape the Run button and a draft test send: no node named.
+  for (const draft of [false, true]) {
+    const id = seed(twoStarts);
+    if (draft) dbApi.updateWorkflow(id, { draft: JSON.stringify(twoStarts) });
+    const run = createRun(id, { trigger: { kind: 'api' }, draft });
+    await settle(run.id);
+    const status = nodeStatus(run.id);
+    assert.equal(status.manual, 'ok');
+    assert.equal(status.schedule, 'skipped');
+    assert.equal(status.pause, 'skipped');
+    assert.equal(status.join, 'ok');
+    assert.equal(dbApi.getWorkflowRun(run.id)?.status, 'completed');
+  }
+});
+
+test('a native trigger started from the manual node runs it alone', async () => {
+  const run = createRun(seed(twoStarts), { trigger: { kind: 'cron', node_id: 'manual' } });
+  await settle(run.id);
+  const status = nodeStatus(run.id);
+  assert.equal(status.manual, 'ok');
+  assert.equal(status.schedule, 'skipped');
+  assert.equal(status.join, 'ok');
+  assert.equal(dbApi.getWorkflowRun(run.id)?.status, 'completed');
+});
+
+test('a node fed by two triggers runs from whichever one started the run', async () => {
+  const shared = { schemaVersion: 1 as const, nodes: [
+    { id: 'schedule', type: 'trigger.schedule', config: { cron: '0 9 * * *' } }, { id: 'manual', type: 'trigger.manual', config: {} },
+    { id: 'result', type: 'output', config: { template: 'ran' } },
+  ], edges: [
+    { id: 'a', from: 'schedule', fromPort: 'out', to: 'result', toPort: 'in' }, { id: 'b', from: 'manual', fromPort: 'out', to: 'result', toPort: 'in' },
+  ], variables: [], settings: { maxParallel: 3, onError: 'fail' as const } };
+  for (const trigger of [{ kind: 'schedule', node_id: 'schedule' }, { kind: 'api' }]) {
+    const run = createRun(seed(shared), { trigger });
+    await settle(run.id);
+    assert.equal(nodeStatus(run.id).result, 'ok', JSON.stringify(trigger));
+    assert.equal(dbApi.getWorkflowRun(run.id)?.status, 'completed');
+  }
+});

@@ -1,10 +1,10 @@
 /**
- * Base de worktree choisie à la CRÉATION de la task.
+ * Worktree base chosen at the CREATION of the task.
  *
- * Sans elle, `createWorktree` retombe sur la branche courante du dépôt — et le
- * dépôt est partagé par tous les agents du projet. Un worktree pouvait donc
- * démarrer sur la branche d'un autre agent, et le merge d'un pipeline
- * `code-self` atterrir sur son travail. C'est ce qui a coûté la soirée du
+ * Without it, `createWorktree` falls back on the current branch of the repository, and the
+ * repository is shared by all the agents of the project. A worktree could therefore
+ * start on another agent's branch, and the merge of a `code-self`
+ * pipeline land on its work. That is what cost the evening of
  * 2026-09-05.
  *
  * `node --test --import tsx src/task-base-branch.test.ts`
@@ -30,8 +30,8 @@ function git(dir: string, ...args: string[]): string {
   return execFileSync('git', ['-C', dir, ...args], { encoding: 'utf8' }).trim();
 }
 
-/** Un dépôt avec `main` et la branche d'un autre agent, SUR LAQUELLE il est
- *  resté positionné — l'état réel d'un repo partagé en pleine série. */
+/** A repository with `main` and another agent's branch, ON WHICH it
+ *  stayed checked out: the real state of a shared repository in the middle of a series. */
 function sharedRepo(): { dir: string; mainSha: string; otherSha: string } {
   const dir = mkdtempSync(join(tmpdir(), 'timon-base-repo-'));
   git(dir, 'init', '-q', '-b', 'main');
@@ -68,7 +68,7 @@ function create(base: string, body: Record<string, unknown>) {
   });
 }
 
-test('la base demandée est persistée en base_branch dès la création', async () => {
+test('the requested base is persisted in base_branch at creation', async () => {
   await withApi(async (api) => {
     const r = await create(api, { base: 'main' });
     assert.equal(r.status, 201);
@@ -77,34 +77,34 @@ test('la base demandée est persistée en base_branch dès la création', async 
   });
 });
 
-test('sans base, rien n\'est posé : le comportement d\'avant est intact', async () => {
+test('without a base, nothing is set: the former behaviour is intact', async () => {
   await withApi(async (api) => {
     const { task } = await (await create(api, {})).json() as { task: { id: string } };
     assert.equal(dbApi.getTask(task.id)?.base_branch, null);
   });
 });
 
-test('une base douteuse est refusée : elle deviendrait un argument de git', async () => {
+test('a dubious base is refused: it would become a git argument', async () => {
   await withApi(async (api) => {
     for (const base of ['--force', 'main branch', '../evil', 'main.lock', 'main/']) {
       const r = await create(api, { base });
-      assert.equal(r.status, 400, `base "${base}" aurait dû être refusée`);
+      assert.equal(r.status, 400, `base "${base}" should have been refused`);
     }
   });
 });
 
-test('le worktree part de la base demandée, pas de la branche d\'un autre agent', async () => {
+test("the worktree starts from the requested base, not from another agent's branch", async () => {
   const repo = sharedRepo();
-  // Le dépôt est resté sur la branche de l'autre agent : c'est la situation
-  // exacte où le défaut "branche courante" se retourne contre nous.
+  // The repository stayed on the other agent's branch: that is the exact
+  // situation where the "current branch" default turns against us.
   assert.equal(git(repo.dir, 'rev-parse', 'HEAD'), repo.otherSha);
 
   const wanted = await createWorktree(randomUUID(), repo.dir, 'main');
   assert.equal(wanted.base, 'main');
   assert.equal(git(wanted.path, 'rev-parse', 'HEAD'), repo.mainSha);
 
-  // Et sans base : on hérite bien de la branche courante — le défaut documenté,
-  // celui qu'un `base` explicite sert précisément à ne pas subir.
+  // And without a base: the current branch is indeed inherited, the documented default,
+  // the one an explicit `base` is precisely there to avoid.
   const inherited = await createWorktree(randomUUID(), repo.dir);
   assert.equal(git(inherited.path, 'rev-parse', 'HEAD'), repo.otherSha);
 });

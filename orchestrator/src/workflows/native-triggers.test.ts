@@ -18,7 +18,7 @@ const { db, dbApi } = await import('../db.js');
 const { registerRoutes } = await import('../plugins-bundled/triggers/routes.js');
 const { registerTriggerWebhook } = await import('../triggers/webhook.js');
 const { createEventDispatcher } = await import('../triggers/events.js');
-const { tickSchedules } = await import('../triggers/engine.js');
+const { SCHEDULE_PROVIDER_GRACE_MS, tickSchedules } = await import('../triggers/engine.js');
 const { signGeneric } = await import('../triggers/signature.js');
 const { ACTION_UNAVAILABLE, registerActionProvider } = await import('../triggers/actions.js');
 const { insertTrigger, listDeliveries } = await import('../triggers/store.js');
@@ -99,7 +99,11 @@ test('Workflows off: the action is refused at save, reported unavailable at run,
   const listed = await api('GET', '/api/triggers?source=schedule');
   assert.equal(listed.status, 200);
   assert.ok((listed.body.triggers as Json[]).some((t) => t.id === row.id));
-  tickSchedules(Date.now());
+  // It first waits for the module to start, then runs what it can once the grace is over.
+  const now = Date.now();
+  tickSchedules(now);
+  assert.equal(listDeliveries(row.id).length, 0);
+  tickSchedules(now + SCHEDULE_PROVIDER_GRACE_MS);
   const [delivery] = listDeliveries(row.id);
   assert.equal(delivery?.status, 'error');
   const outcomes = JSON.parse(delivery!.result!) as Array<{ type: string; ok: boolean; error?: string }>;

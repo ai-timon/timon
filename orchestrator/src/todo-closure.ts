@@ -32,18 +32,28 @@
  * deleted one no longer exists. The `code-group` final merge lands every slice
  * of its batch at once, so a batch on a single idea still closes in one go.
  *
+ * A chain on an integration branch (`integration_mode` 'branch' or 'pr') is
+ * only INTEGRATED by its merge: the work is in `feat/<topic>`, not in the
+ * target. Its idea then moves to `partial` and waits; it closes when the branch
+ * lands (`chain-landing.ts`), when `integration-landing.ts` replays this same
+ * closure on every DONE task of the job. A local chain is unchanged.
+ *
  * Split in two on purpose: `planTodoClosure` is read-only, so the work return
  * (`handleTaskDone`, wake.ts) can announce the closure synchronously while the
  * chain applies it a tick later (`applyTodoClosure`, task-chain.ts).
  */
 import { dbApi, type ProjectTodoRow, type TaskRow } from './db.js';
 import { publishPluginRealtime } from './plugins/realtime.js';
+import { hasLanded, pendingLanding } from './chain-landing.js';
 
 export type TodoClosureProgress = 'done' | 'analyzed' | 'partial';
 /** `osTest`: the idea is closed but its coder reported an OS test still owed.
- *  `landed` / `total`: for `partial`, the root chains of the idea that landed. */
+ *  `landed` / `total`: for `partial`, the root chains of the idea that landed.
+ *  `integrating`: the integration branch this closure's chain waits in; the
+ *  idea closes when that branch lands. */
 export type TodoClosure = {
   todoId: number; progress: TodoClosureProgress; osTest?: true; landed?: number; total?: number;
+  integrating?: string;
 };
 
 /** The portability line of rule 9 (`portabilité : …`) announcing an OS test
@@ -135,17 +145,20 @@ function siblingRoots(todoId: number): TaskRow[] {
   return [...roots.values()];
 }
 
-/** Whether the chain of `root` has landed, by the same rules as the closure. */
+/** Whether the chain of `root` has landed, by the same rules as the closure:
+ *  integrated into its base, and that base landed. */
 function chainLanded(root: TaskRow): boolean {
-  if (root.type !== 'code') return root.status === 'DONE';
+  if (root.type !== 'code') return root.status === 'DONE' && hasLanded(root);
   const chain = dbApi.listVerificationChain(root.id);
-  if (chain.some((t) => t.type === 'code' && t.status === 'DONE' && !!t.merged_commit_sha)) return true;
+  if (chain.some((t) => t.type === 'code' && t.status === 'DONE' && !!t.merged_commit_sha)) {
+    return hasLanded(root);
+  }
   const merges = chain.filter((t) => t.type === 'merge');
   if (root.group_id && root.pipeline === 'code-group') {
     merges.push(...dbApi.listTasksByGroup(root.group_id).filter((t) => t.type === 'merge'));
   }
   return merges.some((m) => m.status === 'DONE' && !!m.merged_commit_sha
-    && codeRootsOfMerge(m).some((r) => r.id === root.id));
+    && codeRootsOfMerge(m).some((r) => r.id === root.id) && hasLanded(m) && hasLanded(root));
 }
 
 /** What closing `task` does to the ideas it carries. Read-only. */
@@ -156,23 +169,34 @@ export function planTodoClosure(task: TaskRow): TodoClosure[] {
   const landedNow = new Set<string>();
   // Two slices of one batch implementing the same idea: an owed OS test on
   // either one is kept.
-  const put = (todoId: number | null, progress: TodoClosureProgress, osTest = false) => {
+  const put = (todoId: number | null, progress: TodoClosureProgress, osTest = false, integrating: string | null = null) => {
     if (!todoId) return;
     const owed = osTest || plan.get(todoId)?.osTest === true;
-    plan.set(todoId, { todoId, progress, ...(owed ? { osTest: true as const } : {}) });
+    // Two slices of one idea, one landed and one only integrated: the idea
+    // waits for the second.
+    const waits = integrating ?? plan.get(todoId)?.integrating ?? null;
+    plan.set(todoId, {
+      todoId,
+      progress: waits && progress === 'done' ? 'partial' : progress,
+      ...(owed ? { osTest: true as const } : {}),
+      ...(waits ? { integrating: waits } : {}),
+    });
   };
   const landed = (root: TaskRow) => {
-    landedNow.add(root.id);
+    // Integrated into an integration branch only: the chain is not counted
+    // as landed, and its idea is held open until that branch lands.
+    const waits = pendingLanding(task, root);
+    if (!waits) landedNow.add(root.id);
     const code = latestCode(root);
     const osTest = needsMultiOsTest(code.done_comment);
-    put(root.todo_id, 'done', osTest);
-    if (code.todo_id !== root.todo_id) put(code.todo_id, 'done', osTest);
+    put(root.todo_id, 'done', osTest, waits);
+    if (code.todo_id !== root.todo_id) put(code.todo_id, 'done', osTest, waits);
   };
   switch (task.type) {
     case 'merge':
       if (!task.merged_commit_sha) break;
       for (const root of codeRootsOfMerge(task)) landed(root);
-      put(task.todo_id, 'done');
+      put(task.todo_id, 'done', false, pendingLanding(task));
       break;
     case 'code':
       // `full` / `code-group`: the review or the final merge still has a say,
@@ -180,10 +204,12 @@ export function planTodoClosure(task: TaskRow): TodoClosure[] {
       if (task.merged_commit_sha) landed(chainRoot(task));
       break;
     case 'chore':
-    case 'doc':
-      landedNow.add(chainRoot(task).id);
-      put(task.todo_id, 'done');
+    case 'doc': {
+      const waits = pendingLanding(task);
+      if (!waits) landedNow.add(chainRoot(task).id);
+      put(task.todo_id, 'done', false, waits);
       break;
+    }
     case 'research':
       put(task.todo_id, 'analyzed');
       break;
@@ -194,11 +220,15 @@ export function planTodoClosure(task: TaskRow): TodoClosure[] {
     const todo = dbApi.getProjectTodo(c.todoId);
     if (!todo) return [];
     // An idea already done stays as it is: `applyTodoClosure` never touches it.
-    if (c.progress !== 'done' || todo.status === 'done') return [c];
+    if (todo.status === 'done') return [c];
+    if (c.progress !== 'done' && !c.integrating) return [c];
     const roots = siblingRoots(c.todoId);
     const open = roots.filter((r) => !landedNow.has(r.id) && !chainLanded(r)).length;
-    if (!open) return [c];
-    return [{ ...c, progress: 'partial' as const, landed: roots.length - open, total: roots.length }];
+    if (!open && !c.integrating) return [c];
+    // An integrated chain is open by definition; a sibling list that does not
+    // name it (its root carries no `todo_id`) still counts it.
+    const total = Math.max(roots.length, 1);
+    return [{ ...c, progress: 'partial' as const, landed: total - Math.max(open, 1), total }];
   });
 }
 

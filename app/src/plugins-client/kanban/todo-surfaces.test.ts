@@ -133,8 +133,11 @@ test('the column\'s idea is a BoardCard: task shell, identity, corner, badges, m
     assert.match(card.querySelector('[data-board-card-badges]')?.textContent ?? '', /Bug.*Analyzed/);
 
     const meta = card.querySelector('[data-board-card-meta]')!;
-    const issue = Array.from(meta.querySelectorAll('a')).find((a) => a.textContent === 'Issue #12');
+    // A GitHub issue is a chip among the badges, not a second time in the meta line.
+    const issue = card.querySelector('[data-board-card-badges] a[data-todo-issue="12"]');
+    assert.equal(issue?.textContent, '#12');
     assert.equal(issue?.getAttribute('href'), 'https://github.com/acme/app/issues/12');
+    assert.ok(!(meta.textContent ?? '').includes('Issue #12'));
     assert.equal(issue?.getAttribute('rel'), 'noopener noreferrer');
     assert.match(meta.textContent ?? '', /Click/, 'a link that is not http(s) stays text');
     assert.ok(!Array.from(document.querySelectorAll('a')).some((a) => (a.getAttribute('href') ?? '').startsWith('javascript:')));

@@ -17,7 +17,7 @@ import type { PermissionModel } from '../../backends/types.js';
 import { dbApi, type MissionRow, type UserRow } from '../../db.js';
 import { auditRequest } from '../../users/audit-actor.js';
 import { forbidden, isPersonAuth } from '../../users/identity.js';
-import { decideAccess, denialStatus } from './access.js';
+import { decideAccess, denialBody, denialStatus } from './access.js';
 import {
   COMMAND_DECISIONS,
   commandReply,
@@ -81,7 +81,7 @@ function browserUser(req: Request, res: Response): UserRow | null {
   const auth = req.auth;
   if (!auth) { res.status(401).json({ error: 'unauthorized' }); return null; }
   if (!isPersonAuth(auth) || !auth.user) {
-    res.status(403).json({ error: 'session_required', message: 'a command request is answered from a browser session' });
+    res.status(403).json(apiError('command_request_session_required', 'a command request is answered from a browser session'));
     return null;
   }
   return auth.user;
@@ -195,7 +195,7 @@ export function registerProposalRoute(app: Router, opts: ProposalRouteOptions = 
     const id = RequestId.safeParse(req.params.id);
     const body = ResolveBody.safeParse(req.body ?? {});
     if (!id.success || !body.success) {
-      res.status(400).json({ error: 'invalid_request', message: 'expected { decision: "allow" | "paste" | "deny", origin? }' });
+      res.status(400).json(apiError('command_request_invalid', 'expected { decision: "allow" | "paste" | "deny", origin? }'));
       return;
     }
     // Another owner's card answers like a missing one: its existence is not the caller's to learn.
@@ -207,14 +207,15 @@ export function registerProposalRoute(app: Router, opts: ProposalRouteOptions = 
     if (body.data.decision === 'paste') {
       // Pasting opens the owner's terminal: its own rule, checked again now.
       const access = decideAccess(req.auth);
-      if ('denied' in access) { res.status(denialStatus(access.denied)).json({ error: access.denied }); return; }
+      if ('denied' in access) { res.status(denialStatus(access.denied)).json(denialBody(access.denied)); return; }
     }
     const outcome = resolveCommandRequest(row.id, body.data.decision, body.data.origin ?? 'unknown', {
       deliver: opts.deliverLate, permissionModel,
     });
     if (!outcome.ok) {
-      const status = outcome.error === 'already_decided' ? 409 : outcome.error === 'not_offered' ? 400 : 404;
-      res.status(status).json({ error: outcome.error });
+      if (outcome.error === 'already_decided') res.status(409).json(apiError('command_request_decided', 'this command request was already answered'));
+      else if (outcome.error === 'not_offered') res.status(400).json(apiError('command_request_not_offered', 'this choice is not offered for this command'));
+      else res.status(404).json(apiError('not_found', 'not_found'));
       return;
     }
     auditRequest(req, `terminal.request.${body.data.decision}`, row.id);

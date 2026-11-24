@@ -17,6 +17,7 @@
  * Neither path ever hands a value to a client: `settingStatus` keeps returning
  * `''`, and `ctx.secrets` is behind the `secrets:read` permission.
  */
+import { daemonMessage } from '../daemon-message.js';
 import { vaultEnabled } from './availability.js';
 import { isSealed } from './box.js';
 import { dbApi } from '../db.js';
@@ -111,6 +112,7 @@ export function noteGlobalOnlySecret(
       body: `\`${name}\` is shared with every agent (\`global\`), which no longer reaches plugins. `
         + `If you trust this plugin with it, grant it by name: open this card (Secrets page, Grant) `
         + `or run \`timon secret grant ${name} --scope ${scope}\`.`,
+      message: daemonMessage('plugin_secret_global_lost', { pluginId, name, scope }),
       source: `${PLUGIN_AGENT_PREFIX}${pluginId}`,
       anchor: consentAnchor(pluginId, name),
     }))

@@ -120,21 +120,14 @@ function sandboxToml(gitRoots) {
  *  root (a pitfall lived through — the key landed in
  *  `[mcp_servers.timon.env]` and codex refused to load the config).
  *
- *  `experimental_use_freeform_apply_patch = false` on third-party providers:
- *  otherwise codex exposes `apply_patch` as a `{"type":"custom"}` (freeform)
- *  tool, a type specific to the OpenAI API. The backends serving some models
- *  behind Ollama Cloud reject it — `invalid tool type: custom`, which becomes
- *  `function name is empty` as soon as there are other tools in the request.
- *  The mission dies on the first turn, 0 tokens, before even having read its
- *  brief (observed 3 times out of 3 on minimax-m3, bench of 2026-08-04; the
- *  same model answers normally once the flag is set). Left active for codex
- *  agents on OpenAI, where freeform is the optimal path. */
+ *  No `experimental_use_freeform_apply_patch` here: codex 0.131 removed that
+ *  setting and reports it as unrecognized on every turn, an error the chat
+ *  shows above each answer. Every accepted codex (`minCliVersion`) ignores it. */
 function providerRootToml(provider) {
     if (!provider)
         return '';
     return [
         `model_provider = ${toml(provider.id)}`,
-        'experimental_use_freeform_apply_patch = false',
         '',
     ].join('\n');
 }

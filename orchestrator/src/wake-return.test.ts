@@ -1,13 +1,13 @@
 /**
- * Le retour de travail part à la CLÔTURE de la task, une seule fois.
+ * The work return leaves at the CLOSING of the task, only once.
  *
- * Ce que ces tests protègent (incident du 2026-08-21) : l'event `task_done`
- * (sans lui, le retour attend la mort du process — 11 min de retard mesurées
- * sur la review `693469fa`), le flag `return_notified` qui empêche le
- * `mission_complete` tardif de produire un SECOND réveil, et sa remise à zéro
- * au re-dispatch (sans quoi une task relancée ne rendrait plus jamais compte).
+ * What these tests protect (incident of 2026-08-21): the `task_done` event
+ * (without it, the return waits for the death of the process: 11 min of delay measured
+ * on review `693469fa`), the `return_notified` flag that prevents the
+ * late `mission_complete` from producing a SECOND wake, and its reset
+ * on re-dispatch (otherwise a restarted task would never report again).
  *
- * `node --test --import tsx src/wake-return.test.ts` (ou `npm test`).
+ * `node --test --import tsx src/wake-return.test.ts` (or `npm test`).
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,8 +26,8 @@ function task(type: 'code' | 'review' | 'merge' | 'doc' = 'code', deps: string[]
   return id;
 }
 
-/** Compte les `task_done` émis pendant l'appel : c'est cet event qui déclenche
- *  le retour au pilote. */
+/** Counts the `task_done` emitted during the call: that event triggers
+ *  the return to the pilot. */
 function countTaskDone(fn: () => void): number {
   let n = 0;
   const listener = (ev: { kind: string }): void => { if (ev.kind === 'task_done') n++; };
@@ -36,44 +36,44 @@ function countTaskDone(fn: () => void): number {
   return n;
 }
 
-test('passer une task DONE émet task_done, une seule fois', () => {
+test('setting a task DONE emits task_done, only once', () => {
   const id = task();
   assert.equal(countTaskDone(() => dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'fait' })), 1);
-  // Re-clore une task déjà DONE ne ré-émet rien (pas de second réveil).
+  // Closing a task already DONE again re-emits nothing (no second wake).
   assert.equal(countTaskDone(() => dbApi.updateTaskStatus(id, 'DONE', { doneComment: 'fait' })), 0);
 });
 
-test('setTaskStatusOnly émet task_done aussi (clôture par un garde)', () => {
+test('setTaskStatusOnly emits task_done too (closing by a guard)', () => {
   const id = task();
   assert.equal(countTaskDone(() => dbApi.setTaskStatusOnly(id, 'DONE')), 1);
 });
 
-test('un blocage n\'émet pas task_done', () => {
+test('a block does not emit task_done', () => {
   const id = task();
   assert.equal(countTaskDone(() => dbApi.updateTaskStatus(id, 'BLOCKED', { blockedReason: 'conflit' })), 0);
 });
 
-test('return_notified : posé explicitement, remis à zéro au (re-)dispatch', () => {
+test('return_notified: set explicitly, reset on (re-)dispatch', () => {
   const id = task();
   assert.equal(dbApi.isTaskReturnNotified(id), false);
   dbApi.markTaskReturnNotified(id);
   assert.equal(dbApi.isTaskReturnNotified(id), true);
 
-  // Re-dispatch : nouvelle exécution, donc nouveau cycle de compte rendu. Sans
-  // cette remise à zéro, une task requeue puis re-close resterait muette.
+  // Re-dispatch: a new run, hence a new reporting cycle. Without
+  // this reset, a task requeued then closed again would stay mute.
   const missionId = randomUUID();
   dbApi.createMission(missionId, 'p.coder', 'exec', { channel: 'dispatcher' });
   dbApi.assignTaskMission(id, missionId);
   assert.equal(dbApi.isTaskReturnNotified(id), false);
 });
 
-test('hasFollowUpTask : une task dont une autre dépend a déjà une suite', () => {
+test('hasFollowUpTask: a task another one depends on already has a follow-up', () => {
   const code = task('code');
   assert.equal(dbApi.hasFollowUpTask(code), false);
   const review = task('review', [code]);
   assert.equal(dbApi.hasFollowUpTask(code), true);
-  // Une task `doc` n'enchaîne rien : sa présence ne prouve pas que la chaîne
-  // continue, donc elle ne compte pas comme suite.
+  // A `doc` task chains nothing: its presence does not prove the chain
+  // goes on, so it does not count as a follow-up.
   const merge = task('merge', [review]);
   task('doc', [merge]);
   assert.equal(dbApi.hasFollowUpTask(merge), false);

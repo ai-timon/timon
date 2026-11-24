@@ -1,3 +1,8 @@
 # Ignored folders each Kanban task worktree links from the main checkout.
 # The maintainers' notes repository, when it is cloned here.
 docs
+# The links that expose the maintainers' project skills to the agents' CLIs
+# (Claude Code reads .claude/skills, Codex .agents/skills). Their hidden
+# parent folders are ignored, so the worktree gets them without a commit.
+.claude/skills
+.agents/skills

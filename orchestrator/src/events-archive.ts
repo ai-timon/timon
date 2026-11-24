@@ -124,8 +124,8 @@ export function startEventsArchive(): () => void {
       void drainOldTraceSpans({ stopped: () => stopped }).catch((e: unknown) => {
         console.error(`[events-archive] trace span cleanup failed: ${(e as Error).message}`);
       });
-      // Same catch-up: a retention someone turned on must not wait for a
-      // computer left on at 04:30.
+      // Same catch-up: the history retention is on by default too, and must
+      // not wait for a computer left on at 04:30.
       void runDataRetention({ stopped: () => stopped }).catch((e: unknown) => {
         console.error(`[retention] cleanup failed: ${(e as Error).message}`);
       });

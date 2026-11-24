@@ -129,7 +129,8 @@ export type PluginTaskPatch = {
 
 /** Filter of `list`: all optional, all combined. */
 export type PluginTaskFilter = {
-  status?: string;
+  /** One status, or a list: a task matching any of them is returned once. An empty list is `invalid`. */
+  status?: string | string[];
   /** Project slug, explicit or derived from the task's agent. */
   project?: string;
   mirror?: boolean;

@@ -11,6 +11,10 @@ The **Add** palette lists every node type the daemon knows, grouped by family: t
 
 A node with several output ports takes only one of them per run: the `true` or `false` of a condition, the matched case of a switch, the answer to a human question, the route an agent picks, or the `done` or `failed` of an agent, a script or an HTTP request. The nodes on the branches that were not taken are marked **skipped**, and the run completes once nothing is left to run.
 
+### Several triggers
+
+A workflow can have several triggers, and each run starts from one of them: the schedule, webhook or event that fired, or the **Manual** trigger when you press **Run** or test the draft. The other triggers are marked **skipped**, along with the nodes only they lead to. A pause placed after a schedule therefore always runs before the rest of a scheduled run, even when a **Manual** trigger joins the same branch, and a node fed by two triggers runs from whichever one started the run.
+
 ### Done and failed ports
 
 Agents, skills, scripts and HTTP requests have a `done` and a `failed` port. When the node succeeds it leaves by `done`. When it fails:

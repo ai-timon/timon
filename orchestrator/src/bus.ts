@@ -8,7 +8,7 @@ import { ASSISTANT_DELTA } from './backends/types.js';
 import { redactDeep } from './secrets/redact.js';
 import { dropRedactStream, flushRedactStream, redactStreamChunk } from './secrets/redact-stream.js';
 import type { ProjectEventOrigin } from './plugins/contract/origin.js';
-import type { OnboardingStepAction, OnboardingStepName } from './onboarding-events.js';
+import type { OnboardingStepAction, OnboardingStepDetail, OnboardingStepName } from './onboarding-events.js';
 import type { UsageKind } from './onboarding-usage-kind.js';
 export type { ProjectEventOrigin } from './plugins/contract/origin.js';
 
@@ -85,6 +85,10 @@ export type AgentEventSnapshot = Readonly<{
   created_by: string | null;
 }>;
 
+/** What an `integration_changed` write touched. `checks` is the forge's stored
+ *  reading, compared without its read time. */
+export type IntegrationChange = 'created' | 'state' | 'pull_request' | 'checks' | 'landed';
+
 export type BusEvent =
   | { kind: 'plugin_realtime'; pluginId: string; topic: string; ownerUserId: string; payload: unknown }
   // `id`: the row of `events` the event was stored as, when the publisher has
@@ -116,13 +120,17 @@ export type BusEvent =
   // the same turn (a protocol driver confirms the launch turn): a listener
   // counting turns keys on the mission and ignores a start while one is open.
   | { kind: 'turn_started'; missionId: string; at: number }
-  // A first-run wizard step answered (`onboarding-events.ts`): step and outcome
-  // from closed lists, nothing the person typed. No `missionId`, so the
-  // browser stream never relays it.
-  | { kind: 'onboarding_step'; step: OnboardingStepName; action: OnboardingStepAction }
+  // A first-run wizard step answered (`onboarding-events.ts`): step, outcome
+  // and detail from closed lists, nothing the person typed. No `missionId`, so
+  // the browser stream never relays it.
+  | ({ kind: 'onboarding_step'; step: OnboardingStepName; action: OnboardingStepAction } & OnboardingStepDetail)
   // An account answered, or changed, who it uses Timon for
   // (`onboarding-usage-kind.ts`). No `missionId`: never relayed to a browser.
   | { kind: 'usage_kind_set'; usageKind: UsageKind; userId: string }
+  // The licence refused a new account the account provider asked for
+  // (`account-provider-facade.ts`): the person who asked, `null` for a job.
+  // No `missionId`: never relayed to a browser.
+  | { kind: 'account_limit_reached'; userId: string | null }
   // A compaction of `missionId` moved on (`mission-compact.ts`): one per phase,
   // transient like `event_delta` (the outcome is persisted as a `compact`
   // event; `GET /api/missions/:id/compact` says what is under way after a
@@ -209,6 +217,15 @@ export type BusEvent =
   | { kind: 'agent_deleted'; agent: AgentEventSnapshot }
   // Emitted when a BLOCKED task becomes active again (PENDING/IN_PROGRESS/DONE).
   | { kind: 'task_unblocked'; taskId: string }
+  /**
+   * A job's integration row moved (`integrations`, the landing of a Kanban
+   * job): created, its state, its pull request, its stored checks or its
+   * landing. Ids and the state only: a screen reads the job again through its
+   * scoped route. No `missionId`: the browser stream relays it on its own
+   * rule, the job's visibility (`integrationVisibleTo`).
+   */
+  | { kind: 'integration_changed'; integrationId: string; project: string | null; seriesId: string | null;
+      state: string; changed: readonly IntegrationChange[] }
   /**
    * Kanban lifecycle, for the plugins that mirror the board elsewhere
    * (`plugins/task-events.ts`). None of them carries a `missionId`, so the

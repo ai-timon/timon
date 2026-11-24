@@ -56,7 +56,7 @@ test('the socket lives with the import: switched off, its adapters go with it', 
   clientContext('acme-import-source', [SOCKET!]).slots.register({ slot: SOCKET! }, Empty);
   dispose();
   assert.equal(slotKind(SOCKET!), null);
-  assert.throws(() => clientContext('acme-import-source', [SOCKET!]).slots.register({ slot: SOCKET! }, Empty), /non déclaré|not declared/);
+  assert.throws(() => clientContext('acme-import-source', [SOCKET!]).slots.register({ slot: SOCKET! }, Empty), /non déclaré|not declared/); // french-ok: the French locale under test
 });
 
 test("the import's own source for other agent tools occupies the socket the way a third party does", () => {

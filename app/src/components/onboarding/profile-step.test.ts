@@ -81,7 +81,7 @@ async function renderStep(run: (r: Rendered) => Promise<void>, override?: Answer
     const nav = {
       step: 'profile' as const, direction: 1 as const,
       next: () => { nexts += 1; }, back: () => undefined, goTo: () => undefined,
-      setLanguage: async (tag: string) => tag, setBackHandler: () => undefined,
+      setLanguage: async (tag: string) => tag, setBackHandler: () => undefined, skip: () => undefined, setOutcome: () => undefined,
     };
     const host = document.getElementById('root');
     assert.ok(host);

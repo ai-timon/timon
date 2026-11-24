@@ -157,6 +157,7 @@ function noteBackendExhausted(
       `- Backend sidelined until ${messageDateTime(until)} (or until a turn succeeds on it again).`,
       '- Missions and tasks that depend on it switch onto their fallback plan.',
     ].join('\n'),
+    { message: daemonMessage('backend_no_credit', { backend: name, until }) },
   );
 }
 
@@ -1021,6 +1022,10 @@ async function switchSeriesNow(seriesId: string, opts: SeriesSwitchOptions): Pro
           ? `NOT moved — the switch failed (${pilotFailure}); it stays stopped`
           : 'NOT moved — no usable fallback; it stays stopped until its backend is back or a fallback is set'
         : 'unchanged (its backend is not the one out of quota)';
+  const pilotState = !pilot ? 'none'
+    : pilotSwitched ? (repointOnly ? 'repointed' : 'swapped')
+      : pilotStuck ? (pilotFailure ? 'failed' : 'stuck')
+        : 'unchanged';
   const title = opts.ruleScope
     // A hand-posted rule is not an outage: saying "quota exhausted" to someone
     // who has just typed the command would report a provider incident that did
@@ -1050,7 +1055,21 @@ async function switchSeriesNow(seriesId: string, opts: SeriesSwitchOptions): Pro
       opts.reason ? `- Trigger: ${opts.reason}` : '',
     ].filter(Boolean).join('\n'),
     // To the agent piloting THIS series, not to the cross-project orchestrator.
-    { toAgent: pilot?.agent_name ?? null },
+    {
+      toAgent: pilot?.agent_name ?? null,
+      message: daemonMessage('series_fallback_applied', {
+        outcome: opts.ruleScope ? 'rule' : pilotSwitched ? 'switched' : pilotStuck ? 'stuck' : 'tasks',
+        scope: opts.ruleScope ?? 'none',
+        series: seriesId.slice(0, 8),
+        tasks: tasks.length,
+        pilot: pilotState,
+        backend: pilotTarget?.backend ?? 'none',
+        failure: pilotFailure ?? 'none',
+        moved: moved.length ? moved.join(' · ') : 'none',
+        requeued,
+        trigger: opts.reason || 'none',
+      }),
+    },
   );
   return applied;
 }

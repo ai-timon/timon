@@ -1,3 +1,4 @@
+// french-ok-file: accented preset names, the folding under test
 /**
  * Named arrangements — the pure half.
  *

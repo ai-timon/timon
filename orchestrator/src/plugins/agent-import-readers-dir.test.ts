@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { foldsCase } from '../../tests/helpers/case-folding.js';
 // Not through the readers' index: it pulls the zip reader, hence `fflate`, which this file does not need.
 import { readDirSource } from '../../../plugins/agent-import/src/readers/dir.js';
 import { DEFAULT_READER_LIMITS, resolveLimits } from '../../../plugins/agent-import/src/readers/limits.js';
@@ -193,7 +194,8 @@ test('the walk does not descend where no wants pattern can match', async () => {
   }
 });
 
-test('two names equal but for case are both left out', async () => {
+// A volume that folds case cannot hold both names: the zip reader covers the case everywhere.
+test('two names equal but for case are both left out', { skip: foldsCase(tmpdir()) && 'this volume folds case' }, async () => {
   const root = tree({ 'skills/a/SKILL.md': 'a', 'skills/a/README.md': 'upper', 'skills/a/readme.md': 'lower' });
   try {
     const out = await readDirSource(root, ['skills/**']);
@@ -207,7 +209,8 @@ test('two names equal but for case are both left out', async () => {
   }
 });
 
-test('a name Windows cannot hold is left out', async () => {
+// On Windows `a:b.md` is file `a` with an NTFS stream `b.md`: the name cannot be laid out there.
+test('a name Windows cannot hold is left out', { skip: process.platform === 'win32' ? 'NTFS reads the colon as a stream' : false }, async () => {
   const root = tree({ 'notes/a:b.md': 'x', 'notes/ok.md': 'ok' });
   try {
     const out = await readDirSource(root, ['notes/*']);
@@ -249,7 +252,7 @@ test('names Windows refuses are recognised', () => {
   for (const bad of ['CON', 'nul.txt', 'COM1', 'a:b', 'what?', 'trailing.', 'trailing ', 'tab\there']) {
     assert.ok(isUnportableSegment(bad), bad);
   }
-  for (const ok of ['SKILL.md', 'café.md', 'console.md', '.hidden']) assert.ok(!isUnportableSegment(ok), ok);
+  for (const ok of ['SKILL.md', 'café.md', 'console.md', '.hidden']) assert.ok(!isUnportableSegment(ok), ok); // french-ok: an accented file name the reader must keep
 });
 
 test('limits can be tightened, never loosened', () => {

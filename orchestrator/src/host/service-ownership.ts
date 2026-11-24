@@ -23,7 +23,7 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, win32 as winPath } from 'node:path';
 import { homeOfPlist, homeOfTask, homeOfUnit, linuxTimonUnits, unescapeXml } from './orphan-services.js';
 import {
-  LINUX_UNIT, MACOS_LABEL, WINDOWS_TASK, launchDaemonPath, macosLauncherPath, plistPath, readEffectiveUnit, readServiceDefinition, unitPath, windowsLauncherPath,
+  LINUX_UNIT, MACOS_LABEL, WINDOWS_TASK, launchDaemonPath, macosLauncherPath, plistPath, readEffectiveUnit, readServiceDefinition, unitPath, windowsLauncherRuntime,
   type ServiceOpts, type ServiceResult,
 } from './service-install.js';
 
@@ -147,14 +147,12 @@ function windowsService(opts: ServiceOpts): InstalledService | null {
   // `set TIMON_HOME=…&&`: the logon task of the first releases.
   const home = homeOfTask(xml) ?? /set TIMON_HOME=([^&"]+)&&/.exec(unescapeXml(xml))?.[1]?.trim() ?? null;
   const directory = /<WorkingDirectory>([^<]*)<\/WorkingDirectory>/.exec(xml)?.[1];
-  const launcher = home === null ? null : readIfPresent(windowsLauncherPath(home), opts.readFile);
-  const daemon = launcher === null ? undefined : /^"([^"]+)" --max-old-space-size/m.exec(launcher)?.[1];
   return {
     name: WINDOWS_TASK,
     definition,
     home,
     installDir: directory === undefined ? null : unescapeXml(directory),
-    executable: daemon === undefined ? null : daemon.replaceAll('%%', '%'),
+    executable: home === null ? null : windowsLauncherRuntime(home, opts.readFile),
   };
 }
 
@@ -241,7 +239,10 @@ export function serviceOfAnotherHome(opts: ServiceOpts): string | null {
  * would stop or restart the real home's daemon (TODO #735). They have no
  * `--force`, and judge the home only: an update or a repair moves the install.
  */
-export function actOnOwnService(opts: ServiceOpts, gesture: (opts: ServiceOpts) => ServiceResult): ServiceResult {
+export function actOnOwnService<R extends ServiceResult | Promise<ServiceResult>>(
+  opts: ServiceOpts,
+  gesture: (opts: ServiceOpts) => R,
+): R | ServiceResult {
   const refusal = serviceOfAnotherHome(opts);
   return refusal ? { ok: false, code: 1, lines: [], reason: refusal, written: false } : gesture(opts);
 }

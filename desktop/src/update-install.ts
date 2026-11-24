@@ -157,6 +157,61 @@ export async function removeAppImageBackup(appImage: string | undefined, remove:
   await remove(stagingPath(appImage));
 }
 
+/**
+ * The AppImage an update replaced, still there to go back to: only while the
+ * approval screen of the new version has not been accepted (see
+ * `removeAppImageBackup`). `null` outside an AppImage or once it is gone.
+ */
+export async function previousAppImage(appImage: string | undefined,
+  access: (path: string, mode: number) => Promise<void> = (path, mode) => realFs.access(path, mode)): Promise<string | null> {
+  if (!appImage || !isAbsolute(appImage) || appImage.includes('\0')) return null;
+  const backup = appImageBackupPath(appImage);
+  try {
+    await access(backup, constants.X_OK);
+    return backup;
+  } catch {
+    return null;
+  }
+}
+
+export type AppImageRollback =
+  /** The previous AppImage is back under the launched name, and queued to start once this one exits. */
+  | { status: 'relaunched' }
+  /** Back in place, but its start could not be queued: the person opens it. */
+  | { status: 'restored'; message: string }
+  /** Nothing to go back to: the file was removed or never existed. */
+  | { status: 'missing' }
+  | { status: 'failed'; message: string };
+
+/**
+ * "Go back to x.y.z" on a refused approval screen: the previous AppImage is
+ * renamed over the new one (one atomic rename in the same folder; this
+ * process keeps its mounted image), then relaunched. The refused update moved
+ * no service and touched no data, so the previous version opens on both as
+ * they were.
+ */
+export async function rollBackAppImage(
+  appImage: string | undefined,
+  relaunch: (appImage: string) => Promise<unknown>,
+  fs: Pick<AppImageFs, 'access' | 'rename' | 'rm'> = realFs,
+): Promise<AppImageRollback> {
+  const backup = await previousAppImage(appImage, fs.access);
+  if (!appImage || !backup) return { status: 'missing' };
+  try {
+    await fs.rename(backup, appImage);
+  } catch (error) {
+    return { status: 'failed', message: (error as Error).message };
+  }
+  // A staging file left by an interrupted install is of no use to the previous version.
+  await fs.rm(stagingPath(appImage)).catch(() => undefined);
+  try {
+    await relaunch(appImage);
+    return { status: 'relaunched' };
+  } catch (error) {
+    return { status: 'restored', message: (error as Error).message };
+  }
+}
+
 /** POSIX single quotes: the path is shown to be pasted in a terminal, spaces and quotes included. */
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;

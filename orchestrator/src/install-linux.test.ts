@@ -1,6 +1,6 @@
 /**
- * `scripts/install-linux.sh` — parse et dry-run. Le script est pour un VPS :
- * on ne l'exécute pas (ça écrirait l'unit live et appellerait systemctl).
+ * `scripts/install-linux.sh`: parse and dry-run. The script is for a VPS:
+ * it is not run (it would write the live unit and call systemctl).
  */
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -57,8 +57,8 @@ function envFor(h: string, patch: Record<string, string | null> = {}): NodeJS.Pr
 }
 
 function run(args: string[], opts: SpawnSyncOptions = {}) {
-  // Chemin absolu : un PATH de test réduit à un faux `node` ne doit pas
-  // empêcher de trouver bash (Node résout l'exécutable dans options.env.PATH).
+  // Absolute path: a test PATH reduced to a fake `node` must not
+  // prevent finding bash (Node resolves the executable in options.env.PATH).
   return spawnSync('/usr/bin/bash', [script, ...args], {
     encoding: 'utf8',
     ...opts,
@@ -70,12 +70,14 @@ function run(args: string[], opts: SpawnSyncOptions = {}) {
 // still holds everywhere bash exists.
 const LINUX_ONLY = process.platform !== 'linux' && 'the installer and its stand-ins run on Linux only';
 
-test('bash -n : le script parse', () => {
+const NO_BASH = spawnSync('bash', ['--version'], { encoding: 'utf8' }).status !== 0 && 'bash is not installed';
+
+test('bash -n: the script parses', { skip: NO_BASH }, () => {
   const r = spawnSync('bash', ['-n', script], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
 });
 
-test('--dry-run : clone, builds, unit avec installDir, linger, enable --now, doctor — zéro systemctl réel', { skip: LINUX_ONLY }, () => {
+test('--dry-run: clone, builds, unit with installDir, linger, enable --now, doctor, zero real systemctl', { skip: LINUX_ONLY }, () => {
   const h = home();
   try {
     const r = run(['--dry-run'], { env: envFor(h) });
@@ -100,14 +102,14 @@ test('--dry-run : clone, builds, unit avec installDir, linger, enable --now, doc
     assert.match(out, /"profile": "linux-server"/);
     assert.match(out, /"installDir": "~\/timon\/orchestrator"/);
     assert.match(out, /dry-run OK/);
-    // Preuve qu'on n'a rien posé hors du dry-run.
+    // Proof that nothing was set outside the dry-run.
     assert.equal(r.stderr, '');
   } finally {
     rmSync(h, { recursive: true, force: true });
   }
 });
 
-test('--dry-run est idempotent : un clone déjà là devient un pull --ff-only', { skip: LINUX_ONLY }, () => {
+test('--dry-run is idempotent: a clone already there becomes a pull --ff-only', { skip: LINUX_ONLY }, () => {
   const h = home();
   const dest = join(h, 'timon');
   try {
@@ -123,7 +125,7 @@ test('--dry-run est idempotent : un clone déjà là devient un pull --ff-only',
   }
 });
 
-test('Node < 20 est refusé avant tout clone', { skip: LINUX_ONLY }, () => {
+test('Node < 20 is refused before any clone', { skip: LINUX_ONLY }, () => {
   const h = home();
   const bin = join(h, 'bin');
   try {
@@ -139,7 +141,7 @@ test('Node < 20 est refusé avant tout clone', { skip: LINUX_ONLY }, () => {
   }
 });
 
-test('git absent est refusé', { skip: LINUX_ONLY }, () => {
+test('a missing git is refused', { skip: LINUX_ONLY }, () => {
   const h = home();
   const bin = join(h, 'bin');
   try {
@@ -154,7 +156,7 @@ test('git absent est refusé', { skip: LINUX_ONLY }, () => {
   }
 });
 
-test('sans --dry-run, une mission TIMON est refusée (rien n\'est lancé)', { skip: LINUX_ONLY }, () => {
+test('without --dry-run, a TIMON mission is refused (nothing is launched)', { skip: LINUX_ONLY }, () => {
   const h = home();
   try {
     const r = run([], { env: envFor(h, { TIMON_MISSION_ID: 'mission-temoin' }) });
@@ -166,7 +168,7 @@ test('sans --dry-run, une mission TIMON est refusée (rien n\'est lancé)', { sk
   }
 });
 
-test('une unit live qui pointe ailleurs est refusée, même en dry-run', { skip: LINUX_ONLY }, () => {
+test('a live unit pointing elsewhere is refused, even in dry-run', { skip: LINUX_ONLY }, () => {
   const h = home();
   try {
     const unitDir = join(h, '.config', 'systemd', 'user');
@@ -184,7 +186,7 @@ test('une unit live qui pointe ailleurs est refusée, même en dry-run', { skip:
   }
 });
 
-test('un dossier cible existant hors git est refusé', { skip: LINUX_ONLY }, () => {
+test('an existing target folder outside git is refused', { skip: LINUX_ONLY }, () => {
   const h = home();
   try {
     mkdirSync(join(h, 'timon'), { recursive: true });

@@ -75,7 +75,7 @@ test('right after the setup the tour starts on its own, restart pending or not',
   assert.equal(autoStartOn({ ...base, pathname: '/setup/agent' }), false);
 });
 
-test('« Not now » answers the offer and says where the tour stays', () => {
+test('"Not now" answers the offer and says where the tour stays', () => {
   const shown: Array<{ message: string; id: string; duration: number }> = [];
   let marked = 0;
   declineTourOffer(
@@ -91,7 +91,7 @@ test('« Not now » answers the offer and says where the tour stays', () => {
 test('the hint and the offer name the menu entry that starts the tour, in every locale', () => {
   for (const [locale, root] of [['en', en], ['fr', fr]] as const) {
     const { menu, offer } = root.guidedTour;
-    assert.ok(offer.laterHint.includes(menu), `${locale}: laterHint names « ${menu} »`);
-    assert.ok(offer.body.includes(menu), `${locale}: the offer names « ${menu} »`);
+    assert.ok(offer.laterHint.includes(menu), `${locale}: laterHint names "${menu}"`);
+    assert.ok(offer.body.includes(menu), `${locale}: the offer names "${menu}"`);
   }
 });

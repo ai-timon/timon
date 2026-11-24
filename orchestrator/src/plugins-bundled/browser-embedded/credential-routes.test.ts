@@ -91,7 +91,10 @@ test('mission tokens can list only their fixed allowed profile and cannot save o
   assert.equal(listed.status, 200); assert.equal(JSON.parse(listed.text).credentials[0].id, saved.id);
   assert.ok(!listed.text.includes(input.password));
   assert.equal((await call(other.id, 'GET', undefined, 'mission')).status, 404);
-  assert.equal((await call(profile.id, 'POST', input, 'mission')).status, 403);
+  const refused = await call(profile.id, 'POST', input, 'mission');
+  assert.equal(refused.status, 403);
+  // A coded refusal the webview translates, not English prose quoted as a detail.
+  assert.deepEqual(JSON.parse(refused.text), { error: 'Only a signed-in owner can save or delete browser credentials.', code: 'browser_credential_owner_only' });
   assert.equal((await call(profile.id, 'DELETE', undefined, 'mission', `/${saved.id}`)).status, 403);
   assert.equal(JSON.parse((await call(profile.id)).text).credentials.length, 1);
   dbApi.setMissionBrowserProfile(mission, null);

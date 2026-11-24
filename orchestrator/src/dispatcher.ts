@@ -7,6 +7,7 @@ import {
   MAX_BLIND_QUOTA_DEATHS,
   MAX_SYSTEM_REQUEUES,
   type TaskInterruptionOutcome,
+  type SeriesPlanLandingRecord,
   type TaskRow,
   type TaskType,
 } from './db.js';
@@ -15,6 +16,7 @@ import { CwdUnusableError } from './cwd-check.js';
 import { taskProjectSlug } from './task-project.js';
 import { bus } from './bus.js';
 import { loadConfig, type AgentConfig } from './agent.js';
+import { reportReroutedShellPreallow } from './auto-mode-preallow.js';
 import { readRoles, type RoleSpec, type TaskRole } from './projects.js';
 import {
   asBackendName, assertBackendEnabled, defaultBackendName, isBackendName, backendCapabilities, backendForModel, catalogClaimsModel,
@@ -23,7 +25,7 @@ import {
 import { whenProvidersLoaded } from './backends/registry.js';
 import {
   createWorktree, isGitRepo, currentBranch, refreshWorktreeBase, prepareWorktreeDependencies,
-  refreshMergeMessage, integrateMergeMessage,
+  refreshMergeMessage, integrateMergeMessage, branchExists,
   type WorktreeInfo, type RefreshOutcome,
 } from './worktree.js';
 import { agentDir } from './paths.js';
@@ -44,8 +46,14 @@ import {
   type InterruptionReason,
 } from './interruption.js';
 import { MissionFenceRefusedError, profileLimits } from './resources.js';
-import { codeCloseRefusal, effectiveMergeSha, mergeCloseRefusal } from './code-gate.js';
+import { codeCloseRefusal, effectiveMergeSha, mergeCloseRefusal, pullRequestCloseRefusal } from './code-gate.js';
 import { GIT_MISSING_MESSAGE, GIT_MISSING_REASON, gitTaskRefusal } from './task-git.js';
+import {
+  ensureIntegrationBranch, integrationBranchName, integrationBranchRefusal, isIntegrationMode, localBaseRef,
+  localTargetOf, usesIntegrationBranch, type IntegrationMode,
+} from './git-integration.js';
+import { integrationBaseRef, readProjectIntegration } from './project-integration.js';
+import { chainLanding } from './chain-landing.js';
 import { spawnWideningRefusal } from './users/privileged-overrides.js';
 import { isMirrorTask } from './task-mirror.js';
 import {
@@ -257,13 +265,18 @@ function fallbackOrchestratorMission(orchestratorName: string | null): string | 
 /** Evaluates a task's deps (all DONE, + `pass` verdict required on a
  *  `merge` task's `review` deps, agreement across the WHOLE verification
  *  chain, and a `code` dep of a `full` pipeline only counts once its chain's
- *  merge is DONE). Logic lives in merge-gate.ts. */
+ *  merge is DONE, and one integrated into another base only once that base
+ *  landed). Logic lives in merge-gate.ts. */
 function depsGate(task: TaskRow): DepGate {
   return evaluateDeps(
     task,
     (id) => dbApi.getTask(id),
     (rootId) => dbApi.listTasksByVerificationRoot(rootId),
     (rootId) => dbApi.listVerificationChain(rootId),
+    (dep) => {
+      const row = dbApi.getTask(dep.id);
+      return row ? chainLanding(row) : 'local';
+    },
   );
 }
 
@@ -326,6 +339,156 @@ function recordRefresh(taskId: string, base: string, outcome: RefreshOutcome): v
 }
 
 /**
+ * How a task moves its base to `source` (the merger's branch, or `HEAD` of a
+ * `code-self` coder's worktree) without writing to the shared checkout.
+ *
+ * By reference (`push .`) unless the main repo stands ON the base: `push .`
+ * only accepts a fast-forward and git refuses it for a branch checked out
+ * anywhere, so it can never move another worktree's files. A detached or
+ * unreadable HEAD is no exception: a `merge --ff-only` there moves the user's
+ * own position and leaves the base where it was (#1018). Only when the user's
+ * checkout IS the base does the fast-forward go through it, the working
+ * directory following its branch. Either way the agent reads the base back
+ * and compares it with its own tip before reporting a sha.
+ */
+export function baseAdvanceInstructions(
+  repo: string,
+  base: string,
+  source: string,
+  activeBranch: string | null,
+): string {
+  // `HEAD` named in `git -C <repo>` would be the MAIN repo's HEAD: resolve it in
+  // the agent's worktree first, and give the destination as a full ref (git
+  // needs one when the source is a bare sha).
+  const from = source === 'HEAD' ? '$(git rev-parse HEAD)' : source;
+  const to = source === 'HEAD' ? `refs/heads/${base}` : base;
+  const check =
+    `Check the move before reporting anything — both shas must be equal:\n\n` +
+    `\`\`\`bash\ngit -C ${repo} rev-parse ${base}\ngit rev-parse ${source}\n\`\`\`\n\n` +
+    `If they differ, the base did not move: do not close as merged.`;
+  if (activeBranch != null && activeBranch === base) {
+    return (
+      `The main repo is checked out ON \`${base}\`: the fast-forward goes through ` +
+      `the user's checkout, which follows its branch. ONE command, and only one:\n\n` +
+      `\`\`\`bash\ngit -C ${repo} merge --ff-only ${from}\n\`\`\`\n\n` +
+      `If it refuses (\`${base}\` moved while you were working), bring it into ` +
+      `YOUR worktree (\`git merge --no-edit -m "${refreshMergeMessage(base)}" ${base}\`), ` +
+      `resolve, then retry. Never force.\n\n${check}`
+    );
+  }
+  const where = activeBranch
+    ? `The main repo is on \`${activeBranch}\`, NOT on the base \`${base}\``
+    : `The main repo has a detached HEAD (or its branch could not be read)`;
+  return (
+    `${where}: a fast-forward done IN that repo would move the user's position, ` +
+    `not the base. Move the base **by reference**, without touching the ` +
+    `working directory, with ONE command:\n\n` +
+    `\`\`\`bash\ngit -C ${repo} push . ${from}:${to}\n\`\`\`\n\n` +
+    `\`push .\` only accepts a fast-forward. If it refuses (\`${base}\` moved ` +
+    `while you were working), go back to YOUR worktree, ` +
+    `\`git merge --no-edit -m "${refreshMergeMessage(base)}" ${base}\`, ` +
+    `resolve, then try again. If it refuses because \`${base}\` is checked out ` +
+    `in another worktree, do not work around it: \`timon task block\` with the reason. ` +
+    `Never force, never \`git checkout ${base}\` or \`git merge\` in the main ` +
+    `repo.\n\n${check}`
+  );
+}
+
+/**
+ * The brief of the task that opens a job's pull request (`landing = 'pr'`,
+ * `docs/KANBAN-PR-PIPELINE.md` §2.4). It merges no task branch: it brings the
+ * target in if it moved, moves the integration branch by reference, writes the
+ * title and the description, and hands the rest to the daemon (`timon pr
+ * open`), whose checks an agent cannot skip. The agent never pushes and never
+ * runs `gh`.
+ */
+export function pullRequestDirective(task: TaskRow, wt: WorktreeInfo, activeBranch: string | null): string {
+  const baseRef = task.base_ref ?? '<remote>/<target>';
+  const slash = baseRef.indexOf('/');
+  const remote = slash > 0 ? baseRef.slice(0, slash) : '<remote>';
+  const target = slash > 0 ? baseRef.slice(slash + 1) : '<target>';
+  const repo = wt.sourceRepo;
+  const branch = wt.base;
+  const move = baseAdvanceInstructions(repo, branch, wt.branch, activeBranch);
+  return (
+    `\n\n## Your task: open the job's pull request\n\n` +
+    `This \`merge\` task merges no task branch. The job's work is already in its ` +
+    `integration branch \`${branch}\`, which reaches \`${baseRef}\` through a pull ` +
+    `request. The daemon pushes the branch and opens the pull request; you never ` +
+    `\`git push\`, never run \`gh\`, never merge into \`${target}\`, never force.\n\n` +
+    `You have YOUR worktree: \`${wt.path}\` (branch \`${wt.branch}\`, on \`${branch}\`). ` +
+    `The main repo (\`${repo}\`) has ONE working directory shared by every agent: ` +
+    `run no command that writes there except the single move of step 2.\n\n` +
+    `1. **Bring the target in**, if it moved, in your worktree:\n\n` +
+    `\`\`\`bash\ngit fetch --no-tags ${remote} ${target}\n` +
+    `git merge --no-edit -m "${refreshMergeMessage(baseRef)}" ${baseRef}\n\`\`\`\n\n` +
+    `   If the fetch fails, go on with the ref as it is: the daemon fetches it again ` +
+    `before opening. Resolve a conflict here (\`git commit --no-edit\` keeps the ` +
+    `message), then run the checks of the packages the job touched.\n\n` +
+    `2. **If step 1 created a commit**, move \`${branch}\` to it. ${move}\n\n` +
+    `3. **Write the pull request**: a title and a description in English, for a ` +
+    `reviewer who knows the project but not this job (what changes, why, how it was ` +
+    `checked). No task or mission id, no TODO number, no attribution line ` +
+    `(\`Co-Authored-By\`, "Generated with"), and no closing keyword (\`Fixes #n\`) ` +
+    `for now. Put the description in a file.\n\n` +
+    `4. **Open it** (MCP tool \`pr_open\` with \`id\` = your TASK_ID does the same):\n\n` +
+    `\`\`\`bash\ntimon pr open <TASK_ID> --title "<title>" --body-file <file>\n\`\`\`\n\n` +
+    `   The daemon checks the account, the remote, the identity and the messages of ` +
+    `every commit, the private paths and the public tree, then pushes \`${branch}\` ` +
+    `and opens the pull request. A refusal lists the failed checks: fix what your ` +
+    `worktree can fix with NEW commits (a commit is never rewritten), repeat step 2, ` +
+    `retry. A check you cannot fix (an earlier commit's identity or message, the ` +
+    `account) → \`timon task block <TASK_ID> --reason "<the failed checks>"\`.\n\n` +
+    `5. **Close** with the tip you published and the pull request's address. The daemon ` +
+    `refuses DONE (\`pr_not_opened\`) until step 4 opened the pull request:\n\n` +
+    `\`\`\`bash\ntimon task done <TASK_ID> --merged-sha "$(git -C ${repo} rev-parse ${branch})" ` +
+    `--comment "pull request <url> opened for ${branch}"\n\`\`\`\n\n` +
+    `A person merges the pull request on the forge; Timon notices it afterwards.`
+  );
+}
+
+/**
+ * The brief of the task that merges a job's branch into its local target
+ * (`landing = 'local'`, `local-landing.ts`). Like a `code-self` coder, it merges
+ * on a detached copy of the target in its own worktree (first parent = the
+ * target), then moves the target the way every merger does
+ * (`baseAdvanceInstructions`): by reference, or through the user's checkout
+ * when it stands on the target. Its DONE lands the whole job, so the daemon
+ * proves the sha with git before accepting it.
+ */
+export function localLandingDirective(task: TaskRow, wt: WorktreeInfo, activeBranch: string | null): string {
+  const branch = wt.base;
+  const target = localTargetOf(task.base_ref) ?? '<target>';
+  const repo = wt.sourceRepo;
+  const move = baseAdvanceInstructions(repo, target, 'HEAD', activeBranch);
+  return (
+    `\n\n## Your task: merge the job's branch into ${target}\n\n` +
+    `This \`merge\` task merges no task branch. The job's work is already in its ` +
+    `branch \`${branch}\`; you merge that branch into \`${target}\`, on this machine. ` +
+    `Never push, never force, never rewrite a commit.\n\n` +
+    `You have YOUR worktree: \`${wt.path}\` (branch \`${wt.branch}\`, on \`${branch}\`). ` +
+    `The main repo (\`${repo}\`) has ONE working directory shared by every agent: ` +
+    `run no command that writes there except the single move of step 3.\n\n` +
+    `1. **Merge**, in your worktree, on a detached copy of the target:\n\n` +
+    `\`\`\`bash\ngit checkout --detach ${target}\n` +
+    // The branch name is public-safe (`integrationBranchRefusal` refused ids).
+    `git merge --no-ff -m "merge: integrate ${branch} into ${target}" ${branch}\n\`\`\`\n\n` +
+    `   Resolve a conflict here (\`git commit --no-edit\` keeps the message), then run ` +
+    `the checks of the packages the job touched.\n\n` +
+    `2. **Check** that the merge carries the branch: ` +
+    `\`git merge-base --is-ancestor ${branch} HEAD\` must succeed.\n\n` +
+    `3. **Move \`${target}\`** to your merge. ${move}\n\n` +
+    `4. **Close** with the target's FULL sha. The daemon checks that it is in ` +
+    `\`${target}\` and carries \`${branch}\`, then lands the job: its TO DO ideas ` +
+    `close and its doc task is created.\n\n` +
+    `\`\`\`bash\ntimon task done <TASK_ID> --merged-sha "$(git -C ${repo} rev-parse ${target})" ` +
+    `--comment "${branch} merged into ${target}"\n\`\`\`\n\n` +
+    `Then \`git checkout ${wt.branch}\` to leave your worktree on its branch. A conflict you ` +
+    `cannot resolve cleanly → \`timon task block <TASK_ID> --reason "<the conflict>"\`.`
+  );
+}
+
+/**
  * What the agent needs to know about ITS worktree when it starts.
  *
  * Two things it can't guess: that its base was refreshed under its feet
@@ -336,7 +499,8 @@ function recordRefresh(taskId: string, base: string, outcome: RefreshOutcome): v
 export function worktreeDirective(
   task: TaskRow,
   wt: WorktreeInfo | null,
-  /** Branch checked out in `wt.sourceRepo`, read by the caller (merge only). */
+  /** Branch checked out in `wt.sourceRepo`, read by the caller (merge only);
+   *  null for a detached HEAD, which never takes the fast-forward. */
   activeBranch?: string | null,
 ): string {
   if (!wt) return '';
@@ -385,29 +549,12 @@ export function worktreeDirective(
       `state._`,
     );
   }
-  if (task.type === 'merge') {
-    // Base ≠ active branch: the final fast-forward must not move the branch the
-    // user is standing on. `activeBranch` unknown (detached HEAD, git error) is
-    // treated like "same": the historical ff-only.
-    const offActive = activeBranch != null && activeBranch !== wt.base && wt.base !== 'HEAD';
-    const finish = offActive
-      ? `The main repo is on \`${activeBranch}\`, NOT on the base \`${wt.base}\` of ` +
-        `this task: a fast-forward done IN that repo would move the user's branch and ` +
-        `pour the work into it. Move the base **by reference**, without touching the ` +
-        `working directory, with ONE command:\n\n` +
-        `\`\`\`bash\n` +
-        `git -C ${wt.sourceRepo} push . ${wt.branch}:${wt.base}\n` +
-        `\`\`\`\n\n` +
-        `\`push .\` only accepts a fast-forward. If it refuses (\`${wt.base}\` moved ` +
-        `while you were working), go back to YOUR worktree, ` +
-        `\`git merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${wt.base}\`, ` +
-        `resolve, then try again. If it refuses because \`${wt.base}\` is checked out ` +
-        `in another worktree, do not work around it: \`timon task block\` with the reason. ` +
-        `Never force, and do NOT run \`git checkout ${wt.base}\` in the main ` +
-        `repo.\n\n` +
-        `Then get the FULL sha with \`git -C ${wt.sourceRepo} rev-parse ${wt.base}\` ` +
-        `(40 hex) for \`timon task done --merged-sha\`.`
-      : `git -C ${wt.sourceRepo} merge --ff-only ${wt.branch}`;
+  if (task.type === 'merge' && task.landing === 'pr') {
+    parts.push(pullRequestDirective(task, wt, activeBranch ?? null));
+  } else if (task.type === 'merge' && task.landing === 'local') {
+    parts.push(localLandingDirective(task, wt, activeBranch ?? null));
+  } else if (task.type === 'merge') {
+    const finish = baseAdvanceInstructions(wt.sourceRepo, wt.base, wt.branch, activeBranch ?? null);
     parts.push(
       `\n\n## Where you merge — hard rule\n\n` +
       `You have YOUR worktree: \`${wt.path}\` (branch \`${wt.branch}\`). Do all ` +
@@ -427,19 +574,10 @@ export function worktreeDirective(
       `internal ids otherwise. Integrate each source branch with:\n\n` +
       `\`\`\`bash\ngit merge --no-ff -m "${integrateMergeMessage(wt.base)}" <source-branch>\n\`\`\`\n\n` +
       `After resolving a conflict, conclude with \`git commit --no-edit\`: the ` +
-      `message given with \`-m\` is kept. The final fast-forward below creates ` +
+      `message given with \`-m\` is kept. Moving the base below creates ` +
       `no commit.\n\n` +
-      (offActive
-        ? `When your worktree is green, the final merge:\n\n${finish}`
-        : `When your worktree is green, the final merge is ONE command, and only ` +
-          `one:\n\n` +
-          `\`\`\`bash\n${finish}\n\`\`\`\n\n` +
-          `If it refuses (\`${wt.base}\` moved while you were working), go back to ` +
-          `YOUR worktree, \`git merge --no-edit -m "${refreshMergeMessage(wt.base)}" ${wt.base}\`, ` +
-          `resolve, then retry the fast-forward. ` +
-          `Never force.\n\n` +
-          `Then get the FULL sha (\`git -C ${wt.sourceRepo} rev-parse HEAD\`, ` +
-          `40 hex) for \`timon task done --merged-sha\`.`),
+      `When your worktree is green, the final move:\n\n${finish}\n\n` +
+      `Then use that FULL sha (40 hex) for \`timon task done --merged-sha\`.`,
     );
   }
   return parts.join('');
@@ -471,6 +609,14 @@ export function inheritedBase(task: TaskRow): string | null {
     level = next;
   }
   return null;
+}
+
+/** Why the last worktree creation of a task failed, for its blocked reason. */
+const worktreeFailures = new Map<string, string>();
+
+function worktreeFailure(err: unknown): string {
+  const e = err as Error & { stderr?: string };
+  return ((e.stderr ?? '').trim() || e.message || 'git worktree add failed').slice(-300);
 }
 
 export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | null> {
@@ -521,6 +667,7 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       return info;
     } catch (err) {
       console.warn(`[dispatcher] worktree create failed for ${task.id}: ${(err as Error).message}`);
+      worktreeFailures.set(task.id, worktreeFailure(err));
       return null;
     }
   }
@@ -552,6 +699,7 @@ export async function resolveWorktree(task: TaskRow): Promise<WorktreeInfo | nul
       return info;
     } catch (err) {
       console.warn(`[dispatcher] worktree merge failed for ${task.id}: ${(err as Error).message}`);
+      worktreeFailures.set(task.id, worktreeFailure(err));
       return null;
     }
   }
@@ -795,6 +943,315 @@ export function blockIfGitMissing(task: TaskRow, capabilities?: readonly string[
   return true;
 }
 
+function agentCwd(agentName: string): string | null {
+  try { return loadConfig(agentName).cwd ?? null; } catch { return null; }
+}
+
+function blockTask(task: TaskRow, reason: string, message: DaemonMessage): void {
+  console.warn(`[dispatcher] task ${task.id} → BLOCKED: ${reason}`);
+  dbApi.updateTaskStatus(task.id, 'BLOCKED', { blockedReason: reason, blockedReasonCode: message });
+}
+
+/**
+ * How the chain lands, read up the `deps` like `inheritedBase`: the first task
+ * that carries an `integration_mode` or a `base_ref`. A `code-group` final merge
+ * finds it on its volets, a review or a merge on the code task of its chain.
+ */
+export function inheritedIntegration(task: TaskRow): { mode: string | null; baseRef: string | null } | null {
+  const seen = new Set<string>([task.id]);
+  let level: TaskRow[] = [task];
+  for (let depth = 0; depth < 6 && level.length > 0; depth++) {
+    const next: TaskRow[] = [];
+    for (const t of level) {
+      let ids: unknown;
+      try { ids = JSON.parse(t.deps); } catch { continue; }
+      if (!Array.isArray(ids)) continue;
+      for (const id of ids) {
+        if (typeof id !== 'string' || seen.has(id)) continue;
+        seen.add(id);
+        const dep = dbApi.getTask(id);
+        if (!dep) continue;
+        if (dep.integration_mode || dep.base_ref) {
+          return { mode: dep.integration_mode ?? null, baseRef: dep.base_ref ?? null };
+        }
+        next.push(dep);
+      }
+    }
+    level = next;
+  }
+  return null;
+}
+
+/** How a root task lands, read from its project's setting. */
+export type ProjectLanding =
+  | { kind: 'local' }
+  | { kind: 'integration'; mode: Extract<IntegrationMode, 'branch' | 'pr'>; baseRef: string; branch: string }
+  | { kind: 'refused'; branch: string; baseRef: string; detail: string };
+
+/**
+ * The project's integration setting (`project-integration.ts`) applied to a
+ * task that starts a chain. No setting, a project Timon does not know or mode
+ * `local`: `local`, and nothing is written, as before the setting existed.
+ *
+ * Mode `pr`: the chain is cut from `<remote>/<target>` on the task's own base
+ * when it names one (the series plan gives every volet the branch of the job),
+ * else on `<prefix><slug of its title>`. A base under embargo (`sec/`) lands by
+ * hand (`branch`), never through a pull request. Refused, never guessed: a
+ * setting that no longer validates, a base that is the target itself, a name
+ * that is not a valid public branch.
+ */
+export function projectLanding(
+  task: Pick<TaskRow, 'project' | 'agent_name' | 'base_branch' | 'title'> & Partial<Pick<TaskRow, 'series_id'>>,
+): ProjectLanding {
+  // The branch the Kanban planner chose for the job comes first: it may give a
+  // job of a project that merges locally a branch of its own, or start a job
+  // of either kind from a branch the repository already has.
+  const planned = plannedLanding(task);
+  if (planned) {
+    const mode: Extract<IntegrationMode, 'branch' | 'pr'> = planned.mode === 'pr' ? 'pr' : 'branch';
+    return { kind: 'integration', mode, baseRef: planned.base_ref, branch: planned.branch };
+  }
+  let cfg: AgentConfig | null = null;
+  try { cfg = loadConfig(task.agent_name); } catch { /* unknown agent: no project from it */ }
+  const slug = taskProjectSlug(task, cfg);
+  if (!slug) return { kind: 'local' };
+  let read: ReturnType<typeof readProjectIntegration>;
+  try { read = readProjectIntegration(slug); } catch { return { kind: 'local' }; }
+  const branchShown = task.base_branch ?? 'none';
+  if (read.invalid) {
+    return {
+      kind: 'refused', branch: branchShown, baseRef: 'none',
+      detail: `the integration setting of project ${slug} is invalid (${read.invalid}); fix it with \`timon project set-integration\``,
+    };
+  }
+  const setting = read.integration;
+  if (setting.mode !== 'pr') {
+    // A task on the branch of a job this project runs on a branch of its own
+    // (a task created outside the plan's series, a sequential job's last task
+    // created by another mission) carries on in that job's mode.
+    const row = task.base_branch && cfg?.cwd ? dbApi.getIntegration(cfg.cwd, task.base_branch) : undefined;
+    if (row && row.remote === '' && row.state === 'branch') {
+      return { kind: 'integration', mode: 'branch', baseRef: localBaseRef(row.target), branch: row.branch };
+    }
+    return { kind: 'local' };
+  }
+  const baseRef = integrationBaseRef(setting);
+  const branch = task.base_branch ?? integrationBranchName(task.title, { prefix: setting.branch_prefix });
+  if (!branch) {
+    return {
+      kind: 'refused', branch: 'none', baseRef,
+      detail: 'no branch name can be drawn from the task title; give the task a base (--base <prefix><topic>)',
+    };
+  }
+  if (branch === setting.target || branch === baseRef) {
+    return {
+      kind: 'refused', branch, baseRef,
+      detail: `project ${slug} lands through a pull request into ${setting.target}, so its jobs start from an ` +
+        `integration branch, never from ${setting.target} itself; remove the base or name a topic branch`,
+    };
+  }
+  const refusal = integrationBranchRefusal(branch);
+  if (refusal) return { kind: 'refused', branch, baseRef, detail: refusal };
+  return { kind: 'integration', mode: branch.startsWith('sec/') ? 'branch' : 'pr', baseRef, branch };
+}
+
+/**
+ * What the Kanban planner chose for the job of `task`'s series, when the task
+ * starts from that branch (or names none). A task on another base was created
+ * outside the plan: the plan does not decide for it.
+ */
+export function plannedLanding(
+  task: Pick<TaskRow, 'base_branch'> & Partial<Pick<TaskRow, 'series_id'>>,
+): SeriesPlanLandingRecord | null {
+  if (!task.series_id) return null;
+  const planned = dbApi.getSeriesPlanLanding(task.series_id);
+  if (!planned || !isIntegrationMode(planned.mode) || planned.mode === 'local') return null;
+  if (task.base_branch && task.base_branch !== planned.branch) return null;
+  return planned;
+}
+
+/**
+ * Makes sure the base a `code` or `merge` task starts from exists, and BLOCKS
+ * the task when it cannot (true = blocked). Before this, a missing base made
+ * `createWorktree` fail, `resolveWorktree` return null, and the mission start
+ * in the shared checkout (`docs/KANBAN-PR-PIPELINE.md` §3.4).
+ *
+ * - The chain's `integration_mode` / `base_ref` are frozen on the task first,
+ *   from the task itself or the chain it belongs to. A task that starts a chain
+ *   (no ancestor carries a base) takes them from its project's setting
+ *   (`projectLanding`); a project in `local` mode writes nothing.
+ * - An integration branch (`branch`, `pr`) is created from the remote ref,
+ *   without a checkout; no remote, an unreachable one or a missing target
+ *   blocks the task with the reason — never a fallback on the local base.
+ * - Any other named base must resolve in the repository.
+ *
+ * What it freezes is written to the row and to `task`, which the caller goes on
+ * using for the worktree.
+ */
+export async function blockIfBaseUnavailable(task: TaskRow): Promise<boolean> {
+  if (task.type !== 'code' && task.type !== 'merge') return false;
+  const cwd = agentCwd(task.agent_name);
+  if (!cwd || !(await isGitRepo(cwd))) return false;
+  if (!task.integration_mode && !task.base_ref) {
+    const inherited = inheritedIntegration(task);
+    if (inherited) {
+      dbApi.setTaskIntegration(task.id, inherited.mode, inherited.baseRef);
+      task.integration_mode = inherited.mode;
+      task.base_ref = inherited.baseRef;
+    } else if (!inheritedBase(task)) {
+      // A chain already under way (an ancestor has a base) keeps the mode it
+      // started with: a setting changed mid-way never splits a chain.
+      const landing = projectLanding(task);
+      if (landing.kind === 'refused') {
+        const reason =
+          `Integration branch ${landing.branch} is unavailable: ${landing.detail}. The task was not started, ` +
+          `and the branch is never cut from the local base instead of ${landing.baseRef}. Fix the remote or ` +
+          `the branch name, then retry the task.`;
+        blockTask(task, reason, daemonMessage('integration_branch_unavailable', {
+          branch: landing.branch, baseRef: landing.baseRef, detail: landing.detail,
+        }));
+        return true;
+      }
+      if (landing.kind === 'integration') {
+        dbApi.setTaskIntegration(task.id, landing.mode, landing.baseRef);
+        task.integration_mode = landing.mode;
+        task.base_ref = landing.baseRef;
+        if (!task.base_branch) {
+          dbApi.setTaskBaseBranch(task.id, landing.branch);
+          task.base_branch = landing.branch;
+        }
+      }
+    }
+  }
+  const base = task.base_branch ?? inheritedBase(task);
+  // The task that opens a pull request has nothing to publish in a job that
+  // merges locally, or that lands by hand under embargo.
+  if (task.landing === 'pr' && task.integration_mode !== 'pr') {
+    const detail =
+      `this task opens the job's pull request, but the job does not land through one ` +
+      `(integration mode "${task.integration_mode ?? 'local'}"); set the project to mode pr or delete the task`;
+    const reason =
+      `Integration branch ${base ?? 'none'} is unavailable: ${detail}. The task was not started, and the ` +
+      `branch is never cut from the local base instead of ${task.base_ref ?? 'none'}. Fix the remote or the ` +
+      `branch name, then retry the task.`;
+    blockTask(task, reason, daemonMessage('integration_branch_unavailable', {
+      branch: base ?? 'none', baseRef: task.base_ref ?? 'none', detail,
+    }));
+    return true;
+  }
+  // The task that merges a job's branch into its local target has nothing to
+  // merge in a job without a branch of its own, or one that lands remotely.
+  if (task.landing === 'local' && (task.integration_mode !== 'branch' || !localTargetOf(task.base_ref))) {
+    const detail =
+      `this task merges the job's branch into its local target, but the job has no branch of its own in a project ` +
+      `that merges locally (integration mode "${task.integration_mode ?? 'local'}"); plan the job on a branch, or delete the task`;
+    const reason =
+      `Integration branch ${base ?? 'none'} is unavailable: ${detail}. The task was not started, and the ` +
+      `branch is never cut from the local base instead of ${task.base_ref ?? 'none'}. Fix the remote or the ` +
+      `branch name, then retry the task.`;
+    blockTask(task, reason, daemonMessage('integration_branch_unavailable', {
+      branch: base ?? 'none', baseRef: task.base_ref ?? 'none', detail,
+    }));
+    return true;
+  }
+  if (usesIntegrationBranch(task.integration_mode)) {
+    const baseRef = task.base_ref ?? null;
+    if (!base || !baseRef) {
+      const reason =
+        `Integration mode "${task.integration_mode}" needs an integration branch and the remote ref to ` +
+        `cut it from (base "${base ?? 'none'}", remote ref "${baseRef ?? 'none'}"). The task was not ` +
+        `started: set both on the task, then retry it.`;
+      blockTask(task, reason, daemonMessage('integration_branch_unset', {
+        mode: task.integration_mode ?? '', branch: base ?? 'none', baseRef: baseRef ?? 'none',
+      }));
+      return true;
+    }
+    // A branch the planner chose as existing is never cut; one chosen as new
+    // is never an unrelated branch the repository happens to have already.
+    const planned = plannedLanding({ base_branch: base, series_id: task.series_id });
+    const known = dbApi.getIntegration(cwd, base);
+    const out = await ensureIntegrationBranch(cwd, { branch: base, baseRef, mustExist: planned?.branch_kind === 'existing' });
+    if (out.ok && !out.created && !known && planned?.branch_kind === 'new') {
+      const detail = `${base} already exists in the repository, and the job was planned on a new branch; ` +
+        `plan it again on that existing branch or on another name`;
+      const reason =
+        `Integration branch ${base} is unavailable: ${detail}. The task was not started. Fix the branch name, ` +
+        `then retry the task.`;
+      blockTask(task, reason, daemonMessage('integration_branch_unavailable', { branch: base, baseRef, detail }));
+      return true;
+    }
+    if (!out.ok) {
+      const reason =
+        `Integration branch ${base} is unavailable: ${out.reason}. The task was not started, and the ` +
+        `branch is never cut from the local base instead of ${baseRef}. Fix the remote or the branch ` +
+        `name, then retry the task.`;
+      blockTask(task, reason, daemonMessage('integration_branch_unavailable', {
+        branch: base, baseRef, detail: out.reason,
+      }));
+      return true;
+    }
+    dbApi.recordIntegration({
+      repo: cwd,
+      branch: base,
+      remote: out.remote,
+      target: out.target,
+      mode: task.integration_mode ?? 'branch',
+      project: task.project,
+      seriesId: task.series_id,
+      baseSha: out.created ? out.sha : null,
+    });
+    if (out.created) console.log(`[dispatcher] integration branch ${base} created from ${baseRef} for task ${task.id}`);
+    if (!task.base_branch) {
+      dbApi.setTaskBaseBranch(task.id, base);
+      task.base_branch = base;
+    }
+    return false;
+  }
+  if (!base || (await branchExists(cwd, base))) return false;
+  const reason =
+    `Base ${base} does not exist in the repository. The task was not started: a ${task.type} task ` +
+    `never runs without its base. Create the branch or change the task's base, then retry it.`;
+  blockTask(task, reason, daemonMessage('task_base_missing', { base, type: task.type }));
+  return true;
+}
+
+/**
+ * A `code` or `merge` task of a git repository that got no worktree is BLOCKED
+ * (true), never spawned: without `cwdOverride` its mission would run in the
+ * agent's folder, the checkout every other agent shares. Both the assigned
+ * agent's folder and the one of the agent that will really run it count.
+ */
+export async function blockIfSharedCheckout(
+  task: TaskRow,
+  wt: WorktreeInfo | null,
+  runningAgent: string,
+): Promise<boolean> {
+  if (wt || (task.type !== 'code' && task.type !== 'merge')) return false;
+  const cwds = [...new Set([agentCwd(task.agent_name), agentCwd(runningAgent)])];
+  let inRepository = false;
+  for (const cwd of cwds) if (cwd && (await isGitRepo(cwd))) inRepository = true;
+  if (!inRepository) return false;
+  const cause = worktreeFailures.get(task.id) ?? 'no worktree could be prepared';
+  worktreeFailures.delete(task.id);
+  const reason =
+    `No worktree for this ${task.type} task (${cause}). It was not started: in the agent's own ` +
+    `folder it would write to the checkout every agent shares. Fix the cause, then retry the task.`;
+  blockTask(task, reason, daemonMessage('task_worktree_unavailable', { type: task.type, cause }));
+  return true;
+}
+
+/**
+ * The MCP servers a task's mission gets: zero by default from the task. Only
+ * the MCPs listed in the role's config and in the task's own extras are
+ * enabled; the union replaces the agent's `mcp_servers`. A malformed stored
+ * list is read as none.
+ */
+export function taskMcpServers(roleMcpServers: readonly string[], task: Pick<TaskRow, 'extra_mcp_servers'>): string[] {
+  let taskExtraMcp: string[] = [];
+  try { if (task.extra_mcp_servers) taskExtraMcp = JSON.parse(task.extra_mcp_servers); } catch { /* */ }
+  return [...new Set([...roleMcpServers, ...taskExtraMcp])];
+}
+
 /** The dispatcher gives every task this skill itself: naming it in the extras grants nothing. */
 const DISPATCHER_TASK_SKILL = 'timon-task';
 
@@ -891,17 +1348,34 @@ export function composeTaskPrompt(
  * auto review) lives in verification-loop; this one just prevents the
  * agent from creating the tasks by hand out of habit.
  */
-export function pipelineDirective(task: TaskRow): string {
+export function pipelineDirective(
+  task: TaskRow,
+  /** The main repo and the branch it stands on, read by the caller at spawn. */
+  place?: { sourceRepo: string; activeBranch: string | null },
+): string {
   if (task.type !== 'code') return '';
   if (task.pipeline === 'code-self') {
+    const base = task.base_branch ?? '<base>';
+    const branch = task.branch_name ?? '<your-branch>';
+    const repo = place?.sourceRepo ?? '<main-repository>';
+    // The integration happens on a DETACHED copy of the base inside the
+    // coder's own worktree: the merge commit has the base as first parent, as
+    // a merger's has, and neither the base branch nor the shared checkout is
+    // ever checked out or written.
     return (
       `\n\n---\nPIPELINE: \`code-self\`. Create NO \`review\` or \`merge\` task — ` +
-      `the user chose the fast mode. When your code is ready: merge your ` +
-      `branch into its base YOURSELF with an explicit message that carries no ` +
-      `task id (\`git merge --no-ff -m "${integrateMergeMessage(task.base_branch ?? '<base>')}" ` +
-      `${task.branch_name ?? '<your-branch>'}\`; git's default message names ` +
-      `the task id, which a public repository's hook refuses), then close with ` +
-      `\`timon task done <TASK_ID> --comment "..." --merged-sha <SHA of the merge commit>\`. ` +
+      `the user chose the fast mode. When your code is ready and committed, ` +
+      `integrate your branch into its base YOURSELF, from YOUR worktree only:\n\n` +
+      `\`\`\`bash\n` +
+      `git checkout --detach ${base}\n` +
+      `git merge --no-ff -m "${integrateMergeMessage(base)}" ${branch}\n` +
+      `\`\`\`\n\n` +
+      `The message is explicit and carries no task id: git's default names the ` +
+      `task id, which a public repository's hook refuses. After resolving a ` +
+      `conflict, conclude with \`git commit --no-edit\`. Then move the base:\n\n` +
+      `${baseAdvanceInstructions(repo, base, 'HEAD', place?.activeBranch ?? null)}\n\n` +
+      `Finally \`git checkout ${branch}\` to leave your worktree on its branch, and ` +
+      `close with \`timon task done <TASK_ID> --comment "..." --merged-sha <the base's FULL sha>\`. ` +
       `The sha is REQUIRED: without it the task goes back to BLOCKED (guard against ` +
       `never-merged branches). On a conflict you cannot resolve cleanly, ` +
       `do not force: \`timon task block\` with the reason.`
@@ -1023,11 +1497,17 @@ async function dispatch(): Promise<void> {
 
     try {
       let taskExtraSkills: string[] = [];
-      let taskExtraMcp: string[] = [];
       let taskExtraAllowed: string[] = [];
       try { if (task.extra_skills) taskExtraSkills = JSON.parse(task.extra_skills); } catch { /* */ }
-      try { if (task.extra_mcp_servers) taskExtraMcp = JSON.parse(task.extra_mcp_servers); } catch { /* */ }
       try { if (task.extra_allowed_tools) taskExtraAllowed = JSON.parse(task.extra_allowed_tools); } catch { /* */ }
+      // The card a rerouted task raises would read as the named agent's own rule failing.
+      if (rerouted) {
+        const allowedOf = (name: string): string[] => { try { return loadConfig(name).allowed_tools ?? []; } catch { return []; } };
+        reportReroutedShellPreallow({
+          taskId, named: task.agent_name, routed: effectiveAgentName, why: describeRouting(task.agent_name, routing),
+          namedAllowed: allowedOf(task.agent_name), routedAllowed: [...allowedOf(effectiveAgentName), ...taskExtraAllowed],
+        });
+      }
       // Before the worktree is created: a refusal after it would leave the
       // worktree and its branch behind.
       if (blockIfExtrasWiden(task, effectiveAgentName)) continue;
@@ -1074,12 +1554,23 @@ async function dispatch(): Promise<void> {
       // Same moment, same reason: without git, `resolveWorktree` finds no
       // repository and the mission would start in the shared checkout.
       if (blockIfGitMissing(task)) continue;
+      // The base a code or merge task starts from must exist before its
+      // worktree does: an integration branch is created from the remote here,
+      // fail closed, and a missing base is a refusal, not the shared checkout.
+      if (await blockIfBaseUnavailable(task)) continue;
 
       // Worktree handling: before the spawn, for code/review/merge
       // types, we resolve the worktree to use. If the agent runs in a
       // worktree, we also inject the timon-worktree skill so it knows
       // where it is and how to commit/cleanup properly.
       const wt = await resolveWorktree(task);
+      // A git task the dispatcher could not give a worktree would start in the
+      // agent's own folder: the shared checkout every other agent writes to.
+      if (await blockIfSharedCheckout(task, wt, effectiveAgentName)) continue;
+      // Only the tasks that move a base read it: a detached HEAD reads as null.
+      const activeBranch = wt && (task.type === 'merge' || (task.type === 'code' && task.pipeline === 'code-self'))
+        ? await currentBranch(wt.sourceRepo)
+        : null;
       const baseSkills = ['timon-task', ...taskExtraSkills];
       if (wt) baseSkills.push('timon-worktree');
 
@@ -1100,20 +1591,14 @@ async function dispatch(): Promise<void> {
         );
       }
 
-      // MCP override: zero MCP by default from the task. Only the MCPs
-      // listed in the role's config (roleMcpServers) AND in the task
-      // (taskExtraMcp) are enabled — the union replaces cfg.mcp_servers.
-      const mcpServersOverride = [...new Set([...roleMcpServers, ...taskExtraMcp])];
+      const mcpServersOverride = taskMcpServers(roleMcpServers, task);
 
       const prompt = composeTaskPrompt(
         taskId,
         brief,
         attachments,
-        pipelineDirective(task) + worktreeDirective(
-          task,
-          wt,
-          wt && task.type === 'merge' ? await currentBranch(wt.sourceRepo) : null,
-        ),
+        pipelineDirective(task, wt ? { sourceRepo: wt.sourceRepo, activeBranch } : undefined) +
+          worktreeDirective(task, wt, activeBranch),
       );
       const missionId = await spawnAgent(
         effectiveAgentName,
@@ -1528,14 +2013,17 @@ function autoCloseComment(task: { type?: string | null; agent_name: string }, mi
  * The DONE of a task whose mission ended without the agent closing it, unless
  * the checks every close route applies refuse it (TODO #1053): a `merge` must
  * prove its source branches in the base, a `full` code task already in its base
- * must still be reviewable. A refused close goes BLOCKED with the reason, so the
- * chain never starts on a merge that did not happen or a review of nothing.
+ * must still be reviewable, the task that opens a job's pull request must have
+ * opened it. A refused close goes BLOCKED with the reason, so the chain never
+ * starts on a merge that did not happen or a review of nothing.
  */
 function autoCloseTask(task: TaskRow, missionId: string): 'DONE' | 'BLOCKED' {
-  const refusal = mergeCloseRefusal(task, effectiveMergeSha(task, null, null)) ?? codeCloseRefusal(task);
+  const refusal = pullRequestCloseRefusal(task)
+    ?? mergeCloseRefusal(task, effectiveMergeSha(task, null, null)) ?? codeCloseRefusal(task);
   if (refusal) {
     dbApi.updateTaskStatus(task.id, 'BLOCKED', {
       blockedReason: `The mission ended without closing its task, and the automatic close was refused. ${refusal}`,
+      blockedReasonCode: daemonMessage('task_auto_close_refused', { refusal }),
       // Kept as the agent left it: updateTaskStatus writes the column whole.
       doneComment: task.done_comment,
     });
@@ -1543,6 +2031,25 @@ function autoCloseTask(task: TaskRow, missionId: string): 'DONE' | 'BLOCKED' {
   }
   dbApi.setTaskStatusOnly(task.id, 'DONE', autoCloseComment(task, missionId));
   return 'DONE';
+}
+
+/**
+ * The idle reap of a task mission that had already finished (TIM-0149): its
+ * last turn ended cleanly, every closure question reached it and it still left
+ * its task open (`missions.closure_ignored`, set by the wake loop), then the
+ * reaper killed the idle process. Nothing failed there: replaying the task
+ * would only run the same work again (6 reviews for 4 requeues at a tester's).
+ * The task is closed like a mission that exited cleanly — `AUTO_CLOSED_COMMENT`,
+ * so a review parses as `unknown` and escalates — and `requeue_count` is left
+ * alone. Any other cause (crash, OOM, a turn cut short, a reap with no clean
+ * turn) stays a system death, and so does any other `killed`: a manual kill, a
+ * scope stop, a plugin's `missions.kill` or a config reload stop the work
+ * someone may still want, so only the mark the reaper confirms (2) counts.
+ * The agent's prose is never read for a verdict.
+ */
+function endedAfterIgnoredClosure(missionId: string, reason: InterruptionReason | null | undefined): boolean {
+  if (reason !== 'killed') return false;
+  return dbApi.getMission(missionId)?.closure_ignored === 2;
 }
 
 /** Wire the mission_complete bus event → task status update. Exported so
@@ -1571,6 +2078,11 @@ export function watchMissionComplete(): () => void {
     // If it died passively, we qualify the cause instead of posting a
     // silent BLOCKED (indistinguishable from a business block — incident
     // of 2026-07-30, cf. interruption.ts).
+    if (newStatus === 'BLOCKED' && endedAfterIgnoredClosure(ev.missionId, ev.reason)) {
+      const closed = autoCloseTask(task, ev.missionId);
+      console.log(`[dispatcher] task ${task.id} → ${closed}: mission ${ev.missionId} reaped idle after ignoring its closure questions`);
+      return;
+    }
     if (newStatus === 'BLOCKED') {
       // `crash` by default: a failed/terminated mission_complete with no
       // qualified cause remains a system death, never an agent decision.
@@ -1664,7 +2176,13 @@ export async function reconcileOrphanedTasks(graceMs = 0): Promise<void> {
     // blocks it (`ev.reason`), so must this one — DONE would lie.
     const diedCompleted = m.status === 'completed'
       && (toInterruptionReason(m.interrupted_reason) ?? dbApi.detectMissionDeathSignal(t.mission_id)?.reason) != null;
-    if (m.status === 'failed' || m.status === 'terminated' || diedCompleted) {
+    if (m.status === 'terminated' && !dbApi.detectMissionDeathSignal(t.mission_id)
+      && endedAfterIgnoredClosure(t.mission_id, toInterruptionReason(m.interrupted_reason))) {
+      // Same reading as the live path, for a reap whose event died with the daemon.
+      const closed = autoCloseTask(t, t.mission_id);
+      console.log(`[dispatcher] reconcile: task ${t.id} IN_PROGRESS→${closed} (mission ${t.mission_id.slice(0, 8)} reaped idle after ignoring its closure questions)`);
+      fixed++;
+    } else if (m.status === 'failed' || m.status === 'terminated' || diedCompleted) {
       // `failed` = a real problem; `terminated` = mission interrupted
       // (reaper / restart) BEFORE the agent closed its task. Either way
       // the task stayed IN_PROGRESS → we BLOCK it to resurface it

@@ -32,12 +32,16 @@ Hermes on the machine running Timon needs none of this: use its card above. For 
    ```
 
 2. Paste it to the other tool and ask it to save it as a skill named `timon-export`:
-   - **Hermes**: paste it in a conversation, or save it yourself as `skills/timon-export/SKILL.md` in the Hermes folder (`~/.hermes` on Linux and macOS, `%LOCALAPPDATA%\hermes` on Windows, or the folder `HERMES_HOME` names).
-   - **Grok Bot**: paste it in a message to the Bot.
+   - **Hermes**: paste it in a conversation, or save it yourself in the folder of the profile you use (see **Hermes** below).
+   - **Grok Bot**: paste it in a message to the Bot, or attach `SKILL.md` (see **Grok Bot (desktop)** below).
    - **Another agent tool**: add it as a skill if the tool has skills, otherwise paste it in the conversation.
 3. Ask: *Export my agents for Timon*. Hermes saves the zip in your Downloads folder. Grok Bot works on a computer of its own: it attaches the zip to the conversation, download it from there.
 
 Each Hermes profile becomes one agent, each Grok Bot Bot one agent, and each Grok Bot group a team. If a Grok Bot Bot can only export itself, ask each Bot in turn: you can import several archives one after the other.
+
+**Grok Bot (desktop).** In Timon, choose **Copy the export skill**. Open the Bot you want to export, paste the instructions or attach `SKILL.md`, and ask: *Follow these instructions to export my agents for Timon. Ask me which agents to include, then attach the finished ZIP here.* To reuse the instructions, ask the Bot to save them as a private skill named `timon-export`. When the ZIP appears, hover over its message and choose **… › Download**. Select the ZIP in Timon and check the preview. If the Bot can only export itself, repeat with your other Bots. If it can only return text, ask for the complete export JSON, save it locally as `timon-agent-import.json` and zip that file at the top level of the archive.
+
+**Hermes.** If Timon detects Hermes on the same machine, select the profiles under **Hermes on the machine running Timon**. On another machine, save the skill in the Hermes root (`~/.hermes` on Linux and macOS, `%LOCALAPPDATA%\hermes` on Windows): `skills/timon-export/SKILL.md` for the default profile, `profiles/work/skills/timon-export/SKILL.md` for a named profile such as `work`, then open that profile. If `HERMES_HOME` points to the profile's own folder, put it in `skills/timon-export/SKILL.md` inside that folder. Ask *Export my agents for Timon*, select the profiles to include, and bring the ZIP from that machine's Downloads folder to Timon. Run from any profile, the skill lists them all and keeps each one's name: importing a profile again, by ZIP or by the Hermes card, updates the same agent.
 
 An archive is 50 MiB at most. Plugins can add more sources to this list.
 

@@ -1,19 +1,19 @@
 /**
- * Tests du statut de publication git (gitremote.ts).
+ * Tests of the git publication status (gitremote.ts).
  *
- * `node --test --import tsx src/gitremote.test.ts` (ou `npm test`).
+ * `node --test --import tsx src/gitremote.test.ts` (or `npm test`).
  *
- * Les trois cas couverts ici sont ceux que le widget affichait faux, et
- * qu'aucun dépôt "normal" ne reproduit :
- *   - HEAD détaché (état permanent d'un worktree d'agent pendant une task) :
- *     comptait TOUT l'historique comme "à pousser" ;
- *   - branche jamais poussée : affichait "0 à pousser", un faux négatif qui
- *     rassure alors qu'aucun commit n'est publié ;
- *   - `<remote>/HEAD` non configuré : `rev-parse --abbrev-ref` rend la chaîne
- *     littérale `origin/HEAD` sans échouer, prise pour une ref valide.
+ * The three cases covered here are those the widget showed wrong, and
+ * that no "normal" repository reproduces:
+ *   - detached HEAD (permanent state of an agent worktree during a task):
+ *     counted the WHOLE history as "to push";
+ *   - branch never pushed: showed "0 to push", a false negative that
+ *     reassures while no commit is published;
+ *   - `<remote>/HEAD` not configured: `rev-parse --abbrev-ref` returns the
+ *     literal string `origin/HEAD` without failing, taken for a valid ref.
  *
- * On monte de vrais dépôts jetables : la valeur du test est justement dans le
- * comportement exact de git, qu'un mock reproduirait de travers.
+ * Real throwaway repositories are set up: the value of the test lies precisely in the
+ * exact behaviour of git, which a mock would reproduce wrongly.
  */
 import './test-home.js';
 import { test } from 'node:test';
@@ -28,7 +28,7 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
-/** Dépôt local + remote nu, avec `n` commits sur `main` déjà poussés. */
+/** Local repository + bare remote, with `n` commits on `main` already pushed. */
 function makeRepo(commits = 3): { dir: string; work: string; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'timon-gitremote-'));
   const bare = join(dir, 'remote.git');
@@ -47,7 +47,7 @@ function makeRepo(commits = 3): { dir: string; work: string; cleanup: () => void
   return { dir, work, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 
-test('branche courante alignée sur son upstream', async () => {
+test('current branch aligned with its upstream', async () => {
   const { work, cleanup } = makeRepo();
   try {
     const s = await statusForCwd(work);
@@ -58,13 +58,13 @@ test('branche courante alignée sur son upstream', async () => {
   } finally { cleanup(); }
 });
 
-test('HEAD détaché : compare à la branche par défaut, pas à tout l\'historique', async () => {
+test('detached HEAD: compares to the default branch, not to the whole history', async () => {
   const { work, cleanup } = makeRepo(3);
   try {
     git(work, 'checkout', '-q', '--detach', 'HEAD~1');
     const s = await statusForCwd(work);
     assert.equal(s.branch, null);
-    // Le repli "historique entier" ne doit servir QUE sans remote.
+    // The "whole history" fallback must ONLY serve without a remote.
     assert.notEqual(s.ahead, 3);
     assert.equal(s.ahead, 0);
     assert.equal(s.behind, 1);
@@ -73,7 +73,7 @@ test('HEAD détaché : compare à la branche par défaut, pas à tout l\'histori
   } finally { cleanup(); }
 });
 
-test('branche jamais poussée : non publiée, écart compté contre la branche par défaut', async () => {
+test('branch never pushed: not published, gap counted against the default branch', async () => {
   const { work, cleanup } = makeRepo(2);
   try {
     git(work, 'checkout', '-qb', 'feat/jamais-poussee');
@@ -83,27 +83,27 @@ test('branche jamais poussée : non publiée, écart compté contre la branche p
 
     const s = await statusForCwd(work);
     assert.equal(s.branch, 'feat/jamais-poussee');
-    assert.equal(s.branch_published, false, 'aucun commit de cette branche n\'est publié');
+    assert.equal(s.branch_published, false, 'no commit of this branch is published');
     assert.equal(s.ahead, 1);
 
     const b = s.branches.find((x) => x.name === 'feat/jamais-poussee');
     assert.ok(b);
     assert.equal(b!.upstream, null);
     assert.equal(b!.published, false);
-    // Le bug : `null` ici, rendu "0 à pousser" par l'UI.
+    // The bug: `null` here, shown as "0 to push" by the UI.
     assert.equal(b!.ahead, 1);
     assert.equal(b!.compare_ref, 'origin/main');
   } finally { cleanup(); }
 });
 
-test('branche publiée sans tracking configuré : comptée contre son homonyme distante', async () => {
+test('branch published without tracking configured: counted against its remote namesake', async () => {
   const { work, cleanup } = makeRepo(2);
   try {
     git(work, 'checkout', '-qb', 'feat/poussee-sans-tracking');
     writeFileSync(join(work, 'a'), 'a');
     git(work, 'add', '.');
     git(work, 'commit', '-qm', 'a');
-    // Push SANS `-u` : la branche existe côté remote, sans upstream local.
+    // Push WITHOUT `-u`: the branch exists on the remote, without a local upstream.
     git(work, 'push', '-q', 'origin', 'feat/poussee-sans-tracking');
     writeFileSync(join(work, 'b'), 'b');
     git(work, 'add', '.');
@@ -116,11 +116,11 @@ test('branche publiée sans tracking configuré : comptée contre son homonyme d
   } finally { cleanup(); }
 });
 
-test('`<remote>/HEAD` non configuré : la chaîne littérale n\'est pas prise pour une ref', async () => {
+test('`<remote>/HEAD` not configured: the literal string is not taken for a ref', async () => {
   const { work, cleanup } = makeRepo(2);
   try {
-    // Un `remote add` manuel ne pose pas la symref `<remote>/HEAD` — seul un
-    // clone le fait. On la supprime pour reproduire le cas.
+    // A manual `remote add` does not set the `<remote>/HEAD` symref; only a
+    // clone does. It is deleted to reproduce the case.
     try { git(work, 'symbolic-ref', '--delete', 'refs/remotes/origin/HEAD'); } catch { /* absente */ }
     git(work, 'checkout', '-qb', 'feat/sans-remote-head');
     writeFileSync(join(work, 'z'), 'z');
@@ -128,8 +128,8 @@ test('`<remote>/HEAD` non configuré : la chaîne littérale n\'est pas prise po
     git(work, 'commit', '-qm', 'z');
 
     const s = await statusForCwd(work);
-    // Repli main/master : sans lui, compare_ref valait `origin/HEAD`, le
-    // `rev-list` échouait et l'écart retombait à 0.
+    // main/master fallback: without it, compare_ref was `origin/HEAD`, the
+    // `rev-list` failed and the gap fell back to 0.
     assert.equal(s.compare_ref, 'origin/main');
     assert.equal(s.ahead, 1);
     assert.equal(s.branch_published, false);
@@ -179,7 +179,7 @@ test('TODO #278: a detached HEAD with no default remote branch has an unknown co
   } finally { cleanup(); }
 });
 
-test('dépôt sans remote : tout l\'historique est en attente de publication', async () => {
+test('repository without a remote: the whole history is waiting to be published', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-gitremote-'));
   try {
     const work = join(dir, 'solo');

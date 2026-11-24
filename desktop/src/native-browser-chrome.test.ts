@@ -1,3 +1,4 @@
+// french-ok-file: an accented value, the UTF-8 framing under test
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {

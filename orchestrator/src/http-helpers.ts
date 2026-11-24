@@ -26,10 +26,11 @@ import {
   type SkippedAttachment,
 } from './chat-attachments.js';
 import { defaultBackendName } from './backends/index.js';
-import { ATTACHMENTS_UNSUPPORTED, attachmentsRefusal } from './backends/capabilities.js';
+import { attachmentsRefusal } from './backends/capabilities.js';
 import { rejectIfDenied } from './users/identity.js';
 import { launchErrorStatus, missionLaunchErrorBody } from './resources.js';
 import { isPrivilegedCaller, overrideAuthority, rejectOverride, type SpawnOverrides, spawnOverrideRefusal, spawnWideningDenied } from './users/privileged-overrides.js';
+import { apiError } from './api-error.js';
 
 type SpawnBody = {
   trace_id?: string;
@@ -136,17 +137,17 @@ const handleSpawnOnce = async (req: express.Request, res: express.Response) => {
   const previousMission = receipt && findChannelMission(receipt, req.auth?.user?.id ?? null);
   if (previousMission) { res.status(200).json({ mission_id: previousMission, idempotent: true }); return; }
   if (body.trace_id !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.trace_id)) {
-    res.status(400).json({ error: 'trace_id must be a UUID' });
+    res.status(400).json(apiError('trace_id_invalid', 'trace_id must be a UUID'));
     return;
   }
   const agent = body.agent_name ?? body.agent;
   const rawMission = body.mission ?? body.input ?? '';
   if (!agent || !spawnHasContent(body)) {
-    res.status(400).json({ error: SPAWN_CONTENT_REQUIRED });
+    res.status(400).json(apiError('spawn_fields_required', SPAWN_CONTENT_REQUIRED));
     return;
   }
   if (body.title != null && (typeof body.title !== 'string' || body.title.length > 200)) {
-    res.status(400).json({ error: 'title must be a string of at most 200 characters' });
+    res.status(400).json(apiError('title_invalid', 'title must be a string of at most 200 characters'));
     return;
   }
   // Delegation list: an agent (its mission-bound token, or the mission its CLI
@@ -156,7 +157,7 @@ const handleSpawnOnce = async (req: express.Request, res: express.Response) => {
     ? (body.source_meta as Record<string, unknown>).parent_mission_id : null;
   const orchestrationRefusal = delegationRefusal(req, agent, typeof parentMission === 'string' ? parentMission : null);
   if (orchestrationRefusal) {
-    res.status(403).json({ error: `spawn refused: ${orchestrationRefusal}`, code: 'orchestration_denied' });
+    res.status(403).json(apiError('orchestration_denied', `spawn refused: ${orchestrationRefusal}`, { detail: orchestrationRefusal }));
     return;
   }
   // secu-4: the body may widen what an admin granted to the target agent
@@ -185,7 +186,7 @@ const handleSpawnOnce = async (req: express.Request, res: express.Response) => {
     body.backend_override ?? agentConfig?.backend ?? defaultBackendName(), body.attachments,
   );
   if (attachmentRefusal) {
-    res.status(400).json({ error: attachmentRefusal, code: ATTACHMENTS_UNSUPPORTED });
+    res.status(400).json(apiError('attachments_unsupported', attachmentRefusal));
     return;
   }
   const slashCwd = agentConfig?.cwd;
@@ -199,7 +200,7 @@ const handleSpawnOnce = async (req: express.Request, res: express.Response) => {
   const mission = turn.text;
   if (!mission.trim()) {
     discardChatAttachments(persisted);
-    res.status(400).json({ error: SPAWN_CONTENT_REQUIRED });
+    res.status(400).json(apiError('spawn_fields_required', SPAWN_CONTENT_REQUIRED));
     return;
   }
   if (slash.skill) console.log(`[slash] spawn ${agent} with skill /${slash.skill}`);

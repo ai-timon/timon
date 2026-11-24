@@ -26,11 +26,9 @@
     "working": "Working…",
     "failed": "Sign-in failed",
     "setupFailed": "Setup was refused",
-    "freeUnavailable": "Free registration is not open for this version yet. Try again later or use an existing licence key.",
     "clientUpgradeRequired": "Update Timon to a supported release, then try again.",
     "transferPending": "The previous machine’s token has not expired yet. Wait before activating this machine.",
-    "freeIncompatible": "Free cannot be activated with the current accounts or plugins. Your data has been kept.",
-    "freeAccountRestricted": "Free allows the first active superadmin only. Your account and data are preserved. Ask that administrator to activate a license to restore access.",
+    "freeIncompatible": "This license cannot be applied with the current accounts or plugins. Your data has been kept.",
     "local": "This account is local: signing in never calls the Timon server."
   }
 }

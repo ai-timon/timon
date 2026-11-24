@@ -13,16 +13,16 @@ If your Hermes runs as a gateway, possibly on another machine, see [Hermes Gatew
 2. Sign in, in a terminal, under that same account:
 
    ```bash
-   hermes --setup
+   hermes setup
    ```
 
-   (or sign in to Nous, if that is how you use Hermes). On Windows, if `hermes` is not on your PATH, run `%LOCALAPPDATA%\hermes\bin\hermes.exe --setup`. Do not start `hermes-acp` yourself to sign in: Timon starts it, and run by hand it opens nothing and only waits.
+   With a Nous Portal subscription, `hermes portal` signs in to Nous and picks a model in one step. On Windows, if `hermes` is not on your PATH, run `%LOCALAPPDATA%\hermes\bin\hermes.exe setup`. The **Sign in** button of the Hermes card, in the onboarding and in **Settings › AI models › Providers**, copies this command with the path Timon found. Do not start `hermes-acp` yourself to sign in: Timon starts it, and run by hand it opens nothing and only waits.
 
 3. Restart Timon. **Hermes** then appears in the model selectors.
 
 Timon looks for `hermes-acp` on the service's PATH, in `~/.local/bin` on Linux and macOS, and in `%LOCALAPPDATA%\hermes\bin` on Windows, which is where Hermes' installer puts it.
 
-If Hermes does not appear, run `timon doctor`: it tells you whether the `hermes-acp` binary was found. A CLI installed anywhere else may be missing from the service's PATH; set `host.binaries.hermes-acp` to its absolute path in that case. If a mission stops with "sign in first", run `hermes --setup` in a terminal on the machine that runs Timon (not `hermes-acp`, which only waits), then start the mission again.
+If Hermes does not appear, run `timon doctor`: it tells you whether the `hermes-acp` binary was found. A CLI installed anywhere else may be missing from the service's PATH; set `host.binaries.hermes-acp` to its absolute path in that case. If a mission stops with "sign in first", run `hermes setup` (or `hermes portal` for Nous) in a terminal on the machine that runs Timon (not `hermes-acp`, which only waits), then start the mission again.
 
 ## Models
 
@@ -38,6 +38,7 @@ Replies stream into the chat, tool calls appear with their results, and Hermes' 
 
 ## Limitations
 
+- **No answer in a fenced mission on Linux.** Hermes does its work (the model, its tools, the commands it runs) in a background process of its own, its gateway, which it starts and reaches through a Unix socket. The [mission fence](mission-isolation.md) refuses Unix sockets, so a fenced Hermes mission stops with "Gateway could not start". Timon does not start that gateway outside the fence for you: everything Hermes does would then run unfenced. To use Hermes in a fenced mission, add an exception that allows Unix sockets for its agent ([Exceptions](mission-isolation.md#exceptions)). Know what it opens: the mission reaches every Unix socket of your session, and if a Hermes gateway is already running for your account (the Hermes app, its terminal interface or its scheduled jobs started it), the mission uses that one, outside the fence. [Hermes Gateway](hermes-gateway.md) is the other way: it talks over HTTP to a gateway you start yourself, which the fence never covers either. Windows missions are not fenced, so Hermes is not affected there; macOS has not been checked yet.
 - **Not yet tried on a tester's own account.** Timon was checked against the Hermes agent and a scripted stand-in, not a full session on your Nous account, so a first mission may still fail. Report what you see.
 - **HTTP MCP servers are not passed on.** MCP servers you added over HTTP do not reach Hermes agents.
 - **No live model switch.** A model change applies from the next session.

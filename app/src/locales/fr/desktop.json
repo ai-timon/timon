@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "Nouvelle fenêtre",
+      "view": "Présentation",
+      "zoomReset": "Taille réelle",
+      "zoomIn": "Zoom avant",
+      "zoomOut": "Zoom arrière",
       "open": "Ouvrir {appName}",
       "daemon": "Daemon : {state, select, running {en marche} other {injoignable}} ({origin})",
       "quit": "Quitter"
@@ -94,8 +98,8 @@
       "stopFailedDetail": "Timon reste ouvert et le service continue de tourner.",
       "startFailed": "Le service d’arrière-plan est arrêté et n’a pas pu être relancé.",
       "startFailedDetail": "Vous l’aviez arrêté avec « Quitter et arrêter le service d’arrière-plan ». Rouvrez Timon et acceptez l’autorisation, ou lancez timon service start. Vos données dans {home} sont intactes.",
-      "handoverKept": "Le service d’arrière-plan de Timon n’a pas répondu.",
-      "handoverKeptDetail": "La configuration continue avec Timon tel qu’il tourne dans cette fenêtre. Quittez puis rouvrez Timon une fois la configuration terminée : il essaiera de nouveau le service. Vos données restent dans {home}.",
+      "handoverKept": "Le service d’arrière-plan de Timon tarde à démarrer.",
+      "handoverKeptDetail": "La configuration continue avec Timon tel qu’il tourne dans cette fenêtre. Timon passe la main au service tout seul dès qu’il est prêt, ou au prochain lancement : vous n’avez rien à faire. Vos données restent dans {home}.",
       "refused": "Windows ne lance pas le service d’arrière-plan de Timon pour ce compte.",
       "refusedDetail": "La tâche planifiée TimonOrchestrator est enregistrée, mais Windows ne l’a jamais exécutée. C’est le cas des comptes professionnels ou scolaires sur un PC joint à Microsoft Entra ID. Timon utilise son daemon intégré : il démarre avec l’application et s’arrête quand vous la fermez ou fermez la session. Pour retirer la tâche inutile : timon service uninstall (Windows demande une autorisation).",
       "repair": "Le service d’arrière-plan de Timon n’est plus installé.",
@@ -103,7 +107,9 @@
       "repairConfirm": "Réinstaller le service",
       "repairLater": "Plus tard",
       "repairFailed": "Le service d’arrière-plan n’a pas pu être réinstallé.",
-      "repairFailedDetail": "Timon utilise son daemon intégré pour cette session et le proposera de nouveau au prochain lancement. Vos données dans {home} n’ont pas été modifiées."
+      "repairFailedDetail": "Timon utilise son daemon intégré pour cette session et le proposera de nouveau au prochain lancement. Vos données dans {home} n’ont pas été modifiées.",
+      "sessionFallback": "Le service d’arrière-plan de Timon ne tourne plus que pendant votre session.",
+      "sessionFallbackDetail": "Windows refuse de faire tourner la tâche TimonOrchestrator sans session ouverte pour ce compte : Timon l’a donc enregistrée pour votre session, sans fenêtre de console. Elle s’arrête quand vous fermez la session et redémarre à la prochaine ouverture."
     },
     "staleShell": {
       "message": "Une autre version de {appName} a été lancée.",
@@ -133,8 +139,15 @@
       "detail": "Timon va préparer le service, copier vos données en sauvegarde, puis les migrer pour cette version.",
       "intact": "Avant votre accord, la base et ses journaux, la configuration, les plugins et leurs données, les marqueurs de version et d’accord, le service et ses versions installées restent intacts. Seuls le dossier de données et le profil/cache Electron peuvent être créés.",
       "quitDetail": "Quitter conserve vos données intactes. Pour revenir à la version précédente, réinstallez son installeur.",
+      "quitDetailRollback": "Quitter conserve vos données intactes. Revenir à {from} remet cette version en place et l’ouvre.",
       "approve": "Mettre à jour",
       "quit": "Quitter",
+      "rollback": "Revenir à {from}",
+      "rollbackRestarting": "Retour à Timon {from}…",
+      "rolledBack": "Timon {from} est remis en place",
+      "rolledBackDetail": "Rouvrez Timon pour le lancer.",
+      "rollbackFailed": "Impossible de remettre Timon {from} en place",
+      "rollbackFailedDetail": "Vos données sont intactes. Pour revenir en arrière à la main, voir « Going back to a previous version » dans la documentation.",
       "missions": "{count, plural, one {# mission tourne} other {# missions tournent}} sur Timon {from}. Mettre à jour maintenant {count, plural, one {l'arrête} other {les arrête}}. Attendre ferme cette fenêtre et {count, plural, one {la laisse} other {les laisse}} tourner : rouvrez Timon une fois {count, plural, one {qu'elle est terminée} other {qu'elles sont terminées}}.",
       "wait": "Attendre",
       "approveAnyway": "Mettre à jour quand même",

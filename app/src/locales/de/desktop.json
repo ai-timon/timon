@@ -2,6 +2,10 @@
   "desktop": {
     "menu": {
       "newWindow": "Neues Fenster",
+      "view": "Darstellung",
+      "zoomReset": "Originalgröße",
+      "zoomIn": "Vergrößern",
+      "zoomOut": "Verkleinern",
       "open": "{appName} öffnen",
       "daemon": "Daemon: {state, select, running {läuft} other {nicht erreichbar}} ({origin})",
       "quit": "Beenden"
@@ -102,8 +106,8 @@
       "stopFailedDetail": "Timon bleibt geöffnet, und der Dienst läuft weiter.",
       "startFailed": "Der Hintergrunddienst ist gestoppt und konnte nicht wieder gestartet werden.",
       "startFailedDetail": "Du hast ihn mit „Beenden und Hintergrunddienst stoppen“ gestoppt. Öffne Timon erneut und erlaube die Abfrage, oder führe timon service start aus. Deine Daten in {home} sind intakt.",
-      "handoverKept": "Der Timon-Hintergrunddienst hat nicht geantwortet.",
-      "handoverKeptDetail": "Die Einrichtung geht mit Timon weiter, wie es in diesem Fenster läuft. Beende Timon und öffne es erneut, wenn die Einrichtung abgeschlossen ist: Es versucht den Dienst dann erneut. Deine Daten bleiben in {home}.",
+      "handoverKept": "Der Timon-Hintergrunddienst startet langsam.",
+      "handoverKeptDetail": "Die Einrichtung geht mit Timon weiter, wie es in diesem Fenster läuft. Timon übergibt von selbst an den Dienst, sobald er bereit ist, oder beim nächsten Start: Du musst nichts tun. Deine Daten bleiben in {home}.",
       "refused": "Windows startet den Timon-Hintergrunddienst für dieses Konto nicht.",
       "refusedDetail": "Die geplante Aufgabe TimonOrchestrator ist registriert, aber Windows hat sie nie ausgeführt. Das passiert bei Arbeits- oder Schulkonten auf einem PC, der Microsoft Entra ID beigetreten ist. Timon nutzt stattdessen seinen eingebauten Daemon: Er startet mit der App und stoppt, wenn du sie schließt oder dich abmeldest. Um die ungenutzte Aufgabe zu entfernen: timon service uninstall (Windows fragt nach einer Berechtigung).",
       "repair": "Der Timon-Hintergrunddienst ist nicht mehr installiert.",

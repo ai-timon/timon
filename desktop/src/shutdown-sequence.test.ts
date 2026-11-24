@@ -121,7 +121,7 @@ test('a window destroyed while a box is open waits for it; a rejected box still 
 // The wiring lives in main.ts, which cannot load outside Electron: these guards read it.
 const source = readFileSync(new URL('./main.ts', import.meta.url), 'utf8');
 
-test('main.ts: « Startup failed » goes through the box-then-quit sequence, with no bare quit after the box', () => {
+test('main.ts: "Startup failed" goes through the box-then-quit sequence, with no bare quit after the box', () => {
   const start = source.indexOf("app.whenReady().then(main).catch(");
   const end = source.indexOf("app.on('window-all-closed'", start);
   const handler = source.slice(start, end);

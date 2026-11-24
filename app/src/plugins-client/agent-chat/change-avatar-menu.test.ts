@@ -1,7 +1,7 @@
 /**
- * « Change avatar » in the right-click menus of an agent: shown only to an
+ * "Change avatar" in the right-click menus of an agent: shown only to an
  * account that may edit agents (`agents:manage`), it opens the editor on its
- * Avatar tab. Not to be confused with « Customize », which changes the card
+ * Avatar tab. Not to be confused with "Customize", which changes the card
  * only. The opening on the tab itself is covered by `agent-editor-avatar.test.ts`.
  */
 import assert from 'node:assert/strict';
@@ -49,7 +49,7 @@ const HIERARCHY = {
   workspaceOfProject: new Map(), leadOfProject: new Map(),
 };
 
-test('the chat card\'s menu shows « Change avatar » only when given the gesture, and runs it', async () => {
+test('the chat card\'s menu shows "Change avatar" only when given the gesture, and runs it', async () => {
   const env = await setup({ 'agents:manage': true });
   try {
     const { AgentContextMenu } = await import('./agent-context-menu');
@@ -69,7 +69,7 @@ test('the chat card\'s menu shows « Change avatar » only when given the gestur
 });
 
 for (const [allowed, shown] of [[true, true], [false, false]] as const) {
-  test(`the Agents graph's menu ${shown ? 'shows' : 'hides'} « Change avatar » ${allowed ? 'with' : 'without'} agents:manage`, async () => {
+  test(`the Agents graph's menu ${shown ? 'shows' : 'hides'} "Change avatar" ${allowed ? 'with' : 'without'} agents:manage`, async () => {
     const env = await setup({ 'agents:manage': allowed });
     try {
       const { NodeMenu } = await import('../../app/agents/node-menu');
@@ -89,7 +89,7 @@ for (const [allowed, shown] of [[true, true], [false, false]] as const) {
 }
 
 for (const [allowed, shown] of [[true, true], [false, false]] as const) {
-  test(`the chat card ${shown ? 'offers' : 'withholds'} « Change avatar » ${allowed ? 'with' : 'without'} agents:manage`, async () => {
+  test(`the chat card ${shown ? 'offers' : 'withholds'} "Change avatar" ${allowed ? 'with' : 'without'} agents:manage`, async () => {
     const env = await setup({ 'agents:manage': allowed });
     try {
       const { AgentContextMenu, useChangeAvatar } = await import('./agent-context-menu');

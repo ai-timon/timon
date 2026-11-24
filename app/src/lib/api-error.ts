@@ -10,6 +10,8 @@
  */
 import { hasKey, sourceText, t } from './i18n';
 import { messageArguments } from './i18n-core';
+import type { SettingsCategoryId } from './settings-layout';
+import { settingsPath } from './settings-path';
 
 /** Mirror of `ApiErrorBody` (orchestrator/src/plugins/contract/api-error.ts): the two packages share no code. */
 export interface ParsedApiError {
@@ -48,7 +50,9 @@ export function apiErrorKey(code: string): string {
  */
 export function apiErrorMessage(body: unknown, fallback?: string | { status: number }): string {
   const parsed = parseApiError(body);
-  if (parsed?.code && hasKey(apiErrorKey(parsed.code))) return t(apiErrorKey(parsed.code), parsed.params);
+  // A body that lacks a param of its message (an older daemon, a route that
+  // forgot it) would show the raw `{name}`: the daemon's English says it whole.
+  if (parsed?.code && speaks(apiErrorKey(parsed.code), parsed.params)) return t(apiErrorKey(parsed.code), parsed.params);
   if (parsed?.message) return parsed.message;
   if (typeof fallback === 'string' && fallback) return fallback;
   if (fallback && typeof fallback === 'object') return t('apiErrors.http_status', { status: fallback.status });
@@ -82,6 +86,8 @@ export async function responseErrorMessage(res: Response, fallback?: string): Pr
 export interface StoredDaemonMessage {
   code: string;
   params: Record<string, string | number>;
+  /** A notification whose body is another stored sentence (a task's blocked reason), one level deep. */
+  body?: StoredDaemonMessage;
 }
 
 /** The stored code: a JSON string or the object itself; `null` when absent or malformed. */
@@ -90,6 +96,13 @@ export function parseDaemonMessage(stored: unknown): StoredDaemonMessage | null 
   if (typeof stored === 'string') {
     try { value = JSON.parse(stored); } catch { return null; }
   }
+  const message = storedMessage(value);
+  if (!message) return null;
+  const body = storedMessage((value as { body?: unknown }).body);
+  return body ? { ...message, body } : message;
+}
+
+function storedMessage(value: unknown): StoredDaemonMessage | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as { code?: unknown; params?: unknown };
   if (typeof raw.code !== 'string' || !CODE.test(raw.code)) return null;
@@ -103,13 +116,36 @@ export function daemonMessageKey(code: string): string {
   return `daemonMessages.${code}`;
 }
 
+/**
+ * Stored sentences that send the user to a Settings tab. The reader writes the
+ * path (`{settingsPath}`) from the labels the dialog shows now: a path stored
+ * with the row would keep a tab's old name, and would stay in the daemon's
+ * language.
+ */
+const SETTINGS_PLACES: Readonly<Record<string, readonly [SettingsCategoryId, string]>> = {
+  integration_gave_up: ['secrets', 'connections'],
+  backend_launch_unauthorized: ['models', 'backends'],
+  device_paired: ['network', 'devices'],
+};
+
+/** Params the reader adds to a stored code's own: the daemon never sends them. Exported for the code scanner. */
+export function daemonMessageReaderParams(code: string): readonly string[] {
+  return Object.prototype.hasOwnProperty.call(SETTINGS_PLACES, code) ? ['settingsPath'] : [];
+}
+
+function readerParams(message: StoredDaemonMessage): Record<string, string | number> {
+  const place = Object.prototype.hasOwnProperty.call(SETTINGS_PLACES, message.code) ? SETTINGS_PLACES[message.code] : undefined;
+  return place ? { ...message.params, settingsPath: settingsPath(place[0], place[1]) } : message.params;
+}
+
 const ARGUMENTS = new Map<string, readonly string[] | null>();
 
 /**
- * Whether `key` can say what the daemon stored: a message exists, and the
- * params name every argument of its English (the languages name the same,
- * `locale-parity.test.ts`). A row written by another daemon version may lack
- * one, and the formatter would then show the raw ICU text: the English wins.
+ * Whether `key` can say what the daemon sent or stored: a message exists, and
+ * the params name every argument of its English (the languages name the same,
+ * `locale-parity.test.ts`). A row or a route error from another daemon version
+ * may lack one, and the formatter would then show the raw ICU text: the
+ * English wins.
  */
 function speaks(key: string, params: Record<string, string | number>): boolean {
   const english = sourceText(key);
@@ -127,7 +163,8 @@ export function daemonMessageText(stored: unknown, english: string): string {
   const message = parseDaemonMessage(stored);
   if (!message) return english;
   const key = daemonMessageKey(message.code);
-  return speaks(key, message.params) ? t(key, message.params) : english;
+  const params = readerParams(message);
+  return speaks(key, params) ? t(key, params) : english;
 }
 
 /**
@@ -141,8 +178,14 @@ export function daemonNotificationText(
   const message = parseDaemonMessage(stored);
   if (!message) return english;
   const key = daemonMessageKey(message.code);
+  const params = readerParams(message);
+  const bodyKey = message.body ? daemonMessageKey(message.body.code) : null;
+  const bodyParams = message.body ? readerParams(message.body) : null;
+  let body = english.body;
+  if (bodyKey && bodyParams && speaks(bodyKey, bodyParams)) body = t(bodyKey, bodyParams);
+  else if (speaks(`${key}.body`, params)) body = t(`${key}.body`, params);
   return {
-    title: speaks(`${key}.title`, message.params) ? t(`${key}.title`, message.params) : english.title,
-    body: speaks(`${key}.body`, message.params) ? t(`${key}.body`, message.params) : english.body,
+    title: speaks(`${key}.title`, params) ? t(`${key}.title`, params) : english.title,
+    body,
   };
 }

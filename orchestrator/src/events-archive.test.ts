@@ -1,20 +1,20 @@
 /**
- * Archive froide des events — le contrat qui compte : rien ne disparaît.
+ * Cold archive of events: the contract that matters: nothing disappears.
  *
- * Le risque de cette fonctionnalité n'est pas de mal archiver, c'est qu'une
- * mission archivée s'affiche vide dans l'UI parce que la lecture n'a regardé
- * que la table chaude. D'où l'assertion finale sur `listEvents`.
+ * The risk of this feature is not archiving badly, it is that an
+ * archived mission shows empty in the UI because the read only looked
+ * at the hot table. Hence the final assertion on `listEvents`.
  */
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// TIMON_HOME bien à SOI, et pas celui de `test-home.ts` : la suite entière
-// partage un même dossier temporaire, donc une même `timon.db`. Ce test compte
-// des lignes dans `events` et attache une base — deux gestes globaux qu'un
-// autre fichier de test fausserait (et réciproquement).
-// (pas de `import './test-home.js'` : les imports ESM sont hissés, il poserait
-// son dossier avant cette ligne — ici on veut le nôtre, et rien d'autre.)
+// A TIMON_HOME of OUR own, not the one of `test-home.ts`: the whole suite
+// shares one temporary folder, hence one `timon.db`. This test counts
+// rows in `events` and attaches a database: two global gestures another
+// test file would skew (and the other way round).
+// (no `import './test-home.js'`: ESM imports are hoisted, it would set
+// its folder before this line; here we want ours, and nothing else.)
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-events-archive-'));
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -30,13 +30,13 @@ const { backfillTraceSpans, rebuildMissionSpans } = await import('./trace-span-b
 const MISSION = 'e7f1b0c2-0000-4000-8000-000000000001';
 const DAY = 86_400_000;
 
-test('les events plus vieux que la fenêtre chaude partent en archive, sans perte de lecture', () => {
-  dbApi.createMission(MISSION, 'agent-temoin', 'mission témoin de l\'archivage');
+test('events older than the hot window go to the archive, without losing reads', () => {
+  dbApi.createMission(MISSION, 'agent-temoin', 'mission témoin de l\'archivage'); // french-ok: free-text sample data
   const ids: number[] = [];
   for (let i = 0; i < 10; i++) ids.push(dbApi.insertEvent(MISSION, 'assistant', { i }).id);
 
-  // Les 5 premiers datent de 30 jours : `insertEvent` pose `Date.now()`, on
-  // rétro-date à la main (aucune API ne le permet, et c'est très bien ainsi).
+  // The first 5 date from 30 days ago: `insertEvent` sets `Date.now()`, we
+  // backdate by hand (no API allows it, and that is fine).
   const old = Date.now() - 30 * DAY;
   const backdate = db.prepare('UPDATE events SET timestamp = ? WHERE id = ?');
   for (const id of ids.slice(0, 5)) backdate.run(old, id);
@@ -45,26 +45,26 @@ test('les events plus vieux que la fenêtre chaude partent en archive, sans pert
   assert.equal(moved, 5);
 
   const hot = db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number };
-  assert.equal(hot.n, 5, 'la table chaude ne garde que la fenêtre récente');
+  assert.equal(hot.n, 5, 'the hot table only keeps the recent window');
   const cold = db.prepare('SELECT COUNT(*) AS n FROM archive.events').get() as { n: number };
-  assert.equal(cold.n, 5, 'les 5 anciens sont dans la base attachée');
+  assert.equal(cold.n, 5, 'the 5 old ones are in the attached database');
   assert.ok(EVENTS_ARCHIVE_PATH.endsWith(join('archive', 'events.db')));
 
   const all = dbApi.listEvents(MISSION);
-  assert.equal(all.length, 10, 'listEvents doit recoudre chaud + archive');
-  assert.deepEqual(all.map((e) => e.id), ids, 'et rendre les events dans l\'ordre chronologique');
+  assert.equal(all.length, 10, 'listEvents must stitch hot + archive together');
+  assert.deepEqual(all.map((e) => e.id), ids, 'and return the events in chronological order');
 });
 
-test('un second passage ne déplace rien de plus', () => {
+test('a second pass moves nothing more', () => {
   assert.equal(archiveOldEvents(), 0);
   assert.equal(dbApi.listEvents(MISSION).length, 10);
 });
 
-test('la fenêtre chaude à 0 désactive complètement la fonction', async () => {
+test('a hot window at 0 disables the feature completely', async () => {
   const { invalidateSettingsCache } = await import('./settings.js');
   process.env.TIMON_EVENTS_HOT_DAYS = '0';
   invalidateSettingsCache();
-  // Tout rétro-dater : sans le garde-fou, ces 5 lignes partiraient en archive.
+  // Backdate everything: without the guard, these 5 rows would go to the archive.
   db.prepare('UPDATE events SET timestamp = ?').run(Date.now() - 365 * DAY);
   assert.equal(archiveOldEvents(), 0);
   assert.equal((db.prepare('SELECT COUNT(*) AS n FROM events').get() as { n: number }).n, 5);
@@ -72,7 +72,7 @@ test('la fenêtre chaude à 0 désactive complètement la fonction', async () =>
   invalidateSettingsCache();
 });
 
-test('TODO #547 : les spans des missions finies hors fenêtre partent, jamais ceux d\'une mission vivante ni d\'un run ouvert', () => {
+test("TODO #547: the spans of missions finished outside the window go, never those of a live mission or an open run", () => {
   const now = Date.now();
   const old = now - 30 * DAY;
   const span = (id: string, mission: string, at: number, run: string | null = null) => ({
@@ -82,7 +82,7 @@ test('TODO #547 : les spans des missions finies hors fenêtre partent, jamais ce
   const done = 'e7f1b0c2-0000-4000-8000-0000000000a1';
   const live = 'e7f1b0c2-0000-4000-8000-0000000000a2';
   const system = 'e7f1b0c2-0000-4000-8000-0000000000a3';
-  for (const id of [done, live, system]) dbApi.createMission(id, 'agent-temoin', 'témoin de la rétention des spans');
+  for (const id of [done, live, system]) dbApi.createMission(id, 'agent-temoin', 'témoin de la rétention des spans'); // french-ok: free-text sample data
   dbApi.finishMission(done, 'completed', 0);
   dbApi.finishMission(system, 'completed', 0);
   const finish = db.prepare('UPDATE missions SET ended_at = ? WHERE id = ?');
@@ -120,7 +120,7 @@ async function spanSetting<T>(value: string | undefined, work: () => T | Promise
 
 function finishedMission(endedAt: number): string {
   const id = randomUUID();
-  dbApi.createMission(id, 'agent-temoin', 'témoin de la rétention des spans');
+  dbApi.createMission(id, 'agent-temoin', 'témoin de la rétention des spans'); // french-ok: free-text sample data
   dbApi.finishMission(id, 'completed', 0);
   db.prepare('UPDATE missions SET ended_at = ? WHERE id = ?').run(endedAt, id);
   return id;
@@ -139,7 +139,7 @@ const listed = (id: string) => {
   return { tools: row.span_tools, errors: row.span_errors, duration: row.duration_ms };
 };
 
-test('TODO #631 : TIMON_TRACE_SPANS_RETENTION_DAYS vaut 90 jours par défaut, indépendamment des events', async () => {
+test('TODO #631: TIMON_TRACE_SPANS_RETENTION_DAYS is 90 days by default, independently of the events', async () => {
   const old = Date.now() - 100 * DAY;
   const beyond = finishedMission(old);
   const within = finishedMission(Date.now() - 80 * DAY);
@@ -153,7 +153,7 @@ test('TODO #631 : TIMON_TRACE_SPANS_RETENTION_DAYS vaut 90 jours par défaut, in
   assert.equal(dbApi.listSpans(within).length, 1);
 });
 
-test('TODO #631 : le réglage à 0 ne purge aucun span, quel que soit l\'horizon des events', async () => {
+test("TODO #631: the setting at 0 purges no span, whatever the events horizon", async () => {
   const old = Date.now() - 100 * DAY;
   const mission = finishedMission(old);
   dbApi.upsertSpans([toolSpan(mission, `kept-${mission}`, old)]);
@@ -162,8 +162,8 @@ test('TODO #631 : le réglage à 0 ne purge aucun span, quel que soit l\'horizon
   assert.equal(dbApi.prunedSpanCount(mission), 0);
 });
 
-test('TODO #631 : la liste des missions garde outils, erreurs et durée après la purge', () => {
-  pruneOldTraceSpans(); // ce que les tests précédents ont laissé
+test('TODO #631: the mission list keeps tools, errors and duration after the purge', () => {
+  pruneOldTraceSpans(); // what the previous tests left behind
   const old = Date.now() - 30 * DAY;
   const mission = finishedMission(old);
   dbApi.upsertSpans([
@@ -175,13 +175,13 @@ test('TODO #631 : la liste des missions garde outils, erreurs et durée après l
   assert.equal(dbApi.listSpans(mission).length, 0);
   assert.equal(dbApi.prunedSpanCount(mission), 3);
   assert.deepEqual(listed(mission), before);
-  // Un second passage n'a plus rien à compter.
+  // A second pass has nothing left to count.
   assert.equal(pruneOldTraceSpans(), 0);
   assert.deepEqual(listed(mission), before);
 });
 
-test('TODO #631 : une purge partielle additionne le vivant et le figé', () => {
-  pruneOldTraceSpans(); // ce que les tests précédents ont laissé
+test('TODO #631: a partial purge adds up the live and the frozen', () => {
+  pruneOldTraceSpans(); // what the previous tests left behind
   const now = Date.now();
   const mission = finishedMission(now - 30 * DAY);
   dbApi.upsertSpans([toolSpan(mission, `old-${mission}`, now - 30 * DAY), toolSpan(mission, `late-${mission}`, now)]);
@@ -190,8 +190,8 @@ test('TODO #631 : une purge partielle additionne le vivant et le figé', () => {
   assert.deepEqual(listed(mission), { tools: 2, errors: 0, duration: 20 });
 });
 
-test('TODO #631 : la reconstruction rend la frise sans compter deux fois', () => {
-  pruneOldTraceSpans(); // ce que les tests précédents ont laissé
+test('TODO #631: the rebuild returns the timeline without counting twice', () => {
+  pruneOldTraceSpans(); // what the previous tests left behind
   const old = Date.now() - 30 * DAY;
   const mission = finishedMission(old);
   const toolUse = { type: 'tool_use', id: `t-${mission}`, name: 'Read', input: {} };
@@ -208,8 +208,8 @@ test('TODO #631 : la reconstruction rend la frise sans compter deux fois', () =>
   assert.equal(listed(mission).tools, 1);
 });
 
-test('TODO #631 : une mission dont les events ne donnent aucun span garde ses totaux', () => {
-  pruneOldTraceSpans(); // ce que les tests précédents ont laissé
+test('TODO #631: a mission whose events give no span keeps its totals', () => {
+  pruneOldTraceSpans(); // what the previous tests left behind
   const old = Date.now() - 30 * DAY;
   const mission = finishedMission(old);
   dbApi.upsertSpans([toolSpan(mission, `orig-${mission}`, old)]);
@@ -220,28 +220,28 @@ test('TODO #631 : une mission dont les events ne donnent aucun span garde ses to
   assert.equal(listed(mission).tools, 1);
 });
 
-test('TODO #631 : le trace_backfill sans fenêtre ne ressuscite rien au-delà de l\'horizon', () => {
+test("TODO #631: trace_backfill without a window revives nothing beyond the horizon", () => {
   const beyond = finishedMission(Date.now() - 30 * DAY);
   db.prepare('UPDATE missions SET started_at = ? WHERE id = ?').run(Date.now() - 30 * DAY, beyond);
   dbApi.insertEvent(beyond, 'assistant', { message: { content: [{ type: 'tool_use', id: `t-${beyond}`, name: 'Read', input: {} }] } });
   backfillTraceSpans({ limit: 1_000 });
   assert.equal(dbApi.listSpans(beyond).length, 0);
   backfillTraceSpans({ days: 60, limit: 1_000 });
-  assert.ok(dbApi.listSpans(beyond).length > 0, 'une fenêtre explicite reste respectée');
+  assert.ok(dbApi.listSpans(beyond).length > 0, 'an explicit window stays respected');
 });
 
-test('TODO #631 : la purge rend la main par tranches et s\'arrête quand on le lui demande', async () => {
-  dbApi.pruneTraceSpans(Date.now()); // ce que les tests précédents ont laissé
+test('TODO #631: the purge returns in slices and stops when asked to', async () => {
+  dbApi.pruneTraceSpans(Date.now()); // what the previous tests left behind
   const old = Date.now() - 30 * DAY;
   const mission = finishedMission(old);
   dbApi.upsertSpans(Array.from({ length: 7 }, (_, i) => toolSpan(mission, `slice-${i}-${mission}`, old + i)));
-  assert.equal(dbApi.pruneTraceSpans(old + 100, 2, 3), 4, 'la tranche s\'arrête au premier lot qui dépasse le plafond');
+  assert.equal(dbApi.pruneTraceSpans(old + 100, 2, 3), 4, 'the slice stops at the first batch that exceeds the cap');
   let yielded = 0;
   const timer = setInterval(() => { yielded += 1; }, 0);
   try {
     assert.equal(await drainOldTraceSpans({ sliceRows: 1, pauseMs: 1, stopped: () => yielded > 1_000_000 }), 3);
   } finally { clearInterval(timer); }
-  assert.ok(yielded > 0, 'les timers ont tourné entre deux tranches');
+  assert.ok(yielded > 0, 'the timers ran between two slices');
   assert.equal(dbApi.listSpans(mission).length, 0);
   assert.equal(dbApi.prunedSpanCount(mission), 7);
 

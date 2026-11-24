@@ -28,6 +28,23 @@ const TargetSchema = z.object({
 });
 export type RegistryTarget = z.infer<typeof TargetSchema>;
 
+/** The one host whose icons the daemon downloads: the registry's own CDN. */
+export const ICON_HOST = 'cdn.agentclientprotocol.com';
+
+/**
+ * The agent's logo address, kept only when it is https on the registry's own CDN:
+ * the daemon fetches it once at install, and an address elsewhere would make it
+ * call any host a registry entry names. Anything else is dropped, never fatal to
+ * the entry: a missing logo only means the initial badge.
+ */
+export function trustedIconUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length > 2048) return undefined;
+  let url: URL;
+  try { url = new URL(value); } catch { return undefined; }
+  if (url.protocol !== 'https:' || url.hostname !== ICON_HOST || url.port !== '' || url.username !== '' || url.password !== '') return undefined;
+  return url.href;
+}
+
 const AgentSchema = z.object({
   id: z.string().regex(AGENT_ID_RE),
   name: z.string().min(1).max(120),
@@ -35,6 +52,7 @@ const AgentSchema = z.object({
   description: z.string().max(1000).optional(),
   website: z.string().url().max(2048).optional(),
   license: z.string().max(120).optional(),
+  icon: z.unknown().optional().transform(trustedIconUrl),
   distribution: z.object({
     binary: z.record(z.string(), TargetSchema).optional(),
     npx: z.unknown().optional(),

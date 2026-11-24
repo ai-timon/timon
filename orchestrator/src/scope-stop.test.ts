@@ -119,6 +119,10 @@ test('a user stopping an agent leaves another owner\'s footprint on it untouched
   assert.ok(settledAt(b.request));
   assert.equal(taskRow(b.task).status, 'BLOCKED');
   assert.match(String(taskRow(b.task).blocked_reason), /Stopped by stop-bob@example\.com/);
+  const code = db.prepare('SELECT blocked_reason_code FROM tasks WHERE id = ?').get(b.task) as { blocked_reason_code: string | null };
+  assert.deepEqual(JSON.parse(code.blocked_reason_code ?? 'null'), {
+    code: 'task_stopped_by_scope', params: { by: 'stop-bob@example.com', kind: 'agent', name: 'worker' },
+  });
   assert.equal(getTriggerRow(b.trigger)?.enabled, 0);
   const ids = (key: string, field = 'id') => (res.body[key] as Json[]).map((row) => row[field]);
   assert.deepEqual(ids('missions'), [b.mission]);

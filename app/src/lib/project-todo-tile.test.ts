@@ -1,3 +1,4 @@
+// french-ok-file: idea texts as a French user types them
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ClientRealtime } from './plugin-host/realtime';
@@ -31,12 +32,12 @@ function daemon(url: string, items: readonly Idea[]): Response {
 }
 
 /**
- * La règle dure de « Project TO DO » : sans projet résolu, il ne liste RIEN.
+ * The hard rule of "Project TO DO": with no resolved project, it lists NOTHING.
  *
- * C'est le seul invariant de comportement du volet 4/4, et il tient à un
- * booléen. Une tuile qui retomberait sur le carnet entier montrerait les idées
- * de tous les AUTRES projets sous un en-tête qui en promet un — rien au build
- * ne le dirait, d'où ce test.
+ * It is the only behavioural invariant of part 4/4, and it hangs on a
+ * boolean. A tile that fell back to the whole notebook would show the ideas
+ * of all the OTHER projects under a header that promises one — nothing at build
+ * time would say so, hence this test.
  */
 async function mountTile(scope: unknown, calls: string[], realtime: ClientRealtime = {
   subscribe: () => () => {},
@@ -64,26 +65,26 @@ async function mountTile(scope: unknown, calls: string[], realtime: ClientRealti
   const root = createRoot(document.getElementById('root')!);
   await React.act(async () => {
     root.render(React.createElement(ProjectTodoTile, {
-      scope, titre: 'Project TO DO', poignee: null, realtime, editing: opts.editing ?? false,
+      scope, titre: 'Project TO DO', handle: null, realtime, editing: opts.editing ?? false,
     } as never));
   });
   return { React, root, dom };
 }
 
-test('sans projet résolu, « Project TO DO » n\'appelle rien et le dit', async () => {
+test('with no resolved project, "Project TO DO" calls nothing and says so', async () => {
   const calls: string[] = [];
   const { React, root } = await mountTile({ kind: 'project', slug: null }, calls);
-  assert.deepEqual(calls, [], 'aucun appel : pas même le carnet entier');
+  assert.deepEqual(calls, [], 'no call: not even the whole notebook');
   assert.match(document.body.textContent!, /Choose a project/);
-  // Le geste de saisie attend le projet : une idée créée là serait sans projet,
-  // donc invisible de la tuile qui l'a créée.
+  // The input gesture waits for the project: an idea created there would have no project,
+  // hence be invisible from the tile that created it.
   const addButton = Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Add');
-  assert.equal(addButton?.disabled, true, 'le bouton de la popup attend le projet');
-  assert.ok(!document.querySelector('input'), 'plus de saisie en ligne : tout passe par la popup');
+  assert.equal(addButton?.disabled, true, 'the popup button waits for the project');
+  assert.ok(!document.querySelector('input'), 'no more inline input: everything goes through the popup');
   await React.act(async () => { root.unmount(); });
 });
 
-test('avec un projet, la liste est filtrée sur lui', async () => {
+test('with a project, the list is filtered on it', async () => {
   const calls: string[] = [];
   const { React, root } = await mountTile({ kind: 'project', slug: 'timon' }, calls);
   assert.deepEqual(calls, ['/api/ui/project-todo?status=open&project=timon&limit=500']);
@@ -92,7 +93,7 @@ test('avec un projet, la liste est filtrée sur lui', async () => {
   await React.act(async () => { root.unmount(); });
 });
 
-test('la tuile générale liste tout le carnet', async () => {
+test('the general tile lists the whole notebook', async () => {
   const calls: string[] = [];
   const { React, root } = await mountTile({ kind: 'all' }, calls);
   assert.deepEqual(calls, ['/api/ui/project-todo?status=open&limit=500']);
@@ -140,7 +141,7 @@ test('type chips narrow the list, Open/Done count the selected types', async () 
   const chip = (label: string) => Array.from(document.querySelectorAll('[role=group] button'))
     .find((b) => (b.getAttribute('aria-label') ?? b.textContent)?.startsWith(label)) as HTMLButtonElement;
   assert.equal(rows().length, 3, 'no chip pressed: every open idea');
-  // The id is how agents name an idea in their reports (« #209 »): each line shows it.
+  // The id is how agents name an idea in their reports ("#209"): each line shows it.
   assert.deepEqual(rows().map((l) => l!.match(/#\d+/)?.[0]), ['#1', '#2', '#3']);
   assert.ok(!chip('Critical'), 'a type absent from the view gets no chip');
   assert.equal(chip('Bug').getAttribute('aria-label'), 'Bug — 1');
@@ -177,14 +178,14 @@ test('number and author are grey badges, each one can be hidden per widget', asy
   let tile = await mountTile({ kind: 'project', slug: 'timon' }, [], undefined, [idea]);
   await tile.React.act(async () => { await new Promise((r) => setTimeout(r, 0)); });
   assert.match(row(), /#203/);
-  // The cockpit signs an idea `user`, shown as « You » (todoAuthorLabel).
+  // The cockpit signs an idea `user`, shown as "You" (todoAuthorLabel).
   assert.match(row(), /You/);
   assert.equal(options(), null, 'the options only show while the layout is edited');
   await tile.React.act(async () => { tile.root.unmount(); });
 
   tile = await mountTile({ kind: 'project', slug: 'timon' }, [], undefined, [idea], {
     editing: true,
-    // Hidden for « Project TO DO » only: the other widget's setting does not apply here.
+    // Hidden for "Project TO DO" only: the other widget's setting does not apply here.
     layout: { v: 1, project: { showId: false, showAuthor: false }, all: { showId: true, showAuthor: true } },
   });
   await tile.React.act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -196,7 +197,7 @@ test('number and author are grey badges, each one can be hidden per widget', asy
 
 test('past one page of open ideas, Done still counts and opens the done ones', async () => {
   // The bug seen on a real notebook: 221 open ideas and 737 done showed
-  // « Open 200 · Done 0 », the button greyed out.
+  // "Open 200 · Done 0", the button greyed out.
   const ideas: Idea[] = [
     ...Array.from({ length: 221 }, (_, n) => ({ id: n + 1, status: 'open', urgency: n < 21 ? 'bug' : null, project: 'timon' })),
     ...Array.from({ length: 737 }, (_, n) => ({ id: 1000 + n, status: 'done', urgency: null, project: 'timon' })),

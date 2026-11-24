@@ -28,6 +28,8 @@ import { dbApi, type TaskRow } from './db.js';
 import { loadConfig } from './agent.js';
 import { getHost } from './host/index.js';
 import { notifyUser } from './notify.js';
+import { daemonMessage } from './daemon-message.js';
+import { restartStatus } from './onboarding-restart.js';
 
 /** top-level folder of the repo → docker compose service to rebuild (automatic, safe). */
 const DOCKER_DIRS: Record<string, string> = {
@@ -35,10 +37,17 @@ const DOCKER_DIRS: Record<string, string> = {
   channels: 'channels',
   remote: 'remote',
 };
-/** top-level folder → restart command to REPORT (never automatic). */
-const NOTIFY_ONLY_DIRS: Record<string, string> = {
-  orchestrator: 'systemctl --user restart timon-orchestrator',
-};
+/** Top-level folders whose change needs a daemon restart, REPORTED (never automatic). */
+const NOTIFY_ONLY_DIRS = new Set(['orchestrator']);
+
+/**
+ * The restart line of THIS machine's daemon: the unit, label or task it really
+ * runs under (a package's own unit on Linux, launchd, the scheduled task), not
+ * the source checkout's systemd unit, which does nothing on any other install.
+ */
+function restartLine(): string {
+  return restartStatus().command ?? 'quit and reopen Timon';
+}
 
 /** Builds in progress, key `${repoDir}::${service}` — avoids two concurrent `docker compose
  *  up --build` of the same service (a build already includes the HEAD on disk,
@@ -87,7 +96,12 @@ function rebuildService(repoDir: string, service: string, task: TaskRow, sha: st
         `The Docker rebuild of service \`${service}\` after merge ${sha.slice(0, 8)} ` +
           `("${task.title}") failed.\n\n${stderr.slice(-1500)}\n\n` +
           `Manual rebuild: \`docker compose up -d --build ${service}\` (in ${repoDir}).`,
-        { taskId: task.id },
+        {
+          taskId: task.id,
+          message: daemonMessage('deploy_rebuild_failed', {
+            service, sha: sha.slice(0, 8), title: task.title, output: stderr.slice(-1500), dir: repoDir,
+          }),
+        },
       );
       return;
     }
@@ -96,7 +110,7 @@ function rebuildService(repoDir: string, service: string, task: TaskRow, sha: st
       `Automatic deploy: \`${service}\` rebuilt ✅`,
       `Merge ${sha.slice(0, 8)} ("${task.title}") changed \`${service}/\` → container ` +
         `rebuilt and restarted automatically. The change is live.`,
-      { taskId: task.id },
+      { taskId: task.id, message: daemonMessage('deploy_rebuilt', { service, sha: sha.slice(0, 8), title: task.title }) },
     );
   });
 }
@@ -133,18 +147,28 @@ async function handleMerge(missionId: string): Promise<void> {
   }
 
   // 2. orchestrator/ → notification only (never automatic: restart = death of the missions).
-  const notifyDirs = [...topDirs].filter((d) => NOTIFY_ONLY_DIRS[d]);
+  const notifyDirs = [...topDirs].filter((d) => NOTIFY_ONLY_DIRS.has(d));
   if (notifyDirs.length) {
-    const cmds = notifyDirs.map((d) => `  ${NOTIFY_ONLY_DIRS[d]}`).join('\n');
     console.log(`[deploy] merge ${sha.slice(0, 8)} touched ${notifyDirs.join(', ')}/ → orchestrator restart notice`);
-    notifyUser(
-      `Orchestrator restart required`,
-      `Merge ${sha.slice(0, 8)} ("${task.title}") changed \`${notifyDirs.join('/`, `')}/\` — ` +
-        `not deployed until the orchestrator restarts.\n\n` +
-        `When you can (it stops the missions in flight):\n${cmds}`,
-      { taskId: task.id },
-    );
+    const notice = restartRequiredNotice(sha, task.title, notifyDirs);
+    notifyUser(notice.title, notice.body, { taskId: task.id, message: notice.message });
   }
+}
+
+/** The notice a merge that touched the daemon's own folders posts, with this machine's restart line. */
+export function restartRequiredNotice(sha: string, title: string, dirs: readonly string[]): {
+  title: string; body: string; message: ReturnType<typeof daemonMessage>;
+} {
+  const cmds = `  ${restartLine()}`;
+  return {
+    title: `Orchestrator restart required`,
+    body: `Merge ${sha.slice(0, 8)} ("${title}") changed \`${dirs.join('/`, `')}/\` — ` +
+      `not deployed until the orchestrator restarts.\n\n` +
+      `When you can (it stops the missions in flight):\n${cmds}`,
+    message: daemonMessage('orchestrator_restart_required', {
+      sha: sha.slice(0, 8), title, dirs: dirs.join('/`, `'), commands: cmds,
+    }),
+  };
 }
 
 export function startDeployHook(): () => void {

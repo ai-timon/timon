@@ -23,6 +23,7 @@ import { MascotStyleSwitch } from '@/components/mascot/look-styler/mascot-style-
 import { fetchMe, meCan } from '@/lib/auth';
 import { authLanding } from '@/lib/auth-landing';
 import { t } from '@/lib/i18n';
+import { reportOnboardingScreen } from '@/lib/usage-events';
 import { agentConfigPath, loadMainAgent, type Fetcher } from '../agent-create';
 import { stepHref } from '../onboarding-flow';
 
@@ -87,6 +88,7 @@ export function MascotStep(): ReactElement | null {
       setBusy(null);
       return;
     }
+    reportOnboardingScreen('mascot', keep ? 'completed' : 'skipped');
     await closeWelcome();
     await leave();
   };

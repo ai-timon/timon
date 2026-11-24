@@ -6,6 +6,11 @@
       "title": "¿Una estrella en GitHub?",
       "action": "Dar una estrella en GitHub"
     },
+    "confirmEmail": {
+      "title": "Confirma tu dirección de correo",
+      "body": "Te permite restablecer tu contraseña por correo.",
+      "action": "Confirmar"
+    },
     "feed": {
       "open": "Más información"
     },
@@ -18,6 +23,43 @@
       "feed": {
         "title": "Demo en directo el jueves",
         "body": "Agentes y plugins, una hora."
+      },
+      "update": {
+        "highlight1": "Las actualizaciones se descargan, verifican e instalan desde la app.",
+        "highlight2": "Las misiones continúan donde se detuvieron tras un reinicio.",
+        "highlight3": "Las conversaciones largas se desplazan más rápido.",
+        "highlight4": "Los plugins pueden añadir su propia página de ajustes.",
+        "states": "Vista previa",
+        "state": {
+          "downloading": "Descarga",
+          "verified": "Verificado",
+          "missions": "Misiones",
+          "network": "Error de red",
+          "cancelled": "Contraseña cancelada"
+        },
+        "done": "Vista previa: no se ha instalado nada."
+      }
+    },
+    "license": {
+      "enterKey": "Introducir mi clave",
+      "paused": {
+        "title": "Funciones de pago en pausa",
+        "body": "Vuelven en cuanto {brand} contacte con el servidor de licencias.",
+        "action": "Más información"
+      },
+      "refused": {
+        "title": "Tu licencia ya no está activa",
+        "body": "{brand} sigue en Free. Introduce una clave para recuperar las funciones de pago."
+      },
+      "pastDue": {
+        "title": "Pago atrasado",
+        "body": "Renueva tu suscripción para conservar las funciones de pago.",
+        "bodyUntil": "Renueva tu suscripción antes del {date} para conservar las funciones de pago.",
+        "action": "Ver mi licencia"
+      },
+      "ends": {
+        "title": "Tu licencia termina el {date}",
+        "body": "Introduce una clave nueva antes de esa fecha para conservar las funciones de pago."
       }
     }
   }

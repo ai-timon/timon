@@ -1,8 +1,6 @@
 /** Public onboarding errors never display raw server messages or inventories. */
 export function setupErrorMessage(error: string | undefined, t: (key: string) => string): string {
   const keys: Record<string, string> = {
-    free_unavailable: 'freeUnavailable',
-    free_account_restricted: 'freeAccountRestricted',
     client_upgrade_required: 'clientUpgradeRequired',
     transfer_pending: 'transferPending',
     free_incompatible: 'freeIncompatible',

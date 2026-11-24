@@ -8,7 +8,7 @@
  * card and the window always say the same thing.
  */
 
-import { type ReactElement } from 'react';
+import { type ReactElement, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -142,12 +142,14 @@ export function ProductUpdateDialog(): ReactElement | null {
 /**
  * The dialog around the occupant of `updates.dialog` — or the product's
  * window while the slot is empty (a page outside the bundled halves), so
- * "Update" never opens an empty frame.
+ * "Update" never opens an empty frame. `children` go under the occupant,
+ * inside the dialog: a modal leaves nothing outside it clickable.
  */
-export function UpdateDialogHost({ open, onOpenChange, value }: {
+export function UpdateDialogHost({ open, onOpenChange, value, children }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   value: UpdateDialogValue | null;
+  children?: ReactNode;
 }): ReactElement {
   const claimed = useSlotEntries(UPDATE_DIALOG_SLOT).length > 0;
   return (
@@ -159,6 +161,7 @@ export function UpdateDialogHost({ open, onOpenChange, value }: {
             {claimed ? <SlotSingle name={UPDATE_DIALOG_SLOT} /> : <ProductUpdateDialog />}
           </UpdateDialogProvider>
         )}
+        {value && children}
       </DialogContent>
     </Dialog>
   );

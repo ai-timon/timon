@@ -60,6 +60,20 @@
     "invalid_event_id": "L'identificativo del messaggio non è valido.",
     "message_not_found": "Nessun messaggio con quell'identificativo in questa conversazione.",
     "steer_unsupported": "Questo agente non può essere reindirizzato in questo momento: metti invece il messaggio in coda.",
-    "no_turn_to_steer": "Nessun turno in corso: invia invece un messaggio normale."
+    "no_turn_to_steer": "Nessun turno in corso: invia invece un messaggio normale.",
+    "setup_main_agent_unavailable": "Nessun agente principale trovato su questa installazione. Continua: potrai crearne uno più tardi.",
+    "setup_main_agent_invalid_name": "Questo nome non contiene lettere o cifre che Timon possa usare. Prova con un altro.",
+    "setup_main_agent_name_taken": "Esiste già un agente con questo nome. Scegline un altro.",
+    "setup_workspace_unavailable": "La cartella di lavoro non è disponibile. Controlla la sua posizione e i permessi di accesso, poi riprova.",
+    "setup_main_agent_rename_failed": "Non è stato possibile rinominare l’agente. Riprova tra un momento.",
+    "setup_main_agent_invalid_avatar": "Questa immagine non è una di quelle salvate da Timon. Caricala di nuovo.",
+    "setup_main_agent_failed": "Non è stato possibile salvare il tuo agente. Riprova.",
+    "setup_invalid_identity": "Controlla il nome e riprova.",
+    "setup_team_backend_unavailable": "Nessuno strumento per agenti disponibile. Installane o collegane uno e riprova, oppure parti da zero.",
+    "setup_team_agent_conflict": "Un agente iniziale è stato modificato dopo l’avvio della creazione. Le tue modifiche sono state mantenute; risolvi il conflitto prima di riprovare.",
+    "setup_team_unavailable": "La configurazione del team non è disponibile su questa installazione.",
+    "setup_team_preset_locked": "La creazione del team è già iniziata. Riprendi il team selezionato.",
+    "setup_team_instance_not_empty": "Timon contiene già agenti o lavoro tuoi. Scegli Parti da zero per lasciare tutto com’è e concludere la configurazione.",
+    "setup_team_failed": "Non è stato possibile creare tutto il team. Riprova per continuare da dove si era interrotto."
   }
 }

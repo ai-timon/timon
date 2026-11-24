@@ -72,6 +72,10 @@ export type McpSummary = Omit<McpServer, 'transport'> & {
   transport_type: McpTransport;
   tools_count: number;
   oauth_status: OAuthStatus;
+  /** Set when agents are not given the server: `vault_off`, it carries a
+   *  credential (OAuth, headers) that only the daemon's relay hands on, and the
+   *  relay needs the secrets vault, which is switched off. */
+  held_back?: 'vault_off';
 };
 
 /**

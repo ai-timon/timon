@@ -1,3 +1,4 @@
+// french-ok-file: French language names and accented words, the locale data under test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {

@@ -14,6 +14,10 @@
     "merge_held_no_verdict": "Merge held: review {reviewId} is DONE but its done_comment carries NO usable verdict (expected a first line `verdict: pass` or `verdict: changes_requested`). Without an explicit verdict there is no merge. Have the review closed again with a verdict, or unblock it by hand after reading the diff.",
     "repair_wait_stalled": "Review {reviewId} of code {codeId} requested changes, waiting for the repair iteration — no iteration has appeared in {waited} min (limit {limit} min). The verification loop did not create one (iteration cap reached, chain root gone, or a lost event). Create the repair iteration by hand, or re-run the review, then unblock this task.",
     "git_missing_for_task": "git not found on this host: code, review and merge tasks of a git project need git. Install git, then restart Timon.",
+    "integration_branch_unset": "Integration mode \"{mode}\" needs an integration branch and the remote ref to cut it from (base \"{branch}\", remote ref \"{baseRef}\"). The task was not started: set both on the task, then retry it.",
+    "integration_branch_unavailable": "Integration branch {branch} is unavailable: {detail}. The task was not started, and the branch is never cut from the local base instead of {baseRef}. Fix the remote or the branch name, then retry the task.",
+    "task_base_missing": "Base {base} does not exist in the repository. The task was not started: a {type} task never runs without its base. Create the branch or change the task's base, then retry it.",
+    "task_worktree_unavailable": "No worktree for this {type} task ({cause}). It was not started: in the agent's own folder it would write to the checkout every agent shares. Fix the cause, then retry the task.",
     "review_verdict_unusable": {
       "title": "Review with no usable verdict: {title}",
       "body": "Review {taskId} closed without a parsable JSON verdict, so the code→review→merge chain cannot continue.\n\nThe reviewer wrote: {excerpt, select, none {(empty)} other {{excerpt}}}\n\nRe-trigger the review or decide manually (merge / new code iteration)."
@@ -53,6 +57,282 @@
     "blocking_loop_detected": {
       "title": "Blocking loop detected; intervention required: {title}",
       "body": "Task {taskId} (group {group, select, none {none} other {{group}}}) has been blocked {wakes} times in a row. The wake loop stopped waking the orchestrator to break the loop. Reason for the last blockage: {reason, select, none {(unspecified)} other {{reason}}}.\n\nUnblock it manually after review (UI Kanban → task {taskId})."
+    },
+    "task_stopped_by_scope": "Stopped by {by} (timon stop {kind} {name})",
+    "task_blocked": {
+      "title": "{title, select, none {Task blocked ({taskId})} other {Task blocked: {title}}}"
+    },
+    "resource_memory_max": {
+      "title": "Memory ceiling reached ({label})",
+      "body": "Cgroup {unit} hit MemoryMax ({max}) {times, plural, one {# time} other {# times}}. No OOM kill so far, but there is no headroom left."
+    },
+    "resource_memory_high": {
+      "title": "Memory pressure ({label})",
+      "body": "Cgroup {unit} went over MemoryHigh ({high}) — usage {usage}. The kernel throttles and reclaims memory; nothing is killed, but the load is abnormal."
+    },
+    "resource_oom_killed": {
+      "title": "OOM: {count, plural, one {# process} other {# processes}} killed in {label}",
+      "body": "The kernel killed {count, plural, one {# process} other {# processes}} of cgroup {unit} (memory {usage} / max {max}). A task may have failed without a readable message — check `journalctl -k -g \"Out of memory\"`."
+    },
+    "resource_mission_killed": {
+      "title": "OOM: mission {mission} — process killed",
+      "body": "[Timon resource guard] {cmd, select, none {{pid, select, none {One of your processes} other {Your process pid {pid}}}} other {Your process `{cmd}`{pid, select, none {} other { (pid {pid})}}}} was killed by the kernel: it used {ceiling, select, none {too much memory} other {more than {ceiling} of memory}}, {whose, select, slice {the ceiling shared by all running missions} other {the ceiling of this mission}}.{rss, select, none {} other { It held {rss} when it was killed.}} Running the same command again will be killed the same way. Find the cause first — an infinite loop, a leak, an unbounded dataset — and run a narrower target (`npm test -- <file>`) once it is fixed."
+    },
+    "resource_pressure_high": {
+      "title": "High memory pressure (missions)",
+      "body": "Missions spend {pressure} % of their time stalled waiting for memory (usage {usage} / max {max}). Above {limit} for 20 s, systemd-oomd will kill a mission."
+    },
+    "merge_repair_by_hand": {
+      "title": "Merge to repair by hand: {title}",
+      "body": "Task `{taskId}` erased {count, plural, one {# file} other {# files}} it should not have touched, and {max} automatic repair attempts changed nothing. It stays DONE — the check touches nothing more, so as not to pile up half-repairs.\n\nMerge concerned: `{sha}`\nFiles: {files}{more, plural, =0 {} other {\n… and # more}}"
+    },
+    "chain_abandoned": {
+      "title": "Chain abandoned: {title}",
+      "body": "The follow-up chain of task {taskId} ({type}, \"{title}\") failed {attempts} times in a row: its review / merge / doc were not created and will no longer be created automatically.\n\nA failure that repeats this often is structural (worktree cleaned up, project role that cannot be resolved, error in a step of the chain) — the `[task-chain]` logs of this task carry the cause.\n\nTo replay: dispatching the task again resets the counter."
+    },
+    "sandbox_cascade_ahead": {
+      "title": "{type} will run on `{target}`, whose sandbox just failed: {title}",
+      "body": "Sandbox failure on `{target}` while the code of this chain ran on `{coder}`. Review and merge do not follow the coder: they stay on `{target}` and block the same way. Move them too:\n  timon series role set --scope review --backend {coder} --series {series}\n  timon series role set --scope merge --backend {coder} --series {series}\nthen requeue the blocked task.\n(Blocked on its sandbox in this series: task {evidenceId} — {evidenceTitle}.)"
+    },
+    "ask_user_form_looping": {
+      "title": "Agent form looping: {agent}",
+      "body": "{attempts} invalid form payloads in a row on mission {mission} — last defect: {defect}. No card could be created, so you saw nothing go by. The form channel is closed for this mission: the agent was instructed to decide for itself while stating its assumption, or to close out via `timon task block`. The decision it wanted to submit to you is still pending."
+    },
+    "late_answer_not_replayed": {
+      "title": "Late answer could not be replayed: {tool}",
+      "body": "You answered `{tool}` for mission {mission} but it could not be relaunched (process dead, no resumable session). {taskId, select, none {Relaunch the mission if the action is still needed.} other {Associated task: {taskId} ({taskTitle}). Relaunch it if needed.}}"
+    },
+    "agent_pair_loop_stopped": {
+      "title": "Agent loop stopped: {a} ↔ {b}",
+      "body": "`{a}` and `{b}` exchanged {count} messages within {minutes} min with no human input. Their messages are now held in the inbox (status \"held\") and neither agent wakes the other any more.\n\nWrite to either agent in the chat to resume them. Held messages are not redelivered. Ceiling: TIMON_WAKE_PAIR_MAX_MESSAGES ({max}), window: TIMON_WAKE_PAIR_WINDOW_MS."
+    },
+    "memory_proposals_to_review": {
+      "title": "Memory {slug}: {count, plural, one {# recurring fact} other {# recurring facts}} to review",
+      "body": "These facts recur ≥{threshold}× and are proposed for promotion (proposals.md of project `{slug}`). Approve them by copying them into the suggested curated file through the project memory UI/API.\n\n{top}"
+    },
+    "deploy_rebuild_failed": {
+      "title": "Automatic rebuild failed: {service}",
+      "body": "The Docker rebuild of service `{service}` after merge {sha} (\"{title}\") failed.\n\n{output}\n\nManual rebuild: `docker compose up -d --build {service}` (in {dir})."
+    },
+    "deploy_rebuilt": {
+      "title": "Automatic deploy: `{service}` rebuilt ✅",
+      "body": "Merge {sha} (\"{title}\") changed `{service}/` → container rebuilt and restarted automatically. The change is live."
+    },
+    "orchestrator_restart_required": {
+      "title": "Orchestrator restart required",
+      "body": "Merge {sha} (\"{title}\") changed `{dirs}/` — not deployed until the orchestrator restarts.\n\nWhen you can (it stops the missions in flight):\n{commands}"
+    },
+    "shell_preallow_inert": {
+      "title": "Shell pre-allow ignored in auto mode: {agent}",
+      "body": "{agent} pre-allows {rules} but runs in auto mode: the claude CLI ignores a rule that allows every shell command there, and a command its classifier cannot judge waits for an approval (an autonomous mission is denied after the delay). To keep the rule, run the agent in acceptEdits, and its project role too if it sets one; or pre-allow narrower patterns such as Bash(git:*).\n\nAuto mode was set by {source, select, mission {its task or project role} other {its own config}}."
+    },
+    "shell_preallow_rerouted": {
+      "title": "Shell pre-allow not used: {named}",
+      "body": "Task {task} names {named}, which pre-allows {rules}, but runs on {routed}, which does not ({why}). Its shell commands go to the classifier, and one it cannot judge waits for an approval. Give {routed} the same allowed tools, or let the task run on {named}."
+    },
+    "backend_no_credit": {
+      "title": "Backend {backend}: no credit left",
+      "body": "`{backend}` answers with a payment error (HTTP 402 / balance exhausted): the account has no credit left.\n\nUnlike a usage limit, **this does not reopen on its own** — the account has to be topped up.\n\n- Backend sidelined until {until, date, medium} {until, time, short} (or until a turn succeeds on it again).\n- Missions and tasks that depend on it switch onto their fallback plan."
+    },
+    "series_fallback_applied": {
+      "title": "{outcome, select, rule {Fallback rule applied — series moved (scope {scope})} switched {Quota exhausted — series switched to its fallback plan} stuck {Quota exhausted — tasks switched, orchestrator NOT moved} other {Quota exhausted — tasks switched to their fallback plan}}",
+      "body": "Series `{series}` ({tasks, plural, one {# task} other {# tasks}}) — {pilot, select, failed {its tasks are} stuck {its tasks are} other {it is}} restarting on backup backends.\n\n- Orchestrator: {pilot, select, none {none identified} repointed {repointed to `{backend}` (mission not running — not respawned here)} swapped {swapped to `{backend}` without changing id (context preserved)} failed {NOT moved — the switch failed ({failure}); it stays stopped} stuck {NOT moved — no usable fallback; it stays stopped until its backend is back or a fallback is set} other {unchanged (its backend is not the one out of quota)}}\n- Tasks repointed by type: {moved, select, none {none} other {{moved}}}\n- Tasks requeued (blocked by the backend, not by the work): {requeued}{trigger, select, none {} other {\n- Trigger: {trigger}}}"
+    },
+    "plugin_pattern_ignored": {
+      "title": "Plugin `{pluginId}`: its {place, select, ready {server ready pattern} other {webhook secret pattern}} for `{name}` is ignored",
+      "body": "{failure, select, timeout {It ran past {timeoutMs} ms and was stopped.} other {It is not a valid regular expression.}} {place, select, ready {The server is handed over without waiting for its ready line.} other {Pasted secrets are accepted without this format check.}} The check stays off until the daemon restarts; ask the plugin’s author for a simpler pattern."
+    },
+    "integration_gave_up": {
+      "title": "A messaging integration stopped retrying a message",
+      "body": "A message on the {transport} connection could not be processed. Replay it from {settingsPath}."
+    },
+    "plugin_spawn_requested": {
+      "title": "Plugin `{pluginId}` wants to spawn missions",
+      "body": "It called `{via}`, which consumes this machine’s AI subscriptions. {unsigned, select, yes {It is not signed, so it is not approved automatically. } other {}}Add `{pluginId}` to `pluginPolicy.spawn.approved` in timon.config.json to allow it."
+    },
+    "plugin_spawn_quota": {
+      "title": "Plugin `{pluginId}` hit its spawn quota",
+      "body": "{count} missions in {minutes} min{extra, plural, =0 {} other {, and `{via}` asked for # more}}. Raise `pluginPolicy.spawn.max` if this is expected."
+    },
+    "plugin_package_takeover": {
+      "title": "Plugin `{id}` now comes from another package",
+      "body": "`{pkg}` replaced `{previous}` under this id, and nobody granted it what the previous package held. {changes}. Grant them again only if you trust this package with them."
+    },
+    "backend_launch_unauthorized": {
+      "title": "Backend `{backend}` was not started: its program needs your authorization",
+      "body": "{reason} Open this card to review the program on the provider’s page ({settingsPath}) and authorize it again if it is the one you expect."
+    },
+    "plugin_secret_global_lost": {
+      "title": "Plugin `{pluginId}` no longer reads the secret `{name}`",
+      "body": "`{name}` is shared with every agent (`global`), which no longer reaches plugins. If you trust this plugin with it, grant it by name: open this card (Secrets page, Grant) or run `timon secret grant {name} --scope {scope}`."
+    },
+    "backend_key_shared": {
+      "title": "The key of backend `{backend}` is still shared outside it",
+      "body": "`{name}` was created for backend `{backend}` and is now granted to {scopes}: it still enters those missions whatever backend they run on. To keep it on this backend only, for the same missions: `timon secret grant {name} --scope backend:{backend}`. To keep sharing it as it is, change its note in the Secrets page: it is then yours, and no longer removed with the backend."
+    },
+    "plugin_failed": {
+      "title": "Plugin {id} failed"
+    },
+    "plugin_async_failure": {
+      "title": "Plugin {pluginId}: an asynchronous operation failed",
+      "body": "Timon kept running. The plugin left an error unhandled; the daemon log has the details. Update or disable the plugin if it repeats."
+    },
+    "triggers_check_after_rename": {
+      "title": "{count, plural, one {Check a trigger} other {Check # triggers}}: agent {oldName} is now {newName}",
+      "body": "The filter of these event triggers matches the agent’s name by pattern or substring and no longer reads it the same way. They were left unchanged: review each one on the Triggers page.\n{list}"
+    },
+    "main_seat_empty": {
+      "title": "No main orchestrator",
+      "body": "No agent holds the main orchestrator seat: recaps and notifications have no recipient. {candidates, select, none {No project-less orchestrator exists. Create one in **Agents**: when it is the only one, it takes the seat by itself.} other {Eligible orchestrators: {candidates}. In **Agents**, open the one you talk to and choose **Set as main orchestrator**, or run `timon agent set-main <name>`.}}"
+    },
+    "trigger_script_not_run": {
+      "title": "Script not run: {name}",
+      "body": "{error}"
+    },
+    "trigger_schedule_failed": {
+      "title": "Scheduled trigger failed: {name}",
+      "body": "{error}"
+    },
+    "trigger_script_failed": {
+      "title": "Script failed: {name}",
+      "body": "{error}{output, select, none {} other {\n\n{output}}}"
+    },
+    "trigger_switched_off": {
+      "title": "Trigger switched off: {name}",
+      "body": "Its script failed {times} times in a row. Fix it, then switch the trigger back on."
+    },
+    "agent_triggers_switched_off": {
+      "title": "{count, plural, one {An agent’s trigger was switched off} other {# agents’ triggers were switched off}}",
+      "body": "An agent set these up and nobody had switched them on. A trigger an agent makes now waits for you: review each one on the Triggers page and switch it back on if you want it.\n{list}"
+    },
+    "backup_disk_full": {
+      "title": "Nightly backup skipped: disk almost full",
+      "body": "{error}. Free some space on this disk; older backups can be deleted from the backups folder."
+    },
+    "backup_failed_nights": {
+      "title": "Nightly backup failed {nights} nights in a row",
+      "body": "Last error: {error}. No new backup has been written since the first of these failures."
+    },
+    "license_build_expired": {
+      "title": "This Timon beta build has expired",
+      "body": "Install the current beta build to keep working. Your data is preserved."
+    },
+    "license_not_renewed": {
+      "title": "Licence not renewed",
+      "body": "Timon could not renew its licence ({cause}); the modules your licence covers stay off until it goes through. It tries again every {minutes} min."
+    },
+    "license_off": {
+      "title": "Licence is no longer valid",
+      "body": "{detail}. This beta has no Free tier: Timon is locked until a valid licence is activated; all data is preserved."
+    },
+    "license_change_refused": {
+      "title": "Licence change refused",
+      "body": "{error}"
+    },
+    "dreams_to_review": {
+      "title": "Dreaming: {total, plural, one {# track} other {# tracks}} to review",
+      "body": "{improve, plural, one {# improvement} other {# improvements}} + {opportunity, plural, one {# opportunity} other {# opportunities}}. To approve, reject or snooze."
+    },
+    "workflow_script_not_run": {
+      "title": "Script not run: {name}"
+    },
+    "permission_required": {
+      "title": "Permission required: `{tool}`",
+      "body": "Agent {agent} requests permission to use `{tool}`.{minutes, plural, =0 {} other { Autonomous mission: with no answer within # min, automatic refusal.}}"
+    },
+    "device_paired": {
+      "title": "New device connected",
+      "body": "\"{name}\" was paired with your account. If this was not you, revoke it in {settingsPath}."
+    },
+    "accounts_suspended": {
+      "title": "{count, plural, one {# account is suspended} other {# accounts are suspended}}",
+      "body": "Accounts beyond the first superadmin need a pro licence and the Multi-user plugin. Their data are kept, and they get their access back as soon as both are there."
+    },
+    "push_test": {
+      "title": "Timon test push",
+      "body": "If you can read this on your phone, the channel works."
+    },
+    "update_available": {
+      "title": "Timon {version} is available",
+      "body": "You run {current}. Open Timon to see what changed and download the installer."
+    },
+    "email_change_requested": {
+      "title": "Email change requested",
+      "body": "{name} ({email}) asked to move their login to {newEmail}. Pending confirmation."
+    },
+    "email_change_confirmed": {
+      "title": "Email change confirmed",
+      "body": "{name} moved their login from {previous} to {newEmail}."
+    },
+    "memory_curated": {
+      "title": "Memory curated — {label}",
+      "body": "+{added, plural, one {# rule} other {# rules}}, {merged, plural, one {# merge} other {# merges}}, {superseded} replaced, {rejected} rejected. You can veto them in /memory."
+    },
+    "egress_new_hosts": {
+      "title": "{count, plural, one {New outbound host} other {# new outbound hosts}} for {scopeKind, select, project {project} other {agent}} {scopeName}",
+      "body": "Mission of {agent} reached {hosts}{more, plural, =0 {} other { and # more}} for the first time in this {scopeKind, select, project {project} other {scope}}. Nothing was blocked; the mission’s connections are listed by `timon mission egress {missionId}`."
+    },
+    "ui_document_to_answer": {
+      "title": "Document to answer: {origin}"
+    },
+    "secret_requested": {
+      "title": "Secret requested: {agent}"
+    },
+    "command_to_decide": {
+      "title": "Command to decide: {agent}"
+    },
+    "task_auto_close_refused": "The mission ended without closing its task, and the automatic close was refused. {refusal}",
+    "telegram_worker_stopped": {
+      "title": "The Telegram worker {worker} stopped starting",
+      "body": "{restarts} restarts without staying up {seconds}s ({why}). Telegram messages are no longer picked up; check the bot tokens (`~/.timon/secrets.env`) and the daemon logs."
+    },
+    "web_app_port_occupied": {
+      "title": "The web app stopped starting",
+      "body": "{why}. Another listener is using the web app port. Timon keeps checking and starts the web app as soon as the port is free; close the previous Timon instance or change app.listen.port. No process was killed."
+    },
+    "web_app_clean_exit": {
+      "title": "The web app stopped starting",
+      "body": "{why}. The web app exited successfully but is no longer supervised. Check the daemon logs. Once fixed, `timon app restart` or reopening the desktop app starts it again."
+    },
+    "web_app_stopped": {
+      "title": "The web app stopped starting",
+      "body": "{why}. The web app could not stay running. Check the daemon logs for the startup error, exit code and signal. Once fixed, `timon app restart` or reopening the desktop app starts it again."
+    },
+    "layout_proposal_to_review": {
+      "title": "{kind, select, widgets {Widget arrangement} islands {Island layout} island_arrangement {Island arrangement} nav {Menu} navigate {Navigation} trigger {Trigger} other {Arrangement}} to review: {agent}",
+      "body": "{mission}{project, select, none {} other { ({project})}}{note, select, none {} other { — {note}}}"
+    },
+    "forge_proposal_pending": {
+      "title": "A GitHub comment waits for your approval",
+      "body": "Read and publish, edit or discard the comment proposed on {target}."
+    },
+    "forge_branch_update_pending": {
+      "title": "A branch update waits for your approval",
+      "body": "Publish or discard the update of the branch of {target} on GitHub."
+    },
+    "forge_conflict_push_pending": {
+      "title": "A conflict resolution waits for your approval",
+      "body": "Read the resolution prepared for {target}, then publish or discard it."
+    },
+    "landing_repair_pushed": {
+      "title": "Repair pushed to {pr}",
+      "body": "The repair of {branch} was pushed to its pull request {pr}; GitHub runs its checks again."
+    },
+    "landing_repair_unchanged": {
+      "title": "Repair of {pr} changed nothing",
+      "body": "The repair of {branch} ended without a new commit: nothing was pushed. Read its task's closing comment."
+    },
+    "landing_repair_failed": {
+      "title": "Repair of {pr} not pushed",
+      "body": "The repair of {branch} was not pushed: {reason}"
+    },
+    "integration_merged": {
+      "title": "{pr, select, none {Integration branch merged: {branch}} other {Pull request merged: {branch}}}",
+      "body": "{branch} landed in {target}. Its TO DO ideas and doc tasks follow on their own."
+    },
+    "integration_closed": {
+      "title": "{pr, select, none {Integration branch closed: {branch}} other {Pull request closed: {branch}}}",
+      "body": "{branch} did not land in {target}: nothing closes and the branches are kept. Its pilot decides what comes next."
     }
   }
 }

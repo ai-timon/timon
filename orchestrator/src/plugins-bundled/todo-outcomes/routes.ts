@@ -20,7 +20,7 @@ export function registerRoutes(app: Router): void {
   app.get('/api/todo-outcomes/outcome/:todoId', (req, res) => {
     if (!requireAuth(req, res)) return;
     const id = Number(req.params.todoId);
-    if (!Number.isInteger(id)) { res.status(400).json({ error: 'invalid todo id' }); return; }
+    if (!Number.isInteger(id)) { res.status(400).json(apiError('invalid_id', 'invalid todo id')); return; }
     // Same visibility as the idea itself: an outcome is never read past its owner.
     if (!scopedDb(viewerFromRequest(req)).getProjectTodo(id)) {
       res.status(404).json(apiError('todo_not_found', 'project-todo item not found'));

@@ -6,7 +6,7 @@ import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BrandLogo } from '@/components/brand-logo';
 import { SetupRestartBanner } from '@/components/setup-restart-banner';
-import { LicenseBanner } from '@/components/license-banner';
+import { LicenseLockReload } from '@/components/license-lock-reload';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { BrowserToggle } from '@/components/browser-toggle';
 import { VerticalNav } from '@/components/vertical-nav';
@@ -145,7 +145,9 @@ export function TopBar({
             They also stay out of the mobile collapse below: a warning that
             scrolls away is a warning nobody reads. */}
         {banners && <SetupRestartBanner />}
-        {banners && <LicenseBanner />}
+        {/* The licence speaks through bottom-left notice cards; only the
+            reload into a beta build's lock screen is left here. */}
+        {banners && <LicenseLockReload />}
       </div>
       {/* Folds on phones only: the row drops to zero height at once and the
           bar, out of the flow's way, slides up over it (see the slide above).

@@ -36,7 +36,8 @@ import { confirmAction } from '@/components/confirm-dialog/confirm-dialog-contex
 const POLL_MS = 1500;
 const field = 'h-7 w-full rounded-md border border-border bg-background px-2 text-[12px]';
 
-type UserOption = { id: string; name: string; email: string };
+/** An account as the core's directory names it: never an e-mail. */
+type UserOption = { id: string; name: string };
 
 /** What is open under a row: one thing at a time. */
 type Panel = { id: string; kind: 'login' | 'rename' | 'grants' };
@@ -400,8 +401,7 @@ export function GrantsPanel({ account, users, onDone, onCancel }: {
           {candidates.map((user) => (
             <label key={user.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-[12px] hover:bg-muted/50">
               <input type="checkbox" className="size-3.5 accent-primary" checked={chosen.has(user.id)} onChange={() => toggle(user.id)} />
-              <span className="truncate">{user.name || user.email}</span>
-              {user.name && <span className="truncate text-[11px] text-muted-foreground">{user.email}</span>}
+              <span className="truncate">{user.name || user.id}</span>
             </label>
           ))}
         </div>
@@ -465,7 +465,7 @@ function AddAccountForm({ backends, users, superadmin, onCreated, onCancel }: {
           <select className={field} value={owner} onChange={(e) => setOwner(e.target.value)}>
             <option value="">{t('backendAccounts.form.ownerMe')}</option>
             <option value="instance">{t('backendAccounts.form.ownerInstance')}</option>
-            {users.map((user) => <option key={user.id} value={user.id}>{user.name || user.email}</option>)}
+            {users.map((user) => <option key={user.id} value={user.id}>{user.name || user.id}</option>)}
           </select>
         </label>
       )}
@@ -506,13 +506,13 @@ export function BackendAccountsList({ backends, onChanged }: {
 
   useEffect(() => {
     if (!superadmin) return;
-    void fetch('/api/ui/users', { cache: 'no-store' })
+    void fetch('/api/ui/users/directory', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : { users: [] }))
       .then((body: { users?: UserOption[] }) => setUsers(body.users ?? []))
       .catch(() => setUsers([]));
   }, [superadmin]);
 
-  const userNames = useMemo(() => new Map(users.map((user) => [user.id, user.name || user.email])), [users]);
+  const userNames = useMemo(() => new Map(users.map((user) => [user.id, user.name || user.id])), [users]);
   // A new array each render from a caller would restart the effects below: compare by content.
   const scopeKey = backends ? backends.join('\n') : null;
   const scoped = useMemo(() => {

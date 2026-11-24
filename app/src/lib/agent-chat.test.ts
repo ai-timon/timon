@@ -1,5 +1,7 @@
 /**
  * The instance model of `@timon/agent-chat`.
+  *
+  * french-ok-file: an accented sub-agent label, as a user names one
  *
  * What this locks: several cards of the same widget must be able to coexist,
  * each with its own identity, and that identity is what the host persists a
@@ -178,7 +180,7 @@ test('a selection the config no longer offers falls back to the card\'s own agen
  * anyone names their orchestrator, and the seed that hard-coded `alice.main`
  * pointed at an agent no install outside that one machine has.
  */
-test("l'agent principal se lit par son rôle, pas par son nom", () => {
+test('the main agent is read from its role, not from its name', () => {
   const agents = [
     { name: 'Nimbus.main', role: 'orchestrator', project: 'nimbus' },
     { name: '_main.perso', role: 'orchestrator', project: null },
@@ -207,21 +209,21 @@ test('a never-written list is the seeded card; an emptied list stays empty', () 
 });
 
 /**
- * Le 404 du premier lancement réel : `/api/ui/agents/alice.main/git` sur un
- * home neuf. La carte seedée pointait sur un agent qu'aucune install livrée
- * n'a ; elle était quand même peinte et interrogeait le vide toutes les 30
- * secondes. Une surface dont le sujet n'existe pas s'efface.
+ * The 404 of the first real launch: `/api/ui/agents/alice.main/git` on a
+ * fresh home. The seeded card pointed at an agent that no shipped install
+ * has; it was painted anyway and queried the void every 30
+ * seconds. A surface whose subject does not exist fades away.
  */
-test('la carte seedée ne paraît que si un agent principal existe', () => {
+test('the seeded card only shows if a main agent exists', () => {
   assert.deepEqual(instancesOnLoad(null, []), []);
   assert.deepEqual(instancesOnLoad(null, [{ name: 'coder', role: 'coder', project: 'x' }]), []);
-  // Rien d'écrit et rien à montrer : aucune carte fantôme.
+  // Nothing written and nothing to show: no ghost card.
   assert.deepEqual(instancesOnLoad(null, undefined), []);
 });
 
-test("une carte configurée par l'utilisateur garde son fil, agent supprimé ou non", () => {
-  // Décision délibérée (cf. `use-agents.ts`) : seule la carte que PERSONNE n'a
-  // choisie s'efface. Une carte écrite reste, quelle que soit la liste.
+test('a card configured by the user keeps its thread, agent deleted or not', () => {
+  // Deliberate decision (see `use-agents.ts`): only the card NOBODY
+  // chose fades away. A written card stays, whatever the list.
   const written = { instances: [{ id: 'a', agent: 'disparu.main' }] };
   assert.deepEqual(instancesOnLoad(written, []).map((i) => i.agent), ['disparu.main']);
 });

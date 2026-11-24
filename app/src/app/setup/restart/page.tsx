@@ -34,6 +34,7 @@ import { CommandToRun } from '@/components/command-to-run';
 import { RemoteAccess } from '@/components/remote-access-panel';
 import { desktopBridge } from '@/lib/desktop';
 import { t } from '@/lib/i18n';
+import { apiErrorMessage } from '@/lib/api-error';
 
 type RestartStatus = {
   pending: boolean;
@@ -139,7 +140,7 @@ export default function RestartSetupPage() {
       if (!response.ok) {
         const body = await response.json().catch(() => ({})) as { command?: string | null };
         setStatus((previous) => (previous ? { ...previous, canSelfRestart: false, command: body.command ?? previous.command } : previous));
-        setError(t('restartStep.failed'));
+        setError(apiErrorMessage(body, t('restartStep.failed')));
         return;
       }
       watchForNewDaemon();
@@ -155,7 +156,7 @@ export default function RestartSetupPage() {
     setError(null);
     try {
       const response = await fetch('/api/ui/setup/restart/skip', { method: 'POST' });
-      if (!response.ok) { setError(t('restartStep.failed')); return; }
+      if (!response.ok) { setError(apiErrorMessage(await response.json().catch(() => ({})), t('restartStep.failed'))); return; }
       setStatus(await response.json() as RestartStatus);
     } catch { setError(t('restartStep.failed')); }
   }

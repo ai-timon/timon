@@ -7,13 +7,15 @@ If an update breaks your installation, reinstall the previous version. Your agen
 
 ## Before accepting an update
 
-When a newer desktop version opens existing data, Timon asks you to **Update** or **Quit** before changing your data or background service. The screen shows the release notes available in the installer. **Quit** leaves your data and installation state intact; reinstall the previous installer to return to that version. Electron may still create its own profile and cache.
+When a newer desktop version opens existing data, Timon asks you to **Update** or **Quit** (**Update anyway** or **Wait** while missions are running) before changing your data or background service. The screen shows the release notes available in the installer. **Quit** leaves your data and installation state intact; reinstall the previous installer to return to that version. Electron may still create its own profile and cache.
 
 **Update** records your approval, prepares the service, then backs up and migrates your data. Keep Timon open while the backup runs; a large copy can take several minutes. If the backup is partial or fails, Timon explains the result. A refused update does not automatically roll back the service or data: follow the displayed instructions before restarting.
 
 ### An AppImage you refused to update
 
-When the desktop app installed an update itself (**Install and restart**), the AppImage you launched now holds the new version, under the same name. The version it replaced is still next to it, as a hidden file named `.<name>.previous`, until you approve the update. If you choose **Quit** on the update screen, nothing removes it, and opening the AppImage again shows the same screen. To go back to the previous version, quit Timon, then put that file back in place (here for the default `~/Applications/Timon.AppImage`):
+When the desktop app installed an update itself (**Install and restart**), the AppImage you launched now holds the new version, under the same name. The version it replaced stays next to it, as a hidden file named `.<name>.previous`, until the new version starts on your data. If the new version asks for your approval, its screen offers **Go back to x.y.z** next to **Quit**: it refuses the update, puts the previous AppImage back under the same name and opens it, on your data and service, which the refused update did not change. If Timon cannot open it, it says so: open the AppImage again. **Quit** removes nothing: opening the AppImage again shows the same screen.
+
+The button is not shown when that file is gone: once an update is approved, at the first start of a version that asks for no approval, or with an AppImage you replaced by hand. Going back then means downloading the older AppImage and following [Linux AppImage](#linux-appimage). If the button reports that the previous version could not be put back, do it by hand: quit Timon, then, here for the default `~/Applications/Timon.AppImage`:
 
 ```bash
 cd ~/Applications
@@ -21,7 +23,7 @@ ls -a                                    # .Timon.AppImage.previous
 mv .Timon.AppImage.previous Timon.AppImage
 ```
 
-Open the AppImage again: it is the previous version, on your data and service, which the refused update did not change. Once you approve an update, the previous file is deleted: going back then means downloading the older AppImage and following [Linux AppImage](#linux-appimage).
+Open the AppImage again: it is the previous version.
 
 ## Reinstall the previous installer
 

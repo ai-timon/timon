@@ -36,6 +36,7 @@ import { disposeProviderScratch } from './backends/provider-scratch.js';
 import { backendRunsReadOnlyTools, backendTrust } from './backends/registry.js';
 import { assertSpawnPinned, buildSealedSpawn } from './backends/sealed-spawn.js';
 import { runSessionOneShot } from './session-one-shot.js';
+import { recordOneShotProcess } from './mission-fence-state.js';
 import type { BuildSpawnOpts, SpawnResult } from './backends/types.js';
 
 const SUMMARY_SYSTEM_PROMPT = `You compress a conversation transcript so \
@@ -377,6 +378,8 @@ async function runOneShot(
       release();
       throw err;
     }
+    // Never fenced: on an account, it may rewrite the account's keychain entry, which no move may then delete.
+    recordOneShotProcess(missionId, backend.name, proc);
 
     let text = '';
     let resultSeen = false;

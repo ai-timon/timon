@@ -76,7 +76,9 @@ const VideoFactoryPanel = dynamic(() => import('@/components/video-factory-panel
 const DockerMissionPanel = dynamic(() => import('@/components/docker-mission-panel').then((m) => m.DockerMissionPanel), { ssr: false });
 const OrchestratorSelfPanel = dynamic(() => import('@/components/orchestrator-self-panel').then((m) => m.OrchestratorSelfPanel), { ssr: false });
 const FileBrowser = dynamic(() => import('./file-browser').then((m) => m.FileBrowser), { ssr: false });
-const GitPanel = dynamic(() => import('@/plugins-client/git/git-panel').then((m) => m.GitPanel), { ssr: false });
+const GitBranchesPanel = dynamic(() => import('@/plugins-client/git/git-panel').then((m) => m.GitBranchesPanel), { ssr: false });
+const GitGraphPanel = dynamic(() => import('@/plugins-client/git/git-panel').then((m) => m.GitGraphPanel), { ssr: false });
+const GitPublishPanel = dynamic(() => import('@/plugins-client/git/git-panel').then((m) => m.GitPublishPanel), { ssr: false });
 const ChatTraceWidget = dynamic(() => import('@/plugins-client/workflows/chat-trace-widget').then((m) => m.ChatTraceWidget), { ssr: false });
 
 /**
@@ -287,13 +289,34 @@ function AgentTodosWidget() {
   return <AgentTodosCard agentTodos={info.agentTodos} />;
 }
 
-/** Branches, graph and publication of the project — the client half of `@timon/git`. */
-function GitWidget() {
-  const chat = useContext(ChatRailContext);
-  const later = useAfterConversation();
-  if (!chat || !later) return null;
-  return <GitPanel agentId={chat.agentId} slug={chat.slug} />;
+/** The client half of `@timon/git`: one widget per view of the project's
+ *  repository, each read only once the conversation is on screen. */
+function gitWidget(Panel: typeof GitBranchesPanel) {
+  return function GitWidget() {
+    const chat = useContext(ChatRailContext);
+    const later = useAfterConversation();
+    if (!chat || !later) return null;
+    return <Panel agentId={chat.agentId} slug={chat.slug} />;
+  };
 }
+
+const GitBranchesWidget = gitWidget(GitBranchesPanel);
+const GitGraphWidget = gitWidget(GitGraphPanel);
+const GitPublishWidget = gitWidget(GitPublishPanel);
+
+/**
+ * Ids the single Git card was stored under, newest first. Each of the three
+ * widgets split out of it claims them all: together they take over its place
+ * as one stack (`widget-defaults.ts`), and a link to the card leads to
+ * Branches, the first claimant.
+ */
+const FORMER_GIT_CARD = [
+  'plugin:@timon/git:repository',
+  'plugin:@timon/git:git-remote',
+  'plugin:@timon/git:Git',
+  'plugin:@timon/kanban-code:git-remote',
+  'plugin:@timon/kanban-code:Git',
+];
 
 /**
  * The chat panels, registered in the slot registry while the chat is on
@@ -370,26 +393,31 @@ const REGISTRATIONS: Registration[] = [
     Component: VideoFactoryWidget,
     uiZone: 'chat.panel.video-factory',
   },
-  // One card since TODO #278 for the former Git panel and publication card:
-  // it takes over the place of the first of them still on screen, the
-  // publication card first (it was the shown tab of the shipped stack).
-  // No `uiZone`, like the Git panel: `chat.panel.git-remote` now hides only
-  // the Publish tab.
+  // Three widgets since the "Git" stack, split out of the single card of
+  // TODO #278 and stacked with the pull requests and jobs by default
+  // (`widget-defaults.ts`). Publish alone follows `chat.panel.git-remote`: the
+  // `lite` preset hides it and keeps the branches and the graph.
   {
     zone: CHAT_RIGHT_ZONE,
     pluginId: '@timon/git',
-    key: 'repository',
-    widget: card('git', {
-      height: 320,
-      minHeight: 180,
-      formerIds: [
-        'plugin:@timon/git:git-remote',
-        'plugin:@timon/git:Git',
-        'plugin:@timon/kanban-code:git-remote',
-        'plugin:@timon/kanban-code:Git',
-      ],
-    }),
-    Component: GitWidget,
+    key: 'branches',
+    widget: card('gitBranches', { height: 320, minHeight: 180, formerIds: FORMER_GIT_CARD }),
+    Component: GitBranchesWidget,
+  },
+  {
+    zone: CHAT_RIGHT_ZONE,
+    pluginId: '@timon/git',
+    key: 'graph',
+    widget: card('gitGraph', { height: 320, minHeight: 180, formerIds: FORMER_GIT_CARD }),
+    Component: GitGraphWidget,
+  },
+  {
+    zone: CHAT_RIGHT_ZONE,
+    pluginId: '@timon/git',
+    key: 'publish',
+    widget: card('gitPublish', { height: 320, minHeight: 180, formerIds: FORMER_GIT_CARD }),
+    Component: GitPublishWidget,
+    uiZone: 'chat.panel.git-remote',
   },
   {
     zone: CHAT_RIGHT_ZONE,

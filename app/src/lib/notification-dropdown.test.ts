@@ -124,7 +124,7 @@ async function renderBell(
           React.createElement(NotificationBell),
           opts.withSettings ? React.createElement(NotificationFeedSettings) : null,
           opts.withWidget
-            ? React.createElement('div', { 'data-test-widget': '' }, React.createElement(NotificationsWidget, { poignee: null }))
+            ? React.createElement('div', { 'data-test-widget': '' }, React.createElement(NotificationsWidget, { handle: null }))
             : null));
       });
       await run(host, React, calls);
@@ -393,7 +393,7 @@ test('in a sidebar the bell widget is its button only; the list opens beside it 
     try {
       // A narrow column: the button, its badge and the grip — no list, no card.
       await React.act(async () => {
-        root.render(React.createElement(BellWidget, { orientation: 'vertical', compact: true, poignee: grip }));
+        root.render(React.createElement(BellWidget, { orientation: 'vertical', compact: true, handle: grip }));
       });
       assert.equal(host.querySelectorAll('[data-notification]').length, 0, 'no list in the rail');
       assert.ok(!host.querySelector('section'), 'no card in the rail');
@@ -409,7 +409,7 @@ test('in a sidebar the bell widget is its button only; the list opens beside it 
 
       // A wide column (cockpit, chat): the card with its list.
       await React.act(async () => {
-        root.render(React.createElement(BellWidget, { orientation: 'vertical', poignee: grip }));
+        root.render(React.createElement(BellWidget, { orientation: 'vertical', handle: grip }));
       });
       assert.equal(host.querySelectorAll('[data-notification]').length, 2, 'the list as a card');
     } finally {

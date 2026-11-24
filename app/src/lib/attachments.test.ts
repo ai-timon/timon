@@ -41,7 +41,7 @@ test('the turn budget fits the daemon body cap once base64-encoded, text include
 test('images, files and pasted text all count toward one message', () => {
   const files: PendingFile[] = [
     { id: 'a', kind: 'file', name: 'a.pdf', mediaType: 'application/pdf', base64: '', size: 1000 },
-    { id: 'b', kind: 'pasted', name: 'Pasted', mediaType: 'text/plain', text: 'é'.repeat(10), size: 10 },
+    { id: 'b', kind: 'pasted', name: 'Pasted', mediaType: 'text/plain', text: 'é'.repeat(10), size: 10 }, // french-ok: multi-byte text, the size under test
   ];
   // The paste counts in UTF-8 bytes, not characters.
   assert.equal(turnAttachmentBytes([{ size: 500 }], files), 1520);

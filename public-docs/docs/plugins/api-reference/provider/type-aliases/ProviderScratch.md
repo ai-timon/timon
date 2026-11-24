@@ -20,3 +20,19 @@
 #### Returns
 
 `Promise`\<[`ProviderScratchDir`](ProviderScratchDir.md)\>
+
+***
+
+### profile()
+
+> **profile**(`profile`): [`ProviderScratchDir`](ProviderScratchDir.md)
+
+#### Parameters
+
+##### profile
+
+[`ProfileRuntime`](ProfileRuntime.md)
+
+#### Returns
+
+[`ProviderScratchDir`](ProviderScratchDir.md)

@@ -845,15 +845,6 @@
     "doneBody": "이제 {email}(으)로 로그인합니다.",
     "signIn": "로그인"
   },
-  "license": {
-    "pastDue": "결제 연체 — 구독을 갱신하세요",
-    "pastDueUntil": "결제 연체 — 구독이 {date}에 종료됩니다",
-    "notActivated": "Free 사용 중 — 계정을 추가하려면 라이선스가 필요합니다",
-    "activate": "활성화",
-    "offlineSince": "{date}부터 라이선스 서버에 연결할 수 없습니다 — 오프라인 유예 기간 동안은 유료 권한을 계속 쓸 수 있으며, 그 후 Timon은 Free로 돌아갑니다.",
-    "licenseEndsSoon": "라이선스가 {date}에 종료됩니다. 그 전에 새 키를 입력하세요.",
-    "licenseEndsUrgent": "라이선스가 {date}에 종료됩니다. 지금 새 키를 입력하세요."
-  },
   "betaLock": {
     "eyebrow": "베타",
     "build_expired_title": "이 빌드는 만료되었습니다",
@@ -984,6 +975,12 @@
   },
   "appearance": {
     "title": "모양",
+    "zoomTitle": "인터페이스 크기",
+    "zoomHint": "이 컴퓨터의 모든 Timon 창에서 글자와 컨트롤을 크게 또는 작게 표시합니다. 단축키: Ctrl과 +, Ctrl과 −, 재설정은 Ctrl과 0(macOS에서는 세 가지 모두 Ctrl 대신 Cmd). Windows와 Linux에서는 Ctrl과 마우스 휠도 사용할 수 있습니다.",
+    "zoomIn": "크게",
+    "zoomOut": "작게",
+    "zoomReset": "재설정",
+    "zoomError": "인터페이스 크기를 변경할 수 없습니다.",
     "theme": "테마",
     "layout": "레이아웃",
     "themeHint": "이 계정에 적용할 색상 토큰.",
@@ -1076,6 +1073,13 @@
     "mascotsStyle2dHint": "평면 그림으로, 오래된 컴퓨터에서도 가볍습니다.",
     "mascotsStyleNoWebgl": "이 브라우저는 3D로 그릴 수 없습니다(WebGL2가 꺼져 있거나 없음). 마스코트는 2D로 그려집니다.",
     "mascotsStyleShared": "모든 마스코트에 적용됩니다. 나중에 {settingsPath}에서 바꿀 수 있습니다.",
+    "dockIconTitle": "Dock 아이콘",
+    "dockIconHint": "앱이 실행 중일 때 macOS가 Dock에 표시하는 Timon 아이콘입니다. Finder와 실행 전 Dock에서는 클래식 아이콘이 유지됩니다.",
+    "dockIconClassic": "클래식",
+    "dockIconClassicHint": "Timon의 색상.",
+    "dockIconDark": "다크",
+    "dockIconDarkHint": "흑백.",
+    "dockIconError": "Dock 아이콘을 변경하지 못했습니다.",
     "variants": {
       "coral": {
         "name": "코랄",
@@ -1295,12 +1299,10 @@
     "categories": "카테고리",
     "selectCategory": "카테고리",
     "modified": "수정됨",
+    "defaultValue": "기본값: {value}",
     "definedInConfig": "timon.config.json에 정의됨",
     "forcedByEnv": "환경 변수로 강제됨",
-    "default": "기본값",
     "empty": "(비어 있음)",
-    "enabled": "사용",
-    "disabled": "사용 안 함",
     "save": "저장",
     "defaultBtn": "기본값",
     "outOfRange": "{min}~{max}",
@@ -1541,6 +1543,10 @@
   },
   "settingsDialog": {
     "backToSettings": "설정으로 돌아가기",
+    "navGroup": {
+      "agents": "에이전트",
+      "machine": "이 컴퓨터"
+    },
     "close": "닫기",
     "unsavedKept": "마지막 변경 사항이 아직 저장되지 않았습니다. 저장하거나 × 또는 Escape로 닫아 버리세요.",
     "category": {
@@ -1601,7 +1607,7 @@
         "installation": "설치",
         "updates": "업데이트",
         "backup": "백업 및 휴지통",
-        "diagnostics": "진단",
+        "diagnostics": "로그 및 보존",
         "desktop": "데스크톱 앱",
         "privacy": "개인정보"
       },
@@ -1665,7 +1671,7 @@
         "installation": "버전 정보 설치 서비스 데몬 작업 launchagent systemd 경로 데이터 폴더 로그 포트 내보내기 가져오기 백업 업데이트 version service daemon export import update",
         "updates": "업데이트 새 버전 확인 다운로드 설치 프로그램 릴리스 노트 자동 update",
         "backup": "백업 아카이브 야간 복원 보관 보존 일수 휴지통 삭제된 에이전트 복구 실행 취소 영구 삭제 backup restore trash",
-        "diagnostics": "로그 디버그 기타 인프라 문제 해결 logs debug",
+        "diagnostics": "진단 로그 디버그 기타 인프라 문제 해결 logs debug",
         "desktop": "제거 삭제 electron 앱 uninstall remove",
         "privacy": "개인정보 원격 측정 분석 사용 통계 익명 추적 거부 privacy telemetry analytics"
       },
@@ -2560,9 +2566,17 @@
       "title": "파일",
       "description": "프로젝트 작업 폴더의 파일을 탐색하고 편집합니다."
     },
-    "git": {
-      "title": "Git",
-      "description": "프로젝트의 브랜치, 커밋 그래프, 게시: 브랜치 전환, 기록과 워크트리 보기, 푸시."
+    "gitBranches": {
+      "title": "브랜치",
+      "description": "저장소의 작업 트리와 브랜치: 변경 사항 보기, 브랜치 전환."
+    },
+    "gitGraph": {
+      "title": "그래프",
+      "description": "저장소의 커밋 그래프와 브랜치, 워크트리."
+    },
+    "gitPublish": {
+      "title": "게시",
+      "description": "저장소의 게시 상태: 원격, 푸시할 커밋, 푸시와 페치."
     },
     "agentTasks": {
       "title": "에이전트 작업 목록",
@@ -3083,14 +3097,11 @@
   },
   "freeLicense": {
     "restrictedAccounts": "추가 계정 {count}개가 정지되었습니다. 첫 번째 활성 최고 관리자는 접근을 유지하며, 계정이나 데이터는 삭제되지 않았습니다.",
-    "retainedData": "Free로 돌아가면 추가 계정은 저장된 채로 사용할 수 없게 됩니다. 모든 기능과 플러그인은 계속 사용할 수 있습니다. 유효한 라이선스가 있으면 그 라이선스가 포함하는 계정이 복원됩니다.",
-    "local_free": "Free는 로컬에서 작동하며 관리할 컴퓨터 활성화가 없습니다.",
-    "free_unavailable": "이 버전에서는 아직 Free 등록을 받지 않습니다. 나중에 다시 시도하거나 기존 라이선스 키를 사용하세요.",
+    "local_free": "이 컴퓨터에는 관리할 라이선스가 없습니다.",
     "client_upgrade_required": "Timon을 지원되는 릴리스로 업데이트한 뒤 다시 시도하세요.",
-    "summary": "Free는 키나 갱신 없이 로컬에서 작동합니다: 활성 최고 관리자 한 명에게 모든 기능과 플러그인을 제공합니다.",
     "plugin_composition_fixed": "이 요금제는 플러그인 구성이 고정되어 있습니다. 포함된 플러그인을 설정하거나 업그레이드해 변경하세요.",
-    "single_superadmin_required": "Free는 활성 계정 하나만 허용하며, 그 계정은 최고 관리자여야 합니다.",
-    "free_incompatible": "Free 활성화가 거부되었습니다. 활성 최고 관리자 한 명만 남기고 다른 계정을 비활성화한 뒤 다시 시도하세요. 데이터와 현재 라이선스는 유지되었습니다.",
+    "single_superadmin_required": "이 라이선스는 활성 계정 하나만 허용하며, 그 계정은 최고 관리자여야 합니다.",
+    "free_incompatible": "이 라이선스는 현재 설치에 적용할 수 없습니다. 활성 최고 관리자 한 명만 남기고 다른 계정을 비활성화한 뒤 다시 시도하세요. 데이터와 현재 라이선스는 유지되었습니다.",
     "license_changed": "이 요청 중에 라이선스가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요.",
     "activation_key_missing": "이 기기에 저장된 활성화 키가 없습니다. 해제하려면 라이선스 계정을 사용하거나 지원팀에 문의하세요.",
     "deactivate": "이 컴퓨터 비활성화",
@@ -3587,6 +3598,9 @@
     "cron": "cron 식 *",
     "project": "프로젝트 (슬러그, 선택 사항)",
     "enabled": "사용",
+    "mcpServers": "각 작업의 MCP 서버",
+    "mcpServersHint": "작업은 MCP 서버 없이 시작됩니다. 실행할 때마다 에이전트에 필요한 서버를 선택하세요.",
+    "noMcpServers": "구성된 MCP 서버가 없습니다",
     "cancel": "취소",
     "saving": "저장 중…",
     "creating": "만드는 중…",
@@ -4351,18 +4365,14 @@
   "telemetrySettings": {
     "tab": "개인정보",
     "title": "익명 사용 통계",
-    "description": "Timon은 앱이 어떻게 쓰이는지(어떤 기능, 턴의 성공 빈도, 설정이 멈추는 지점)를 팀에 알려 무엇부터 고칠지 알 수 있게 합니다. 익명입니다: 이 컴퓨터에서 만든 무작위 식별자를 사용하며, 계정이나 컴퓨터 정보는 보내지 않습니다.",
     "share": "익명 사용 통계 공유",
-    "shareDescription": "기본으로 켜져 있습니다. 끄면 모든 전송이 즉시 멈추며, 껐다는 사실을 기록하는 마지막 메시지 하나가 전송됩니다.",
     "lockedEnv": "TIMON_TELEMETRY 환경 변수로 설정됨: 그곳에서 변경하세요.",
     "lockedEnvMalformed": "TIMON_TELEMETRY의 값이 yes도 no도 아니어서 공유가 꺼져 있습니다.",
     "lockedConfig": "timon.config.json의 telemetry.enabled로 설정됨: 그곳에서 변경하세요.",
     "lockedConfigMalformed": "timon.config.json의 telemetry.enabled가 true도 false도 아니어서 공유가 꺼져 있습니다.",
     "inactiveBuild": "이 Timon 빌드는 이 설정과 관계없이 아무것도 보내지 않습니다.",
     "sentTitle": "전송되는 것",
-    "sent": "앱 버전, 운영 체제, 라이선스 등급, 앱 시작과 업데이트, 설정 단계, 턴과 소요 시간·결과·토큰 수, 사용된 내장 도구와 공급자, 작업·플러그인·라이선스·브라우저 동작 횟수.",
     "neverTitle": "절대 전송되지 않는 것",
-    "never": "프롬프트, 답변, 파일, 프로젝트·에이전트·스킬·루틴·MCP 서버의 이름, 경로·URL·명령, 오류 메시지, 이메일·사용자 이름·컴퓨터 이름·주소.",
     "learnMore": "개인정보 처리 안내 읽기",
     "loadFailed": "이 설정을 읽을 수 없습니다.",
     "saveFailed": "이 설정을 저장할 수 없습니다.",

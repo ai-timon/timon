@@ -45,6 +45,7 @@
       "confirm": "Confirm the password",
       "mismatch": "The two passwords don't match.",
       "tooShort": "At least {min} characters.",
+      "offlineCommand": "No internet? Create the account from a terminal on this computer:",
       "create": "Create my account",
       "privacy": "Your account and password stay on this computer. Your email address and its codes go through our server, which emails them to you. Anonymous usage statistics are shared by default; you can turn them off in Settings."
     },
@@ -71,7 +72,10 @@
       },
       "legal": "By continuing, you accept the {terms} and acknowledge the {privacy}.",
       "terms": "Terms of use",
-      "privacy": "Privacy policy"
+      "privacy": "Privacy policy",
+      "telemetry": "Timon sends anonymous usage statistics. {turnOff}",
+      "telemetryTurnOff": "Turn them off",
+      "telemetryOff": "Usage statistics are off. Turn them back on in {settingsPath}."
     },
     "profile": {
       "title": "What brings you here?",

@@ -264,7 +264,7 @@ test('a tab that asks to stay refuses the card: no claim, no write, no shell end
   await w.click('applied', () => w.toastsShown().length > 0, 'the refusal to be told');
   assert.match(w.toastsShown()[0]!, /a tab it would close stayed open/);
   assert.equal(w.guard.asked, 1);
-  assert.deepEqual(w.claims(), [], 'the agent is not told « applied »');
+  assert.deepEqual(w.claims(), [], 'the agent is not told "applied"');
   assert.deepEqual(w.writes(), []);
   assert.deepEqual(w.kills(), []);
   assert.equal(w.recalls(), 0);

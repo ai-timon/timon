@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
-import { callNativeBrowser, readNativeProvider } from './native-browser-provider.js';
+import { browserErrorBody, callNativeBrowser, chromeMissingError, NativeBrowserError, readNativeProvider } from './native-browser-provider.js';
+import { apiError } from './api-error.js';
 
 test('provider accepts only local authenticated IPC and fixes the profile after caller arguments', async (t) => {
   const home = mkdtempSync(join(tmpdir(), 'timon-native-provider-'));
@@ -53,4 +54,17 @@ test('the Chrome capability names the browser, never its path, and explains a mi
   // The answer carries the Chrome part even when the desktop is not running.
   const offline = await nativeBrowserCapabilities(() => ({ found: false, reason: 'none' }));
   assert.equal(offline.chrome.available, false);
+});
+
+test('a browser refusal carries a code the webview translates; bare text stays a detail', () => {
+  const coded = new NativeBrowserError(apiError('browser_profile_not_found', 'Browser profile not found.'), 404);
+  assert.equal(coded.message, 'Browser profile not found.');
+  assert.equal(coded.status, 404);
+  assert.deepEqual(browserErrorBody(coded), { error: 'Browser profile not found.', code: 'browser_profile_not_found' });
+  // Text with no code of its own (an agent-facing refusal) is quoted, not lost.
+  assert.deepEqual(new NativeBrowserError('read-only browser').body,
+    { error: 'read-only browser', code: 'browser_refused', params: { detail: 'read-only browser' } });
+  assert.deepEqual(browserErrorBody(new Error('boom')), { error: 'boom', code: 'browser_refused', params: { detail: 'boom' } });
+  assert.equal(chromeMissingError('none').code, 'browser_chrome_missing');
+  assert.equal(chromeMissingError('confined').code, 'browser_chrome_confined');
 });

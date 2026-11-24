@@ -4,7 +4,7 @@ import { setupEntry } from './setup-entry';
 
 const pending = { status: 'pending' as const, available: true };
 
-test('an orchestrator of any name that was not named yet sees « Your AIs », then the name', () => {
+test('an orchestrator of any name that was not named yet sees "Your AIs", then the name', () => {
   assert.deepEqual(setupEntry({ ...pending, name: 'Nova', named: false }, null, false), { kind: 'providers' });
   assert.deepEqual(setupEntry({ ...pending, name: 'Nova', named: false }, null, true), { kind: 'name' });
   assert.deepEqual(setupEntry({ ...pending, name: '_main', named: false }, null, false), { kind: 'providers' });

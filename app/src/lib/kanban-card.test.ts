@@ -17,7 +17,7 @@ const board = new Map([
   ['done', { status: 'DONE' }],
 ]);
 
-test('« waits on » counts only the dependencies still to finish', () => {
+test('"waits on" counts only the dependencies still to finish', () => {
   assert.equal(waitingOnCount(['pending', 'running', 'blocked'], board), 3);
   assert.equal(waitingOnCount(['done'], board), 0, 'a finished dependency holds nothing back');
   // Only DONE tasks are windowed out of the board: a missing one is finished.
@@ -25,7 +25,7 @@ test('« waits on » counts only the dependencies still to finish', () => {
   assert.equal(waitingOnCount([], board), 0);
 });
 
-test('« unblocks » counts the unfinished tasks waiting on this one, chain included', () => {
+test('"unblocks" counts the unfinished tasks waiting on this one, chain included', () => {
   assert.equal(unblocksCount([{ id: 'pending' }, { id: 'done' }, { id: 'blocked' }], board), 2);
   assert.equal(unblocksCount([{ id: 'off-the-board' }], board), 0);
   assert.equal(unblocksCount(undefined, board), 0);

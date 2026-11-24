@@ -48,6 +48,7 @@ export function scopedDb(viewer: DbViewer | null) {
       dbApi.listProjectTodo({ ...opts, viewer }),
     getProjectTodo: (id: number) => dbApi.getProjectTodo(id, viewer),
     countOpenProjectTodo: () => dbApi.countOpenProjectTodo(viewer),
+    listTodoIntegrations: (todoIds: readonly number[]) => dbApi.listTodoIntegrations(todoIds, viewer),
     countProjectTodo: (opts: Omit<Parameters<typeof dbApi.countProjectTodo>[0] & object, 'viewer'> = {}) =>
       dbApi.countProjectTodo({ ...opts, viewer }),
     insertProjectTodo: (t: Parameters<typeof dbApi.insertProjectTodo>[0]) =>

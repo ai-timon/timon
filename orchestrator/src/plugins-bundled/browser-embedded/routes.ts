@@ -17,7 +17,7 @@ import { apiError } from '../../api-error.js';
 function rejectBoundMission(req: Request, res: Response): boolean {
   const mission = req.auth?.missionId ? scopedDb(viewerFromRequest(req)).getMission(req.auth.missionId) : null;
   if (!mission?.browser_profile_resolved) return false;
-  res.status(403).json({ error: 'This mission may only use its assigned browser profile through the managed browser API.' });
+  res.status(403).json(apiError('browser_profile_bound', 'This mission may only use its assigned browser profile through the managed browser API.'));
   return true;
 }
 
@@ -25,13 +25,13 @@ export function registerRoutes(app: Router): void {
   app.get('/api/browser', (req, res) => {
     if (rejectBoundMission(req, res)) return;
     try { res.json({ sessions: listBrowserSessions(viewerFromRequest(req)) }); }
-    catch (err) { res.status(500).json({ error: (err as Error).message }); }
+    catch (err) { res.status(500).json(apiError('browser_sessions_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.get('/api/browser/:slug/status', (req, res) => {
     if (rejectBoundMission(req, res)) return;
     try { res.json({ session: getBrowserSession(req.params.slug, viewerFromRequest(req)) }); }
-    catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    catch (err) { res.status(400).json(apiError('browser_session_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/browser/:slug/start', async (req, res) => {
@@ -43,7 +43,7 @@ export function registerRoutes(app: Router): void {
         return;
       }
       res.json({ session: await startBrowserSession(req.params.slug, viewer) });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('browser_start_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 
   app.post('/api/browser/:slug/stop', async (req, res) => {
@@ -56,6 +56,6 @@ export function registerRoutes(app: Router): void {
       }
       await stopBrowserSession(req.params.slug);
       res.json({ session: getBrowserSession(req.params.slug, viewer) });
-    } catch (err) { res.status(400).json({ error: (err as Error).message }); }
+    } catch (err) { res.status(400).json(apiError('browser_stop_failed', (err as Error).message, { detail: (err as Error).message })); }
   });
 }

@@ -149,6 +149,9 @@ test('nobody but the owner\'s session answers', async () => {
   assert.equal(sibling.status, 403);
   const other = await call('POST', path, { cookie: otherCookie, body });
   assert.equal(other.status, 404);
+  // The card words each refusal from its code.
+  assert.equal(daemon.json.code, 'secret_request_session_required');
+  assert.equal(other.json.code, 'secret_request_not_found');
   for (const r of [anon, daemon, own, sibling, other]) assert.ok(!r.text.includes(API_VALUE));
   assert.equal(getSecretRequest(apiRequestId)!.status, 'pending');
   assert.equal(dbApi.getSecretsByName('SHOP_API_KEY').length, 0);
@@ -182,6 +185,7 @@ test('the owner provides: the agent learns the name and the status, never the va
   assert.ok(!wholeDatabase().includes(API_VALUE), 'the value is nowhere in the database but sealed');
   const twice = await call('POST', `/api/secrets/requests/${apiRequestId}/provide`, { cookie: ownerCookie, body: { value: 'second-value-000000' } });
   assert.equal(twice.status, 409);
+  assert.equal(twice.json.code, 'secret_request_decided');
 });
 
 test('the broker serves it to the requesting mission only, once', async () => {

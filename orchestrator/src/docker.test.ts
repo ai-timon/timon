@@ -1,11 +1,11 @@
 /**
- * Tests de la dérivation d'URL locale depuis les labels Traefik (docker.ts).
+ * Tests of the local URL derivation from the Traefik labels (docker.ts).
  *
- * `node --test --import tsx src/docker.test.ts` (ou `npm test`). C'est la seule
- * partie du module qui peut se tromper en silence : une mauvaise URL donne un
- * lien qui a l'air valide et n'ouvre rien.
+ * `node --test --import tsx src/docker.test.ts` (or `npm test`). It is the only
+ * part of the module that can go wrong silently: a wrong URL gives a
+ * link that looks valid and opens nothing.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import './test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -16,19 +16,19 @@ import { act, missingNetwork, traefikUrl } from './docker.js';
 import { getHost, type ExecResult } from './host/index.js';
 import { writeMeta } from './projects.js';
 
-test('pas de label traefik → pas d’URL', () => {
+test('no traefik label → no URL', () => {
   assert.equal(traefikUrl({}), null);
   assert.equal(traefikUrl({ 'com.docker.compose.service': 'db' }), null);
 });
 
-test('règle Host simple → URL http', () => {
+test('simple Host rule → http URL', () => {
   assert.equal(
     traefikUrl({ 'traefik.http.routers.app.rule': 'Host(`contoso.localhost`)' }),
     'http://contoso.localhost',
   );
 });
 
-test('routeur en tls → https gagne sur le jumeau http du même hôte', () => {
+test('tls router → https wins over the http twin of the same host', () => {
   const url = traefikUrl({
     'traefik.http.routers.app.rule': 'Host(`timon.localhost`)',
     'traefik.http.routers.app-secure.rule': 'Host(`timon.localhost`)',
@@ -47,8 +47,8 @@ test('entrypoint websecure vaut tls', () => {
   );
 });
 
-test('à égalité, l’hôte le moins profond gagne', () => {
-  // Cas réel TIMON : `channels.timon.localhost` ne doit pas éclipser l'app.
+test('on a tie, the shallowest host wins', () => {
+  // Real TIMON case: `channels.timon.localhost` must not eclipse the app.
   const url = traefikUrl({
     'traefik.http.routers.channels.rule': 'Host(`channels.timon.localhost`)',
     'traefik.http.routers.app.rule': 'Host(`timon.localhost`)',
@@ -56,7 +56,7 @@ test('à égalité, l’hôte le moins profond gagne', () => {
   assert.equal(url, 'http://timon.localhost');
 });
 
-test('un hôte .localhost prime sur un hôte public ou tailscale', () => {
+test('a .localhost host wins over a public or tailscale host', () => {
   const url = traefikUrl({
     'traefik.http.routers.ts.rule': 'Host(`my-laptop.tail0000.ts.net`)',
     'traefik.http.routers.app.rule': 'Host(`app.localhost`)',
@@ -64,22 +64,22 @@ test('un hôte .localhost prime sur un hôte public ou tailscale', () => {
   assert.equal(url, 'http://app.localhost');
 });
 
-test('règle composite : les hôtes multiples et les clauses annexes sont gérés', () => {
+test('composite rule: multiple hosts and side clauses are handled', () => {
   const url = traefikUrl({
     'traefik.http.routers.app.rule': 'Host(`a.localhost`, `b.localhost`) && PathPrefix(`/api`)',
   });
-  // Deux hôtes de même score : n'importe lequel est acceptable, l'important
-  // est qu'aucune clause parasite ne se retrouve dans l'URL.
+  // Two hosts with the same score: either one is acceptable, what matters
+  // is that no stray clause ends up in the URL.
   assert.ok(url === 'http://a.localhost' || url === 'http://b.localhost');
 });
 
-test('règle sans Host (PathPrefix seul) → pas d’URL inventée', () => {
+test('rule without Host (PathPrefix alone) → no made-up URL', () => {
   assert.equal(traefikUrl({ 'traefik.http.routers.app.rule': 'PathPrefix(`/api`)' }), null);
 });
 
-/* ── TIM-0104 : start sur un réseau supprimé ─────────────────────────────── */
+/* ── TIM-0104: start on a deleted network ─────────────────────────────── */
 
-test('missingNetwork lit le réseau quelle que soit la formulation de docker', () => {
+test("missingNetwork reads the network whatever docker's wording", () => {
   assert.equal(missingNetwork('Error response from daemon: network traefik_network not found'), 'traefik_network');
   assert.equal(
     missingNetwork('Error response from daemon: failed to set up container networking: network "traefik_network" not found'),
@@ -90,9 +90,9 @@ test('missingNetwork lit le réseau quelle que soit la formulation de docker', (
 
 type Fake = { calls: string[][]; restore: () => void };
 
-/** Docker simulé : deux conteneurs compose arrêtés, créés sur un réseau qui
- *  n'existe plus. `start` échoue tant que `up -d` ne les a pas recréés ;
- *  `upFails` simule un compose qui référence lui aussi un réseau absent. */
+/** Simulated docker: two stopped compose containers, created on a network that
+ *  no longer exists. `start` fails as long as `up -d` has not recreated them;
+ *  `upFails` simulates a compose that also references a missing network. */
 function fakeDocker(cwd: string, opts: { composeFile: boolean; upFails?: boolean }): Fake {
   const composeFile = join(cwd, 'compose.yaml');
   if (opts.composeFile) writeFileSync(composeFile, 'services: {}\n');
@@ -147,11 +147,11 @@ function project(): { slug: string; cwd: string } {
   return { slug, cwd };
 }
 
-/** Le scan docker est mis en cache 1,5 s : on l'attend pour que chaque test
- *  relise le docker simulé qu'il vient de poser. */
+/** The docker scan is cached for 1.5 s: we wait for it so that each test
+ *  rereads the simulated docker it just set. */
 const settle = () => new Promise((r) => setTimeout(r, 1600));
 
-test('start sur un réseau supprimé → la stack est recréée par compose up -d', async () => {
+test('start on a deleted network → the stack is recreated by compose up -d', async () => {
   await settle();
   const { slug, cwd } = project();
   const fake = fakeDocker(cwd, { composeFile: true });
@@ -159,13 +159,13 @@ test('start sur un réseau supprimé → la stack est recréée par compose up -
     const status = act(slug, 'start');
     assert.equal(status.state, 'running');
     const up = fake.calls.find((a) => a.includes('up'));
-    assert.ok(up, 'compose up -d attendu après l’échec du start');
+    assert.ok(up, 'compose up -d expected after the failed start');
     assert.deepEqual(up.slice(-2), ['up', '-d']);
-    assert.ok(!up.includes('--build'), 'pas de rebuild d’image pour un simple changement de réseau');
+    assert.ok(!up.includes('--build'), 'no image rebuild for a mere network change');
   } finally { fake.restore(); }
 });
 
-test('start d’un seul conteneur → seul son service est recréé', async () => {
+test('start of a single container → only its service is recreated', async () => {
   await settle();
   const { slug, cwd } = project();
   const fake = fakeDocker(cwd, { composeFile: true });
@@ -177,7 +177,7 @@ test('start d’un seul conteneur → seul son service est recréé', async () =
   } finally { fake.restore(); }
 });
 
-test('compose up -d échoue aussi → message qui nomme le réseau et propose Rebuild', async () => {
+test('compose up -d fails too → a message naming the network and offering Rebuild', async () => {
   await settle();
   const { slug, cwd } = project();
   const fake = fakeDocker(cwd, { composeFile: true, upFails: true });
@@ -189,7 +189,7 @@ test('compose up -d échoue aussi → message qui nomme le réseau et propose Re
   } finally { fake.restore(); }
 });
 
-test('fichiers compose disparus → pas de repli, message qui donne la commande', async () => {
+test('compose files gone → no fallback, a message giving the command', async () => {
   await settle();
   const { slug, cwd } = project();
   const fake = fakeDocker(cwd, { composeFile: false });

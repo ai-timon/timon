@@ -45,13 +45,13 @@
     "logoHint": "Click the circle to browse, paste (Ctrl/Cmd+V) or drop an image — or pick an emoji.", "logoPlaceholder": "Emoji or short text",
     "autoColor": "Auto-generate from name", "auto": "auto",
     "saving": "Saving…", "save": "Save",
-    "deleting": "Deleting…", "dangerZone": "Danger zone", "dangerZoneHint": "Deleting a project is permanent."
+    "deleting": "Deleting…", "dangerZone": "Danger zone", "dangerZoneHint": "Deleting a project is permanent.", "integrations": "Integrations"
   },
   "memoryPage": {
     "saveError": "Could not save {title}: {error}",
     "title": "Memory", "dashboard": "Dashboard", "browse": "Browse", "loading": "Loading…",
     "curationRun": "Curation run", "decisionsRun": "{count, plural, one {# decision} other {# decisions}} · run {run}",
-    "detailError": "Could not load details", "noAudit": "No record for this run.", "reverted": "reverted", "noCandidateText": "(no text — see the targeted rule)",
+    "detailError": "Could not load details", "noAudit": "No record for this run.", "reverted": "reverted", "noCandidateText": "(no text — see the targeted rule)", "textDeletedWithRule": "Text deleted with the rule", "action": {"new": "+ added", "merge": "⧉ merged", "supersede": "↻ superseded", "reject": "✕ rejected", "archive": "⌁ archived", "rescope": "⇄ rescoped", "retier": "★ retiered", "manual_delete": "− deleted"},
     "facts": "Facts", "pitfalls": "Pitfalls", "pending": "Pending", "projects": "Projects", "agents": "Agents",
     "pendingPromotions": "Pending promotions", "noProposals": "No pending proposals.", "latestRuns": "Latest curation runs",
     "noRuns": "No recorded runs.", "promote": "Promote", "reject": "Reject", "rejected": "Rejected",
@@ -64,7 +64,6 @@
     "browseByProject": "Browse by project"
   },
   "gitWidget": {
-    "tabs": {"branches": "Branches", "graph": "Graph", "publish": "Publish"},
     "detached": "detached HEAD",
     "noProject": "This agent has no project: no repository to show.",
     "repos": {"label": "Repository", "root": "{name} (root)", "otherToPush": "{name}: {count} to push"},

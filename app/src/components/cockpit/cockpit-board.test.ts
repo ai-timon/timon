@@ -1,6 +1,6 @@
 /**
  * On a phone the widget card sets no height of its own, so the cockpit's centre
- * column must bound its « fill » cards itself — otherwise the chat grows to its
+ * column must bound its "fill" cards itself — otherwise the chat grows to its
  * whole thread and nothing inside it scrolls (TODO #423).
  */
 import assert from 'node:assert/strict';

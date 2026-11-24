@@ -60,6 +60,20 @@
     "invalid_event_id": "O identificador da mensagem não é válido.",
     "message_not_found": "Nenhuma mensagem com esse identificador nesta conversa.",
     "steer_unsupported": "Este agente não pode ser redirecionado agora: coloque a mensagem na fila.",
-    "no_turn_to_steer": "Nenhum turno em andamento: envie uma mensagem normal."
+    "no_turn_to_steer": "Nenhum turno em andamento: envie uma mensagem normal.",
+    "setup_main_agent_unavailable": "Nenhum agente principal foi encontrado nesta instalação. Continue — você pode criar um depois.",
+    "setup_main_agent_invalid_name": "Este nome não contém nenhuma letra ou dígito que o Timon possa usar. Tente outro.",
+    "setup_main_agent_name_taken": "Já existe um agente com este nome. Escolha outro.",
+    "setup_workspace_unavailable": "A pasta de trabalho está indisponível. Verifique o local e as permissões de acesso e tente novamente.",
+    "setup_main_agent_rename_failed": "Não foi possível renomear o agente. Tente novamente em instantes.",
+    "setup_main_agent_invalid_avatar": "Esta imagem não é uma que o Timon armazenou. Envie-a novamente.",
+    "setup_main_agent_failed": "Seu agente não pôde ser salvo. Tente novamente.",
+    "setup_invalid_identity": "Verifique o nome e tente novamente.",
+    "setup_team_backend_unavailable": "Nenhuma ferramenta de agente está disponível. Instale ou conecte uma e tente novamente, ou comece do zero.",
+    "setup_team_agent_conflict": "Um agente inicial foi alterado desde o começo da criação. Suas alterações foram mantidas; resolva o conflito antes de tentar novamente.",
+    "setup_team_unavailable": "A configuração de equipe não está disponível nesta instalação.",
+    "setup_team_preset_locked": "A criação da equipe já começou. Retome a equipe selecionada.",
+    "setup_team_instance_not_empty": "O Timon já contém agentes ou trabalho seus. Escolha Começar do zero para manter tudo como está e concluir a configuração.",
+    "setup_team_failed": "Sua equipe não pôde ser totalmente criada. Tente novamente para continuar de onde parou."
   }
 }

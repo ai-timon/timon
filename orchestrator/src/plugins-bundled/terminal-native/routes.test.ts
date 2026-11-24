@@ -73,7 +73,7 @@ test.describe('terminal-native routes', { concurrency: false }, () => {
     assert.equal(body.ok, false);
     assert.equal(body.reason, 'no_gui');
     assert.match(body.error, /gui/i);
-    assert.equal(/[À-ÿ]/.test(body.error), false, 'daemon errors are English');
+    assert.equal(/[À-ÿ]/.test(body.error), false, 'daemon errors are English'); // french-ok: the letters that betray French
   });
 
   test('GET stays enabled when the host has gui and the setting is on', async (t) => {
@@ -193,7 +193,7 @@ test.describe('terminal-native routes', { concurrency: false }, () => {
       const body = await res.json() as { error: string; code: string; kind?: string };
       assert.equal(body.code, 'no_desktop_session');
       assert.equal(body.kind, undefined);
-      assert.equal(/[À-ÿ]/.test(body.error), false, 'daemon errors are English');
+      assert.equal(/[À-ÿ]/.test(body.error), false, 'daemon errors are English'); // french-ok: the letters that betray French
       assert.deepEqual(launched, []);
     });
 

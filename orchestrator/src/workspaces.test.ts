@@ -116,7 +116,7 @@ test('deleting a pole keeps its projects and its lead agent', async () => {
 });
 
 test('workspaceSlug folds case, accents and spaces', () => {
-  assert.equal(workspaceSlug('  Équipe Été '), 'equipe-ete');
+  assert.equal(workspaceSlug('  Équipe Été '), 'equipe-ete'); // french-ok: an accented name the slug folds
   assert.equal(workspaceSlug('Design Studio'), 'design-studio');
 });
 

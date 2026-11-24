@@ -67,11 +67,11 @@ test('a fill share travels with the stack, survives a reload and never persists 
   assert.equal(half.find(w => w.id === 'chat')?.fillPercent, 50);
   const loaded = mergeLayout(JSON.parse(JSON.stringify(half)), constraints);
   assert.equal(loaded.find(w => w.id === 'chat')?.fillPercent, 50);
-  // Le défaut ne s'écrit pas : 100 % laisse le champ absent.
+  // The default is not written: 100 % leaves the field missing.
   assert.equal(setWidgetHeightMode(loaded, 'chat', 'fill', 100).find(w => w.id === 'chat')?.fillPercent, undefined);
-  // Repasser en hauteur fixe oublie la part plutôt que de la garder en dormance.
+  // Going back to a fixed height forgets the share rather than keeping it dormant.
   assert.equal(setWidgetHeightMode(half, 'chat', 'fixed').find(w => w.id === 'chat')?.fillPercent, undefined);
-  // Une pile a une seule part : l'accostage adopte celle de la cible.
+  // A stack has a single share: docking adopts the target's.
   const stack = dockWidget(half, 'tasks', 'chat');
   for (const id of ['chat', 'tasks']) assert.equal(stack.find(w => w.id === id)?.fillPercent, 50);
 });

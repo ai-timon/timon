@@ -1,18 +1,18 @@
 /**
- * Le loader de plugins tiers — ce que ces tests protègent.
+ * The third-party plugin loader: what these tests protect.
  *
- * Le critère de sortie de la phase P tient en une phrase : **un plugin tiers
- * ne doit jamais pouvoir arrêter TIMON**. Tout ce qui suit décline cette
- * phrase — un manifeste faux, un contrat d'une autre version, un `inject`
- * interdit, un `apply` qui throw : chacun produit une entrée refusée dans le
- * rapport, et le voisin continue de répondre.
+ * The exit criterion of phase P fits in one sentence: **a third-party plugin
+ * must never be able to stop TIMON**. Everything below declines that
+ * sentence: a wrong manifest, a contract of another version, a forbidden
+ * `inject`, an `apply` that throws: each one produces a refused entry in the
+ * report, and the neighbour keeps answering.
  *
- * L'autre moitié, c'est la recomposition à chaud : `disable` retire les routes,
- * `enable` les remet, sans qu'aucun processus ne redémarre. Les tests jouent
- * donc sur un vrai serveur HTTP et un vrai arbre Cordis — un double n'aurait
- * rien prouvé, puisque c'est justement le démontage réel qui est en cause.
+ * The other half is hot recomposition: `disable` removes the routes,
+ * `enable` puts them back, without any process restarting. The tests therefore play
+ * on a real HTTP server and a real Cordis tree: a double would have
+ * proved nothing, since the real teardown is precisely what is at stake.
  */
-// Isole TIMON_HOME AVANT tout module qui touche à l'état TIMON (cf. test-home.ts).
+// Isolates TIMON_HOME BEFORE any module that touches TIMON state (see test-home.ts).
 import '../test-home.js';
 import '../../tests/helpers/paid-license.js';
 import { test } from 'node:test';
@@ -36,7 +36,7 @@ import type { ModuleSetting } from '../config/schema.js';
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const PLUGIN_HELLO = join(FIXTURES, '../../../../examples/plugin-hello');
 
-/** Paquets fixtures, par nom de dossier → nom npm (celui du `package.json`). */
+/** Fixture packages, by folder name → npm name (the one in `package.json`). */
 const PKG = {
   ok: '@fixtures/plugin-ok',
   'throws-in-apply': '@fixtures/plugin-throws',
@@ -51,10 +51,10 @@ function trace(): string[] {
 }
 
 /**
- * Monte un `~/.timon/plugins/` jetable : le `package.json` qu'écrit
- * `timon plugin add`, et des liens vers les fixtures dans `node_modules/`.
- * npm ferait la même chose en copiant ; le lien évite de dupliquer les
- * fixtures à chaque test.
+ * Mounts a throwaway `~/.timon/plugins/`: the `package.json` that
+ * `timon plugin add` writes, and links to the fixtures in `node_modules/`.
+ * npm would do the same by copying; the link avoids duplicating the
+ * fixtures for each test.
  */
 function pluginsRoot(fixtures: (keyof typeof PKG)[]): string {
   const root = mkdtempSync(join(tmpdir(), 'timon-plugins-'));
@@ -68,7 +68,7 @@ function install(root: string, fixtures: (keyof typeof PKG)[]): void {
     const pkg = PKG[f];
     const dest = join(root, 'node_modules', pkg);
     mkdirSync(dirname(dest), { recursive: true });
-    try { symlinkSync(join(FIXTURES, f), dest, 'dir'); } catch { /* déjà lié */ }
+    try { symlinkSync(join(FIXTURES, f), dest, 'dir'); } catch { /* already linked */ }
     dependencies[pkg] = 'file:fixture';
   }
   writeFileSync(
@@ -109,7 +109,7 @@ function signFixture(dir: string, privateKey: ReturnType<typeof ephemeralKey>['p
   writeFileSync(join(dir, 'SIGNATURE'), JSON.stringify({ alg: 'ed25519', keyId, hash, sig }));
 }
 
-/** Un daemon minimal : Express + le service `http` du noyau, comme au boot. */
+/** A minimal daemon: Express + the kernel `http` service, as at boot. */
 async function daemon(): Promise<{
   ctx: Context;
   url: (p: string) => string;
@@ -135,7 +135,7 @@ async function status(url: string): Promise<number> {
   return (await fetch(url)).status;
 }
 
-test('le plugin nominal est monté et sa route répond', async () => {
+test('the nominal plugin is mounted and its route answers', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['ok']);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -145,7 +145,7 @@ test('le plugin nominal est monté et sa route répond', async () => {
   assert.equal(records[0]?.id, 'fixture-ok');
   assert.equal(records[0]?.state, 'active');
   assert.equal(records[0]?.reason, null);
-  assert.equal(records[0]?.client, true, 'le manifeste déclare une moitié navigateur');
+  assert.equal(records[0]?.client, true, 'the manifest declares a browser half');
 
   const res = await fetch(d.url('/api/plugins/fixture-ok/ping'));
   assert.equal(res.status, 200);
@@ -156,7 +156,7 @@ test('le plugin nominal est monté et sa route répond', async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('un plugin signé par une clé injectée est actif', async () => {
+test('a plugin signed by an injected key is active', async () => {
   const d = await daemon();
   const fixture = copiedPlugin();
   const key = ephemeralKey();
@@ -198,7 +198,7 @@ test('missions:spawn: a signed plugin is approved while mounted, an unsigned one
   rmSync(signed.root, { recursive: true, force: true }); rmSync(dev.root, { recursive: true, force: true });
 });
 
-test('un plugin sans SIGNATURE est refusé hors mode développeur', async () => {
+test('a plugin without a SIGNATURE is refused outside developer mode', async () => {
   const d = await daemon();
   const fixture = copiedPlugin();
   const loader = new PluginLoader(d.ctx, { dir: fixture.root, host: daemonHost(d.ctx), publicKeys: [] });
@@ -208,7 +208,7 @@ test('un plugin sans SIGNATURE est refusé hors mode développeur', async () => 
   await loader.dispose(); await d.close(); rmSync(fixture.root, { recursive: true, force: true });
 });
 
-test('le même plugin sans signature est actif en mode développeur', async () => {
+test('the same plugin without a signature is active in developer mode', async () => {
   const d = await daemon();
   const fixture = copiedPlugin();
   const loader = new PluginLoader(d.ctx, { dir: fixture.root, host: daemonHost(d.ctx), publicKeys: [], allowUnsigned: () => true });
@@ -217,7 +217,7 @@ test('le même plugin sans signature est actif en mode développeur', async () =
   await loader.dispose(); await d.close(); rmSync(fixture.root, { recursive: true, force: true });
 });
 
-test('plugin-hello suit l’admission unsigned dev/prod et la signature injectée', async () => {
+test('plugin-hello follows the unsigned dev/prod admission and the injected signature', async () => {
   const d = await daemon();
 
   const prod = copiedHello();
@@ -258,7 +258,7 @@ test('plugin-hello suit l’admission unsigned dev/prod et la signature injecté
   await d.close();
 });
 
-test('un plugin sous licence est refusé avant import quand il n’est pas couvert', async () => {
+test('a licensed plugin is refused before import when it is not covered', async () => {
   const d = await daemon();
   const fixture = copiedPlugin();
   const packageFile = join(fixture.dir, 'package.json');
@@ -271,23 +271,23 @@ test('un plugin sous licence est refusé avant import quand il n’est pas couve
   });
   const [record] = await loader.update();
   assert.equal(record?.reason, 'skipped:unlicensed');
-  assert.equal(trace().length, before, 'la moitié hôte ne doit pas être importée');
+  assert.equal(trace().length, before, 'the host half must not be imported');
   await loader.dispose(); await d.close(); rmSync(fixture.root, { recursive: true, force: true });
 });
 
-test('un fichier modifié après signature est tampered, même en mode développeur', async () => {
+test('a file modified after signing is tampered, even in developer mode', async () => {
   const d = await daemon();
   const fixture = copiedPlugin();
   const key = ephemeralKey();
   signFixture(fixture.dir, key.privateKey);
-  writeFileSync(join(fixture.dir, 'README.md'), 'altéré après signature');
+  writeFileSync(join(fixture.dir, 'README.md'), 'altéré après signature'); // french-ok: sample file content
   const loader = new PluginLoader(d.ctx, { dir: fixture.root, host: daemonHost(d.ctx), publicKeys: key.accepted, allowUnsigned: () => true });
   const [record] = await loader.update();
   assert.equal(record?.reason, 'skipped:tampered');
   await loader.dispose(); await d.close(); rmSync(fixture.root, { recursive: true, force: true });
 });
 
-test('un keyId inconnu est refusé comme unsigned', async () => {
+test('an unknown keyId is refused as unsigned', async () => {
   const d = await daemon();
   const fixture = copiedPlugin();
   const key = ephemeralKey();
@@ -299,11 +299,11 @@ test('un keyId inconnu est refusé comme unsigned', async () => {
   await loader.dispose(); await d.close(); rmSync(fixture.root, { recursive: true, force: true });
 });
 
-test('disable retire les routes et enable les remet, sans redémarrage', async () => {
+test('disable removes the routes and enable puts them back, without a restart', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['ok']);
-  // La config est relue à chaque `update()` : c'est ce qui permet à
-  // `timon plugin disable` de n'écrire qu'un fichier.
+  // The config is read again on each `update()`: that is what lets
+  // `timon plugin disable` write only one file.
   let plugins: Record<string, ModuleSetting> = {};
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), plugins: () => plugins, allowUnsigned: () => true });
   const ping = d.url('/api/plugins/fixture-ok/ping');
@@ -314,16 +314,16 @@ test('disable retire les routes et enable les remet, sans redémarrage', async (
   plugins = { 'fixture-ok': false };
   const off = await loader.update();
   assert.equal(off[0]?.state, 'disabled');
-  assert.equal(await status(ping), 404, 'la route doit tomber avec le plugin désactivé');
-  assert.ok(trace().includes('dispose'), "l'effet du plugin doit être défait");
+  assert.equal(await status(ping), 404, 'the route must fall with the disabled plugin');
+  assert.ok(trace().includes('dispose'), 'the plugin effect must be undone');
 
   plugins = {};
   const on = await loader.update();
   assert.equal(on[0]?.state, 'active');
-  assert.equal(await status(ping), 200, 'et revenir au réactivage, sans restart');
+  assert.equal(await status(ping), 200, 'and come back on re-enabling, without a restart');
 
   await loader.dispose();
-  assert.equal(await status(ping), 404, 'le déchargement du loader emporte tout');
+  assert.equal(await status(ping), 404, 'unloading the loader takes everything away');
   await d.close();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -359,7 +359,7 @@ test('onRemoved names a plugin whose package left the disk, never one disabled o
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('un plugin qui throw dans `apply` n\'empêche pas son voisin de tourner', async () => {
+test('a plugin that throws in `apply` does not stop its neighbour from running', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['ok', 'throws-in-apply']);
   const failures: string[] = [];
@@ -371,17 +371,17 @@ test('un plugin qui throw dans `apply` n\'empêche pas son voisin de tourner', a
   const broken = records.find((r) => r.id === 'fixture-throws');
   assert.equal(broken?.state, 'failed');
   assert.match(broken?.error ?? '', /boum/);
-  assert.deepEqual(failures, ['fixture-throws'], 'l\'échec doit être signalé, pas avalé');
+  assert.deepEqual(failures, ['fixture-throws'], 'the failure must be reported, not swallowed');
 
   assert.equal(records.find((r) => r.id === 'fixture-ok')?.state, 'active');
-  assert.equal(await status(d.url('/api/plugins/fixture-ok/ping')), 200, 'le voisin répond toujours');
+  assert.equal(await status(d.url('/api/plugins/fixture-ok/ping')), 200, 'the neighbour still answers');
 
   await loader.dispose();
   await d.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('une apiVersion plus récente que le daemon est refusée en nommant les deux versions', async () => {
+test('an apiVersion newer than the daemon is refused, naming both versions', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['api-version-future']);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -391,14 +391,14 @@ test('une apiVersion plus récente que le daemon est refusée en nommant les deu
   assert.equal(record?.reason, 'skipped:api-version');
   assert.match(record?.error ?? '', /apiVersion 99/);
   assert.match(record?.error ?? '', new RegExp(`contract ${PLUGIN_API_VERSION}`));
-  assert.ok(!trace().includes('api-future:imported'), 'un manifeste refusé n\'est jamais importé');
+  assert.ok(!trace().includes('api-future:imported'), 'a refused manifest is never imported');
 
   await loader.dispose();
   await d.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('un plugin dont `inject` nomme `db` est refusé, et son `apply` jamais appelé', async () => {
+test('a plugin whose `inject` names `db` is refused, and its `apply` never called', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['forbidden-inject']);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -406,23 +406,23 @@ test('un plugin dont `inject` nomme `db` est refusé, et son `apply` jamais appe
   const [record] = await loader.update();
   assert.equal(record?.reason, 'skipped:forbidden-inject');
   assert.match(record?.error ?? '', /db/);
-  // Le contrôle a lieu APRÈS l'import (c'est là que vit `inject`) mais avant
-  // `apply` : le module est chargé, sa logique ne tourne pas.
-  assert.ok(!trace().includes('forbidden:apply'), 'la logique du plugin ne doit jamais s\'exécuter');
+  // The check happens AFTER the import (that is where `inject` lives) but before
+  // `apply`: the module is loaded, its logic does not run.
+  assert.ok(!trace().includes('forbidden:apply'), 'the plugin logic must never run');
 
   await loader.dispose();
   await d.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('un manifeste invalide est refusé sans importer le code du paquet', async () => {
+test('an invalid manifest is refused without importing the package code', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['bad-manifest']);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), allowUnsigned: () => true });
 
   const [record] = await loader.update();
   assert.equal(record?.reason, 'skipped:manifest');
-  assert.equal(record?.id, '@fixtures/plugin-bad-manifest', 'sans manifeste lisible, le nom npm fait foi');
+  assert.equal(record?.id, '@fixtures/plugin-bad-manifest', 'without a readable manifest, the npm name prevails');
   assert.ok(!trace().includes('bad-manifest:imported'));
 
   await loader.dispose();
@@ -430,7 +430,7 @@ test('un manifeste invalide est refusé sans importer le code du paquet', async 
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('deux paquets qui revendiquent le même id : le second est refusé', async () => {
+test('two packages claiming the same id: the second is refused', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['ok', 'duplicate-id']);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -446,7 +446,7 @@ test('deux paquets qui revendiquent le même id : le second est refusé', async 
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('update() est idempotent : sans changement, rien n\'est remonté', async () => {
+test('update() is idempotent: without a change, nothing is remounted', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['ok']);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -458,7 +458,7 @@ test('update() est idempotent : sans changement, rien n\'est remonté', async ()
   assert.equal(
     trace().filter((t) => t.startsWith('apply:fixture-ok')).length,
     after,
-    'un plugin inchangé ne doit pas être réappliqué (ses timers repartiraient à zéro)',
+    'an unchanged plugin must not be reapplied (its timers would restart from zero)',
   );
 
   await loader.dispose();
@@ -466,7 +466,7 @@ test('update() est idempotent : sans changement, rien n\'est remonté', async ()
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('désinstaller un paquet retire ses routes au prochain update()', async () => {
+test('uninstalling a package removes its routes at the next update()', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['ok']);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -475,7 +475,7 @@ test('désinstaller un paquet retire ses routes au prochain update()', async () 
   await loader.update();
   assert.equal(await status(ping), 200);
 
-  install(dir, []); // ce qu'écrit `timon plugin remove`
+  install(dir, []); // what `timon plugin remove` writes
   assert.deepEqual(await loader.update(), []);
   assert.equal(await status(ping), 404);
 
@@ -484,7 +484,7 @@ test('désinstaller un paquet retire ses routes au prochain update()', async () 
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('les options de config.plugins arrivent dans `apply`', async () => {
+test('the options of config.plugins reach `apply`', async () => {
   const d = await daemon();
   const dir = pluginsRoot(['ok']);
   const loader = new PluginLoader(d.ctx, {
@@ -495,7 +495,7 @@ test('les options de config.plugins arrivent dans `apply`', async () => {
   await loader.update();
   assert.ok(
     trace().includes('apply:fixture-ok:depuis-la-config'),
-    'les clés de config.plugins[id] autres que `enabled` sont les options du plugin',
+    'the keys of config.plugins[id] other than `enabled` are the plugin options',
   );
 
   await loader.dispose();
@@ -567,19 +567,19 @@ test('a dictation `models` pack is admitted only as a file of the package, links
   }
 });
 
-test('un dossier de plugins absent n\'est pas une erreur', () => {
+test('a missing plugins folder is not an error', () => {
   assert.deepEqual(discoverPlugins(join(tmpdir(), 'timon-plugins-inexistant')), []);
 });
 
-test('l\'activation est relue sur le DISQUE, jamais mémoïsée', () => {
-  // La régression que ce test ferme : `config()` est mémoïsé pour la vie du
-  // processus. Brancher le loader dessus rendait `timon plugin disable` sans
-  // effet jusqu'au redémarrage suivant — c'est-à-dire sans effet du tout,
-  // puisque toute l'étape consiste à ne pas redémarrer.
+test('activation is read from the DISK, never memoised', () => {
+  // The regression this test closes: `config()` is memoised for the life of the
+  // process. Wiring the loader onto it made `timon plugin disable` ineffective
+  // until the next restart, that is to say ineffective altogether,
+  // since the whole step is about not restarting.
   const dir = mkdtempSync(join(tmpdir(), 'timon-cfg-'));
   const file = join(dir, 'timon.config.json');
 
-  assert.deepEqual(configuredPlugins(file), {}, 'fichier absent : aucune activation');
+  assert.deepEqual(configuredPlugins(file), {}, 'missing file: no activation');
 
   writeFileSync(file, JSON.stringify({ plugins: { 'fixture-ok': false } }));
   assert.deepEqual(configuredPlugins(file), { 'fixture-ok': false });
@@ -587,14 +587,14 @@ test('l\'activation est relue sur le DISQUE, jamais mémoïsée', () => {
   writeFileSync(file, JSON.stringify({ plugins: { 'fixture-ok': { enabled: true, marker: 'x' } } }));
   assert.deepEqual(configuredPlugins(file), { 'fixture-ok': { enabled: true, marker: 'x' } });
 
-  // Un fichier à moitié écrit (l'humain édite) ne doit pas éteindre les
-  // plugins en marche : on ignore la section, on ne suppose pas `false`.
+  // A half-written file (the human is editing) must not turn off the
+  // running plugins: the section is ignored, `false` is not assumed.
   writeFileSync(file, '{ "plugins": ');
   assert.deepEqual(configuredPlugins(file), {});
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('watch() recompose tout seul quand le disque bouge', async () => {
+test('watch() recomposes on its own when the disk changes', async () => {
   const d = await daemon();
   const dir = pluginsRoot([]);
   const loader = new PluginLoader(d.ctx, { dir, host: daemonHost(d.ctx), plugins: () => ({}), allowUnsigned: () => true });
@@ -604,15 +604,15 @@ test('watch() recompose tout seul quand le disque bouge', async () => {
   const stop = loader.watch(50);
   assert.equal(await status(ping), 404);
 
-  // Ce qu'écrit `timon plugin add` : le daemon n'est prévenu par personne, il
-  // s'en aperçoit. C'est ce qui rend la CLI utilisable sans route HTTP.
+  // What `timon plugin add` writes: nobody warns the daemon, it
+  // notices. That is what makes the CLI usable without an HTTP route.
   install(dir, ['ok']);
   let code = 0;
   for (let i = 0; i < 100 && code !== 200; i++) {
     await new Promise((r) => setTimeout(r, 50));
     code = await status(ping);
   }
-  assert.equal(code, 200, 'le loader doit remonter le plugin sans qu\'on le lui demande');
+  assert.equal(code, 200, 'the loader must remount the plugin without being asked');
 
   stop();
   await loader.dispose();
@@ -687,14 +687,14 @@ async function pingJson(url: string): Promise<{ value: string; legacy: string }>
   return (await (await fetch(url)).json()) as { value: string; legacy: string };
 }
 
-test('un sous-module modifié est rechargé à la recomposition, sans redémarrage', async () => {
+test('a modified submodule is reloaded on recomposition, without a restart', async () => {
   const d = await daemon();
   const { root, dir, ping } = splitPlugin();
   const loader = new PluginLoader(d.ctx, { dir: root, host: daemonHost(d.ctx), allowUnsigned: () => true });
   await loader.update();
   assert.deepEqual(await pingJson(d.url(ping)), { value: 'one', legacy: 'one' });
 
-  // Ni `index.js` ni `package.json` ne bougent : seul un sous-module change.
+  // Neither `index.js` nor `package.json` move: only a submodule changes.
   writeFileSync(join(dir, 'lib', 'dep.js'), "export const VALUE = 'two!'\n");
   writeFileSync(join(dir, 'lib', 'legacy.cjs'), "module.exports = { legacy: 'two!' }\n");
   await loader.update();
@@ -703,7 +703,7 @@ test('un sous-module modifié est rechargé à la recomposition, sans redémarra
   await loader.dispose(); await d.close(); rmSync(root, { recursive: true, force: true });
 });
 
-test('sans modification du disque, la recomposition ne remonte pas le plugin', async () => {
+test('without a disk change, recomposition does not remount the plugin', async () => {
   const d = await daemon();
   const { root, ping } = splitPlugin();
   const loader = new PluginLoader(d.ctx, { dir: root, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -711,11 +711,11 @@ test('sans modification du disque, la recomposition ne remonte pas le plugin', a
   trace().length = 0;
   await loader.update();
   assert.equal(await status(d.url(ping)), 200);
-  assert.deepEqual(trace(), [], 'aucun apply supplémentaire');
+  assert.deepEqual(trace(), [], 'no extra apply');
   await loader.dispose(); await d.close(); rmSync(root, { recursive: true, force: true });
 });
 
-test('watch() voit l\'édition d\'un sous-module et recompose tout seul', async () => {
+test('watch() sees the edit of a submodule and recomposes on its own', async () => {
   const d = await daemon();
   const { root, dir, ping } = splitPlugin();
   const loader = new PluginLoader(d.ctx, { dir: root, host: daemonHost(d.ctx), allowUnsigned: () => true });
@@ -744,7 +744,7 @@ test('watch() voit l\'édition d\'un sous-module et recompose tout seul', async 
   }
 });
 
-test('un sous-module en erreur est réessayé dès que le fichier est corrigé', async () => {
+test('a failing submodule is retried as soon as the file is fixed', async () => {
   const d = await daemon();
   const { root, dir, ping } = splitPlugin();
   const loader = new PluginLoader(d.ctx, { dir: root, host: daemonHost(d.ctx), allowUnsigned: () => true });

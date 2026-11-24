@@ -9,9 +9,11 @@
  *
  * - scope: the tracked files with one of `SCANNED_EXTENSIONS`, the Dockerfiles,
  *   `.gitignore`, `.env.example`, the `*.template` files and the Markdown;
- * - left out: translations (`locales/`, `public-docs/i18n/`), JSON, tests and
- *   fixtures (their data often has to be French to test a translation), and
- *   the maintainers' notes (`docs/`), which are not published;
+ * - left out: translations (`locales/`, `public-docs/i18n/`), JSON, and the
+ *   maintainers' notes (`docs/`), which are not published;
+ * - tests and fixtures are in scope like the rest: their titles and comments
+ *   are English, and the French their data needs (a French locale under test,
+ *   an accented name, a dictation sample) carries a marker with its reason;
  * - refused: a French letter (or `«`/`»`) anywhere, and a comment that is a
  *   French sentence without accents (three distinct French function words);
  * - in Markdown, where accented names and `«`/`»` quotes are English prose
@@ -70,8 +72,7 @@ const FILE_MARKER = /french-ok-file:\s*(?!-->|\*\/)\S/;
 
 function inScope(file: string): boolean {
   if (/^(docs|\.claude|\.agents|public-docs\/i18n)\//.test(file)) return false;
-  if (/(^|\/)(node_modules|locales|tests?|__tests__|__fixtures__|fixtures)\//.test(file)) return false;
-  if (/\.test\.[cm]?[jt]sx?$/.test(file)) return false;
+  if (/(^|\/)(node_modules|locales)\//.test(file)) return false;
   const name = basename(file);
   return SCANNED_NAMES.has(name) || name.endsWith('.Dockerfile') || SCANNED_EXTENSIONS.has(extname(name));
 }
@@ -243,6 +244,32 @@ test('no public file outside the translations is written in French', (t) => {
     offenders.push(...frenchIn(file, text));
   }
   assert.deepEqual(offenders, [], 'translate these lines, or justify each with `french-ok: <reason>`');
+});
+
+test('the comments of the web client and of the plugin templates are in scope', () => {
+  // AGENTS.md wants every code comment in English: this guard is the one that
+  // reads them outside the daemon, so its scope must not lose these two trees.
+  for (const file of [
+    'app/src/components/chat/composer.tsx',
+    'app/src/plugins-client/kanban/kanban-page.tsx',
+    'app/src/lib/i18n.ts',
+    'app/src/vendor/vault-graph/page.js',
+    'examples/plugin-hello/lib/client.js',
+    'examples/plugin-provider/lib/index.mjs',
+  ]) assert.ok(inScope(file), `${file} must be read by the language guard`);
+  // Tests and their helpers are read too: the French their data needs is marked.
+  for (const file of [
+    'app/src/components/chat/composer.test.tsx',
+    'orchestrator/src/english-tree.test.ts',
+    'examples/plugin-provider-cursor/test/conformance.test.mjs',
+    'examples/plugin-hello/test/helpers.mjs',
+    'orchestrator/tests/fixtures/sample.ts',
+  ]) assert.ok(inScope(file), `${file} must be read by the language guard`);
+  // Translations stay out: they are French on purpose.
+  for (const file of [
+    'app/src/locales/fr/core.json',
+    'app/src/locales/fr/notes.ts',
+  ]) assert.ok(!inScope(file), `${file} must stay out of the language guard`);
 });
 
 test('the language guard sees French and spares what is justified', () => {

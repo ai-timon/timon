@@ -16,6 +16,7 @@
 import { dbApi, type TaskRow } from './db.js';
 import { resolveTaskLlm } from './dispatcher.js';
 import { notifyUser } from './notify.js';
+import { daemonMessage } from './daemon-message.js';
 
 /** What a sandbox refusal reads like, in the words of codex, of the OS and of
  *  an agent reporting it in its blocked reason (English or French). */
@@ -127,7 +128,19 @@ export function warnSandboxCascadeAhead(task: TaskRow): string | null {
       t.id !== task.id && t.status === 'BLOCKED' && looksLikeSandboxFailure(t.blocked_reason) && backendOf(t) === target);
     if (!evidence) return null;
     const text = `${advice(task, target, coder)}\n(Blocked on its sandbox in this series: task ${evidence.id.slice(0, 8)} — ${evidence.title}.)`;
-    notifyUser(`${task.type} will run on \`${target}\`, whose sandbox just failed: ${task.title}`, text, { taskId: task.id, type: 'alert' });
+    notifyUser(`${task.type} will run on \`${target}\`, whose sandbox just failed: ${task.title}`, text, {
+      taskId: task.id,
+      type: 'alert',
+      message: daemonMessage('sandbox_cascade_ahead', {
+        type: task.type,
+        target,
+        coder,
+        title: task.title,
+        series: task.series_id,
+        evidenceId: evidence.id.slice(0, 8),
+        evidenceTitle: evidence.title,
+      }),
+    });
     return text;
   } catch (err) {
     console.warn(`[sandbox-cascade] ahead check skipped for ${task.id}: ${(err as Error).message}`);

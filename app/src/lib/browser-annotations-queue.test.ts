@@ -1,5 +1,5 @@
 /**
- * The current queue of the browser annotations (TODO #491): what « N annotations · Send » posts.
+ * The current queue of the browser annotations (TODO #491): what "N annotations · Send" posts.
  * The desktop bubble's queue and what this app picked or collected, until sent or deleted; a draft
  * left from an earlier session is never in it.
  */

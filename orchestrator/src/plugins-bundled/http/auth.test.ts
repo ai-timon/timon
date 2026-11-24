@@ -1,9 +1,9 @@
 /**
- * 4.1 + 4.3 — jeton daemon et middleware d'auth.
+ * 4.1 + 4.3: daemon token and auth middleware.
  *
- * Aucun bind sur le :3000 de prod : les serveurs témoins écoutent
- * `127.0.0.1:0`. Le child qui vérifie le code 2 a `PORT=0` et un
- * `TIMON_HOME` jetable ; on ne le `kill` que s'il a un pid, jamais `0`.
+ * No bind on the production :3000: the witness servers listen on
+ * `127.0.0.1:0`. The child that checks exit code 2 has `PORT=0` and a
+ * throwaway `TIMON_HOME`; it is only `kill`ed if it has a pid, never `0`.
  */
 import { createTestAccount } from '../../../tests/helpers/accounts.js';
 import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -59,8 +59,8 @@ async function listenApp(app: express.Express): Promise<{ port: number; close: (
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const addr = server.address() as AddressInfo | null;
-  if (!addr || typeof addr === 'string') throw new Error('adresse d\'écoute inattendue');
-  assert.notEqual(addr.port, 3000, 'le témoin ne doit pas prendre le port de prod');
+  if (!addr || typeof addr === 'string') throw new Error('unexpected listen address');
+  assert.notEqual(addr.port, 3000, 'the witness must not take the production port');
   return {
     port: addr.port,
     close: () => new Promise((resolve, reject) => {
@@ -82,7 +82,7 @@ function appWithAuth(opts: { token: string; required: boolean; hostPolicy?: () =
   return app;
 }
 
-test('fichier absent : jeton 64 hex, mode 0600, sous TIMON_HOME', () => {
+test('missing file: 64-hex token, mode 0600, under TIMON_HOME', () => {
   const token = ensureDaemonToken();
   assert.match(token, /^[0-9a-f]{64}$/);
   assert.equal(readFileSync(DAEMON_TOKEN_FILE, 'utf8').trim(), token);
@@ -92,7 +92,7 @@ test('fichier absent : jeton 64 hex, mode 0600, sous TIMON_HOME', () => {
   assert.ok(ZONES.secrets.includes('daemon-token'));
 });
 
-test('fichier déjà là : le jeton existant est conservé', () => {
+test('file already there: the existing token is kept', () => {
   const dir = mkdtempSync(join(tmpdir(), 'timon-daemon-token-reuse-'));
   const file = join(dir, 'daemon-token');
   writeFileSync(file, 'jeton-impose-par-l-operateur\n', { mode: 0o600 });
@@ -100,7 +100,7 @@ test('fichier déjà là : le jeton existant est conservé', () => {
   assert.equal(readFileSync(file, 'utf8').trim(), 'jeton-impose-par-l-operateur');
 });
 
-test('authIsRequired : auto + 0.0.0.0 = oui ; auto + 127.0.0.1 = non ; required = oui', () => {
+test('authIsRequired: auto + 0.0.0.0 = yes; auto + 127.0.0.1 = no; required = yes', () => {
   const at = (auth: 'auto' | 'required' | 'off', host: string, appHost = '127.0.0.1', behindTlsProxy = false) =>
     authIsRequired({ daemon: { auth, listen: { host }, behindTlsProxy }, app: { listen: { host: appHost } } });
   assert.equal(at('auto', '0.0.0.0'), true);
@@ -116,7 +116,7 @@ test('authIsRequired : auto + 0.0.0.0 = oui ; auto + 127.0.0.1 = non ; required 
   assert.equal(at('auto', '127.0.0.1', 'localhost'), false);
 });
 
-test('WebUI exposée, daemon en loopback : un anonyme est refusé avant même le premier compte', async () => {
+test('WebUI exposed, daemon on loopback: an anonymous caller is refused even before the first account', async () => {
   const cfg = loadConfig(writeConfig({
     daemon: { listen: { host: '127.0.0.1' }, auth: 'auto' },
     app: { listen: { host: '0.0.0.0' } },
@@ -133,7 +133,7 @@ test('WebUI exposée, daemon en loopback : un anonyme est refusé avant même le
   }
 });
 
-test('listen 0.0.0.0 : sans token = 401, avec Bearer = 200, health public', async () => {
+test('listen 0.0.0.0: no token = 401, with Bearer = 200, health public', async () => {
   const cfg = loadConfig(writeConfig({ daemon: { listen: { host: '0.0.0.0' }, auth: 'auto' } }));
   const token = ensureDaemonToken();
   const { port, close } = await listenApp(appWithAuth({ token, required: authIsRequired(cfg) }));
@@ -151,7 +151,7 @@ test('listen 0.0.0.0 : sans token = 401, avec Bearer = 200, health public', asyn
     assert.deepEqual(await withTok.json(), { ok: true });
 
     const viaQuery = await fetch(`${base}/api/stats?token=${encodeURIComponent(token)}`);
-    assert.equal(viaQuery.status, 401, '?token= ne doit pas authentifier hors SSE');
+    assert.equal(viaQuery.status, 401, '?token= must not authenticate outside SSE');
 
     const wrong = await fetch(`${base}/api/stats`, {
       headers: { authorization: 'Bearer deadbeef' },
@@ -169,7 +169,7 @@ test('listen 0.0.0.0 : sans token = 401, avec Bearer = 200, health public', asyn
   }
 });
 
-test('auth auto + 127.0.0.1 : pas de jeton exigé tant que la table users est vide', async () => {
+test('auth auto + 127.0.0.1: no token required while the users table is empty', async () => {
   const cfg = loadConfig(writeConfig({ daemon: { listen: { host: '127.0.0.1' }, auth: 'auto' } }));
   const token = ensureDaemonToken();
   const { port, close } = await listenApp(appWithAuth({ token, required: authIsRequired(cfg) }));
@@ -307,18 +307,18 @@ async function bootWith(userConfig: unknown): Promise<{ code: number | null; std
   const timer = setTimeout(() => {
     timedOut = true;
     if (typeof pid === 'number' && pid > 0) {
-      try { process.kill(pid, 'SIGTERM'); } catch { /* déjà mort */ }
+      try { process.kill(pid, 'SIGTERM'); } catch { /* already dead */ }
     }
   }, 90_000);
 
   const [code] = await once(child, 'exit') as [number | null, NodeJS.Signals | null];
   clearTimeout(timer);
 
-  assert.equal(timedOut, false, `le boot n'a pas rendu la main : stdout=${stdout} stderr=${stderr}`);
+  assert.equal(timedOut, false, `the boot did not return: stdout=${stdout} stderr=${stderr}`);
   return { code, stderr };
 }
 
-test('auth off + 0.0.0.0 : loadConfig refuse, le daemon sort en code 2', async (t) => {
+test('auth off + 0.0.0.0: loadConfig refuses, the daemon exits with code 2', async (t) => {
   assert.throws(
     () => loadConfig(writeConfig({ daemon: { listen: { host: '0.0.0.0' }, auth: 'off' } })),
     (e: unknown) => e instanceof ConfigError
@@ -333,7 +333,7 @@ test('auth off + 0.0.0.0 : loadConfig refuse, le daemon sort en code 2', async (
 
 // TODO #528: a loopback daemon behind an exposed WebUI or a TLS proxy is
 // reached on behalf of remote visitors; `off` would hand them the whole API.
-test('auth off + WebUI exposée ou proxy TLS : loadConfig refuse, le daemon sort en code 2', async (t) => {
+test('auth off + exposed WebUI or TLS proxy: loadConfig refuses, the daemon exits with code 2', async (t) => {
   for (const appHost of ['0.0.0.0', '10.0.0.5', '::']) {
     assert.throws(
       () => loadConfig(writeConfig({
@@ -364,7 +364,7 @@ test('auth off + WebUI exposée ou proxy TLS : loadConfig refuse, le daemon sort
   assert.match(stderr, /web interface listens beyond the loopback/);
 });
 
-test('auth off forcé en mémoire (sans loadConfig) + WebUI exposée : un anonyme reste refusé', async () => {
+test('auth off forced in memory (without loadConfig) + exposed WebUI: an anonymous caller stays refused', async () => {
   const off = (appHost: string, behindTlsProxy = false) => authIsRequired({
     daemon: { auth: 'off', listen: { host: '127.0.0.1' }, behindTlsProxy },
     app: { listen: { host: appHost } },

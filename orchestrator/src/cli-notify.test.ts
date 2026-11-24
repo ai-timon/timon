@@ -3,7 +3,7 @@
  * but a refusal (403) or a server error must exit non-zero — an agent that
  * reports through it has to see the notification was not delivered.
  *
- * Témoin HTTP sur `127.0.0.1:0`, jamais le daemon de la machine.
+ * HTTP witness on `127.0.0.1:0`, never the daemon of the machine.
  */
 import { mkdtempSync } from 'node:fs';
 import http from 'node:http';

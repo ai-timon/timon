@@ -61,7 +61,7 @@ const PROJECT_KEY = 'project:';
  * refreshes on the global SSE bus; the poll is shared at module level, so a
  * second mount costs no request.
  */
-export function WorkingAgentsWidget({ orientation = 'vertical', compact = false, editing = false, poignee, className }: WidgetProps) {
+export function WorkingAgentsWidget({ orientation = 'vertical', compact = false, editing = false, handle, className }: WidgetProps) {
   const active = useActiveAgents();
   // Faces: the configured agent when known (a synthetic idle tab carries only
   // a name), else what the active-agents feed says about it.
@@ -315,7 +315,7 @@ export function WorkingAgentsWidget({ orientation = 'vertical', compact = false,
         title={t('widgetCatalog.workingAgents.title')}
         className={className}
         bodyClassName="p-2"
-        actions={<>{menu}{poignee}</>}
+        actions={<>{menu}{handle}</>}
       >
         {content.length === 0
           ? <p className="px-1 py-2 text-xs text-muted-foreground">{t(options.show === 'all' ? 'workingAgents.noAgent' : 'workingAgents.empty')}</p>
@@ -331,7 +331,7 @@ export function WorkingAgentsWidget({ orientation = 'vertical', compact = false,
       <>
         {content.length > 0 && <div ref={track} data-working-agents="avatar" className="relative flex flex-col items-center gap-0.5" {...reorder}>{content}{dropLine}</div>}
         {editing && <span className="flex shrink-0 items-center self-center">{menu}</span>}
-        {poignee}
+        {handle}
       </>
     );
   }
@@ -355,7 +355,7 @@ export function WorkingAgentsWidget({ orientation = 'vertical', compact = false,
         </div>
       )}
       {editing && <span className="flex shrink-0 items-center self-center">{menu}</span>}
-      {poignee}
+      {handle}
     </>
   );
 }

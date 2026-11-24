@@ -39,23 +39,23 @@ test('Markdown tables retain semantics inside a keyboard-accessible horizontal s
   assert.equal((html.match(/markdown-table-scroll/g) ?? []).length, 1);
 });
 
-test('splitHighlightedLines referme et rouvre les spans à cheval', () => {
-  // Le cas qui motive la fonction : une chaîne multi-lignes. Sans découpe,
-  // le <span> resterait ouvert et recolorerait tout le reste du fichier.
+test('splitHighlightedLines closes and reopens the spans that straddle lines', () => {
+  // The case that motivates the function: a multi-line string. Without splitting,
+  // the <span> would stay open and recolour the whole rest of the file.
   assert.deepEqual(
     splitHighlightedLines('<span class="hljs-string">"a\nb"</span>\nreste'),
     ['<span class="hljs-string">"a</span>', '<span class="hljs-string">b"</span>', 'reste'],
   );
 });
 
-test('splitHighlightedLines rend une ligne par ligne source', () => {
+test('splitHighlightedLines returns one line per source line', () => {
   assert.deepEqual(splitHighlightedLines('a\nb\nc'), ['a', 'b', 'c']);
   assert.deepEqual(splitHighlightedLines(''), ['']);
-  // Saut final : une dernière ligne vide, comme dans un éditeur.
+  // Final break: a last empty line, as in an editor.
   assert.deepEqual(splitHighlightedLines('a\n'), ['a', '']);
 });
 
-test('splitHighlightedLines gère les spans imbriqués', () => {
+test('splitHighlightedLines handles nested spans', () => {
   const lines = splitHighlightedLines(
     '<span class="a"><span class="b">x\ny</span></span>',
   );
@@ -64,19 +64,19 @@ test('splitHighlightedLines gère les spans imbriqués', () => {
   assert.equal(lines[1], '<span class="a"><span class="b">y</span></span>');
 });
 
-test('highlightCode colore un langage enregistré et échappe le reste', async () => {
+test('highlightCode colours a registered language and escapes the rest', async () => {
   await loadHighlighter();
   const json = highlightCode('{"a": 1}', 'json');
   assert.match(json, /hljs-attr/);
-  // Langage inconnu : pas de coloration inventée, mais du HTML sûr.
+  // Unknown language: no made-up colouring, but safe HTML.
   const unknownLang = highlightCode('<script>alert(1)</script>', 'klingon');
   assert.doesNotMatch(unknownLang, /<script>/);
 });
 
-test('highlightCode couvre les langages ajoutés pour l\'aperçu de fichier', async () => {
+test('highlightCode covers the languages added for the file preview', async () => {
   await loadHighlighter();
-  // Régression : ces grammaires n'étaient pas enregistrées, et un .env ou un
-  // Dockerfile ressortait en texte brut.
+  // Regression: these grammars were not registered, and a .env or a
+  // Dockerfile came out as plain text.
   assert.match(highlightCode('KEY=valeur', 'ini'), /hljs-/);
   assert.match(highlightCode('FROM node:22\nRUN npm ci', 'dockerfile'), /hljs-/);
   assert.match(highlightCode('<?php echo 1; ?>', 'php'), /hljs-/);
@@ -113,9 +113,9 @@ test('the Windows path rewrite opens nothing else', () => {
   assert.equal(plain.querySelector('a')?.hasAttribute('href'), false);
 });
 
-test('les grammaires highlight.js restent hors du module markdown (bundle racine)', () => {
-  // Importées ici, elles repartent dans chaque page qui rend du markdown
-  // (docs/BUNDLE-SIZE.md) : elles passent par loadHighlighter().
+test('the highlight.js grammars stay out of the markdown module (root bundle)', () => {
+  // Imported here, they would ship again in every page that renders markdown
+  // (docs/BUNDLE-SIZE.md): they go through loadHighlighter().
   const source = readFileSync(join(process.cwd(), 'src', 'lib', 'markdown.ts'), 'utf8');
   assert.doesNotMatch(source, /from 'highlight\.js\/lib\/languages\//);
 });
