@@ -11,7 +11,7 @@ import './test-home.js';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { whichBin, diagnose, formatDoctor, BINARIES } = await import('./doctor.js');
+const { whichBin, diagnose, dockerInfoVerdict, formatDoctor, BINARIES } = await import('./doctor.js');
 const { TimonConfigSchema } = await import('./config/schema.js');
 const { setConfig, resetConfig } = await import('./config/load.js');
 
@@ -205,4 +205,12 @@ test('an empty main seat names the command that fills it', () => {
   assert.match(empty, /main orchestrator NONE .*eligible: Atlas, Zeus; run "timon agent set-main <name>"/);
   const none = formatDoctor({ ...r, mainSeat: { holder: null, empty: true, candidates: [] } });
   assert.doesNotMatch(none, /set-main/, 'no command to suggest when nobody is eligible');
+});
+
+test('a Docker daemon is usable only when it answers with its version', () => {
+  assert.deepEqual(dockerInfoVerdict({ code: 0, stdout: '26.1.5+dfsg1\n', stderr: '' }), { usable: true, detail: 'server 26.1.5+dfsg1' });
+  // Docker 26 exits 0 with an empty version when it cannot reach the daemon.
+  const unreachable = 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?';
+  assert.deepEqual(dockerInfoVerdict({ code: 0, stdout: '\n', stderr: `${unreachable}\n` }), { usable: false, detail: unreachable });
+  assert.deepEqual(dockerInfoVerdict({ code: 1, stdout: '', stderr: '' }), { usable: false, detail: 'daemon unreachable' });
 });

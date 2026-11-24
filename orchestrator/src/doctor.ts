@@ -91,13 +91,24 @@ export function whichBin(
   return { path: findExecutableBinary(name, options), pinned: false };
 }
 
+/**
+ * What `docker info --format {{.ServerVersion}}` says of the daemon. The exit
+ * code alone is not enough: Docker 26 exits 0 when the daemon is unreachable,
+ * printing the error on stderr and an empty version, and the doctor then
+ * called a stopped daemon usable. A daemon that answers always has a version.
+ */
+export function dockerInfoVerdict(r: { code: number | null; stdout: string; stderr: string }): { usable: boolean; detail: string } {
+  const version = r.stdout.trim();
+  if (r.code === 0 && version) return { usable: true, detail: `server ${version}` };
+  return { usable: false, detail: r.stderr.trim().split('\n')[0] || 'daemon unreachable' };
+}
+
 function dockerUsable(bin: string | null): { present: boolean; usable: boolean; detail: string } {
   if (!bin) return { present: false, usable: false, detail: 'binary absent' };
   // `docker info`, not `docker --version`: a client installed without a
   // reachable daemon (common on macOS) answers the version query just fine.
   const r = getHost().exec(bin, ['info', '--format', '{{.ServerVersion}}'], { timeout: 10_000 });
-  if (r.code === 0) return { present: true, usable: true, detail: `server ${r.stdout.trim()}` };
-  return { present: true, usable: false, detail: r.stderr.trim().split('\n')[0] || 'daemon unreachable' };
+  return { present: true, ...dockerInfoVerdict(r) };
 }
 
 /** The host adapter's probe (`host/systemd.ts`), the one place that runs `systemctl`. */
