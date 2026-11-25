@@ -153,6 +153,8 @@ Hover a message to show its buttons; each one says what it does when you point a
 
 Under your own messages, **Copy** and **Reply** are there too.
 
+To ask about a specific passage, select text in an agent's message and click **Quote in chat**. Timon adds the selection above any text already in the message box. Add your question and send it when ready.
+
 ### Replying to a message
 
 **Reply** puts a strip above the message box with the start of the message you answer; type and send as usual. Click the strip to go back to that message, and its cross (or Escape) to cancel. Your message then shows the quote at its top; click it to scroll back to the message it answers. A reply works the same way while the agent works: it steers the turn or waits in the queue with the rest of your message.
