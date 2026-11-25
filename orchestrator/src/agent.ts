@@ -23,7 +23,7 @@ import {
 } from './paths.js';
 import { appendDatedLog } from './log-file.js';
 import { createNotification } from './notifications.js';
-import { db, dbApi, type RenamedAgentTrigger, type Source, type MemoryRuleRow } from './db.js';
+import { db, dbApi, type MissionRow, type RenamedAgentTrigger, type Source, type MemoryRuleRow } from './db.js';
 import { originFromSpawnSource, type UserEventOrigin } from './user-origin.js';
 import type { PromptPresentation } from './prompt-presentation.js';
 import { recordRequestDelivery } from './agent-request-replies.js';
@@ -363,6 +363,7 @@ export type RunningAgent = {
    *  The exit handler uses this to classify the terminal status without relying
    *  on the exit code alone (SIGTERM gives a non-zero exit that is NOT failure):
    *    - 'idle': reap of an autonomous mission after its turn → `completed`
+   *    - 'workflow-idle': release after the whole run ends, keeping session memory
    *    - 'stopped': manual kill (`timon kill`) → `completed` (intentional stop)
    *    - 'interrupted': chat STOP button — cut the TURN, not the conversation.
    *      Same terminal status as 'stopped', but a distinct death cause
@@ -376,7 +377,7 @@ export type RunningAgent = {
    *      included → `failed`, with the cause observed on the stream
    *  undefined = unsolicited exit → fall back to the exit code (exit 0
    *  = completed, ≠ 0 = crash → failed). */
-  terminationIntent?: 'idle' | 'hung' | 'budget' | 'stopped' | 'interrupted' | 'bounced';
+  terminationIntent?: 'idle' | 'workflow-idle' | 'hung' | 'budget' | 'stopped' | 'interrupted' | 'bounced';
   /** The CLI process itself (the spawned pid, except behind a Windows
    *  `.cmd` shim) and its direct children once its MCP servers were up. What
    *  appears under the CLI after that is work the mission started (cf.
@@ -629,6 +630,7 @@ function lastActivityAt(live: RunningAgent): number {
  */
 export function evictIdleMission(now = Date.now(), graceMs = EVICT_IDLE_GRACE_MS): string | null {
   let oldest: RunningAgent | null = null;
+  let releaseWorkflow = false;
   for (const live of running.values()) {
     if (live.turnActive || live.switching || live.terminationIntent) continue;
     if (now - lastActivityAt(live) < graceMs) continue;
@@ -638,19 +640,24 @@ export function evictIdleMission(now = Date.now(), graceMs = EVICT_IDLE_GRACE_MS
     // before the first sweep that reads the descendants, and an unread count
     // is not "no job". The reaper's ceiling applies here too.
     if (live.backgroundCheckedFor !== live.turnSince) continue;
-    if ((live.backgroundCount ?? 0) > 0 && now - live.turnSince <= REAP_BG_MS()) continue;
     if (missionHasPendingPermission(live.missionId)) continue;
     const m = dbApi.getMission(live.missionId);
-    if (!m || m.status !== 'running' || !isAutonomousMission(m)) continue;
-    if (!oldest || live.turnSince < oldest.turnSince) oldest = live;
+    if (!m || m.status !== 'running') continue;
+    const workflow = m.workflow_run_id !== null;
+    if ((live.backgroundCount ?? 0) > 0 && (workflow || now - live.turnSince <= REAP_BG_MS())) continue;
+    if (workflow ? !workflowIdleReleaseReady(m) : !isAutonomousMission(m)) continue;
+    if (!oldest || live.turnSince < oldest.turnSince) {
+      oldest = live;
+      releaseWorkflow = workflow;
+    }
   }
   if (!oldest) return null;
   console.log(
     `[admission] cap reached: releasing idle mission ${oldest.missionId.slice(0, 8)} ` +
     `(${oldest.agentName}, idle ${Math.round((now - lastActivityAt(oldest)) / 1000)} s)`,
   );
-  oldest.terminationIntent = 'idle';
-  dbApi.confirmClosureIgnoredReap(oldest.missionId);
+  oldest.terminationIntent = releaseWorkflow ? 'workflow-idle' : 'idle';
+  if (!releaseWorkflow) dbApi.confirmClosureIgnoredReap(oldest.missionId);
   try { oldest.handle.kill('SIGTERM'); } catch { /* already dead */ }
   return oldest.missionId;
 }
@@ -2662,6 +2669,7 @@ async function spawnTurn(args: {
     // killed mission stayed `running`, the wake loop asked it whether its task
     // was finished, and that resume found no rollout (TIM-0111).
     if (backend.finishMissionOnExit || failed || agent.terminationIntent) {
+      const keepMemory = agent.terminationIntent === 'workflow-idle';
       // Mission ALREADY terminal: someone else finalized it before us
       // (kill API, a leaked registry entry's reap, boot's zombie sweep).
       // `finishMission` isn't idempotent — it rewrites `status`/`ended_at`
@@ -2669,10 +2677,10 @@ async function spawnTurn(args: {
       // downstream chain (doc-task, verification-loop, notifyParent) a
       // second time. So we stop here, after the only cleanup left to do.
       if (dbApi.getMission(missionId)?.status !== 'running') {
-        if (scope === 'SESSION' && memoryDir) {
+        if (!keepMemory && scope === 'SESSION' && memoryDir) {
           try { rmSync(memoryDir, { recursive: true, force: true }); } catch {}
         }
-        disposeEphemeralAgentIfDone(agentName);
+        if (!keepMemory) disposeEphemeralAgentIfDone(agentName);
         return;
       }
       // An exit ≠ 0 is NOT necessarily a failure. Three outcomes (cf.
@@ -2688,7 +2696,7 @@ async function spawnTurn(args: {
       //    end.
       const intent = agent.terminationIntent;
       const status: 'completed' | 'failed' | 'terminated' =
-        intent === 'idle' || intent === 'stopped' || intent === 'interrupted' ? 'terminated'
+        intent === 'idle' || keepMemory || intent === 'stopped' || intent === 'interrupted' ? 'terminated'
           : intent === 'hung' || intent === 'budget' || intent === 'bounced' ? 'failed'
             : failed ? 'failed' : 'completed';
       // Death cause, on the same grid as the status above:
@@ -2719,7 +2727,7 @@ async function spawnTurn(args: {
             // `interrupted` before `idle`/`stopped`: the human gesture must
             // stay legible on the Kanban, and it's not replayable.
             : intent === 'interrupted' ? 'stopped'
-              : intent === 'idle' || intent === 'stopped' ? 'killed'
+              : intent === 'idle' || keepMemory || intent === 'stopped' ? 'killed'
                 : 'crash';
       const effectiveReason = dbApi.finishMission(missionId, status, exitCode ?? 1, reason);
       bus.publish({ kind: 'mission_complete', missionId, status, exitCode: exitCode ?? 1, reason: effectiveReason });
@@ -2729,7 +2737,7 @@ async function spawnTurn(args: {
       });
       notifyParentOnComplete(missionId, status);
       // SESSION memory is ephemeral: delete the dir now that the mission is done.
-      if (scope === 'SESSION' && memoryDir) {
+      if (!keepMemory && scope === 'SESSION' && memoryDir) {
         try { rmSync(memoryDir, { recursive: true, force: true }); } catch {}
       }
       // Ephemeral agent: purges the entire folder now that the mission
@@ -2737,7 +2745,7 @@ async function spawnTurn(args: {
       // is running (safety against double spawns) and that the
       // `ephemeral: true` marker is actually present (never nuke a
       // persistent agent by accident).
-      disposeEphemeralAgentIfDone(agentName);
+      if (!keepMemory) disposeEphemeralAgentIfDone(agentName);
       // NOTE: we used to call the backend's dispose() on failed one-shot
       // exits, but that nuked the per-mission scratch state and made the
       // follow-up resume fail with "no rollout found". The per-mission folder
@@ -4451,9 +4459,9 @@ export function setProcessTableReaderForTest(reader: (() => Promise<ProcessEntry
 /**
  * Remembers what the CLI runs for its own sake, at `system:init`: its MCP
  * servers are spawned by then and none of the mission's own work is, since
- * the first turn only just began. Only autonomous missions are looked at (the
- * only ones the idle reap concerns), which also spares a chat the cost of a
- * table read (a PowerShell call on Windows). Best effort: no baseline simply
+ * the first turn only just began. Autonomous and workflow missions are looked
+ * at, which spares a chat the cost of a table read (a PowerShell call on
+ * Windows). Best effort: no baseline simply
  * means the reaper sees no background work, as before.
  */
 async function captureCliBaseline(agent: RunningAgent): Promise<void> {
@@ -4461,7 +4469,7 @@ async function captureCliBaseline(agent: RunningAgent): Promise<void> {
   if (!pid || agent.cliBaselinePids) return;
   try {
     const m = dbApi.getMission(agent.missionId);
-    if (!m || !isAutonomousMission(m)) return;
+    if (!m || (!isAutonomousMission(m) && m.workflow_run_id === null)) return;
     const table = await readTable();
     if (agent.handle.gone() || agent.cliBaselinePids || table.length === 0) return;
     agent.cliPid = cliProcessPid(table, pid, getHost().platform);
@@ -4494,6 +4502,20 @@ const AUTONOMOUS_CHANNELS = new Set([
 export function isAutonomousMission(m: { source_channel: string | null; task_id: string | null }): boolean {
   if (m.task_id) return true; // any dispatched task mission
   return !!m.source_channel && AUTONOMOUS_CHANNELS.has(m.source_channel);
+}
+
+/** Idle release is separate from task/permission autonomy. It must leave the
+ * rest of the run and any work still owed to this mission alone. */
+function workflowIdleReleaseReady(m: MissionRow): boolean {
+  if (!m.workflow_run_id || m.user_engaged || turnPreparing(m.id) || turnRetryAwaited(m.id)
+      || missionHasPendingPermission(m.id)) return false;
+  const run = dbApi.getWorkflowRun(m.workflow_run_id);
+  if (!run || run.ended_at === null || !['completed', 'failed', 'cancelled'].includes(run.status)
+      || run.owner_user_id !== m.owner_user_id
+      || !dbApi.missionTurnEnded(m.id) || dbApi.lastTurnAwaitsReplay(m.id)) return false;
+  const work = dbApi.missionPendingWork(m.id, m.agent_name, m.status);
+  return work.pending_messages === 0 && work.open_deliveries === 0
+    && !dbApi.listChildMissions(m.id).some((child) => child.status === 'running' || child.status === 'queued');
 }
 
 /** Missions with ≥1 pending HUMAN permission card. The reaper does NOT
@@ -4659,6 +4681,7 @@ export function reapStaleMissions(processTable?: readonly ProcessEntry[], now = 
   for (const m of dbApi.listRunningMissions()) {
     // Waiting out the backoff of a replay (TODO #459): idle on purpose.
     if (turnRetryPending(m.id)) continue;
+    const workflow = m.workflow_run_id !== null;
     let live = running.get(m.id);
     // Registry entry that outlived its process (the exit handler did not
     // run). Without this check, the reaper believes the mission is alive:
@@ -4681,7 +4704,8 @@ export function reapStaleMissions(processTable?: readonly ProcessEntry[], now = 
     if (!live) {
         // No in-memory process. Legitimate for a one-shot backend between turns;
         // orphaned for a persistent backend past the spawn grace period.
-      if (now - m.started_at < REAP_ORPHAN_GRACE_MS()) continue;
+      if (now - m.started_at < REAP_ORPHAN_GRACE_MS()
+          || (workflow && (turnPreparing(m.id) || turnRetryAwaited(m.id)))) continue;
       const backendName = m.backend_override ?? loadConfig(m.agent_name).backend;
       if (!backendMetadata(backendName).persistentProcess) {
         // One-shot backend (codex dialect: codex, ollama-cloud…): the process
@@ -4696,15 +4720,15 @@ export function reapStaleMissions(processTable?: readonly ProcessEntry[], now = 
         // persistent path: `terminated` (normal completion, not a failure)
         // + `mission_complete` on the bus, so downstream chains
         // (verification-loop, doc-task, notifyParent) still run.
-        if (!isAutonomousMission(m)) continue;
+        if (workflow ? !workflowIdleReleaseReady(m) : !isAutonomousMission(m)) continue;
         const lastActivity = dbApi.lastEventAt(m.id) ?? m.started_at;
         if (now - lastActivity < REAP_IDLE_MS()) continue;
-        dbApi.confirmClosureIgnoredReap(m.id);
+        if (!workflow) dbApi.confirmClosureIgnoredReap(m.id);
         const reason = dbApi.finishMission(m.id, 'terminated', 0, 'killed');
         bus.publish({ kind: 'mission_complete', missionId: m.id, status: 'terminated', exitCode: 0, reason });
         notifyParentOnComplete(m.id, 'terminated');
         console.log(
-          `[reaper] autonomous one-shot mission ${m.id.slice(0, 8)} (${m.agent_name}, ${backendName}) ` +
+          `[reaper] ${workflow ? 'workflow' : 'autonomous'} one-shot mission ${m.id.slice(0, 8)} (${m.agent_name}, ${backendName}) ` +
             `has no process, idle for ${Math.round((now - lastActivity) / 60000)} min → terminated`,
         );
         idled++;
@@ -4768,41 +4792,52 @@ export function reapStaleMissions(processTable?: readonly ProcessEntry[], now = 
     const turnEndedMs = now - live.turnSince;
     const quietMs = now - Math.max(live.turnSince, live.lastOutputAt ?? 0);
     const idleMs = quietMs > Math.min(REAP_IDLE_MS(), REAP_CHAT_IDLE_MS()) ? now - lastActivityAt(live) : quietMs;
+    if (workflow && (live.switching || live.terminationIntent || turnEndedMs <= BG_PROBE_AFTER_MS()
+        || !workflowIdleReleaseReady(m))) {
+      live.backgroundCheckedFor = undefined;
+      continue;
+    }
+    const idleReapable = autonomous || workflow;
     // A turn that ended on `run_in_background` leaves the CLI waiting for the
     // job's completion notice and emitting nothing: that is not idleness (the
     // coder killed twice at 10 min while its test suite was passing, 12/10).
     // Counted from the end of the turn, like `backgroundCheckedFor`: output that
     // stopped this reading would leave a count of 0 behind for the eviction.
-    const probed = autonomous && turnEndedMs > BG_PROBE_AFTER_MS();
+    const probed = idleReapable && turnEndedMs > BG_PROBE_AFTER_MS();
     const background = probed ? backgroundProcesses(live, processTable) : [];
     live.backgroundCount = background.length;
-    // An unreadable table (a mission with a baseline but no table) tells
-    // nothing: eviction keeps off it, the idle reap falls back to its old rule.
+    // An unreadable table cannot clear a workflow's known background baseline.
+    // Other idle reaps keep their historical fallback.
     if (probed && (processTable?.length || !live.cliBaselinePids)) live.backgroundCheckedFor = live.turnSince;
-    if (idleMs > REAP_IDLE_MS() && autonomous) {
-      if (background.length > 0 && turnEndedMs <= REAP_BG_MS()) {
+    else if (workflow) live.backgroundCheckedFor = undefined;
+    if (idleMs > REAP_IDLE_MS() && idleReapable) {
+      if (workflow && live.cliBaselinePids && !processTable?.length) continue;
+      const idleKind = workflow ? 'workflow' : 'autonomous';
+      if (background.length > 0 && (workflow || turnEndedMs <= REAP_BG_MS())) {
         if (live.backgroundSparedFor !== live.turnSince) {
           live.backgroundSparedFor = live.turnSince;
           console.log(
-            `[reaper] autonomous mission ${m.id.slice(0, 8)} (${m.agent_name}, ${m.source_channel ?? 'task'}) ` +
+            `[reaper] ${idleKind} mission ${m.id.slice(0, 8)} (${m.agent_name}, ${m.source_channel ?? 'task'}) ` +
             `idle ${Math.round(idleMs / 60000)} min, ${background.length} background process(es) alive → spared ` +
-            `(ceiling ${Math.round(REAP_BG_MS() / 60000)} min)`,
+            (workflow ? '(waiting for background work)' : `(ceiling ${Math.round(REAP_BG_MS() / 60000)} min)`),
           );
         }
         continue;
       }
       console.log(
-        `[reaper] autonomous mission ${m.id.slice(0, 8)} (${m.agent_name}, ${m.source_channel ?? 'task'}) ` +
+        `[reaper] ${idleKind} mission ${m.id.slice(0, 8)} (${m.agent_name}, ${m.source_channel ?? 'task'}) ` +
         `idle ${Math.round(idleMs / 60000)} min, ${background.length} background process(es) → SIGTERM` +
         (background.length > 0 ? ' (background ceiling reached)' : ''),
       );
-      live.terminationIntent = 'idle'; // turn finished, only free the process → terminal `completed`
+      live.terminationIntent = workflow ? 'workflow-idle' : 'idle';
       // The one death that ends the task of a mission that ignored its closure questions.
-      dbApi.confirmClosureIgnoredReap(m.id);
+      if (!workflow) dbApi.confirmClosureIgnoredReap(m.id);
       try { live.handle.kill('SIGTERM'); } catch { /* already dead */ }
       idled++;
       continue;
     }
+    // Workflow sessions wait for the whole run even past the old chat timeout.
+    if (workflow) continue;
     // Human chat, turn finished a VERY long time ago. Historically exempted
     // from the reap, which made it a slot leak: a chat CLI process never
     // dies on its own, so every open conversation confiscated a global-cap

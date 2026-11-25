@@ -5,6 +5,8 @@ sidebar_position: 4.6
 
 A workflow is a graph you draw in **Workflows**: triggers start it, agents, conditions and actions run in turn, and every run shows what each node did. You build it on a draft, **Publish** it to freeze a version, and runs always execute a published version (or the draft, when you run the draft explicitly).
 
+After the run ends, Timon can release idle workflow agent processes whose turns and pending work are settled. Their conversation history and session memory remain available. An idle agent that is still part of an unfinished run keeps its process through this idle cleanup.
+
 ## Nodes
 
 The **Add** palette lists every node type the daemon knows, grouped by family: triggers, agents, logic, actions, human, memory and output. A node has one input and one or more output ports; an edge leaves a port and enters the next node.
