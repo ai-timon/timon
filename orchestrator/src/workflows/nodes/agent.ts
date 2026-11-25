@@ -56,7 +56,7 @@ export function workflowNodeRuntime(missionId: string, node: WorkflowDefinition[
   return { backend: nodeBackend, model: nodeModel, browserProfileId: profile?.id ?? null };
 }
 
-export async function spawnWorkflowAgent(input: { parentMissionId?: string; ownerUserId?: string | null; runId: string; nodeId: string; slug: string; node: WorkflowDefinition['nodes'][number]; context: AgentNodeContext; skillId?: string; extraSkillIds?: string[] }): Promise<string> {
+export async function spawnWorkflowAgent(input: { parentMissionId?: string; ownerUserId?: string | null; runId: string; nodeId: string; attempt: number; slug: string; node: WorkflowDefinition['nodes'][number]; context: AgentNodeContext; skillId?: string; extraSkillIds?: string[] }): Promise<string> {
   const config = input.node.config as NodeConfig;
   const identity = config.identity;
   const agentName = config.ref ?? (identity ? workflowAgentName(input.slug, input.nodeId) : undefined);
@@ -69,7 +69,7 @@ export async function spawnWorkflowAgent(input: { parentMissionId?: string; owne
   const extraSkills = [...new Set([...(identity?.skills ?? []), ...(config.skills ?? []), ...(input.skillId ? [input.skillId] : []), ...(input.extraSkillIds ?? [])])];
   const extraMcpServers = [...new Set([...(identity?.mcpServers ?? []), ...(config.mcpServers ?? [])])];
   const extraAllowedTools = [...new Set([...(identity?.allowedTools ?? []), ...(config.allowedTools ?? [])])];
-  return spawnAgent(agentName, brief, { channel: 'workflow', meta: { workflow_run_id: input.runId, workflow_node_id: input.nodeId } }, {
+  return spawnAgent(agentName, brief, { channel: 'workflow', meta: { workflow_run_id: input.runId, workflow_node_id: input.nodeId, workflow_node_attempt: input.attempt } }, {
     traceId: input.runId,
     parentMissionId: input.parentMissionId,
     ownerUserId: input.ownerUserId,
