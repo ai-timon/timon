@@ -5,7 +5,7 @@ sidebar_position: 2
 
 ## The view you land on
 
-**TIMs** is where Timon opens once onboarding is over: your main TIM's chat, ready to talk to, with the list of your TIMs beside it. A TIM is one of your agents that belongs to no project; the list groups them by team, the main TIM pinned at the top, centred. The dot after a name shows what the TIM is doing (working, waiting for an answer).
+**TIMs** is where Timon opens once onboarding is over: your main TIM's chat, ready to talk to, with the list of your TIMs beside it. A TIM is one of your agents, whether it belongs to a project or not; the list groups them by team, the main TIM pinned at the top, centred. The dot after a name shows what the TIM is doing (working, waiting for an answer).
 
 The screen is made of two islands: the list on the left, the chat on the rest. Pick a TIM in the list and its chat replaces the one on the right, with no page change; the back button returns to the TIM you had open. A link to `/bots?agent=<name>` opens that TIM's chat directly (the address keeps its former name, so links and saved layouts still work).
 

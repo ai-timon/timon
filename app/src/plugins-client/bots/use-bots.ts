@@ -16,13 +16,14 @@ import { isGlobalAgent } from '@/app/agents-grid/agents-grid-client';
 import { AGENTS_CHANGED_EVENT } from '@/lib/agents-changed';
 import { mainBotOf, type Bot, type Team } from './types';
 
-/** A bot of this view: no project, and not a workspace hub. Ephemeral agents
- *  are left out — they are the throwaway product of a mission, and they would
- *  bury the handful of bots the user actually named. The main agent is kept
+/** A bot of this view: every agent the user named, project or not, but no
+ *  workspace hub. Ephemeral agents are left out — they are the throwaway
+ *  product of a mission, and they would bury the handful of bots the user
+ *  actually named. A project agent stays listed: its team is where the user
+ *  looks for it, and the team is shown nowhere else. The main agent is kept
  *  under whatever name the daemon flags (`mainBotOf`), never by its seed name
  *  `_main`, which onboarding renames away. */
-export function isOrphanBot(bot: Bot, mainName: string | null): boolean {
-  if (bot.project) return false;
+export function isListedBot(bot: Bot, mainName: string | null): boolean {
   if (bot.ephemeral) return false;
   return bot.name === mainName || !isGlobalAgent(bot.name);
 }
@@ -69,7 +70,7 @@ async function read(): Promise<void> {
       const json = (await agentsRes.json()) as { agents?: Bot[] };
       const all = json.agents ?? [];
       const mainName = mainBotOf(all);
-      bots = all.filter((b) => isOrphanBot(b, mainName));
+      bots = all.filter((b) => isListedBot(b, mainName));
     }
     // Teams are optional: a daemon older than the teams routes answers 404,
     // and the rail then shows every bot under "no team" instead of nothing.
