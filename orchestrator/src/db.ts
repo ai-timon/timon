@@ -6995,6 +6995,27 @@ export const dbApi = {
     bus.publish({ kind: 'mission_archived', missionId: id, by });
     return 'archived';
   },
+  /**
+   * Finished missions the auto-archive may take: over (`completed`), not yet
+   * archived, idle since before `cutoff` by every measure we keep (end or start,
+   * newest event, stats row), and needed by no open task or running workflow run.
+   * Pending permission cards live in memory: the caller filters those.
+   */
+  listAutoArchiveCandidates(cutoff: number, afterRowid: number, limit: number): { rowid: number; id: string }[] {
+    return db.prepare(
+      `SELECT m.rowid AS rowid, m.id AS id FROM missions m
+        WHERE m.rowid > @after
+          AND m.status = 'completed'
+          AND m.archived_at IS NULL
+          AND COALESCE(m.ended_at, m.started_at) < @cutoff
+          AND COALESCE((SELECT e.timestamp FROM events e WHERE e.mission_id = m.id ORDER BY e.id DESC LIMIT 1), 0) < @cutoff
+          AND COALESCE((SELECT st.last_event_at FROM mission_stats st WHERE st.mission_id = m.id), 0) < @cutoff
+          AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.mission_id = m.id AND t.status != 'DONE')
+          AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.id = m.task_id AND t.status != 'DONE')
+          AND NOT EXISTS (SELECT 1 FROM workflow_runs w WHERE w.id = m.workflow_run_id AND w.status IN ('running', 'waiting'))
+        ORDER BY m.rowid LIMIT @limit`,
+    ).all({ cutoff, after: afterRowid, limit }) as { rowid: number; id: string }[];
+  },
   /** Clear the archive flag. True when the mission was archived. */
   unarchiveMission(id: string): boolean {
     const changed = db.prepare(`UPDATE missions SET archived_at = NULL, archived_by = NULL WHERE id = ? AND archived_at IS NOT NULL`).run(id).changes;
