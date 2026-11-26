@@ -862,7 +862,8 @@ Agents & missions:
                                          outbound connections the mission made through the egress proxy (off by default)
   timon missions retitle [--since 7d|ISO] [--limit N] [--apply]
                                          name old conversations that have no title; a dry run unless --apply
-                                         (default 50 per run, one short model call each, never a renamed one)
+                                         (default 50 per run, one short model call each, never a renamed one);
+                                         --apply starts a background job and follows its progress
 
 Skills (~/.timon/skills/<id>/SKILL.md):
   timon skill list                        list installed skills
@@ -2113,9 +2114,30 @@ async function cmdMissionsRetitle(argv) {
     out.write(j.targeted ? 'nothing was written; add --apply to run it\n' : 'nothing to do\n');
     return;
   }
-  out.write(`${j.written} title(s) written, ${j.kept} kept, ${j.failed} failed, out of ${j.targeted} targeted\n`);
-  if (j.stopped === 'quota') out.write('stopped early: the title model is out of quota\n');
-  if (j.stopped === 'off') out.write('stopped early: automatic titles are turned off\n');
+  // A real run is a job in the daemon: follow it until it ends. Ctrl+C only
+  // stops this follower, the job keeps going (cancel it from Settings).
+  const jobId = j.jobId;
+  out.write(`catch-up started (job ${jobId}); it keeps running in the daemon if you stop watching\n`);
+  process.once('SIGINT', () => {
+    out.write(`\nstopped watching; the job ${jobId} is still running in the daemon\n`);
+    process.exit(130);
+  });
+  const pollMs = Number(process.env.TIMON_RETITLE_POLL_MS) > 0 ? Number(process.env.TIMON_RETITLE_POLL_MS) : 2000;
+  let last = '';
+  for (;;) {
+    const s = await http('GET', `/api/missions/titles/backfill/${encodeURIComponent(jobId)}`);
+    const line = `${s.processed}/${s.targeted} processed: ${s.written} written, ${s.skipped} skipped, ${s.errored} failed`;
+    if (line !== last) { out.write(`${line}\n`); last = line; }
+    if (s.status !== 'running') {
+      if (s.status === 'done') out.write('done\n');
+      else if (s.status === 'stopped_quota') out.write('stopped early: the title model is out of quota\n');
+      else if (s.status === 'stopped_off') out.write('stopped early: automatic titles are turned off\n');
+      else if (s.status === 'cancelled') out.write('cancelled\n');
+      else out.write(`failed${s.lastError ? `: ${s.lastError}` : ''}\n`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
 }
 
 async function cmdMission(argv) {
