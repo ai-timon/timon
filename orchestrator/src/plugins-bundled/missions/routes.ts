@@ -42,7 +42,7 @@ import {
 import { attachmentsRefusal } from '../../backends/capabilities.js';
 import { forkMission, summarizeMission } from '../../summary.js';
 import { regenerateMissionTitle } from '../../mission-titles.js';
-import { cancelTitleBackfillJob, getTitleBackfillJob, planTitleBackfill, startTitleBackfillJob } from '../../mission-titles-backfill.js';
+import { cancelTitleBackfillJob, currentTitleBackfillJob, getTitleBackfillJob, planTitleBackfill, startTitleBackfillJob } from '../../mission-titles-backfill.js';
 import { CompactBodySchema, compactOperation, defaultCompactDeps, startCompaction, type CompactDeps } from '../../mission-compact.js';
 import { join } from 'node:path';
 import { openGeneratedMedia } from '../../chat-media.js';
@@ -1534,6 +1534,12 @@ export function registerRoutes(
       return;
     }
     res.status(202).json({ ok: true, jobId: job.jobId });
+  });
+
+  /** The account's current (running, else latest) catch-up job, or `{ job: null }`. Authentication: `requireAuth`, own jobs only. */
+  app.get('/api/missions/titles/backfill', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    res.json({ ok: true, job: currentTitleBackfillJob(viewerFromRequest(req)) });
   });
 
   /** Progress of a catch-up job. Authentication: `requireAuth`; only the account that started it reads it (404 otherwise). */

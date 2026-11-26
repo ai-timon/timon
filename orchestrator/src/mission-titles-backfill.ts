@@ -167,6 +167,22 @@ export function activeTitleBackfillJob(viewer: DbViewer | null | undefined): Bac
   return null;
 }
 
+/**
+ * The account's running job, else its most recent finished one, so a page that
+ * comes back after a navigation (or a reload) picks the run up again.
+ */
+export function currentTitleBackfillJob(viewer: DbViewer | null | undefined): BackfillJobView | null {
+  pruneJobs(Date.now());
+  const key = ownerKey(viewer);
+  let best: Job | null = null;
+  for (const j of jobs.values()) {
+    if (j.ownerId !== key) continue;
+    if (j.status === 'running') return viewOf(j);
+    if (!best || j.startedAt >= best.startedAt) best = j;
+  }
+  return best ? viewOf(best) : null;
+}
+
 /** A job by id, only for its owner: another account's id reads as absent. */
 export function getTitleBackfillJob(jobId: string, viewer: DbViewer | null | undefined): BackfillJobView | null {
   const j = jobs.get(jobId);

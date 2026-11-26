@@ -285,4 +285,10 @@ test('routes: a real run answers 202 with a job id, the owner reads it, anonymou
   assert.equal((await call('GET', `/api/missions/titles/backfill/${jobId}`, { cookie: bea })).status, 404);
   assert.equal((await call('POST', `/api/missions/titles/backfill/${jobId}/cancel`, { cookie: bea })).status, 404);
   assert.equal((await call('GET', '/api/missions/titles/backfill/unknown', { cookie })).status, 404);
+  // The current job: the owner finds it again, anonymous is refused, another account does not see it.
+  const current = await call('GET', '/api/missions/titles/backfill', { cookie });
+  assert.equal((current.json as { job: { jobId: string } | null }).job?.jobId, jobId);
+  assert.equal((await call('GET', '/api/missions/titles/backfill')).status, 401);
+  resetTitleBackfillJobs();
+  assert.equal(((await call('GET', '/api/missions/titles/backfill', { cookie })).json as { job: unknown }).job, null);
 });
