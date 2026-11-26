@@ -7527,6 +7527,26 @@ export const dbApi = {
     return changed > 0;
   },
   /**
+   * An explicit re-title (`generated`): replaces a `generated` or `native`
+   * title, or none, like {@link setMissionTitleIfUnclaimed}; a `manual` or
+   * `preset` one only with `force`. Rank check and write are one statement, so a
+   * rename racing the one-shot still wins without `force`. It never touches
+   * `title_generation`: re-titling does not re-arm the first-turn one-shot.
+   * Returns whether the row was written (false: protected, or same title).
+   */
+  setMissionTitleRegenerated(id: string, title: string, force = false): boolean {
+    const clean = title.trim();
+    if (!clean) return false;
+    const rank = force ? '' : `AND (title_source IS NULL OR title_source IN ('generated', 'native'))`;
+    const changed = db.prepare(
+      `UPDATE missions SET title = ?, title_source = 'generated'
+        WHERE id = ? ${rank}
+          AND (title IS NULL OR title <> ? OR title_source IS NOT 'generated')`,
+    ).run(clean, id, clean).changes;
+    if (changed) bus.publish({ kind: 'mission_title_changed', missionId: id, title: clean, source: 'generated', origin: { kind: 'system', id: null } });
+    return changed > 0;
+  },
+  /**
    * Claims the one-shot generation of a mission's title: true exactly once per
    * mission, and only while it has no title at all. The claim is the
    * idempotence marker; it is taken before the one-shot runs, so a failed

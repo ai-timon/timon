@@ -41,6 +41,7 @@ import {
 } from '../../chat-attachments.js';
 import { attachmentsRefusal } from '../../backends/capabilities.js';
 import { forkMission, summarizeMission } from '../../summary.js';
+import { regenerateMissionTitle } from '../../mission-titles.js';
 import { CompactBodySchema, compactOperation, defaultCompactDeps, startCompaction, type CompactDeps } from '../../mission-compact.js';
 import { join } from 'node:path';
 import { openGeneratedMedia } from '../../chat-media.js';
@@ -71,6 +72,7 @@ import { launchErrorStatus, missionLaunchErrorBody } from '../../resources.js';
 import { findReplyTarget, resolveReplyTo } from '../../reply-to.js';
 
 const TitleBodySchema = z.object({ title: z.string().max(200).nullable().optional() });
+const RegenerateTitleBodySchema = z.object({ force: z.boolean().optional() }).strict();
 const PermissionModeBodySchema = z.object({ mode: z.string().trim().min(1).max(40) }).strict();
 
 function extractFromMission(
@@ -1403,6 +1405,45 @@ export function registerRoutes(
     dbApi.setMissionTitle(owned.id, title || null, origin);
     // What the write left: a name is `manual`, an empty one clears both.
     res.json({ ok: true, title: title || null, title_source: title ? 'manual' : null });
+  });
+
+  /**
+   * Explicit re-title. Authentication: a browser session or a token, plus
+   * ownership (404 for another owner's mission). A `manual` or `preset` title
+   * answers 409 unless the body carries `force: true`.
+   */
+  app.post('/api/missions/:id/title/regenerate', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const parsed = RegenerateTitleBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json(apiError('regenerate_invalid', 'body must be empty or { force: boolean }'));
+      return;
+    }
+    const owned = ownedMissionOr404(req, res);
+    if (!owned) return;
+    const out = await regenerateMissionTitle(owned.id, { force: parsed.data.force === true });
+    if (!out) {
+      res.status(404).json(apiError('mission_not_found', 'mission not found'));
+      return;
+    }
+    switch (out.status) {
+      case 'protected':
+        res.status(409).json(apiError('title_protected', `the title was set by ${out.source === 'manual' ? 'a rename' : 'the launcher'}; send force: true to replace it`, { source: out.source }));
+        return;
+      case 'off':
+        res.status(409).json(apiError('title_generation_off', 'automatic titles are turned off'));
+        return;
+      case 'failed':
+        res.status(out.reason === 'quota' ? 429 : 502).json(apiError(
+          out.reason === 'quota' ? 'title_quota' : 'title_model_unavailable',
+          out.reason === 'quota' ? 'the title model is out of quota' : 'the title model is unavailable',
+        ));
+        return;
+      default: {
+        const m = dbApi.getMission(owned.id);
+        res.json({ ok: true, changed: out.status === 'written', title: m?.title ?? null, title_source: m?.title_source ?? null });
+      }
+    }
   });
 
   app.post('/api/missions/:id/model', async (req, res) => {
