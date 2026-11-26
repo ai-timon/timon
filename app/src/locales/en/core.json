@@ -3987,7 +3987,14 @@
     "kill": "Stop this mission",
     "killConfirm": "Stop this mission? Its agent is stopped mid-turn.",
     "noMissions": "No missions. The first message will create one.",
-    "emptyTitle": "(empty)"
+    "emptyTitle": "(empty)",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "archiveRunning": "A mission at work cannot be archived. Stop it first.",
+    "archiveFailed": "The mission could not be archived or restored.",
+    "includeArchived": "Include archived",
+    "archivedBadge": "Archived",
+    "archivedHint": "Archived: hidden from the default lists. Sending a message restores it."
   },
   "setupChat": {
     "escape": {

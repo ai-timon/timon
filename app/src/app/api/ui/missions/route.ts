@@ -14,6 +14,9 @@ export async function GET(req: Request): Promise<Response> {
   // Validated by the daemon (400 on an unknown value).
   const origin = url.searchParams.get('origin');
   if (origin) qs.set('origin', origin);
+  // Validated by the daemon: exclude (its default), include or only.
+  const archived = url.searchParams.get('archived');
+  if (archived) qs.set('archived', archived);
   return proxyJson('GET', `/api/missions?${qs}`);
 }
 
