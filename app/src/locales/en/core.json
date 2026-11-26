@@ -3961,6 +3961,14 @@
     "ownedBy": "Owner: {name}"
   },
   "missionRail": {
+    "regenerateTitle": "Regenerate the title",
+    "regenerating": "Writing a new title…",
+    "regenerated": "Title updated",
+    "regenerateConfirm": "This title was set by hand or by the launcher. Replace it with a generated one?",
+    "regenerateFailed": "The title could not be regenerated: the title model is unavailable.",
+    "regenerateQuota": "The title model is out of quota. Try again later.",
+    "regenerateOff": "Automatic titles are turned off in Settings → Missions.",
+    "regenerateProtected": "This title was set by hand or by the launcher and was kept.",
     "summary": "{filter} · {count}",
     "all": "All",
     "otherRole": "other",

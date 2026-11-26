@@ -3961,6 +3961,14 @@
     "ownedBy": "Propriétaire : {name}"
   },
   "missionRail": {
+    "regenerateTitle": "Régénérer le titre",
+    "regenerating": "Écriture d'un nouveau titre…",
+    "regenerated": "Titre mis à jour",
+    "regenerateConfirm": "Ce titre a été saisi à la main ou donné par le lanceur. Le remplacer par un titre généré ?",
+    "regenerateFailed": "Le titre n'a pas pu être régénéré : le modèle de titre est indisponible.",
+    "regenerateQuota": "Le modèle de titre n'a plus de quota. Réessaie plus tard.",
+    "regenerateOff": "Les titres automatiques sont désactivés dans Réglages → Missions.",
+    "regenerateProtected": "Ce titre a été saisi à la main ou donné par le lanceur, il a été conservé.",
     "summary": "{filter} · {count}",
     "all": "Toutes",
     "otherRole": "autre",
