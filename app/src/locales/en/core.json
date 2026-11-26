@@ -3947,6 +3947,21 @@
     "saved": "Title model saved",
     "saveError": "Could not save the title model"
   },
+  "missionTitleBackfill": {
+    "title": "Name older conversations",
+    "description": "Gives a title to the conversations that have none, or whose generated title came out empty or cut. A title you typed or a launcher gave is never touched.",
+    "quotaNote": "Each title is one short call on the title model's quota. Nothing runs by itself: preview first, then start it. One run names at most the newest 50 conversations; run it again for more.",
+    "preview": "Preview",
+    "previewing": "Counting…",
+    "nothing": "Every conversation already has a title.",
+    "announce": "Conversations to title: {targeted}. Model calls: {calls}.",
+    "run": "Title them ({calls} model calls)",
+    "running": "Titling…",
+    "done": "Conversations titled: {written} of {targeted}.",
+    "stoppedQuota": "Stopped early: the title model is out of quota.",
+    "stoppedOff": "Stopped early: generated titles are turned off.",
+    "error": "Could not name the conversations"
+  },
   "missionOrigin": {
     "label": "Origin",
     "all": "all",

@@ -264,6 +264,12 @@ A conversation you open in the chat gets a short title at the end of its first r
 - **A model of my choice…** opens the [model picker](missions.md#choosing-a-model) on the models that can write titles; a backend served remotely, which cannot answer such a short call, is left out and named under the picker with the reason;
 - **Off** generates nothing: only the names you type and the names launchers give remain.
 
+### Naming older conversations
+
+Conversations from before titles existed, and those whose generated title came out empty or cut, still show the first line of their message. **Settings → Missions → Execution → Name older conversations** catches them up. **Preview** counts them and says how many model calls the run would use, without writing anything; **Title them** then starts the run. Each title is one short call on the quota of the title model, so nothing runs by itself, and one run names at most the 50 newest conversations (the administrator can raise or lower that ceiling with `TIMON_MISSION_TITLE_BACKFILL_MAX`); run it again for the next ones. The calls go one after another with a short pause, and the run stops at the first sign that the title model is out of quota. A title you typed or a launcher gave is never replaced, and neither is a title read from the CLI's own session.
+
+From a terminal, `timon missions retitle [--since 7d|DATE] [--limit N]` prints the same preview, and `--apply` runs it. Over the API, `POST /api/missions/titles/backfill` takes `since`, `limit` and `dryRun`, which defaults to `true`; only `dryRun: false` writes.
+
 Each generated title is one short call on the quota or credits of the chosen backend, and the first message of the conversation is sent to that backend. Conversations that already exist are not renamed.
 
 ## Appearance and plugin settings
