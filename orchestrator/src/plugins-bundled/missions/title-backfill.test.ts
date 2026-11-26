@@ -25,7 +25,7 @@ const { registerRoutes: registerUserRoutes } = await import('../users/routes.js'
 const { registerRoutes: registerMissionRoutes } = await import('./routes.js');
 const { dbApi } = await import('../../db.js');
 const { SESSION_COOKIE } = await import('../../users/session.js');
-const { planTitleBackfill, runTitleBackfill, backfillCeiling } = await import('../../mission-titles-backfill.js');
+const { planTitleBackfill, runTitleBackfill, backfillCeiling, startTitleBackfillJob, getTitleBackfillJob, resetTitleBackfillJobs } = await import('../../mission-titles-backfill.js');
 
 const app = express();
 app.use(createDaemonAuthMiddleware({ token: 'witness-daemon-token', required: true }));
@@ -171,7 +171,118 @@ test('route: anonymous refused, bad body 400, dry run by default writes nothing'
   const dry = await call('POST', '/api/missions/titles/backfill', { cookie: bea, body: { since: '2020-01-01', limit: 10 } });
   assert.equal(dry.status, 200);
   const json = dry.json as { dryRun: boolean; targeted: number; calls: number; written: number };
-  assert.deepEqual([json.dryRun, json.written], [true, 0]);
+  assert.deepEqual([json.dryRun, json.written], [true, undefined]);
   assert.ok(json.targeted >= 1 && json.calls === json.targeted);
   assert.equal(dbApi.getMission(id)?.title, null);
+});
+
+/** A model call that waits for the test to let it through, so a job can be observed mid-run. */
+function gate(): { oneShot: () => Promise<string>; release: () => void; started: Promise<void> } {
+  let release!: () => void;
+  const pass = new Promise<void>((r) => { release = r; });
+  let signalStarted!: () => void;
+  const started = new Promise<void>((r) => { signalStarted = r; });
+  let n = 0;
+  return { oneShot: async () => { signalStarted(); await pass; return `Gated ${++n}`; }, release, started };
+}
+
+async function settled(jobId: string, viewer: { id: string; isSuperadmin: boolean }) {
+  for (let i = 0; i < 200; i++) {
+    const j = getTitleBackfillJob(jobId, viewer);
+    if (j && j.status !== 'running') return j;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error('job did not settle');
+}
+
+const beaViewer = { id: beaId, isSuperadmin: false };
+
+test('a real run is a background job: it answers at once and reports progress', async () => {
+  resetTitleBackfillJobs();
+  for (let i = 0; i < 3; i++) mission(beaId);
+  const g = gate();
+  const job = startTitleBackfillJob({ viewer: beaViewer, limit: 3, delayMs: 0, sleep: noSleep, deps: { resolveLlm: LOCAL, oneShot: g.oneShot } });
+  assert.ok(job);
+  assert.equal(job.status, 'running');
+  assert.equal(job.targeted, 3);
+  await g.started;
+  assert.deepEqual([getTitleBackfillJob(job.jobId, beaViewer)?.status, getTitleBackfillJob(job.jobId, beaViewer)?.processed], ['running', 0]);
+  g.release();
+  const end = await settled(job.jobId, beaViewer);
+  assert.deepEqual([end.status, end.processed, end.written, end.skipped, end.errored, end.lastError], ['done', 3, 3, 0, 0, null]);
+  assert.ok(end.finishedAt !== null);
+});
+
+test('one running job per account: a second start is refused, another account is not', async () => {
+  resetTitleBackfillJobs();
+  mission(beaId);
+  mission(adminId);
+  const g = gate();
+  const first = startTitleBackfillJob({ viewer: beaViewer, limit: 1, delayMs: 0, deps: { resolveLlm: LOCAL, oneShot: g.oneShot } });
+  assert.ok(first);
+  await g.started;
+  assert.equal(startTitleBackfillJob({ viewer: beaViewer, limit: 1, deps: { resolveLlm: LOCAL, oneShot: async () => 'x' } }), null);
+  const route = await call('POST', '/api/missions/titles/backfill', { cookie: await login('bea@example.com', 'bea-secret'), body: { dryRun: false } });
+  assert.equal(route.status, 409);
+  const other = startTitleBackfillJob({ viewer: adminViewer, limit: 1, delayMs: 0, deps: { resolveLlm: LOCAL, oneShot: async () => 'Other' } });
+  assert.ok(other);
+  g.release();
+  await settled(first.jobId, beaViewer);
+  await settled(other.jobId, adminViewer);
+  // Once finished, the account can start again.
+  const again = startTitleBackfillJob({ viewer: beaViewer, limit: 1, delayMs: 0, deps: { resolveLlm: LOCAL, oneShot: async () => 'Again' } });
+  assert.ok(again);
+  await settled(again.jobId, beaViewer);
+});
+
+test('cancel stops between two missions and keeps what was written', async () => {
+  resetTitleBackfillJobs();
+  for (let i = 0; i < 4; i++) mission(beaId);
+  const g = gate();
+  const job = startTitleBackfillJob({ viewer: beaViewer, limit: 4, delayMs: 0, deps: { resolveLlm: LOCAL, oneShot: g.oneShot } });
+  assert.ok(job);
+  await g.started;
+  const bea = await login('bea@example.com', 'bea-secret');
+  const cancel = await call('POST', `/api/missions/titles/backfill/${job.jobId}/cancel`, { cookie: bea });
+  assert.equal(cancel.status, 200);
+  assert.equal((cancel.json as { cancelRequested: boolean }).cancelRequested, true);
+  g.release();
+  const end = await settled(job.jobId, beaViewer);
+  assert.deepEqual([end.status, end.processed, end.written], ['cancelled', 1, 1]);
+});
+
+test('a quota signal ends the job as stopped_quota with a fixed message', async () => {
+  resetTitleBackfillJobs();
+  for (let i = 0; i < 3; i++) mission(beaId);
+  let calls = 0;
+  const job = startTitleBackfillJob({ viewer: beaViewer, limit: 3, delayMs: 0, sleep: noSleep, deps: { resolveLlm: LOCAL, oneShot: async () => { calls++; throw new Error('429 quota exceeded for key sk-secret-123'); } } });
+  assert.ok(job);
+  const end = await settled(job.jobId, beaViewer);
+  assert.deepEqual([end.status, end.errored, end.processed, calls], ['stopped_quota', 1, 1, 1]);
+  assert.equal(end.lastError, 'the title model is out of quota');
+  assert.doesNotMatch(JSON.stringify(end), /sk-secret/);
+});
+
+test('routes: a real run answers 202 with a job id, the owner reads it, anonymous and others are refused', async () => {
+  resetTitleBackfillJobs();
+  const carol = await postTestAccount(dbApi, { email: 'carol@example.com', name: 'Carol', password: 'carol-secret' });
+  const carolId = (carol.json as { user: { id: string } }).user.id;
+  const cookie = await login('carol@example.com', 'carol-secret');
+  // Carol has no mission, so the job ends at once without any model call.
+  const started = await call('POST', '/api/missions/titles/backfill', { cookie, body: { dryRun: false } });
+  assert.equal(started.status, 202);
+  const { jobId } = started.json as { jobId: string };
+  assert.ok(jobId);
+  const own = await settled(jobId, { id: carolId, isSuperadmin: false });
+  assert.equal(own.status, 'done');
+  const read = await call('GET', `/api/missions/titles/backfill/${jobId}`, { cookie });
+  assert.equal(read.status, 200);
+  const body = read.json as { status: string; targeted: number; processed: number; written: number; skipped: number; errored: number; lastError: string | null };
+  assert.deepEqual([body.status, body.targeted, body.processed, body.written, body.skipped, body.errored, body.lastError], ['done', 0, 0, 0, 0, 0, null]);
+  assert.equal((await call('GET', `/api/missions/titles/backfill/${jobId}`)).status, 401);
+  assert.equal((await call('POST', `/api/missions/titles/backfill/${jobId}/cancel`)).status, 401);
+  const bea = await login('bea@example.com', 'bea-secret');
+  assert.equal((await call('GET', `/api/missions/titles/backfill/${jobId}`, { cookie: bea })).status, 404);
+  assert.equal((await call('POST', `/api/missions/titles/backfill/${jobId}/cancel`, { cookie: bea })).status, 404);
+  assert.equal((await call('GET', '/api/missions/titles/backfill/unknown', { cookie })).status, 404);
 });

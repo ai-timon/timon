@@ -42,7 +42,7 @@ import {
 import { attachmentsRefusal } from '../../backends/capabilities.js';
 import { forkMission, summarizeMission } from '../../summary.js';
 import { regenerateMissionTitle } from '../../mission-titles.js';
-import { runTitleBackfill } from '../../mission-titles-backfill.js';
+import { cancelTitleBackfillJob, getTitleBackfillJob, planTitleBackfill, startTitleBackfillJob } from '../../mission-titles-backfill.js';
 import { CompactBodySchema, compactOperation, defaultCompactDeps, startCompaction, type CompactDeps } from '../../mission-compact.js';
 import { join } from 'node:path';
 import { openGeneratedMedia } from '../../chat-media.js';
@@ -1522,14 +1522,40 @@ export function registerRoutes(
         return;
       }
     }
-    const out = await runTitleBackfill({
-      viewer: viewerFromRequest(req), since, limit: parsed.data.limit, dryRun: parsed.data.dryRun !== false,
-    });
-    if (!out) {
+    const viewer = viewerFromRequest(req);
+    if (parsed.data.dryRun !== false) {
+      res.json({ ok: true, ...planTitleBackfill({ viewer, since, limit: parsed.data.limit }) });
+      return;
+    }
+    // A real run outlasts any HTTP timeout: it goes to a background job.
+    const job = startTitleBackfillJob({ viewer, since, limit: parsed.data.limit });
+    if (!job) {
       res.status(409).json(apiError('backfill_running', 'a title catch-up is already running'));
       return;
     }
-    res.json({ ok: true, ...out });
+    res.status(202).json({ ok: true, jobId: job.jobId });
+  });
+
+  /** Progress of a catch-up job. Authentication: `requireAuth`; only the account that started it reads it (404 otherwise). */
+  app.get('/api/missions/titles/backfill/:jobId', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const job = getTitleBackfillJob(req.params.jobId as string, viewerFromRequest(req));
+    if (!job) {
+      res.status(404).json(apiError('backfill_job_not_found', 'catch-up job not found'));
+      return;
+    }
+    res.json({ ok: true, ...job });
+  });
+
+  /** Stops a catch-up job between two missions. Same access as reading it. */
+  app.post('/api/missions/titles/backfill/:jobId/cancel', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const job = cancelTitleBackfillJob(req.params.jobId as string, viewerFromRequest(req));
+    if (!job) {
+      res.status(404).json(apiError('backfill_job_not_found', 'catch-up job not found'));
+      return;
+    }
+    res.json({ ok: true, ...job });
   });
 
   app.post('/api/missions/:id/model', async (req, res) => {
