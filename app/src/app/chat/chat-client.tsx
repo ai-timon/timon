@@ -7278,7 +7278,7 @@ function MessageBody({
           {msg.thinking && <ThinkingBlock text={msg.thinking} />}
           {msg.reply && <ReplyQuote reply={msg.reply} />}
           {html && (
-            <div data-chat-quote-source={msg.role === 'agent' ? '' : undefined} dangerouslySetInnerHTML={{ __html: html }} />
+            <div data-chat-quote-source={msg.role === 'agent' || sender ? '' : undefined} dangerouslySetInnerHTML={{ __html: html }} />
           )}
           {msg.annotations && <AnnotationCard card={msg.annotations} />}
           {msg.media && missionId && msg.media.map((block) => (

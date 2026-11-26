@@ -153,7 +153,7 @@ Hover a message to show its buttons; each one says what it does when you point a
 
 Under your own messages, **Copy** and **Reply** are there too.
 
-To ask about a specific passage, select text in an agent's message and click **Quote in chat**. Timon adds the selection above any text already in the message box. Add your question and send it when ready.
+To ask about a specific passage, select text in an agent's message and click **Quote in chat**. Timon adds the selection above any text already in the message box, keeping supported formatting such as emphasis, lists and code. You can also select text using your browser's caret navigation and press **Alt+Shift+C**. Timon announces that the quote was added and focuses the message box. Add your question and send it when ready.
 
 ### Replying to a message
 

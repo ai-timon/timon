@@ -31,6 +31,7 @@ interface Rendered {
   agentBubble: string[];
   userBubble: string[];
   actions: string[];
+  quoteSources: string[];
   css: string;
 }
 
@@ -76,6 +77,13 @@ async function renderThread(compact: boolean): Promise<Rendered> {
         ] } },
       },
       { type: 'user', timestamp: 3, payload: { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] } } },
+      {
+        type: 'user', timestamp: 4,
+        payload: {
+          type: 'user', origin: { kind: 'agent', from: 'reviewer' },
+          message: { content: 'Review note from another agent.' },
+        },
+      },
     ],
   };
   install('fetch', async (url: string) => {
@@ -120,6 +128,7 @@ async function renderThread(compact: boolean): Promise<Rendered> {
       agentBubble: classesOf(agent),
       userBubble: classesOf(user),
       actions: classesOf(copy?.parentElement),
+      quoteSources: Array.from(document.querySelectorAll('[data-chat-quote-source]'), (node) => node.textContent?.trim() ?? ''),
       css: Array.from(document.querySelectorAll('style')).map((style) => style.textContent ?? '').join('\n'),
     };
   } finally {
@@ -167,4 +176,9 @@ test('nothing inside a bubble stacks its own left inset', async () => {
   const live = css.match(/\.chat-bubble \.tool-stack-live \{[^}]*\}/)?.[0] ?? '';
   assert.match(live, /padding: 4px 0 0;/);
   assert.match(css, /\.automatic-instruction\[open\] \{\s*margin: 10px 0;/, 'an opened frame stays on the column');
+});
+
+test('only messages shown as agent prose are marked as quote sources', async () => {
+  const { quoteSources } = await renderThread(false);
+  assert.deepEqual(quoteSources, ['The build is green.', 'Review note from another agent.']);
 });
