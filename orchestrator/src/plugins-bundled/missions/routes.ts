@@ -42,6 +42,7 @@ import {
 import { attachmentsRefusal } from '../../backends/capabilities.js';
 import { forkMission, summarizeMission } from '../../summary.js';
 import { regenerateMissionTitle } from '../../mission-titles.js';
+import { runTitleBackfill } from '../../mission-titles-backfill.js';
 import { CompactBodySchema, compactOperation, defaultCompactDeps, startCompaction, type CompactDeps } from '../../mission-compact.js';
 import { join } from 'node:path';
 import { openGeneratedMedia } from '../../chat-media.js';
@@ -72,6 +73,12 @@ import { launchErrorStatus, missionLaunchErrorBody } from '../../resources.js';
 import { findReplyTarget, resolveReplyTo } from '../../reply-to.js';
 
 const TitleBodySchema = z.object({ title: z.string().max(200).nullable().optional() });
+/** `since` is Unix ms or a date string; `dryRun` defaults to true, so only an explicit `false` writes. */
+const BackfillTitlesBodySchema = z.object({
+  since: z.union([z.number().int().nonnegative(), z.string().min(1).max(64)]).optional(),
+  limit: z.number().int().min(1).max(100_000).optional(),
+  dryRun: z.boolean().optional(),
+}).strict();
 const RegenerateTitleBodySchema = z.object({ force: z.boolean().optional() }).strict();
 const PermissionModeBodySchema = z.object({ mode: z.string().trim().min(1).max(40) }).strict();
 
@@ -1444,6 +1451,37 @@ export function registerRoutes(
         res.json({ ok: true, changed: out.status === 'written', title: m?.title ?? null, title_source: m?.title_source ?? null });
       }
     }
+  });
+
+  /**
+   * Capped catch-up of old titles. Authentication: a browser session or a
+   * token (`requireAuth`); the run is scoped to the caller's own missions
+   * (the list's viewer). Dry run unless the body says `dryRun: false`; the
+   * ceiling is the daemon setting, whatever `limit` asks.
+   */
+  app.post('/api/missions/titles/backfill', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const parsed = BackfillTitlesBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json(apiError('backfill_invalid', 'body must be { since?: date or ms, limit?: integer, dryRun?: boolean }'));
+      return;
+    }
+    let since: number | null = null;
+    if (parsed.data.since !== undefined) {
+      since = typeof parsed.data.since === 'number' ? parsed.data.since : Date.parse(parsed.data.since);
+      if (!Number.isFinite(since)) {
+        res.status(400).json(apiError('backfill_invalid', 'since is not a date'));
+        return;
+      }
+    }
+    const out = await runTitleBackfill({
+      viewer: viewerFromRequest(req), since, limit: parsed.data.limit, dryRun: parsed.data.dryRun !== false,
+    });
+    if (!out) {
+      res.status(409).json(apiError('backfill_running', 'a title catch-up is already running'));
+      return;
+    }
+    res.json({ ok: true, ...out });
   });
 
   app.post('/api/missions/:id/model', async (req, res) => {

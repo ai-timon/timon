@@ -7571,6 +7571,27 @@ export const dbApi = {
     return changed > 0;
   },
   /**
+   * Missions a title catch-up may name: no title at all, or a `generated` one
+   * that is empty or was cut (ends with the ellipsis `sanitizeTitle` leaves).
+   * Never `manual`, `preset` or `native`. Newest first, same owner scope as
+   * `listMissions`. Only the user-opened ones count (origin is a per-row SQL label).
+   */
+  listTitleBackfillCandidates(viewer: DbViewer | null | undefined, since: number | null, limit: number): MissionRow[] {
+    const owner = ownerSql(viewer, 'missions', 'm.owner_user_id');
+    const where = [
+      `(m.title IS NULL OR TRIM(m.title) = '' OR (m.title_source = 'generated' AND m.title LIKE '%…'))`,
+      `(m.title_source IS NULL OR m.title_source = 'generated')`,
+      `(${MISSION_ORIGIN_SQL}) = 'user'`,
+    ];
+    const params: unknown[] = [];
+    if (since !== null) { where.push('m.started_at >= ?'); params.push(since); }
+    if (owner.sql !== '1=1') { where.push(owner.sql); params.push(...owner.params); }
+    return db.prepare(
+      `SELECT m.* FROM missions m LEFT JOIN tasks ot ON ot.id = m.task_id
+        WHERE ${where.join(' AND ')} ORDER BY m.started_at DESC, m.id DESC LIMIT ?`,
+    ).all(...params, limit) as MissionRow[];
+  },
+  /**
    * Claims the one-shot generation of a mission's title: true exactly once per
    * mission, and only while it has no title at all. The claim is the
    * idempotence marker; it is taken before the one-shot runs, so a failed
