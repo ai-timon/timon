@@ -2,15 +2,20 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
+  applyArchiveSuggestion,
   applyMissionArchiveChange,
   archivedQuery,
+  clearArchiveSuggestion,
+  hasArchiveSuggestion,
+  parseMissionArchiveSuggestion,
   canArchive,
   filterArchived,
   isArchived,
   parseMissionArchiveChange,
+  type ArchivableMission,
 } from './mission-archive';
 
-const rows = [
+const rows: ArchivableMission[] = [
   { id: 'a', running: false, archived_at: null },
   { id: 'b', running: false, archived_at: 10 },
   { id: 'c', running: true },
@@ -54,4 +59,26 @@ test('a live event flags the row it names and leaves the others alone', () => {
   // Already in that state: same object, no needless re-render.
   assert.equal(applyMissionArchiveChange(rows, { missionId: 'b', archived: true }, 99)[1], rows[1]);
   assert.deepEqual(applyMissionArchiveChange(rows, { missionId: 'zz', archived: true }, 99), rows);
+});
+
+test('a proposal is parsed, shown on a visible row, and cleared', () => {
+  assert.deepEqual(parseMissionArchiveSuggestion('{"missionId":"a","reason":"done"}'), { missionId: 'a', reason: 'done' });
+  assert.deepEqual(parseMissionArchiveSuggestion('{"missionId":"a","reason":null}'), { missionId: 'a', reason: null });
+  assert.equal(parseMissionArchiveSuggestion('{"reason":"x"}'), null);
+  assert.equal(parseMissionArchiveSuggestion('nope'), null);
+  const marked = applyArchiveSuggestion(rows, { missionId: 'a', reason: 'done' }, 5);
+  assert.equal(hasArchiveSuggestion(marked[0]!), true);
+  assert.equal(marked[0]!.archive_suggest_reason, 'done');
+  // An archived row takes no proposal.
+  assert.equal(hasArchiveSuggestion(applyArchiveSuggestion(rows, { missionId: 'b', reason: null }, 5)[1]!), false);
+  const cleared = clearArchiveSuggestion(marked, 'a');
+  assert.equal(hasArchiveSuggestion(cleared[0]!), false);
+  assert.equal(cleared[0]!.archive_suggest_reason, null);
+});
+
+test('archiving a row answers its proposal', () => {
+  const marked = applyArchiveSuggestion(rows, { missionId: 'a', reason: 'done' }, 5);
+  const archived = applyMissionArchiveChange(marked, { missionId: 'a', archived: true }, 9);
+  assert.equal(archived[0]!.archive_suggested_at, null);
+  assert.equal(archived[0]!.archived_at, 9);
 });

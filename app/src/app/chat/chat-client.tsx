@@ -282,7 +282,8 @@ import { sseOn, streamClientQuery } from '@/lib/sse-stream';
 import { RAIL_FALLBACK_POLL_MS, RAIL_FRAMES, RAIL_REFRESH_DEBOUNCE_MS, railFrameMatters } from '@/lib/mission-rail-refresh';
 import { fetchLatestMission } from '@/lib/latest-mission';
 import { applyMissionTitleChange, parseMissionTitleChange } from '@/lib/mission-title';
-import { applyMissionArchiveChange, archivedQuery, isArchived, parseMissionArchiveChange } from '@/lib/mission-archive';
+import { answerArchiveSuggestion, applyArchiveSuggestion, applyMissionArchiveChange, archivedQuery, clearArchiveSuggestion, hasArchiveSuggestion, isArchived, parseMissionArchiveChange, parseMissionArchiveSuggestion } from '@/lib/mission-archive';
+import { ArchiveSuggestionBar } from '@/components/chat/archive-suggestion';
 import { MISSION_RAIL_DISPLAY_SCOPE, readMissionRailDisplay } from '@/lib/mission-rail-display';
 import { useStoredLayout } from '@/hooks/use-stored-layout';
 import { nextHeaderScrollState } from '@/lib/header-scroll';
@@ -1761,7 +1762,17 @@ export function ChatClient({
       if (change) setMissions((prev) => applyMissionArchiveChange(prev, change, Date.now()));
     });
     const offs = [on('mission_archived'), on('mission_unarchived')];
+    // The agent proposes archiving its finished conversation (never does it).
+    offs.push(sseOn('mission_archive_suggested', (ev) => {
+      const suggestion = parseMissionArchiveSuggestion(String(ev.data));
+      if (suggestion) setMissions((prev) => applyArchiveSuggestion(prev, suggestion, Date.now()));
+    }));
     return () => offs.forEach((off) => off());
+  }, []);
+  const archiveSuggestion = currentMissionId ? missions.find((m) => m.id === currentMissionId && hasArchiveSuggestion(m)) : undefined;
+  const answerArchiveProposal = useCallback(async (missionId: string, answer: 'archive' | 'dismiss') => {
+    setMissions((prev) => clearArchiveSuggestion(prev, missionId));
+    if (!(await answerArchiveSuggestion(missionId, answer))) toast.error(i18n(answer === 'archive' ? 'missionRail.archiveFailed' : 'archiveSuggestion.failed'));
   }, []);
   useEffect(() => {
     if (forcedAgent || compact) return;
@@ -6402,6 +6413,14 @@ export function ChatClient({
           <ComposerTrays compact={dense} wide={larg}>
             <RunningToolBar tools={inlineRunning || setup ? [] : runningTools} compact={dense} />
             <DelegationsBar delegations={delegations} compact={dense} />
+            {archiveSuggestion && !setup && (
+              <ArchiveSuggestionBar
+                compact={dense}
+                reason={archiveSuggestion.archive_suggest_reason}
+                onArchive={() => { void answerArchiveProposal(archiveSuggestion.id, 'archive'); }}
+                onDismiss={() => { void answerArchiveProposal(archiveSuggestion.id, 'dismiss'); }}
+              />
+            )}
           </ComposerTrays>
 
 

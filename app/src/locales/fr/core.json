@@ -4011,6 +4011,13 @@
     "archivedBadge": "Archivée",
     "archivedHint": "Archivée : masquée des listes par défaut. Un nouveau message la restaure."
   },
+  "archiveSuggestion": {
+    "label": "L'agent propose d'archiver cette conversation.",
+    "chip": "Archiver ?",
+    "archive": "Archiver",
+    "dismiss": "Ignorer",
+    "failed": "La suggestion n'a pas pu être traitée."
+  },
   "setupChat": {
     "escape": {
       "skip": "Passer cette étape",

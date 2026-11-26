@@ -5,7 +5,14 @@
  * mission answers 409); this only keeps the menu honest and the list live.
  */
 
-export type ArchivableMission = { id: string; running?: boolean; archived_at?: number | null };
+export type ArchivableMission = {
+  id: string;
+  running?: boolean;
+  archived_at?: number | null;
+  /** Unix ms of the agent's proposal to archive; absent from an older daemon. */
+  archive_suggested_at?: number | null;
+  archive_suggest_reason?: string | null;
+};
 
 export type MissionArchiveChange = { missionId: string; archived: boolean };
 
@@ -50,6 +57,52 @@ export function parseMissionArchiveChange(kind: 'mission_archived' | 'mission_un
 export function applyMissionArchiveChange<M extends ArchivableMission>(missions: readonly M[], change: MissionArchiveChange, now: number): M[] {
   return missions.map((m) => {
     if (m.id !== change.missionId || isArchived(m) === change.archived) return m;
-    return { ...m, archived_at: change.archived ? now : null };
+    // Archiving answers the proposal: it leaves with the row's visibility.
+    return change.archived
+      ? { ...m, archived_at: now, archive_suggested_at: null, archive_suggest_reason: null }
+      : { ...m, archived_at: null };
   });
+}
+
+export type MissionArchiveSuggestion = { missionId: string; reason: string | null };
+
+/** A proposal is pending on a visible mission: the agent asked, nobody answered. */
+export function hasArchiveSuggestion(m: Pick<ArchivableMission, 'archived_at' | 'archive_suggested_at'>): boolean {
+  return typeof m.archive_suggested_at === 'number' && !isArchived(m);
+}
+
+/** The body of a `mission_archive_suggested` event of the global stream. */
+export function parseMissionArchiveSuggestion(raw: string): MissionArchiveSuggestion | null {
+  try {
+    const data = JSON.parse(raw) as { missionId?: unknown; reason?: unknown };
+    if (typeof data.missionId !== 'string' || !data.missionId) return null;
+    return { missionId: data.missionId, reason: typeof data.reason === 'string' && data.reason ? data.reason : null };
+  } catch {
+    return null;
+  }
+}
+
+/** Flag a row as carrying the agent's proposal. Other rows are untouched. */
+export function applyArchiveSuggestion<M extends ArchivableMission>(missions: readonly M[], suggestion: MissionArchiveSuggestion, now: number): M[] {
+  return missions.map((m) => (m.id === suggestion.missionId && !isArchived(m)
+    ? { ...m, archive_suggested_at: now, archive_suggest_reason: suggestion.reason }
+    : m));
+}
+
+/** Drop the proposal of a row (dismissed here, or answered by a new message). */
+export function clearArchiveSuggestion<M extends ArchivableMission>(missions: readonly M[], missionId: string): M[] {
+  return missions.map((m) => (m.id === missionId && m.archive_suggested_at != null
+    ? { ...m, archive_suggested_at: null, archive_suggest_reason: null }
+    : m));
+}
+
+/** Answer a proposal: archive the conversation, or dismiss the proposal. True on success. */
+export async function answerArchiveSuggestion(missionId: string, answer: 'archive' | 'dismiss'): Promise<boolean> {
+  const path = answer === 'archive' ? 'archive' : 'archive-suggestion/dismiss';
+  try {
+    const r = await fetch(`/api/ui/missions/${encodeURIComponent(missionId)}/${path}`, { method: 'POST' });
+    return r.ok;
+  } catch {
+    return false;
+  }
 }

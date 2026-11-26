@@ -68,6 +68,8 @@ Right-click a conversation in the chat's list and choose **Archive** to take it 
 
 Archived conversations are hidden from the lists. Turn on **Include archived** (in the chat list's filter menu, or the switch above the table of the Missions page) to see them: each wears a small **Archived** tag, and **Unarchive** puts it back, from the right-click menu or from the button on its row. The switch is remembered for your account and is the same in both places. Writing in an archived conversation, or a delegated mission handing a result back to it, unarchives it on its own.
 
+When an agent considers the work you asked for finished and expects no follow-up, it can suggest archiving the conversation. A discreet strip, "The agent suggests archiving this conversation", appears above the message box, and a small **Archive?** tag on the conversation's row in the chat's list and on the **Missions** page. **Archive** archives it, **Dismiss** drops the suggestion. The agent only suggests: it never archives anything itself, and writing a new message in the conversation clears the suggestion. Through the API, `POST /api/missions/<id>/archive-suggestion/dismiss` dismisses it, and each mission carries `archive_suggested_at` and `archive_suggest_reason`.
+
 Through the API, `POST /api/missions/<id>/archive` and `POST /api/missions/<id>/unarchive` do the same (only for your own missions; archiving a running one answers 409), and `GET /api/missions?archived=include` (or `only`) lists archived missions; each mission carries `archived_at`.
 
 ### Reading the whole list through the API

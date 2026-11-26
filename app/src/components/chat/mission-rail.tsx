@@ -14,7 +14,8 @@ import { ActiveAgentAvatar, useAgentIdentities } from '@/components/agent-avatar
 import { useWidgetEditing } from '@/components/widget-host/widget-host';
 import { useStoredLayout } from '@/hooks/use-stored-layout';
 import { MISSION_RAIL_DISPLAY_SCOPE, missionRailDisplayChanged, readMissionRailDisplay, writeMissionRailDisplay, type MissionRailDisplay } from '@/lib/mission-rail-display';
-import { applyMissionArchiveChange, canArchive, filterArchived, isArchived } from '@/lib/mission-archive';
+import { answerArchiveSuggestion, applyMissionArchiveChange, canArchive, filterArchived, hasArchiveSuggestion, isArchived } from '@/lib/mission-archive';
+import { ArchiveSuggestionChip } from './archive-suggestion';
 import { buildMissionRail } from '@/lib/mission-rail-groups';
 import { STATE_VISUALS, type ActiveState } from '@/lib/agent-state';
 import { agentRoleKey, resolveRole } from '@/lib/roles';
@@ -227,6 +228,18 @@ export function MissionRail({
     }
   }
 
+  /** Proposals answered from here, hidden until the poll brings the stored state. */
+  const [answeredHere, setAnsweredHere] = useState<Record<string, boolean>>({});
+  async function answerSuggestion(id: string, answer: 'archive' | 'dismiss') {
+    setAnsweredHere((prev) => ({ ...prev, [id]: true }));
+    if (answer === 'archive') setArchivedHere((prev) => ({ ...prev, [id]: true }));
+    const ok = await answerArchiveSuggestion(id, answer);
+    if (ok) return;
+    setAnsweredHere((prev) => { const { [id]: _done, ...rest } = prev; return rest; });
+    setArchivedHere((prev) => { const { [id]: _done, ...rest } = prev; return rest; });
+    toast.error(i18n(answer === 'archive' ? 'missionRail.archiveFailed' : 'archiveSuggestion.failed'));
+  }
+
   /** Archive or restore a mission. The daemon refuses a running one (409): the
    *  optimistic flag is then dropped and the user told. */
   async function setArchived(id: string, archived: boolean) {
@@ -431,6 +444,13 @@ export function MissionRail({
                 <span className={cn('truncate text-[12.5px] font-medium leading-snug', isArchived(m) && 'text-muted-foreground')}>
                   {title.slice(0, 120)}
                 </span>
+                {hasArchiveSuggestion(m) && !answeredHere[m.id] && !m.running && (
+                  <ArchiveSuggestionChip
+                    reason={m.archive_suggest_reason}
+                    onArchive={() => { void answerSuggestion(m.id, 'archive'); }}
+                    onDismiss={() => { void answerSuggestion(m.id, 'dismiss'); }}
+                  />
+                )}
                 {isArchived(m) && (
                   <span data-mission-archived className="inline-flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 text-[9.5px] text-muted-foreground" title={i18n('missionRail.archivedHint')}>
                     <Archive className="size-2.5" aria-hidden />

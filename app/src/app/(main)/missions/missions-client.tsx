@@ -35,7 +35,8 @@ import { getLocale, t } from '@/lib/i18n';
 import { dateTimeFormat, numberFormat } from '@/lib/intl';
 import { chatHref } from '@/lib/chat-island-params';
 import { forgetChatMission } from '@/lib/chat-mission-cache';
-import { archivedQuery, canArchive } from '@/lib/mission-archive';
+import { answerArchiveSuggestion, archivedQuery, canArchive, hasArchiveSuggestion } from '@/lib/mission-archive';
+import { ArchiveSuggestionChip } from '@/components/chat/archive-suggestion';
 import { MISSION_RAIL_DISPLAY_SCOPE, readMissionRailDisplay, writeMissionRailDisplay } from '@/lib/mission-rail-display';
 import { useStoredLayout } from '@/hooks/use-stored-layout';
 import { FileContextMenu } from '@/components/chat/file-context-menu';
@@ -62,6 +63,8 @@ type RawMission = {
   pending_messages?: number;
   open_deliveries?: number;
   archived_at?: number | null;
+  archive_suggested_at?: number | null;
+  archive_suggest_reason?: string | null;
 };
 
 type Row = {
@@ -78,6 +81,7 @@ type Row = {
   events: number;
   running: boolean;
   archivedAt: number | null;
+  archiveSuggestion: { reason: string | null } | null;
   origin: MissionOrigin | null;
   item: MissionItem;
 };
@@ -185,6 +189,7 @@ function shape(m: RawMission): Row {
     events: m.event_count || 0,
     running: !!m.running,
     archivedAt: typeof m.archived_at === 'number' ? m.archived_at : null,
+    archiveSuggestion: hasArchiveSuggestion(m) ? { reason: m.archive_suggest_reason ?? null } : null,
     origin: isMissionOrigin(m.origin) ? m.origin : null,
     item: toMissionItem(m),
   };
@@ -427,6 +432,14 @@ export function MissionsClient() {
     fetchAll();
   }
 
+  async function answerSuggestion(row: Row, answer: 'archive' | 'dismiss') {
+    if (!(await answerArchiveSuggestion(row.fullId, answer))) {
+      toast.error(t(answer === 'archive' ? 'missionRail.archiveFailed' : 'archiveSuggestion.failed'));
+      return;
+    }
+    fetchAll();
+  }
+
   async function killSelected() {
     if (!selected) return;
     const r = await fetch(`/api/ui/missions/${selected.fullId}`, { method: 'DELETE' });
@@ -623,6 +636,15 @@ export function MissionsClient() {
                 <Td className="max-w-[380px] truncate font-medium text-foreground">
                   {m.origin && <MissionOriginIcon origin={m.origin} className="mr-1.5 align-[-1px]" />}
                   {m.title}
+                  {m.archiveSuggestion && !m.running && (
+                    <span className="ml-2 align-[1px]">
+                      <ArchiveSuggestionChip
+                        reason={m.archiveSuggestion.reason}
+                        onArchive={() => { void answerSuggestion(m, 'archive'); }}
+                        onDismiss={() => { void answerSuggestion(m, 'dismiss'); }}
+                      />
+                    </span>
+                  )}
                   {m.archivedAt !== null && (
                     <span data-mission-archived className="ml-2 inline-flex items-center gap-0.5 rounded bg-muted px-1 align-[1px] text-[10px] font-normal text-muted-foreground" title={t('missionRail.archivedHint')}>
                       <Archive className="size-2.5" aria-hidden />
