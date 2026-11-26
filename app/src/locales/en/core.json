@@ -3960,7 +3960,13 @@
     "done": "Conversations titled: {written} of {targeted}.",
     "stoppedQuota": "Stopped early: the title model is out of quota.",
     "stoppedOff": "Stopped early: generated titles are turned off.",
-    "error": "Could not name the conversations"
+    "error": "Could not name the conversations",
+    "progress": "Progress of the title run",
+    "counters": "Handled {processed} of {targeted}: {written} titled, {skipped} left as they were, {errored} failed.",
+    "cancel": "Cancel",
+    "cancelling": "Stopping after this conversation…",
+    "cancelled": "Cancelled.",
+    "failed": "The run failed."
   },
   "missionOrigin": {
     "label": "Origin",

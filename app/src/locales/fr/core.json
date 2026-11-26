@@ -3960,7 +3960,13 @@
     "done": "Conversations titrées : {written} sur {targeted}.",
     "stoppedQuota": "Arrêté en cours de route : le modèle de titres n'a plus de quota.",
     "stoppedOff": "Arrêté en cours de route : les titres générés sont désactivés.",
-    "error": "Impossible de nommer les conversations"
+    "error": "Impossible de nommer les conversations",
+    "progress": "Avancement du titrage",
+    "counters": "Traitées {processed} sur {targeted} : {written} titrées, {skipped} laissées telles quelles, {errored} en erreur.",
+    "cancel": "Annuler",
+    "cancelling": "Arrêt après cette conversation…",
+    "cancelled": "Annulé.",
+    "failed": "Le traitement a échoué."
   },
   "missionOrigin": {
     "label": "Origine",
