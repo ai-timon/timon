@@ -1354,6 +1354,15 @@ if (!cols.includes('archived_at')) {
 if (!cols.includes('archived_by')) {
   db.exec(`ALTER TABLE missions ADD COLUMN archived_by TEXT`);
 }
+// An agent may PROPOSE archiving its finished conversation (`mission_propose_archive`),
+// never do it: the flag only drives a suggestion in the UI. A new message,
+// archiving and a dismissal clear both columns. NULL `archive_suggested_at` = no suggestion.
+if (!cols.includes('archive_suggested_at')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archive_suggested_at INTEGER`);
+}
+if (!cols.includes('archive_suggest_reason')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archive_suggest_reason TEXT`);
+}
 if (!cols.includes('title_generation')) {
   db.exec(`ALTER TABLE missions ADD COLUMN title_generation INTEGER NOT NULL DEFAULT 0`);
   db.exec(`UPDATE missions SET title_generation = 1`);
@@ -2722,6 +2731,10 @@ export type MissionRow = {
   archived_at: number | null;
   /** Who archived it: 'user' | 'auto' | 'agent'. NULL while not archived. */
   archived_by: MissionArchivedBy | null;
+  /** Unix ms when the agent proposed archiving; NULL = no pending suggestion. */
+  archive_suggested_at: number | null;
+  /** Short, cleaned reason given with the suggestion; NULL when none. */
+  archive_suggest_reason: string | null;
   /** 1 once the one-shot title generation has been claimed for this mission (never twice). */
   title_generation: number;
   /** Work return already delivered to the pilot for the current turn. */
@@ -2753,6 +2766,15 @@ export type ActiveMissionRow = Pick<
  * of the previous page: the list is ordered by (started_at, id) descending, so
  * the pair is a stable cursor even when missions share a start time.
  */
+export const ARCHIVE_REASON_MAX = 200;
+/** The reason is agent-written text shown to a person: no control characters,
+ *  one line, secrets masked, bounded. Empty becomes NULL. */
+export function sanitizeArchiveReason(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // eslint-disable-next-line no-control-regex
+  const flat = redactDeep(raw).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return flat ? Array.from(flat).slice(0, ARCHIVE_REASON_MAX).join('') : null;
+}
 export type MissionArchivedBy = 'user' | 'auto' | 'agent';
 /** `exclude` hides archived missions, `only` shows nothing else. Unset = no filter. */
 export type MissionArchivedFilter = 'exclude' | 'include' | 'only';
@@ -6991,7 +7013,7 @@ export const dbApi = {
     if (!row) return 'not_found';
     if (row.archived_at !== null) return 'already';
     if (row.status === 'running') return 'running';
-    db.prepare(`UPDATE missions SET archived_at = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL AND status <> 'running'`).run(Date.now(), by, id);
+    db.prepare(`UPDATE missions SET archived_at = ?, archived_by = ?, archive_suggested_at = NULL, archive_suggest_reason = NULL WHERE id = ? AND archived_at IS NULL AND status <> 'running'`).run(Date.now(), by, id);
     bus.publish({ kind: 'mission_archived', missionId: id, by });
     return 'archived';
   },
@@ -7016,6 +7038,23 @@ export const dbApi = {
         ORDER BY m.rowid LIMIT @limit`,
     ).all({ cutoff, after: afterRowid, limit }) as { rowid: number; id: string }[];
   },
+  /**
+   * Record an agent's proposal to archive its own conversation. It never
+   * archives: only the flag the UI reads is set. Refused once archived.
+   */
+  suggestMissionArchive(id: string, reason: string | null): 'suggested' | 'archived' | 'not_found' {
+    const row = db.prepare(`SELECT archived_at FROM missions WHERE id = ?`).get(id) as { archived_at: number | null } | undefined;
+    if (!row) return 'not_found';
+    if (row.archived_at !== null) return 'archived';
+    const clean = sanitizeArchiveReason(reason);
+    db.prepare(`UPDATE missions SET archive_suggested_at = ?, archive_suggest_reason = ? WHERE id = ?`).run(Date.now(), clean, id);
+    bus.publish({ kind: 'mission_archive_suggested', missionId: id, reason: clean });
+    return 'suggested';
+  },
+  /** Drop a pending suggestion (dismissal, new message). True when there was one. */
+  clearArchiveSuggestion(id: string): boolean {
+    return db.prepare(`UPDATE missions SET archive_suggested_at = NULL, archive_suggest_reason = NULL WHERE id = ? AND archive_suggested_at IS NOT NULL`).run(id).changes > 0;
+  },
   /** Clear the archive flag. True when the mission was archived. */
   unarchiveMission(id: string): boolean {
     const changed = db.prepare(`UPDATE missions SET archived_at = NULL, archived_by = NULL WHERE id = ? AND archived_at IS NOT NULL`).run(id).changes;
@@ -7034,7 +7073,11 @@ export const dbApi = {
     // typed by the human) included, on purpose: a conversation
     // that just received a new result must reappear instead of staying hidden
     // behind an archive the user made before the work finished.
-    if (type === 'user') dbApi.unarchiveMission(missionId);
+    if (type === 'user') {
+      dbApi.unarchiveMission(missionId);
+      // A new message means the conversation goes on: the proposal is stale.
+      dbApi.clearArchiveSuggestion(missionId);
+    }
     // Online full-text indexing: it only costs on events that actually carry text
     // (assistant/user), and guarantees a mission is searchable while it runs, not only
     // after a catch-up.

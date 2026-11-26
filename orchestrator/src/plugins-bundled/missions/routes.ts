@@ -16,7 +16,7 @@ import { cooldownReason, fallbackFor } from '../../backend-fallback.js';
 import { messageDateTime } from '../../message-dates.js';
 import { asBackendName, defaultBackendName } from '../../backends/index.js';
 import { config } from '../../config/load.js';
-import { db, dbApi, SPAN_CURSOR_PATTERN, viewerSeesAll, type EventRow, type MissionRow } from '../../db.js';
+import { ARCHIVE_REASON_MAX, db, dbApi, SPAN_CURSOR_PATTERN, viewerSeesAll, type EventRow, type MissionRow } from '../../db.js';
 import { handleSpawn } from '../../http-helpers.js';
 import { agentCommunicationAllowed, developerAutoAllows } from '../../users/agent-permissions.js';
 import { createDelegationHandler } from '../../mission-delegation.js';
@@ -80,6 +80,7 @@ const BackfillTitlesBodySchema = z.object({
   dryRun: z.boolean().optional(),
 }).strict();
 const RegenerateTitleBodySchema = z.object({ force: z.boolean().optional() }).strict();
+const ArchiveSuggestionBodySchema = z.object({ reason: z.string().max(ARCHIVE_REASON_MAX).optional() }).strict();
 const PermissionModeBodySchema = z.object({ mode: z.string().trim().min(1).max(40) }).strict();
 
 function extractFromMission(
@@ -736,6 +737,8 @@ export function registerRoutes(
         title_source: m.title_source ?? null,
         archived_at: m.archived_at ?? null,
         archived_by: m.archived_by ?? null,
+        archive_suggested_at: m.archive_suggested_at ?? null,
+        archive_suggest_reason: m.archive_suggest_reason ?? null,
         // The backend CLI's own session (claude session, codex thread…), for
         // diagnosis. Same scoped rows as the rest of the list: a viewer only
         // ever reads the session of a mission it already sees.
@@ -1015,6 +1018,9 @@ export function registerRoutes(
       owner: dbApi.missionOwner(m.owner_user_id),
       title: m.title ?? null,
       title_source: m.title_source ?? null,
+      archived_at: m.archived_at ?? null,
+      archive_suggested_at: m.archive_suggested_at ?? null,
+      archive_suggest_reason: m.archive_suggest_reason ?? null,
       // The retention deleted this history (retention in days), else null: the
       // chat tells an emptied conversation from one that never had a message.
       history_purged_days: m.history_purged_days ?? null,
@@ -1302,6 +1308,48 @@ export function registerRoutes(
     }
     if (outcome === 'archived') auditRequest(req, 'mission.archive', owned.id);
     res.json({ ok: true, archived: true });
+  });
+
+  // An agent proposes archiving ITS OWN mission; it never archives. The caller's
+  // mission is the one bound to its token (else the MCP client's header, as for
+  // the other agent routes) and must be the one in the path: a person's session
+  // or a call outside any mission is refused.
+  app.post('/api/missions/:id/archive-suggestion', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const tokenMission = req.auth?.kind === 'api-token' ? req.auth.missionId ?? null : null;
+    const caller = tokenMission ?? (req.auth?.kind === 'daemon-token' ? (req.header('X-TIMON-Mission') ?? '').trim() || null : null);
+    if (!caller) {
+      res.status(403).json(apiError('not_in_mission', 'only a running mission can propose archiving its own conversation'));
+      return;
+    }
+    if (caller !== req.params.id) {
+      res.status(403).json(apiError('not_own_mission', 'a mission can only propose archiving itself'));
+      return;
+    }
+    const body = ArchiveSuggestionBodySchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json(apiError('invalid_body', 'reason must be a string of at most 200 characters'));
+      return;
+    }
+    const outcome = dbApi.suggestMissionArchive(caller, body.data.reason ?? null);
+    if (outcome === 'not_found') {
+      res.status(404).json(apiError('mission_not_found', 'mission not found'));
+      return;
+    }
+    if (outcome === 'archived') {
+      res.status(409).json(apiError('already_archived', 'this conversation is already archived'));
+      return;
+    }
+    res.json({ ok: true, suggested: true });
+  });
+
+  // The person turns the proposal down. Owner only (404 otherwise).
+  app.post('/api/missions/:id/archive-suggestion/dismiss', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const owned = ownedMissionOr404(req, res);
+    if (!owned) return;
+    dbApi.clearArchiveSuggestion(owned.id);
+    res.json({ ok: true });
   });
 
   app.post('/api/missions/:id/unarchive', (req, res) => {

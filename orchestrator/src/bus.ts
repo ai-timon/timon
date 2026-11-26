@@ -196,6 +196,8 @@ export type BusEvent =
   | { kind: 'mission_archived'; missionId: string; by: 'user' | 'auto' | 'agent' }
   /** An archived mission came back, by hand or because a message arrived. */
   | { kind: 'mission_unarchived'; missionId: string }
+  /** An agent proposed archiving its finished conversation; only a person archives. */
+  | { kind: 'mission_archive_suggested'; missionId: string; reason: string | null }
   /**
    * A TO DO idea given a new outcome (`resolution`), closing or not. `todo` is
    * the idea as it stood right after this write: listeners run deferred, and

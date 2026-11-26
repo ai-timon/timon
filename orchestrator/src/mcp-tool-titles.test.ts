@@ -27,7 +27,7 @@ const TITLED = [
   'skill_put', 'skill_rm', 'mcp_server_list', 'mcp_server_get', 'mcp_server_put', 'mcp_server_rm',
   // mcp-tools-missions.mjs
   'mission_send', 'mission_steer', 'mission_status', 'mission_wait', 'mission_kill', 'stop_scope',
-  'mission_permission_mode_get', 'mission_permission_mode_set', 'mission_summarize', 'mission_fork', 'mission_egress',
+  'mission_permission_mode_get', 'mission_permission_mode_set', 'mission_summarize', 'mission_fork', 'mission_propose_archive', 'mission_egress',
   'mission_reindex', 'trace_backfill',
   // mcp-tools-kanban.mjs
   'kanban_get', 'kanban_attach_series', 'series_fallback_clear', 'series_role_clear', 'worktree_info', 'worktree_create',

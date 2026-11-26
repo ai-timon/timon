@@ -151,3 +151,81 @@ test('a delegation return (a user row with a runtime origin) also unarchives', (
   });
   assert.equal(dbApi.getMission(mine)?.archived_at, null);
 });
+
+// Agent proposals: the agent only flags, the person archives or dismisses.
+const sug = randomUUID();
+dbApi.createMission(sug, 'arch.agent', 'suggesting work', undefined, adminId);
+dbApi.finishMission(sug, 'completed', 0);
+
+test('anonymous archive-suggestion calls are refused', async () => {
+  assert.equal((await call('POST', `/api/missions/${sug}/archive-suggestion`)).status, 401);
+  assert.equal((await call('POST', `/api/missions/${sug}/archive-suggestion/dismiss`)).status, 401);
+  assert.equal(dbApi.getMission(sug)?.archive_suggested_at, null);
+});
+
+test('a call outside any mission, or from a person, cannot propose', async () => {
+  const cookie = await login('admin@example.com', 'admin-secret');
+  assert.equal((await call('POST', `/api/missions/${sug}/archive-suggestion`, { bearer: TOKEN })).status, 403);
+  assert.equal((await call('POST', `/api/missions/${sug}/archive-suggestion`, { cookie })).status, 403);
+  assert.equal(dbApi.getMission(sug)?.archive_suggested_at, null);
+});
+
+test('a mission cannot propose for another mission', async () => {
+  const res = await fetch(`${base}/api/missions/${sug}/archive-suggestion`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${TOKEN}`, 'x-timon-mission': other },
+  });
+  assert.equal(res.status, 403);
+  assert.equal(dbApi.getMission(sug)?.archive_suggested_at, null);
+});
+
+async function propose(missionId: string, body: unknown): Promise<Response> {
+  return fetch(`${base}/api/missions/${missionId}/archive-suggestion`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${TOKEN}`, 'x-timon-mission': missionId, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+test('the mission proposes: a flag is set, a cleaned reason kept, nothing is archived', async () => {
+  assert.equal((await propose(sug, { reason: 'x'.repeat(201) })).status, 400);
+  const res = await propose(sug, { reason: '  Work\n\tis   done \u0007 ' });
+  assert.equal(res.status, 200);
+  const row = dbApi.getMission(sug);
+  assert.ok(row?.archive_suggested_at);
+  assert.equal(row.archive_suggest_reason, 'Work is done');
+  assert.equal(row.archived_at, null);
+  const cookie = await login('admin@example.com', 'admin-secret');
+  const list = (await call('GET', '/api/missions', { cookie })).json as { missions: Array<{ id: string; archive_suggested_at: number | null; archive_suggest_reason: string | null }> };
+  const listed = list.missions.find((m) => m.id === sug);
+  assert.ok(listed?.archive_suggested_at);
+  assert.equal(listed.archive_suggest_reason, 'Work is done');
+  const detail = (await call('GET', `/api/missions/${sug}`, { cookie })).json as { archive_suggested_at: number | null };
+  assert.ok(detail.archive_suggested_at);
+});
+
+test('a non-owner cannot dismiss; the owner can', async () => {
+  const bea = await login('bea@example.com', 'bea-secret');
+  assert.equal((await call('POST', `/api/missions/${sug}/archive-suggestion/dismiss`, { cookie: bea })).status, 404);
+  assert.ok(dbApi.getMission(sug)?.archive_suggested_at);
+  const cookie = await login('admin@example.com', 'admin-secret');
+  assert.equal((await call('POST', `/api/missions/${sug}/archive-suggestion/dismiss`, { cookie })).status, 200);
+  assert.equal(dbApi.getMission(sug)?.archive_suggested_at, null);
+  assert.equal(dbApi.getMission(sug)?.archive_suggest_reason, null);
+});
+
+test('a new message clears the proposal, and archiving does too', async () => {
+  assert.equal((await propose(sug, {})).status, 200);
+  dbApi.insertEvent(sug, 'user', { type: 'user', message: { role: 'user', content: 'one more thing' } });
+  assert.equal(dbApi.getMission(sug)?.archive_suggested_at, null);
+  assert.equal((await propose(sug, { reason: 'done' })).status, 200);
+  const cookie = await login('admin@example.com', 'admin-secret');
+  assert.equal((await call('POST', `/api/missions/${sug}/archive`, { cookie })).status, 200);
+  assert.equal(dbApi.getMission(sug)?.archive_suggested_at, null);
+});
+
+test('an archived mission refuses a proposal (409)', async () => {
+  assert.ok(dbApi.getMission(sug)?.archived_at);
+  assert.equal((await propose(sug, { reason: 'again' })).status, 409);
+  assert.equal(dbApi.getMission(sug)?.archive_suggested_at, null);
+});
