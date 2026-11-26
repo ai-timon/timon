@@ -192,6 +192,10 @@ export type BusEvent =
    * it translated (`mission-events.ts`) under `missions:read`.
    */
   | { kind: 'mission_title_changed'; missionId: string; title: string | null; source: MissionTitleSource | null; origin: MissionTitleOrigin }
+  /** A mission was archived (hidden from the default lists) by `by`. */
+  | { kind: 'mission_archived'; missionId: string; by: 'user' | 'auto' | 'agent' }
+  /** An archived mission came back, by hand or because a message arrived. */
+  | { kind: 'mission_unarchived'; missionId: string }
   /**
    * A TO DO idea given a new outcome (`resolution`), closing or not. `todo` is
    * the idea as it stood right after this write: listeners run deferred, and

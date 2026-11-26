@@ -1345,6 +1345,15 @@ if (!cols.includes('title_source')) {
   db.exec(`ALTER TABLE missions ADD COLUMN title_source TEXT`);
   db.exec(`UPDATE missions SET title_source = 'manual' WHERE title IS NOT NULL AND TRIM(title) <> ''`);
 }
+// Archiving is a visibility flag, distinct from the technical `status` (a
+// mission stays `completed`). `archived_by` records who did it: 'user', 'auto'
+// (the retention sweep) or 'agent'. NULL `archived_at` = not archived.
+if (!cols.includes('archived_at')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archived_at INTEGER`);
+}
+if (!cols.includes('archived_by')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archived_by TEXT`);
+}
 if (!cols.includes('title_generation')) {
   db.exec(`ALTER TABLE missions ADD COLUMN title_generation INTEGER NOT NULL DEFAULT 0`);
   db.exec(`UPDATE missions SET title_generation = 1`);
@@ -2709,6 +2718,10 @@ export type MissionRow = {
   title: string | null;
   /** Where `title` came from (`mission-titles.ts`): manual > preset > native > generated. NULL = no title. */
   title_source: MissionTitleSource | null;
+  /** Unix ms when the mission was archived; NULL = visible in the default lists. */
+  archived_at: number | null;
+  /** Who archived it: 'user' | 'auto' | 'agent'. NULL while not archived. */
+  archived_by: MissionArchivedBy | null;
   /** 1 once the one-shot title generation has been claimed for this mission (never twice). */
   title_generation: number;
   /** Work return already delivered to the pilot for the current turn. */
@@ -2740,7 +2753,11 @@ export type ActiveMissionRow = Pick<
  * of the previous page: the list is ordered by (started_at, id) descending, so
  * the pair is a stable cursor even when missions share a start time.
  */
+export type MissionArchivedBy = 'user' | 'auto' | 'agent';
+/** `exclude` hides archived missions, `only` shows nothing else. Unset = no filter. */
+export type MissionArchivedFilter = 'exclude' | 'include' | 'only';
 export type MissionListPage = {
+  archived?: MissionArchivedFilter;
   taskId?: string;
   before?: { startedAt: number; id: string };
 };
@@ -3975,8 +3992,9 @@ export function missionListQuery(
 ): { sql: string; params: unknown[] } | 'all' | 'none' {
   const owner = ownerSql(viewer, 'missions', 'm.owner_user_id');
   const scoped = owner.sql !== '1=1';
-  const { taskId, before } = page;
-  if (!agentNames && !status && !scoped && !origin && taskId === undefined && !before) return 'all';
+  const { taskId, before, archived } = page;
+  const archivedFilter = archived === 'exclude' || archived === 'only' ? archived : undefined;
+  if (!agentNames && !status && !scoped && !origin && taskId === undefined && !before && !archivedFilter) return 'all';
   if (agentNames && agentNames.length === 0) return 'none';
   // missing: `/api/missions?status=running` returned the N latest missions of ALL
   // statuses, in silence. An agent diagnosing
@@ -3999,6 +4017,8 @@ export function missionListQuery(
     where.push(`(${MISSION_ORIGIN_SQL}) = ?`);
     params.push(origin);
   }
+  if (archivedFilter === 'exclude') where.push('m.archived_at IS NULL');
+  else if (archivedFilter === 'only') where.push('m.archived_at IS NOT NULL');
   if (taskId !== undefined) {
     where.push('m.task_id = ?');
     params.push(taskId);
@@ -6962,6 +6982,25 @@ export const dbApi = {
   missionOwnerId(missionId: string): string | null {
     return resolveMissionOwner(missionId);
   },
+  /**
+   * Archive a mission. Refused for a mission still `running` (the technical
+   * status covers running and waiting). Returns whether the row changed.
+   */
+  archiveMission(id: string, by: MissionArchivedBy): 'archived' | 'already' | 'running' | 'not_found' {
+    const row = db.prepare(`SELECT status, archived_at FROM missions WHERE id = ?`).get(id) as { status: string; archived_at: number | null } | undefined;
+    if (!row) return 'not_found';
+    if (row.archived_at !== null) return 'already';
+    if (row.status === 'running') return 'running';
+    db.prepare(`UPDATE missions SET archived_at = ?, archived_by = ? WHERE id = ? AND archived_at IS NULL AND status <> 'running'`).run(Date.now(), by, id);
+    bus.publish({ kind: 'mission_archived', missionId: id, by });
+    return 'archived';
+  },
+  /** Clear the archive flag. True when the mission was archived. */
+  unarchiveMission(id: string): boolean {
+    const changed = db.prepare(`UPDATE missions SET archived_at = NULL, archived_by = NULL WHERE id = ? AND archived_at IS NOT NULL`).run(id).changes;
+    if (changed) bus.publish({ kind: 'mission_unarchived', missionId: id });
+    return changed > 0;
+  },
   insertEvent(missionId: string, type: string, payload: unknown): EventRow {
     const ts = Date.now();
     // §7: masked BEFORE storage, and before the search index — the payload has
@@ -6970,6 +7009,8 @@ export const dbApi = {
     payload = redactDeep(payload);
     const json = JSON.stringify(payload);
     const info = insertEventStmt.run(missionId, type, ts, json);
+    // A new message resurfaces an archived conversation.
+    if (type === 'user') dbApi.unarchiveMission(missionId);
     // Online full-text indexing: it only costs on events that actually carry text
     // (assistant/user), and guarantees a mission is searchable while it runs, not only
     // after a catch-up.
@@ -7184,7 +7225,7 @@ export const dbApi = {
     return db.prepare(
       `WITH page AS (
          SELECT m.id, m.agent_name, m.status, m.started_at, m.source_channel FROM missions m
-          WHERE m.agent_name = ? AND ${owner.sql}
+          WHERE m.agent_name = ? AND m.archived_at IS NULL AND ${owner.sql}
           ORDER BY m.started_at DESC
           LIMIT ?
        )
