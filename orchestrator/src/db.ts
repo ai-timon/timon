@@ -7009,7 +7009,10 @@ export const dbApi = {
     payload = redactDeep(payload);
     const json = JSON.stringify(payload);
     const info = insertEventStmt.run(missionId, type, ts, json);
-    // A new message resurfaces an archived conversation.
+    // Any `user` row unarchives, a delegation return (a runtime-origin row, not
+    // typed by the human) included, on purpose: a conversation
+    // that just received a new result must reappear instead of staying hidden
+    // behind an archive the user made before the work finished.
     if (type === 'user') dbApi.unarchiveMission(missionId);
     // Online full-text indexing: it only costs on events that actually carry text
     // (assistant/user), and guarantees a mission is searchable while it runs, not only

@@ -141,3 +141,13 @@ test('a new user message unarchives the mission', () => {
   dbApi.insertEvent(other, 'assistant', { type: 'assistant' });
   assert.ok(dbApi.getMission(other)?.archived_at, 'a non-user event must not unarchive');
 });
+
+test('a delegation return (a user row with a runtime origin) also unarchives', () => {
+  assert.equal(dbApi.archiveMission(mine, 'user'), 'archived');
+  dbApi.insertEvent(mine, 'user', {
+    type: 'user',
+    message: { role: 'user', content: 'result of the delegated mission' },
+    origin: { kind: 'system', from: 'orchestrator' },
+  });
+  assert.equal(dbApi.getMission(mine)?.archived_at, null);
+});
