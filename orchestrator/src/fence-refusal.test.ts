@@ -97,6 +97,10 @@ test('the structured refusal: Timon home and credentials are never grantable, th
   assert.equal(inHome.grantable, false);
   assert.equal(inHome.display, join('~', '.timon', 'daemon-token'));
   assert.match(fenceRefusalMessage(inHome), /defect of Timon/);
+  const homeMessage = fenceRefusalMessage(inHome);
+  assert.ok(homeMessage.indexOf('~/.timon/daemon-token') < homeMessage.indexOf('extra folders'), 'the path comes first, then the targeted setting');
+  assert.ok(homeMessage.indexOf('extra folders') < homeMessage.indexOf('Mission isolation to Off'), 'turning the isolation off comes last');
+  assert.match(homeMessage, /Last resort only/);
   assert.match(fenceRefusalMessage(inHome), /Seatbelt/);
   const ssh = fenceRefusal({ ...base, path: join(HOME, '.ssh', 'id_ed25519'), access: 'read' });
   assert.equal(ssh.timonHome, false);
