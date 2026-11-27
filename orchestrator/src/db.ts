@@ -3225,6 +3225,7 @@ const updateTaskStmt = db.prepare(
    WHERE id = ?`,
 );
 const getTaskByMissionStmt = db.prepare(`SELECT * FROM tasks WHERE mission_id = ?`);
+const taskWorktreePathsOfProjectStmt = db.prepare(`SELECT worktree_path FROM tasks WHERE project = ? AND worktree_path IS NOT NULL`);
 const deleteTaskStmt = db.prepare(`DELETE FROM tasks WHERE id = ?`);
 const setTaskWorktreeStmt = db.prepare(
   `UPDATE tasks SET worktree_path = ?, branch_name = ?, base_branch = ?, updated_at = ? WHERE id = ?`,
@@ -5834,6 +5835,10 @@ export const dbApi = {
   },
   getTaskByMission(missionId: string): TaskRow | undefined {
     return getTaskByMissionStmt.get(missionId) as TaskRow | undefined;
+  },
+  /** The worktree folders recorded on the tasks of one project, for the fence of a lead or merge mission. */
+  taskWorktreePathsOfProject(project: string): string[] {
+    return (taskWorktreePathsOfProjectStmt.all(project) as Array<{ worktree_path: string }>).map((row) => row.worktree_path);
   },
   /**
    * Deletes a task, or with `chain` the whole verification chain it heads

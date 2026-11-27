@@ -51,7 +51,7 @@ import {
 } from './skill-attachments.js';
 import { getMcp, refreshToolsCacheFromInit, listMcp } from './mcp.js';
 import { ensureChatAttachmentsDir } from './chat-attachments.js';
-import { pluginPackageDirs, removeAgentPackageCache, worktreeGitDirs } from './mission-fence-target.js';
+import { leadFenceGrants, pluginPackageDirs, removeAgentPackageCache, worktreeGitDirs } from './mission-fence-target.js';
 import { forgetMissionFence, missionFenced, prepareMissionLaunch, recordMissionFence } from './mission-fence-state.js';
 import { credentialAccountOf } from './backends/host-sign-in.js';
 import { setAcpFenceSource } from './backends/acp/provider.js';
@@ -1932,9 +1932,23 @@ export function missionFenceTarget(input: {
   backend: string;
   cwd: string | null;
   mcpServers: readonly string[];
+  /** `config.role` of the agent, never read from its name. */
+  role?: string | null;
 }): Partial<FenceTarget> {
   const git = input.cwd ? worktreeGitDirs(input.cwd, homedir()) : { dirs: [], refused: null };
   if (git.refused) console.warn(`[agent] mission ${input.missionId.slice(0, 8)}: git directory not opened to the fence: ${git.refused}`);
+  // A lead, a merger or a merge task integrates the project's tasks: their
+  // worktrees and the repository's git directory, for `git push/fetch/merge`.
+  const lead = leadFenceGrants({
+    role: input.role,
+    taskType: dbApi.getTaskByMission(input.missionId)?.type,
+    project: input.project,
+    timonHome: TIMON_HOME,
+    home: homedir(),
+    repoCwd: input.project ? dbApi.getProjectRow(input.project)?.cwd : null,
+    taskWorktrees: input.project ? dbApi.taskWorktreePathsOfProject(input.project) : [],
+  });
+  for (const why of lead.refused) console.warn(`[agent] mission ${input.missionId.slice(0, 8)}: project git directory not opened to the fence: ${why}`);
   const commandLines = input.mcpServers.flatMap((id) => {
     try {
       const server = getMcp(id);
@@ -1961,6 +1975,8 @@ export function missionFenceTarget(input: {
     // and the profile's folder is shared by every account of that profile.
     providerProfile: instance.accountId ? undefined : instance.backend,
     gitDirs: git.dirs,
+    projectWorktrees: lead.worktrees,
+    projectGitDirs: lead.gitDirs,
     pluginDirs: pluginPackageDirs(commandLines, TIMON_HOME),
     timonRead: attachments ? [attachments] : [],
     // Read again from the agent's config file and the project's row, like
@@ -2086,7 +2102,7 @@ async function spawnMissionProcess(
     timonHome: TIMON_HOME,
     nestedSandbox: nestedSandboxOf(backend.name),
     interpreter,
-    ...missionFenceTarget({ missionId, agentName, project, backend: backend.name, cwd: cwd ?? null, mcpServers: cfg.mcp_servers ?? [] }),
+    ...missionFenceTarget({ missionId, agentName, project, backend: backend.name, cwd: cwd ?? null, mcpServers: cfg.mcp_servers ?? [], role: cfg.role ?? null }),
   });
   // Vault slice computed HERE so the inject journal (§8 / §12.8) records the
   // identities without `missionEnv` writing to the database — that function

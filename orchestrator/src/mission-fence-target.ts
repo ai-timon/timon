@@ -143,6 +143,86 @@ function linkedWorktreeGitDirs(dotGit: string, homeDir: string, fs: GitDirsFs): 
   return { dirs: main ? [commonDir, main] : [commonDir], refused: null };
 }
 
+/** Role ids (`config.role`, never the agent's name) whose missions integrate the project's work. */
+const INTEGRATING_ROLES: ReadonlySet<string> = new Set(['orchestrator', 'merger']);
+
+/**
+ * Whether a mission integrates its project's work and so reaches the worktrees
+ * of the project's tasks and the repository's git directory: its agent's role
+ * is lead (`orchestrator`) or `merger`, or it runs a `merge` task. Read from
+ * the role field and the task row, never from a name: an agent called
+ * "merge-helper" with another role gets nothing.
+ */
+export function integratesProject(role: string | null | undefined, taskType: string | null | undefined): boolean {
+  return taskType === 'merge' || (typeof role === 'string' && INTEGRATING_ROLES.has(role));
+}
+
+/**
+ * The common git directory of the repository at `repoCwd` (objects, refs,
+ * `worktrees/<id>`, config), and nothing around it: `git push`, `fetch`,
+ * `merge` and `update-ref` need no more. A repository holding the home folder
+ * is a dotfiles repository, not a project.
+ */
+export function projectCommonGitDir(repoCwd: string, home: string, fs: GitDirsFs = GIT_DIRS_FS): { dir: string | null; refused: string | null } {
+  const start = fs.realpath(repoCwd) ?? resolve(repoCwd);
+  const homeDir = fs.realpath(home) ?? resolve(home);
+  for (let dir = start; ; dir = dirname(dir)) {
+    const dotGit = join(dir, '.git');
+    const kind = fs.kind(dotGit);
+    if (kind === 'dir') {
+      if (within(dir, homeDir)) return { dir: null, refused: `the repository at ${dir} holds the home folder` };
+      return { dir: dotGit, refused: null };
+    }
+    if (kind === 'file') {
+      const linked = linkedWorktreeGitDirs(dotGit, homeDir, fs);
+      return { dir: linked.dirs[0] ?? null, refused: linked.refused };
+    }
+    if (dirname(dir) === dir) return { dir: null, refused: null };
+  }
+}
+
+export type LeadFenceGrants = { worktrees: string[]; gitDirs: string[]; refused: string[] };
+
+/**
+ * What the fence of an integrating mission opens beyond its own folders: the
+ * worktrees of its project's tasks that exist at launch, and the project
+ * repository's common git directory. Landlock takes no rule after the process
+ * starts, so a worktree made later is covered from the next launch (every
+ * turn of a one-shot CLI, the next mission otherwise): the limit is documented
+ * in Mission isolation. Only paths directly below `<timonHome>/worktrees` and
+ * existing as folders count; another project's folders are never listed.
+ */
+export function leadFenceGrants(input: {
+  role: string | null | undefined;
+  taskType: string | null | undefined;
+  project: string;
+  timonHome: string;
+  home: string;
+  repoCwd: string | null | undefined;
+  /** Worktree paths recorded on the project's tasks. */
+  taskWorktrees: readonly string[];
+  fs?: GitDirsFs;
+}): LeadFenceGrants {
+  const none: LeadFenceGrants = { worktrees: [], gitDirs: [], refused: [] };
+  if (!input.project || !integratesProject(input.role, input.taskType)) return none;
+  const fs = input.fs ?? GIT_DIRS_FS;
+  const root = join(resolve(input.timonHome), 'worktrees');
+  const worktrees = new Set<string>();
+  for (const raw of input.taskWorktrees) {
+    const path = resolve(raw);
+    if (dirname(path) !== root || fs.kind(path) !== 'dir') continue;
+    worktrees.add(path);
+  }
+  const refused: string[] = [];
+  const gitDirs: string[] = [];
+  if (input.repoCwd) {
+    const found = projectCommonGitDir(input.repoCwd, input.home, fs);
+    if (found.dir) gitDirs.push(found.dir);
+    if (found.refused) refused.push(found.refused);
+  }
+  return { worktrees: [...worktrees], gitDirs, refused };
+}
+
 /**
  * The plugin packages an MCP server's command line runs from: every absolute
  * path among `paths` under `<timonHome>/plugins/node_modules/`, cut to its
