@@ -190,6 +190,8 @@
     "pr_open_busy": "Une pull request est déjà en cours d'ouverture pour cette branche : {detail}",
     "pr_precheck_failed": "Un contrôle a refusé la pull request, rien n'a été poussé : {detail}",
     "pr_push_failed": "La branche n'a pas pu être poussée : {detail}",
+    "ticket_push_refused": "La branche de ticket n'a pas été poussée : {detail}",
+    "ticket_push_failed": "La branche de ticket n'a pas pu être poussée : {detail}",
     "pr_create_failed": "La branche a été poussée mais la pull request n'a pas été créée : {detail}",
     "landing_request_invalid": "La demande sur l'atterrissage de ce chantier a été refusée : {detail}",
     "landing_not_found": "Aucun chantier ne porte cet identifiant.",

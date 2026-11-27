@@ -95,7 +95,10 @@ const spawnFailures = new Map<string, number>();
 const TYPE_ALLOWED_TOOLS: Partial<Record<TaskType, string[]>> = {
   // Native Claude Code format: `Bash(<prefix>:*)` (prefix + `:*` wildcard).
   code: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npx tsc:*)', 'Bash(npm run:*)'],
-  merge: ['Read', 'Edit', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npx tsc:*)', 'Bash(npm run:*)'],
+  // `kanban_push_branch`: the daemon pushes a ticket branch for the merger
+  // (`ticket-branch-push.ts` holds the rule); the CLI classifier would refuse
+  // the same `git push` typed by the agent.
+  merge: ['Read', 'Edit', 'Glob', 'Grep', 'Bash(git:*)', 'Bash(npx tsc:*)', 'Bash(npm run:*)', 'mcp__timon__kanban_push_branch'],
   review: ['Read', 'Glob', 'Grep', 'Bash(git diff:*)', 'Bash(git log:*)', 'Bash(git show:*)'],
   doc: ['Read', 'Edit', 'Write', 'Glob', 'Grep'],
   research: ['Read', 'Glob', 'Grep'],

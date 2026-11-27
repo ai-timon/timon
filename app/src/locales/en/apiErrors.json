@@ -190,6 +190,8 @@
     "pr_open_busy": "A pull request is already being opened for this branch: {detail}",
     "pr_precheck_failed": "A check refused the pull request, nothing was pushed: {detail}",
     "pr_push_failed": "The branch could not be pushed: {detail}",
+    "ticket_push_refused": "The ticket branch was not pushed: {detail}",
+    "ticket_push_failed": "The ticket branch could not be pushed: {detail}",
     "pr_create_failed": "The branch was pushed but the pull request was not created: {detail}",
     "landing_request_invalid": "The request about this job's landing was refused: {detail}",
     "landing_not_found": "No job with this id was found.",

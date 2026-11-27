@@ -27,6 +27,7 @@ import { todoApi, type TodoApi } from './todo-api.js';
 import { registerAttachmentRoutes } from './attachment-routes.js';
 import { registerIntegrationRoutes } from './integration-routes.js';
 import { registerPrRoutes } from './pr-routes.js';
+import { registerPushBranchRoutes } from './push-branch-routes.js';
 import { registerExternalPrRoutes } from './external-pr-routes.js';
 import { watchReviewMissions } from '../../external-pr-review.js';
 import { watchPullRequestPages } from '../../pull-request-page.js';
@@ -64,6 +65,7 @@ export function apply(ctx: Context): void {
   registerAttachmentRoutes(ctx.http.router());
   registerIntegrationRoutes(ctx.http.router());
   registerPrRoutes(ctx.http.router());
+  registerPushBranchRoutes(ctx.http.router());
   registerExternalPrRoutes(ctx.http.router());
   registerLandingRoutes(ctx.http.router());
   registerForgeProposalRoutes(ctx.http.router());
