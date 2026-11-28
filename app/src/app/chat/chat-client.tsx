@@ -282,6 +282,10 @@ import { sseOn, streamClientQuery } from '@/lib/sse-stream';
 import { RAIL_FALLBACK_POLL_MS, RAIL_FRAMES, RAIL_REFRESH_DEBOUNCE_MS, railFrameMatters } from '@/lib/mission-rail-refresh';
 import { fetchLatestMission } from '@/lib/latest-mission';
 import { applyMissionTitleChange, parseMissionTitleChange } from '@/lib/mission-title';
+import { answerArchiveSuggestion, applyArchiveSuggestion, applyMissionArchiveChange, archivedQuery, clearArchiveSuggestion, hasArchiveSuggestion, isArchived, parseMissionArchiveChange, parseMissionArchiveSuggestion } from '@/lib/mission-archive';
+import { ArchiveSuggestionBar } from '@/components/chat/archive-suggestion';
+import { MISSION_RAIL_DISPLAY_SCOPE, readMissionRailDisplay } from '@/lib/mission-rail-display';
+import { useStoredLayout } from '@/hooks/use-stored-layout';
 import { nextHeaderScrollState } from '@/lib/header-scroll';
 import { projectSlugOf } from '@/lib/project-slug';
 import {
@@ -1746,6 +1750,30 @@ export function ChatClient({
     const change = parseMissionTitleChange(String(ev.data));
     if (change) setMissions((prev) => applyMissionTitleChange(prev, change) as MissionSummary[]);
   }), []);
+  // Archived missions are listed only when the rail's toggle says so (stored
+  // with the rail's display, so the rail and this fetch read the same row).
+  const railDisplay = useStoredLayout(MISSION_RAIL_DISPLAY_SCOPE);
+  const includeArchived = readMissionRailDisplay(railDisplay.raw).includeArchived;
+  // An archive made from another tab or by a message (which restores the
+  // mission) shows in the rail at once.
+  useEffect(() => {
+    const on = (kind: 'mission_archived' | 'mission_unarchived') => sseOn(kind, (ev) => {
+      const change = parseMissionArchiveChange(kind, String(ev.data));
+      if (change) setMissions((prev) => applyMissionArchiveChange(prev, change, Date.now()));
+    });
+    const offs = [on('mission_archived'), on('mission_unarchived')];
+    // The agent proposes archiving its finished conversation (never does it).
+    offs.push(sseOn('mission_archive_suggested', (ev) => {
+      const suggestion = parseMissionArchiveSuggestion(String(ev.data));
+      if (suggestion) setMissions((prev) => applyArchiveSuggestion(prev, suggestion, Date.now()));
+    }));
+    return () => offs.forEach((off) => off());
+  }, []);
+  const archiveSuggestion = currentMissionId ? missions.find((m) => m.id === currentMissionId && hasArchiveSuggestion(m)) : undefined;
+  const answerArchiveProposal = useCallback(async (missionId: string, answer: 'archive' | 'dismiss') => {
+    setMissions((prev) => clearArchiveSuggestion(prev, missionId));
+    if (!(await answerArchiveSuggestion(missionId, answer))) toast.error(i18n(answer === 'archive' ? 'missionRail.archiveFailed' : 'archiveSuggestion.failed'));
+  }, []);
   useEffect(() => {
     if (forcedAgent || compact) return;
     const publish = () => window.dispatchEvent(new CustomEvent(BROWSER_PANEL_CONTEXT, { detail: { agent: agentId, missionId: currentMissionId } }));
@@ -2734,6 +2762,8 @@ export function ChatClient({
       const qs = new URLSearchParams({ limit: '300' });
       if (projectSlug) qs.set('project', projectSlug);
       else qs.set('agent', agentId);
+      const archived = archivedQuery(includeArchived);
+      if (archived) qs.set('archived', archived);
       // Shared while in flight: the bind, the poll and the project switch
       // all ask at the same instant on mount.
       const r = await sharedGet('/api/ui/missions?' + qs);
@@ -2766,7 +2796,7 @@ export function ChatClient({
     } catch {
       return [];
     }
-  }, [agentId, agent.project]);
+  }, [agentId, agent.project, includeArchived]);
 
   const refreshMissionsRef = useRef(refreshMissions);
   refreshMissionsRef.current = refreshMissions;
@@ -3176,7 +3206,7 @@ export function ChatClient({
       const requested = missionParam && list.find((m) => m.id === missionParam);
       // The setup conversation is over once the wizard ends: the cockpit card
       // and the chat page start fresh instead of reopening it.
-      const candidates = list.filter((m) => m.source_channel !== 'setup');
+      const candidates = list.filter((m) => m.source_channel !== 'setup' && !isArchived(m));
       const fallback = candidates.find((m) => m.running) ?? candidates[0];
       const target = requested ?? fallback;
       if (target) await bindMission(target.id);
@@ -6383,6 +6413,14 @@ export function ChatClient({
           <ComposerTrays compact={dense} wide={larg}>
             <RunningToolBar tools={inlineRunning || setup ? [] : runningTools} compact={dense} />
             <DelegationsBar delegations={delegations} compact={dense} />
+            {archiveSuggestion && !setup && (
+              <ArchiveSuggestionBar
+                compact={dense}
+                reason={archiveSuggestion.archive_suggest_reason}
+                onArchive={() => { void answerArchiveProposal(archiveSuggestion.id, 'archive'); }}
+                onDismiss={() => { void answerArchiveProposal(archiveSuggestion.id, 'dismiss'); }}
+              />
+            )}
           </ComposerTrays>
 
 

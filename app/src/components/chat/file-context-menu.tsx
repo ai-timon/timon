@@ -14,6 +14,8 @@ export type FileMenuItem = {
   icon: ReactNode;
   onSelect: () => void;
   danger?: boolean;
+  /** Shown but inert; `title` says why. */
+  disabled?: boolean;
   /** Secondary text after the label, muted and cut to fit (e.g. a shortened id). */
   detail?: string;
   /** Hover text of the row, for what `detail` had to shorten. */
@@ -92,7 +94,9 @@ export function FileContextMenu({
           role="menuitem"
           aria-haspopup={it.submenu ? 'menu' : undefined}
           title={it.title}
-          className={cn(ITEM, it.danger && DESTRUCTIVE_MENU_ITEM)}
+          disabled={it.disabled}
+          aria-disabled={it.disabled || undefined}
+          className={cn(ITEM, it.danger && DESTRUCTIVE_MENU_ITEM, it.disabled && 'cursor-default opacity-50 hover:bg-transparent')}
           onClick={() => {
             if (it.submenu) { setSub(it.submenu); return; }
             onClose();

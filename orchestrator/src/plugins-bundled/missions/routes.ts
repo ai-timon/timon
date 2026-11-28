@@ -16,7 +16,7 @@ import { cooldownReason, fallbackFor } from '../../backend-fallback.js';
 import { messageDateTime } from '../../message-dates.js';
 import { asBackendName, defaultBackendName } from '../../backends/index.js';
 import { config } from '../../config/load.js';
-import { db, dbApi, SPAN_CURSOR_PATTERN, viewerSeesAll, type EventRow, type MissionRow } from '../../db.js';
+import { ARCHIVE_REASON_MAX, db, dbApi, SPAN_CURSOR_PATTERN, viewerSeesAll, type EventRow, type MissionRow } from '../../db.js';
 import { handleSpawn } from '../../http-helpers.js';
 import { agentCommunicationAllowed, developerAutoAllows } from '../../users/agent-permissions.js';
 import { createDelegationHandler } from '../../mission-delegation.js';
@@ -41,6 +41,8 @@ import {
 } from '../../chat-attachments.js';
 import { attachmentsRefusal } from '../../backends/capabilities.js';
 import { forkMission, summarizeMission } from '../../summary.js';
+import { regenerateMissionTitle } from '../../mission-titles.js';
+import { cancelTitleBackfillJob, currentTitleBackfillJob, getTitleBackfillJob, planTitleBackfill, startTitleBackfillJob } from '../../mission-titles-backfill.js';
 import { CompactBodySchema, compactOperation, defaultCompactDeps, startCompaction, type CompactDeps } from '../../mission-compact.js';
 import { join } from 'node:path';
 import { openGeneratedMedia } from '../../chat-media.js';
@@ -71,6 +73,14 @@ import { launchErrorStatus, missionLaunchErrorBody } from '../../resources.js';
 import { findReplyTarget, resolveReplyTo } from '../../reply-to.js';
 
 const TitleBodySchema = z.object({ title: z.string().max(200).nullable().optional() });
+/** `since` is Unix ms or a date string; `dryRun` defaults to true, so only an explicit `false` writes. */
+const BackfillTitlesBodySchema = z.object({
+  since: z.union([z.number().int().nonnegative(), z.string().min(1).max(64)]).optional(),
+  limit: z.number().int().min(1).max(100_000).optional(),
+  dryRun: z.boolean().optional(),
+}).strict();
+const RegenerateTitleBodySchema = z.object({ force: z.boolean().optional() }).strict();
+const ArchiveSuggestionBodySchema = z.object({ reason: z.string().max(ARCHIVE_REASON_MAX).optional() }).strict();
 const PermissionModeBodySchema = z.object({ mode: z.string().trim().min(1).max(40) }).strict();
 
 function extractFromMission(
@@ -185,6 +195,7 @@ const MISSION_LIST_CURSOR = /^(\d{1,15}),([A-Za-z0-9._:-]{1,128})$/;
 const MissionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(MISSION_LIST_MAX).default(100),
   task_id: z.string().min(1).max(128).optional(),
+  archived: z.enum(['exclude', 'include', 'only']).default('exclude'),
   before: z.string().regex(MISSION_LIST_CURSOR, 'expected <started_at>,<mission id>')
     .transform((cursor) => {
       const [, startedAt, id] = MISSION_LIST_CURSOR.exec(cursor) as RegExpExecArray;
@@ -611,13 +622,14 @@ export function registerRoutes(
       limit: req.query.limit,
       task_id: req.query.task_id,
       before: req.query.before,
+      archived: req.query.archived,
     });
     if (!query.success) {
       res.status(400).json({ ...apiError('invalid_query', 'invalid query'), issues: query.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`) });
       return;
     }
-    const { limit, task_id: taskFilter, before } = query.data;
-    const page = { taskId: taskFilter, before };
+    const { limit, task_id: taskFilter, before, archived } = query.data;
+    const page = { taskId: taskFilter, before, archived };
     const projectFilter = typeof req.query.project === 'string' ? req.query.project : null;
     const agentFilter = typeof req.query.agent === 'string' ? req.query.agent : null;
     // Statuses actually represented by the `missions.status` column. REJECT an
@@ -723,6 +735,10 @@ export function registerRoutes(
         task_title: m.task_title,
         title: m.title ?? null,
         title_source: m.title_source ?? null,
+        archived_at: m.archived_at ?? null,
+        archived_by: m.archived_by ?? null,
+        archive_suggested_at: m.archive_suggested_at ?? null,
+        archive_suggest_reason: m.archive_suggest_reason ?? null,
         // The backend CLI's own session (claude session, codex thread…), for
         // diagnosis. Same scoped rows as the rest of the list: a viewer only
         // ever reads the session of a mission it already sees.
@@ -1002,6 +1018,9 @@ export function registerRoutes(
       owner: dbApi.missionOwner(m.owner_user_id),
       title: m.title ?? null,
       title_source: m.title_source ?? null,
+      archived_at: m.archived_at ?? null,
+      archive_suggested_at: m.archive_suggested_at ?? null,
+      archive_suggest_reason: m.archive_suggest_reason ?? null,
       // The retention deleted this history (retention in days), else null: the
       // chat tells an emptied conversation from one that never had a message.
       history_purged_days: m.history_purged_days ?? null,
@@ -1271,6 +1290,76 @@ export function registerRoutes(
     res.json({ ok: true, outcome });
   });
 
+  // Archiving hides a finished conversation from the default lists; the
+  // technical status is untouched. Owner only (404 otherwise), user sessions
+  // and the daemon token alike go through `requireAuth` inside the owner check.
+  app.post('/api/missions/:id/archive', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const owned = ownedMissionOr404(req, res);
+    if (!owned) return;
+    const outcome = dbApi.archiveMission(owned.id, 'user');
+    if (outcome === 'running') {
+      res.status(409).json(apiError('mission_running', 'a running mission cannot be archived'));
+      return;
+    }
+    if (outcome === 'not_found') {
+      res.status(404).json(apiError('mission_not_found', 'mission not found'));
+      return;
+    }
+    if (outcome === 'archived') auditRequest(req, 'mission.archive', owned.id);
+    res.json({ ok: true, archived: true });
+  });
+
+  // An agent proposes archiving ITS OWN mission; it never archives. The caller's
+  // mission is the one bound to its token (else the MCP client's header, as for
+  // the other agent routes) and must be the one in the path: a person's session
+  // or a call outside any mission is refused.
+  app.post('/api/missions/:id/archive-suggestion', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const tokenMission = req.auth?.kind === 'api-token' ? req.auth.missionId ?? null : null;
+    const caller = tokenMission ?? (req.auth?.kind === 'daemon-token' ? (req.header('X-TIMON-Mission') ?? '').trim() || null : null);
+    if (!caller) {
+      res.status(403).json(apiError('not_in_mission', 'only a running mission can propose archiving its own conversation'));
+      return;
+    }
+    if (caller !== req.params.id) {
+      res.status(403).json(apiError('not_own_mission', 'a mission can only propose archiving itself'));
+      return;
+    }
+    const body = ArchiveSuggestionBodySchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json(apiError('invalid_body', 'reason must be a string of at most 200 characters'));
+      return;
+    }
+    const outcome = dbApi.suggestMissionArchive(caller, body.data.reason ?? null);
+    if (outcome === 'not_found') {
+      res.status(404).json(apiError('mission_not_found', 'mission not found'));
+      return;
+    }
+    if (outcome === 'archived') {
+      res.status(409).json(apiError('already_archived', 'this conversation is already archived'));
+      return;
+    }
+    res.json({ ok: true, suggested: true });
+  });
+
+  // The person turns the proposal down. Owner only (404 otherwise).
+  app.post('/api/missions/:id/archive-suggestion/dismiss', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const owned = ownedMissionOr404(req, res);
+    if (!owned) return;
+    dbApi.clearArchiveSuggestion(owned.id);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/missions/:id/unarchive', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const owned = ownedMissionOr404(req, res);
+    if (!owned) return;
+    if (dbApi.unarchiveMission(owned.id)) auditRequest(req, 'mission.unarchive', owned.id);
+    res.json({ ok: true, archived: false });
+  });
+
   app.post('/api/missions/:id/summarize', async (req, res) => {
     const owned = ownedMissionOr404(req, res);
     if (!owned) return;
@@ -1371,6 +1460,106 @@ export function registerRoutes(
     dbApi.setMissionTitle(owned.id, title || null, origin);
     // What the write left: a name is `manual`, an empty one clears both.
     res.json({ ok: true, title: title || null, title_source: title ? 'manual' : null });
+  });
+
+  /**
+   * Explicit re-title. Authentication: a browser session or a token, plus
+   * ownership (404 for another owner's mission). A `manual` or `preset` title
+   * answers 409 unless the body carries `force: true`.
+   */
+  app.post('/api/missions/:id/title/regenerate', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const parsed = RegenerateTitleBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json(apiError('regenerate_invalid', 'body must be empty or { force: boolean }'));
+      return;
+    }
+    const owned = ownedMissionOr404(req, res);
+    if (!owned) return;
+    const out = await regenerateMissionTitle(owned.id, { force: parsed.data.force === true });
+    if (!out) {
+      res.status(404).json(apiError('mission_not_found', 'mission not found'));
+      return;
+    }
+    switch (out.status) {
+      case 'protected':
+        res.status(409).json(apiError('title_protected', `the title was set by ${out.source === 'manual' ? 'a rename' : 'the launcher'}; send force: true to replace it`, { source: out.source }));
+        return;
+      case 'off':
+        res.status(409).json(apiError('title_generation_off', 'automatic titles are turned off'));
+        return;
+      case 'failed':
+        if (out.reason === 'quota') res.status(429).json(apiError('title_quota', 'the title model is out of quota'));
+        else res.status(502).json(apiError('title_model_unavailable', 'the title model is unavailable'));
+        return;
+      default: {
+        const m = dbApi.getMission(owned.id);
+        res.json({ ok: true, changed: out.status === 'written', title: m?.title ?? null, title_source: m?.title_source ?? null });
+      }
+    }
+  });
+
+  /**
+   * Capped catch-up of old titles. Authentication: a browser session or a
+   * token (`requireAuth`); the run is scoped to the caller's own missions
+   * (the list's viewer). Dry run unless the body says `dryRun: false`; the
+   * ceiling is the daemon setting, whatever `limit` asks.
+   */
+  app.post('/api/missions/titles/backfill', async (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const parsed = BackfillTitlesBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json(apiError('backfill_invalid', 'body must be { since?: date or ms, limit?: integer, dryRun?: boolean }'));
+      return;
+    }
+    let since: number | null = null;
+    if (parsed.data.since !== undefined) {
+      since = typeof parsed.data.since === 'number' ? parsed.data.since : Date.parse(parsed.data.since);
+      if (!Number.isFinite(since)) {
+        res.status(400).json(apiError('backfill_invalid', 'since is not a date'));
+        return;
+      }
+    }
+    const viewer = viewerFromRequest(req);
+    if (parsed.data.dryRun !== false) {
+      res.json({ ok: true, ...planTitleBackfill({ viewer, since, limit: parsed.data.limit }) });
+      return;
+    }
+    // A real run outlasts any HTTP timeout: it goes to a background job.
+    const job = startTitleBackfillJob({ viewer, since, limit: parsed.data.limit });
+    if (!job) {
+      res.status(409).json(apiError('backfill_running', 'a title catch-up is already running'));
+      return;
+    }
+    res.status(202).json({ ok: true, jobId: job.jobId });
+  });
+
+  /** The account's current (running, else latest) catch-up job, or `{ job: null }`. Authentication: `requireAuth`, own jobs only. */
+  app.get('/api/missions/titles/backfill', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    res.json({ ok: true, job: currentTitleBackfillJob(viewerFromRequest(req)) });
+  });
+
+  /** Progress of a catch-up job. Authentication: `requireAuth`; only the account that started it reads it (404 otherwise). */
+  app.get('/api/missions/titles/backfill/:jobId', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const job = getTitleBackfillJob(req.params.jobId as string, viewerFromRequest(req));
+    if (!job) {
+      res.status(404).json(apiError('backfill_job_not_found', 'catch-up job not found'));
+      return;
+    }
+    res.json({ ok: true, ...job });
+  });
+
+  /** Stops a catch-up job between two missions. Same access as reading it. */
+  app.post('/api/missions/titles/backfill/:jobId/cancel', (req, res) => {
+    if (!requireAuth(req, res)) return;
+    const job = cancelTitleBackfillJob(req.params.jobId as string, viewerFromRequest(req));
+    if (!job) {
+      res.status(404).json(apiError('backfill_job_not_found', 'catch-up job not found'));
+      return;
+    }
+    res.json({ ok: true, ...job });
   });
 
   app.post('/api/missions/:id/model', async (req, res) => {

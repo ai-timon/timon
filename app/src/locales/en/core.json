@@ -3947,6 +3947,27 @@
     "saved": "Title model saved",
     "saveError": "Could not save the title model"
   },
+  "missionTitleBackfill": {
+    "title": "Name older conversations",
+    "description": "Gives a title to the conversations that have none, or whose generated title came out empty or cut. A title you typed or a launcher gave is never touched.",
+    "quotaNote": "Each title is one short call on the title model's quota. Nothing runs by itself: preview first, then start it. One run names at most the newest 50 conversations; run it again for more.",
+    "preview": "Preview",
+    "previewing": "Counting…",
+    "nothing": "Every conversation already has a title.",
+    "announce": "Conversations to title: {targeted}. Model calls: {calls}.",
+    "run": "Title them ({calls} model calls)",
+    "running": "Titling…",
+    "done": "Conversations titled: {written} of {targeted}.",
+    "stoppedQuota": "Stopped early: the title model is out of quota.",
+    "stoppedOff": "Stopped early: generated titles are turned off.",
+    "error": "Could not name the conversations",
+    "progress": "Progress of the title run",
+    "counters": "Handled {processed} of {targeted}: {written} titled, {skipped} left as they were, {errored} failed.",
+    "cancel": "Cancel",
+    "cancelling": "Stopping after this conversation…",
+    "cancelled": "Cancelled.",
+    "failed": "The run failed."
+  },
   "missionOrigin": {
     "label": "Origin",
     "all": "all",
@@ -3961,6 +3982,14 @@
     "ownedBy": "Owner: {name}"
   },
   "missionRail": {
+    "regenerateTitle": "Regenerate the title",
+    "regenerating": "Writing a new title…",
+    "regenerated": "Title updated",
+    "regenerateConfirm": "This title was set by hand or by the launcher. Replace it with a generated one?",
+    "regenerateFailed": "The title could not be regenerated: the title model is unavailable.",
+    "regenerateQuota": "The title model is out of quota. Try again later.",
+    "regenerateOff": "Automatic titles are turned off in Settings → Missions.",
+    "regenerateProtected": "This title was set by hand or by the launcher and was kept.",
     "summary": "{filter} · {count}",
     "all": "All",
     "otherRole": "other",
@@ -3979,7 +4008,21 @@
     "kill": "Stop this mission",
     "killConfirm": "Stop this mission? Its agent is stopped mid-turn.",
     "noMissions": "No missions. The first message will create one.",
-    "emptyTitle": "(empty)"
+    "emptyTitle": "(empty)",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "archiveRunning": "A mission at work cannot be archived. Stop it first.",
+    "archiveFailed": "The mission could not be archived or restored.",
+    "includeArchived": "Include archived",
+    "archivedBadge": "Archived",
+    "archivedHint": "Archived: hidden from the default lists. Sending a message restores it."
+  },
+  "archiveSuggestion": {
+    "label": "The agent suggests archiving this conversation.",
+    "chip": "Archive?",
+    "archive": "Archive",
+    "dismiss": "Dismiss",
+    "failed": "The suggestion could not be answered."
   },
   "setupChat": {
     "escape": {

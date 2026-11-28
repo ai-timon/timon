@@ -1345,6 +1345,24 @@ if (!cols.includes('title_source')) {
   db.exec(`ALTER TABLE missions ADD COLUMN title_source TEXT`);
   db.exec(`UPDATE missions SET title_source = 'manual' WHERE title IS NOT NULL AND TRIM(title) <> ''`);
 }
+// Archiving is a visibility flag, distinct from the technical `status` (a
+// mission stays `completed`). `archived_by` records who did it: 'user', 'auto'
+// (the retention sweep) or 'agent'. NULL `archived_at` = not archived.
+if (!cols.includes('archived_at')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archived_at INTEGER`);
+}
+if (!cols.includes('archived_by')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archived_by TEXT`);
+}
+// An agent may PROPOSE archiving its finished conversation (`mission_propose_archive`),
+// never do it: the flag only drives a suggestion in the UI. A new message,
+// archiving and a dismissal clear both columns. NULL `archive_suggested_at` = no suggestion.
+if (!cols.includes('archive_suggested_at')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archive_suggested_at INTEGER`);
+}
+if (!cols.includes('archive_suggest_reason')) {
+  db.exec(`ALTER TABLE missions ADD COLUMN archive_suggest_reason TEXT`);
+}
 if (!cols.includes('title_generation')) {
   db.exec(`ALTER TABLE missions ADD COLUMN title_generation INTEGER NOT NULL DEFAULT 0`);
   db.exec(`UPDATE missions SET title_generation = 1`);
@@ -2727,6 +2745,14 @@ export type MissionRow = {
   title: string | null;
   /** Where `title` came from (`mission-titles.ts`): manual > preset > native > generated. NULL = no title. */
   title_source: MissionTitleSource | null;
+  /** Unix ms when the mission was archived; NULL = visible in the default lists. */
+  archived_at: number | null;
+  /** Who archived it: 'user' | 'auto' | 'agent'. NULL while not archived. */
+  archived_by: MissionArchivedBy | null;
+  /** Unix ms when the agent proposed archiving; NULL = no pending suggestion. */
+  archive_suggested_at: number | null;
+  /** Short, cleaned reason given with the suggestion; NULL when none. */
+  archive_suggest_reason: string | null;
   /** 1 once the one-shot title generation has been claimed for this mission (never twice). */
   title_generation: number;
   /** Work return already delivered to the pilot for the current turn. */
@@ -2758,7 +2784,20 @@ export type ActiveMissionRow = Pick<
  * of the previous page: the list is ordered by (started_at, id) descending, so
  * the pair is a stable cursor even when missions share a start time.
  */
+export const ARCHIVE_REASON_MAX = 200;
+/** The reason is agent-written text shown to a person: no control characters,
+ *  one line, secrets masked, bounded. Empty becomes NULL. */
+export function sanitizeArchiveReason(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  // eslint-disable-next-line no-control-regex
+  const flat = redactDeep(raw).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return flat ? Array.from(flat).slice(0, ARCHIVE_REASON_MAX).join('') : null;
+}
+export type MissionArchivedBy = 'user' | 'auto' | 'agent';
+/** `exclude` hides archived missions, `only` shows nothing else. Unset = no filter. */
+export type MissionArchivedFilter = 'exclude' | 'include' | 'only';
 export type MissionListPage = {
+  archived?: MissionArchivedFilter;
   taskId?: string;
   before?: { startedAt: number; id: string };
 };
@@ -3993,8 +4032,9 @@ export function missionListQuery(
 ): { sql: string; params: unknown[] } | 'all' | 'none' {
   const owner = ownerSql(viewer, 'missions', 'm.owner_user_id');
   const scoped = owner.sql !== '1=1';
-  const { taskId, before } = page;
-  if (!agentNames && !status && !scoped && !origin && taskId === undefined && !before) return 'all';
+  const { taskId, before, archived } = page;
+  const archivedFilter = archived === 'exclude' || archived === 'only' ? archived : undefined;
+  if (!agentNames && !status && !scoped && !origin && taskId === undefined && !before && !archivedFilter) return 'all';
   if (agentNames && agentNames.length === 0) return 'none';
   // missing: `/api/missions?status=running` returned the N latest missions of ALL
   // statuses, in silence. An agent diagnosing
@@ -4017,6 +4057,8 @@ export function missionListQuery(
     where.push(`(${MISSION_ORIGIN_SQL}) = ?`);
     params.push(origin);
   }
+  if (archivedFilter === 'exclude') where.push('m.archived_at IS NULL');
+  else if (archivedFilter === 'only') where.push('m.archived_at IS NOT NULL');
   if (taskId !== undefined) {
     where.push('m.task_id = ?');
     params.push(taskId);
@@ -7001,6 +7043,63 @@ export const dbApi = {
   missionOwnerId(missionId: string): string | null {
     return resolveMissionOwner(missionId);
   },
+  /**
+   * Archive a mission. Refused for a mission still `running` (the technical
+   * status covers running and waiting). Returns whether the row changed.
+   */
+  archiveMission(id: string, by: MissionArchivedBy): 'archived' | 'already' | 'running' | 'not_found' {
+    const row = db.prepare(`SELECT status, archived_at FROM missions WHERE id = ?`).get(id) as { status: string; archived_at: number | null } | undefined;
+    if (!row) return 'not_found';
+    if (row.archived_at !== null) return 'already';
+    if (row.status === 'running') return 'running';
+    db.prepare(`UPDATE missions SET archived_at = ?, archived_by = ?, archive_suggested_at = NULL, archive_suggest_reason = NULL WHERE id = ? AND archived_at IS NULL AND status <> 'running'`).run(Date.now(), by, id);
+    bus.publish({ kind: 'mission_archived', missionId: id, by });
+    return 'archived';
+  },
+  /**
+   * Finished missions the auto-archive may take: over (`completed`), not yet
+   * archived, idle since before `cutoff` by every measure we keep (end or start,
+   * newest event, stats row), and needed by no open task or running workflow run.
+   * Pending permission cards live in memory: the caller filters those.
+   */
+  listAutoArchiveCandidates(cutoff: number, afterRowid: number, limit: number): { rowid: number; id: string }[] {
+    return db.prepare(
+      `SELECT m.rowid AS rowid, m.id AS id FROM missions m
+        WHERE m.rowid > @after
+          AND m.status = 'completed'
+          AND m.archived_at IS NULL
+          AND COALESCE(m.ended_at, m.started_at) < @cutoff
+          AND COALESCE((SELECT e.timestamp FROM events e WHERE e.mission_id = m.id ORDER BY e.id DESC LIMIT 1), 0) < @cutoff
+          AND COALESCE((SELECT st.last_event_at FROM mission_stats st WHERE st.mission_id = m.id), 0) < @cutoff
+          AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.mission_id = m.id AND t.status != 'DONE')
+          AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.id = m.task_id AND t.status != 'DONE')
+          AND NOT EXISTS (SELECT 1 FROM workflow_runs w WHERE w.id = m.workflow_run_id AND w.status IN ('running', 'waiting'))
+        ORDER BY m.rowid LIMIT @limit`,
+    ).all({ cutoff, after: afterRowid, limit }) as { rowid: number; id: string }[];
+  },
+  /**
+   * Record an agent's proposal to archive its own conversation. It never
+   * archives: only the flag the UI reads is set. Refused once archived.
+   */
+  suggestMissionArchive(id: string, reason: string | null): 'suggested' | 'archived' | 'not_found' {
+    const row = db.prepare(`SELECT archived_at FROM missions WHERE id = ?`).get(id) as { archived_at: number | null } | undefined;
+    if (!row) return 'not_found';
+    if (row.archived_at !== null) return 'archived';
+    const clean = sanitizeArchiveReason(reason);
+    db.prepare(`UPDATE missions SET archive_suggested_at = ?, archive_suggest_reason = ? WHERE id = ?`).run(Date.now(), clean, id);
+    bus.publish({ kind: 'mission_archive_suggested', missionId: id, reason: clean });
+    return 'suggested';
+  },
+  /** Drop a pending suggestion (dismissal, new message). True when there was one. */
+  clearArchiveSuggestion(id: string): boolean {
+    return db.prepare(`UPDATE missions SET archive_suggested_at = NULL, archive_suggest_reason = NULL WHERE id = ? AND archive_suggested_at IS NOT NULL`).run(id).changes > 0;
+  },
+  /** Clear the archive flag. True when the mission was archived. */
+  unarchiveMission(id: string): boolean {
+    const changed = db.prepare(`UPDATE missions SET archived_at = NULL, archived_by = NULL WHERE id = ? AND archived_at IS NOT NULL`).run(id).changes;
+    if (changed) bus.publish({ kind: 'mission_unarchived', missionId: id });
+    return changed > 0;
+  },
   insertEvent(missionId: string, type: string, payload: unknown): EventRow {
     const ts = Date.now();
     // §7: masked BEFORE storage, and before the search index — the payload has
@@ -7009,6 +7108,15 @@ export const dbApi = {
     payload = redactDeep(payload);
     const json = JSON.stringify(payload);
     const info = insertEventStmt.run(missionId, type, ts, json);
+    // Any `user` row unarchives, a delegation return (a runtime-origin row, not
+    // typed by the human) included, on purpose: a conversation
+    // that just received a new result must reappear instead of staying hidden
+    // behind an archive the user made before the work finished.
+    if (type === 'user') {
+      dbApi.unarchiveMission(missionId);
+      // A new message means the conversation goes on: the proposal is stale.
+      dbApi.clearArchiveSuggestion(missionId);
+    }
     // Online full-text indexing: it only costs on events that actually carry text
     // (assistant/user), and guarantees a mission is searchable while it runs, not only
     // after a catch-up.
@@ -7223,7 +7331,7 @@ export const dbApi = {
     return db.prepare(
       `WITH page AS (
          SELECT m.id, m.agent_name, m.status, m.started_at, m.source_channel FROM missions m
-          WHERE m.agent_name = ? AND ${owner.sql}
+          WHERE m.agent_name = ? AND m.archived_at IS NULL AND ${owner.sql}
           ORDER BY m.started_at DESC
           LIMIT ?
        )
@@ -7523,6 +7631,47 @@ export const dbApi = {
     ).run(clean, source, id, clean).changes;
     if (changed) bus.publish({ kind: 'mission_title_changed', missionId: id, title: clean, source, origin: { kind: 'system', id: null } });
     return changed > 0;
+  },
+  /**
+   * An explicit re-title (`generated`): replaces a `generated` or `native`
+   * title, or none, like {@link setMissionTitleIfUnclaimed}; a `manual` or
+   * `preset` one only with `force`. Rank check and write are one statement, so a
+   * rename racing the one-shot still wins without `force`. It never touches
+   * `title_generation`: re-titling does not re-arm the first-turn one-shot.
+   * Returns whether the row was written (false: protected, or same title).
+   */
+  setMissionTitleRegenerated(id: string, title: string, force = false): boolean {
+    const clean = title.trim();
+    if (!clean) return false;
+    const rank = force ? '' : `AND (title_source IS NULL OR title_source IN ('generated', 'native'))`;
+    const changed = db.prepare(
+      `UPDATE missions SET title = ?, title_source = 'generated'
+        WHERE id = ? ${rank}
+          AND (title IS NULL OR title <> ? OR title_source IS NOT 'generated')`,
+    ).run(clean, id, clean).changes;
+    if (changed) bus.publish({ kind: 'mission_title_changed', missionId: id, title: clean, source: 'generated', origin: { kind: 'system', id: null } });
+    return changed > 0;
+  },
+  /**
+   * Missions a title catch-up may name: no title at all, or a `generated` one
+   * that is empty or was cut (ends with the ellipsis `sanitizeTitle` leaves).
+   * Never `manual`, `preset` or `native`. Newest first, same owner scope as
+   * `listMissions`. Only the user-opened ones count (origin is a per-row SQL label).
+   */
+  listTitleBackfillCandidates(viewer: DbViewer | null | undefined, since: number | null, limit: number): MissionRow[] {
+    const owner = ownerSql(viewer, 'missions', 'm.owner_user_id');
+    const where = [
+      `(m.title IS NULL OR TRIM(m.title) = '' OR (m.title_source = 'generated' AND m.title LIKE '%…'))`,
+      `(m.title_source IS NULL OR m.title_source = 'generated')`,
+      `(${MISSION_ORIGIN_SQL}) = 'user'`,
+    ];
+    const params: unknown[] = [];
+    if (since !== null) { where.push('m.started_at >= ?'); params.push(since); }
+    if (owner.sql !== '1=1') { where.push(owner.sql); params.push(...owner.params); }
+    return db.prepare(
+      `SELECT m.* FROM missions m LEFT JOIN tasks ot ON ot.id = m.task_id
+        WHERE ${where.join(' AND ')} ORDER BY m.started_at DESC, m.id DESC LIMIT ?`,
+    ).all(...params, limit) as MissionRow[];
   },
   /**
    * Claims the one-shot generation of a mission's title: true exactly once per

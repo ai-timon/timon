@@ -150,3 +150,95 @@ export function startMissionTitles(deps: MissionTitleDeps = {}): { stop: () => v
     idle: async () => { while (pending.size) await Promise.all([...pending]); },
   };
 }
+
+/** What the re-title prompt reads: the current title, then the opening and the latest exchanges. */
+const REGEN_MESSAGE_CHARS = 600;
+const REGEN_EDGE_MESSAGES = 3;
+
+export const REGENERATE_SYSTEM_PROMPT = `You name conversations for a list of past conversations.
+You get the current title (it may be poor) and the first and the latest messages of the conversation.
+Answer with a title of 4 to 6 words that says what the conversation is about now.
+Write the title in the language of the messages. Output the title alone: no quotes, no trailing period,
+no explanation, no markdown, one line.`;
+
+/** Plain text of a user or assistant event; tool results and nested sub-agent turns give none. */
+function eventText(type: string, payloadJson: string): string {
+  let payload: { parent_tool_use_id?: unknown; message?: { content?: unknown } } | null;
+  try { payload = JSON.parse(payloadJson) as typeof payload; } catch { return ''; }
+  if (!payload || payload.parent_tool_use_id) return '';
+  const content = payload.message?.content;
+  let text = '';
+  if (typeof content === 'string') text = content;
+  else if (Array.isArray(content)) {
+    text = content
+      .filter((b): b is { type: 'text'; text: string } => !!b && typeof b === 'object' && (b as { type?: unknown }).type === 'text' && typeof (b as { text?: unknown }).text === 'string')
+      .map((b) => b.text).join('\n');
+  }
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) return '';
+  const cut = flat.length > REGEN_MESSAGE_CHARS ? `${flat.slice(0, REGEN_MESSAGE_CHARS)}…` : flat;
+  return `${type === 'user' ? 'User' : 'Assistant'}: ${cut}`;
+}
+
+/** Bounded prompt of a re-title: current title, first and last messages (never the middle of a long run). */
+export function regeneratePromptInput(mission: MissionRow): string {
+  const lines: string[] = [];
+  for (const ev of dbApi.listChatEvents(mission.id)) {
+    if (ev.type !== 'user' && ev.type !== 'assistant') continue;
+    const line = eventText(ev.type, ev.payload);
+    if (line) lines.push(line);
+  }
+  if (!lines.length) lines.push(`User: ${titlePromptExcerpt(mission.mission)}`);
+  const picked = lines.length <= REGEN_EDGE_MESSAGES * 2
+    ? lines
+    : [...lines.slice(0, REGEN_EDGE_MESSAGES), '[…]', ...lines.slice(-REGEN_EDGE_MESSAGES)];
+  const head = mission.title ? `Current title: ${mission.title}\n\n` : '';
+  return `${head}${picked.join('\n')}`;
+}
+
+export type RegenerateOutcome =
+  | { status: 'written'; title: string }
+  | { status: 'kept'; title: string | null }
+  | { status: 'protected'; source: 'manual' | 'preset' }
+  | { status: 'off' }
+  | { status: 'failed'; reason: 'quota' | 'unavailable' };
+
+/**
+ * The user asks for a new title. Same pipeline and model setting as the
+ * first-turn one-shot, but explicit: it does not claim or re-arm the one-shot,
+ * and it works on any mission the user may see. A `manual` or `preset` title
+ * is protected unless `force` is set. Errors are classified, never echoed: a
+ * provider message may carry a secret.
+ */
+export async function regenerateMissionTitle(
+  missionId: string,
+  opts: { force?: boolean } = {},
+  deps: MissionTitleDeps = {},
+): Promise<RegenerateOutcome | null> {
+  const mission = dbApi.getMission(missionId);
+  if (!mission) return null;
+  const force = opts.force === true;
+  if (!force && (mission.title_source === 'manual' || mission.title_source === 'preset')) {
+    return { status: 'protected', source: mission.title_source };
+  }
+  const llm = (deps.resolveLlm ?? resolveMissionTitleLlm)(mission);
+  if (llm === 'off') return { status: 'off' };
+  let cfg: AgentConfig;
+  try { cfg = loadConfig(mission.agent_name); } catch { cfg = {}; }
+  cfg = { ...cfg, backend: llm.backend as AgentConfig['backend'], model: llm.model ?? undefined, reasoningEffort: undefined };
+  const timeoutMs = settingNum('TIMON_MISSION_TITLE_TIMEOUT_MS');
+  try {
+    const raw = await (deps.oneShot ?? defaultOneShot)(mission.agent_name, cfg, regeneratePromptInput(mission), REGENERATE_SYSTEM_PROMPT, timeoutMs);
+    const title = sanitizeTitle(raw);
+    if (!title) return { status: 'failed', reason: 'unavailable' };
+    if (dbApi.setMissionTitleRegenerated(missionId, title, force)) return { status: 'written', title };
+    // Not written: a rename landed meanwhile, or the model found the same title.
+    const now = dbApi.getMission(missionId);
+    if (!force && (now?.title_source === 'manual' || now?.title_source === 'preset')) return { status: 'protected', source: now.title_source };
+    return { status: 'kept', title: now?.title ?? null };
+  } catch (err) {
+    const msg = (err as Error).message ?? '';
+    console.warn(`[mission-titles] ${missionId}: title regeneration failed: ${msg.slice(0, 200)}`);
+    return { status: 'failed', reason: /quota|rate.?limit|exhaust|credit|429/i.test(msg) ? 'quota' : 'unavailable' };
+  }
+}

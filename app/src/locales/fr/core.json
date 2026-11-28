@@ -3947,6 +3947,27 @@
     "saved": "Modèle des titres enregistré",
     "saveError": "Impossible d'enregistrer le modèle des titres"
   },
+  "missionTitleBackfill": {
+    "title": "Nommer les anciennes conversations",
+    "description": "Donne un titre aux conversations qui n'en ont pas, ou dont le titre généré est vide ou tronqué. Un titre que vous avez saisi ou donné par un lanceur n'est jamais modifié.",
+    "quotaNote": "Chaque titre est un court appel sur le quota du modèle de titres. Rien ne se lance tout seul : faites d'abord un aperçu, puis lancez. Un passage nomme au plus les 50 conversations les plus récentes ; relancez pour en nommer davantage.",
+    "preview": "Aperçu",
+    "previewing": "Comptage…",
+    "nothing": "Toutes les conversations ont déjà un titre.",
+    "announce": "Conversations à titrer : {targeted}. Appels au modèle : {calls}.",
+    "run": "Les titrer ({calls} appels au modèle)",
+    "running": "Titrage…",
+    "done": "Conversations titrées : {written} sur {targeted}.",
+    "stoppedQuota": "Arrêté en cours de route : le modèle de titres n'a plus de quota.",
+    "stoppedOff": "Arrêté en cours de route : les titres générés sont désactivés.",
+    "error": "Impossible de nommer les conversations",
+    "progress": "Avancement du titrage",
+    "counters": "Traitées {processed} sur {targeted} : {written} titrées, {skipped} laissées telles quelles, {errored} en erreur.",
+    "cancel": "Annuler",
+    "cancelling": "Arrêt après cette conversation…",
+    "cancelled": "Annulé.",
+    "failed": "Le traitement a échoué."
+  },
   "missionOrigin": {
     "label": "Origine",
     "all": "toutes",
@@ -3961,6 +3982,14 @@
     "ownedBy": "Propriétaire : {name}"
   },
   "missionRail": {
+    "regenerateTitle": "Régénérer le titre",
+    "regenerating": "Écriture d'un nouveau titre…",
+    "regenerated": "Titre mis à jour",
+    "regenerateConfirm": "Ce titre a été saisi à la main ou donné par le lanceur. Le remplacer par un titre généré ?",
+    "regenerateFailed": "Le titre n'a pas pu être régénéré : le modèle de titre est indisponible.",
+    "regenerateQuota": "Le modèle de titre n'a plus de quota. Réessaie plus tard.",
+    "regenerateOff": "Les titres automatiques sont désactivés dans Réglages → Missions.",
+    "regenerateProtected": "Ce titre a été saisi à la main ou donné par le lanceur, il a été conservé.",
     "summary": "{filter} · {count}",
     "all": "Toutes",
     "otherRole": "autre",
@@ -3979,7 +4008,21 @@
     "kill": "Arrêter cette mission",
     "killConfirm": "Arrêter cette mission ? Son agent est interrompu en plein tour.",
     "noMissions": "Aucune mission. Le premier message en créera une.",
-    "emptyTitle": "(vide)"
+    "emptyTitle": "(vide)",
+    "archive": "Archiver",
+    "unarchive": "Désarchiver",
+    "archiveRunning": "Une mission en cours ne peut pas être archivée. Arrêtez-la d'abord.",
+    "archiveFailed": "La mission n'a pas pu être archivée ou restaurée.",
+    "includeArchived": "Inclure les archivées",
+    "archivedBadge": "Archivée",
+    "archivedHint": "Archivée : masquée des listes par défaut. Un nouveau message la restaure."
+  },
+  "archiveSuggestion": {
+    "label": "L'agent propose d'archiver cette conversation.",
+    "chip": "Archiver ?",
+    "archive": "Archiver",
+    "dismiss": "Ignorer",
+    "failed": "La suggestion n'a pas pu être traitée."
   },
   "setupChat": {
     "escape": {

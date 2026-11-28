@@ -64,6 +64,11 @@ export type MissionSummary = {
   owner?: MissionOwner | null;
   /** Display name: set by hand, by the launcher, read from the CLI or generated (`title_source` says which). */
   title?: string | null;
+  /** Unix ms when the mission was archived (hidden from the default lists); null/absent = visible. */
+  archived_at?: number | null;
+  /** Unix ms when the agent proposed archiving it; null/absent = no proposal pending. */
+  archive_suggested_at?: number | null;
+  archive_suggest_reason?: string | null;
   title_source?: 'manual' | 'preset' | 'native' | 'generated' | null;
   /** The backend CLI's own session id (claude session, codex thread…); null until
    *  the CLI reports it, absent from an older daemon. */

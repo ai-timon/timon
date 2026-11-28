@@ -55,11 +55,22 @@ The top of the list says what it shows, such as **All · 300** or **coder · 12*
 - **Automated missions** shows the missions you did not start yourself (on by default).
 - **Group by orchestrator** puts each mission under the highest mission of the list that launched it, directly or not: a task, its review, its merge and what they spawned all sit under the orchestrator, on a lightly tinted panel joined to it by a thin line. The orchestrator shows how many missions it holds; click that number to fold or unfold them. Groups start folded, except the one holding the mission you have open. A mission whose launcher is not in the list stays on its own. With **Automated missions** off, the missions inside a group stay visible. With a **Role** chosen, an orchestrator of another role stays above its missions of that role to show where they come from: it is dimmed and not counted in the total.
 - **Unfold sub-agents** opens every group by default (off by default; available while **Group by orchestrator** is on).
+- **Include archived** lists archived conversations too (off by default; see [Archiving a conversation](#archiving-a-conversation)).
 - **Avatar** shows the agent's face on each row (on by default).
 
 These choices are remembered for your account, except the role, which applies to this window only. While an agent works, a ring pulses around its avatar, or a dot beside the title when avatars are hidden; an orchestrator's avatar pulses while one of the missions under it works. The pen next to the funnel starts a new conversation.
 
 `GET /api/missions?origin=user` (or `automated`, `task`, `routine`, `agent`, `system`) applies the same filter, and each mission carries its `origin`.
+
+### Archiving a conversation
+
+Right-click a conversation in the chat's list and choose **Archive** to take it out of the list without deleting anything: its status stays what it was. The same entry is in the right-click menu of a row of the **Missions** page. A conversation that is still running cannot be archived: the entry is greyed out, with a tooltip saying so.
+
+Archived conversations are hidden from the lists. Turn on **Include archived** (in the chat list's filter menu, or the switch above the table of the Missions page) to see them: each wears a small **Archived** tag, and **Unarchive** puts it back, from the right-click menu or from the button on its row. The switch is remembered for your account and is the same in both places. Writing in an archived conversation, or a delegated mission handing a result back to it, unarchives it on its own.
+
+When an agent considers the work you asked for finished and expects no follow-up, it can suggest archiving the conversation. A discreet strip, "The agent suggests archiving this conversation", appears above the message box, and a small **Archive?** tag on the conversation's row in the chat's list and on the **Missions** page. **Archive** archives it, **Dismiss** drops the suggestion. The agent only suggests: it never archives anything itself, and writing a new message in the conversation clears the suggestion. Through the API, `POST /api/missions/<id>/archive-suggestion/dismiss` dismisses it, and each mission carries `archive_suggested_at` and `archive_suggest_reason`.
+
+Through the API, `POST /api/missions/<id>/archive` and `POST /api/missions/<id>/unarchive` do the same (only for your own missions; archiving a running one answers 409), and `GET /api/missions?archived=include` (or `only`) lists archived missions; each mission carries `archived_at`.
 
 ### Reading the whole list through the API
 
@@ -69,7 +80,7 @@ These choices are remembered for your account, except the role, which applies to
 
 ## The name of a mission
 
-The lists name a mission by its title: the one you typed (**Rename** in the chat list's right-click menu), the one its launcher gave it (a Kanban task's title, a workflow node, `timon spawn --title "Short name"` or the `title` of `mission_spawn`), or the one Timon generates at the end of the first reply of a conversation you opened. Without any, the first line of the message is shown. Which model writes the generated titles, and whether they are generated at all, is chosen in [Settings → Missions](settings.md#conversation-titles).
+The lists name a mission by its title: the one you typed (**Rename** in the chat list's right-click menu), the one its launcher gave it (a Kanban task's title, a workflow node, `timon spawn --title "Short name"` or the `title` of `mission_spawn`), or the one Timon generates at the end of the first reply of a conversation you opened. Without any, the first line of the message is shown. **Regenerate the title**, next to **Rename** in the right-click menu, asks for a new generated title from the first and the latest messages, with the model chosen in Settings. A title you typed or a launcher gave is protected: Timon asks you to confirm before replacing it, and over the API the request is refused with a 409 unless it carries `force: true`. Regenerating is always your call; it never changes when Timon names a conversation on its own. Which model writes the generated titles, and whether they are generated at all, is chosen in [Settings → Missions](settings.md#conversation-titles).
 
 The same right-click menu has **Copy ID**, Timon's own id of the mission, and **Copy CLI session ID**, the id of the session of the command-line tool that runs it (a Claude Code session, a Codex thread…), shown shortened beside the entry and copied in full. Give both when you report a problem. The entry is missing until the tool has started its session; a mission resumed later may carry a new one.
 

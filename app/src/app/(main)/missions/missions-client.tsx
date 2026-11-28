@@ -5,7 +5,7 @@ import { missionDisplayTitle } from '@/lib/mission-title';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatLink } from '@/components/chat/chat-link';
-import { Search, X } from 'lucide-react';
+import { Archive, ArchiveRestore, Search, X } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -35,6 +35,12 @@ import { getLocale, t } from '@/lib/i18n';
 import { dateTimeFormat, numberFormat } from '@/lib/intl';
 import { chatHref } from '@/lib/chat-island-params';
 import { forgetChatMission } from '@/lib/chat-mission-cache';
+import { answerArchiveSuggestion, archivedQuery, canArchive, hasArchiveSuggestion } from '@/lib/mission-archive';
+import { ArchiveSuggestionChip } from '@/components/chat/archive-suggestion';
+import { MISSION_RAIL_DISPLAY_SCOPE, readMissionRailDisplay, writeMissionRailDisplay } from '@/lib/mission-rail-display';
+import { useStoredLayout } from '@/hooks/use-stored-layout';
+import { FileContextMenu } from '@/components/chat/file-context-menu';
+import { Switch } from '@/components/ui/switch';
 
 type RawMission = {
   id: string;
@@ -56,6 +62,9 @@ type RawMission = {
   interrupted_reason?: string | null;
   pending_messages?: number;
   open_deliveries?: number;
+  archived_at?: number | null;
+  archive_suggested_at?: number | null;
+  archive_suggest_reason?: string | null;
 };
 
 type Row = {
@@ -71,6 +80,8 @@ type Row = {
   tokOut: number;
   events: number;
   running: boolean;
+  archivedAt: number | null;
+  archiveSuggestion: { reason: string | null } | null;
   origin: MissionOrigin | null;
   item: MissionItem;
 };
@@ -177,6 +188,8 @@ function shape(m: RawMission): Row {
     tokOut: m.tokens_out || 0,
     events: m.event_count || 0,
     running: !!m.running,
+    archivedAt: typeof m.archived_at === 'number' ? m.archived_at : null,
+    archiveSuggestion: hasArchiveSuggestion(m) ? { reason: m.archive_suggest_reason ?? null } : null,
     origin: isMissionOrigin(m.origin) ? m.origin : null,
     item: toMissionItem(m),
   };
@@ -221,10 +234,18 @@ export function MissionsClient() {
   // conversations are a small share of the latest 200 missions.
   const originRef = useRef(filters.origin);
   originRef.current = filters.origin;
+  // Shared with the Missions widget: one switch for "include archived".
+  const displayStore = useStoredLayout(MISSION_RAIL_DISPLAY_SCOPE);
+  const includeArchived = readMissionRailDisplay(displayStore.raw).includeArchived;
+  const includeArchivedRef = useRef(includeArchived);
+  includeArchivedRef.current = includeArchived;
+  const [menu, setMenu] = useState<{ row: Row; x: number; y: number } | null>(null);
   const fetchAll = useCallback(async () => {
     const origin = originRef.current;
     const qs = new URLSearchParams({ limit: '200' });
     if (origin !== 'all') qs.set('origin', origin);
+    const archived = archivedQuery(includeArchivedRef.current);
+    if (archived) qs.set('archived', archived);
     try {
       const [mr, ar] = await Promise.all([
         fetch(`/api/ui/missions?${qs}`, { cache: 'no-store' }).then((r) =>
@@ -248,7 +269,7 @@ export function MissionsClient() {
     fetchAll();
     const id = setInterval(fetchAll, 3000);
     return () => clearInterval(id);
-  }, [fetchAll, filters.origin]);
+  }, [fetchAll, filters.origin, includeArchived]);
 
   const missionsRef = useRef(missions);
   missionsRef.current = missions;
@@ -345,6 +366,7 @@ export function MissionsClient() {
     const f = filters;
     const q = f.search.trim().toLowerCase();
     const filtered = missions.filter((m) => {
+      if (!includeArchived && m.archivedAt !== null) return false;
       if (f.agent !== 'all' && m.agent !== f.agent) return false;
       if (f.status !== 'all' && m.status !== f.status) return false;
       if (f.project !== 'all') {
@@ -378,7 +400,7 @@ export function MissionsClient() {
       return (ka < kb ? -1 : ka > kb ? 1 : 0) * sort.dir;
     });
     return filtered;
-  }, [missions, filters, sort]);
+  }, [missions, filters, sort, includeArchived]);
 
   const stats = useMemo(() => {
     const done = missions.filter((m) => m.status === 'done').length;
@@ -399,6 +421,23 @@ export function MissionsClient() {
 
   function toggleSort(k: SortKey) {
     setSort((cur) => (cur.key === k ? { key: k, dir: (cur.dir * -1) as 1 | -1 } : { key: k, dir: -1 }));
+  }
+
+  async function setArchived(row: Row, archived: boolean) {
+    const r = await fetch(`/api/ui/missions/${encodeURIComponent(row.fullId)}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' });
+    if (!r.ok) {
+      toast.error(t(r.status === 409 ? 'missionRail.archiveRunning' : 'missionRail.archiveFailed'));
+      return;
+    }
+    fetchAll();
+  }
+
+  async function answerSuggestion(row: Row, answer: 'archive' | 'dismiss') {
+    if (!(await answerArchiveSuggestion(row.fullId, answer))) {
+      toast.error(t(answer === 'archive' ? 'missionRail.archiveFailed' : 'archiveSuggestion.failed'));
+      return;
+    }
+    fetchAll();
   }
 
   async function killSelected() {
@@ -534,6 +573,17 @@ export function MissionsClient() {
         >
           {t('missionsPage.filters.clear')}
         </Button>
+        <label className="flex items-center gap-1.5 rounded-lg bg-foreground/[0.05] px-2 py-1 text-[11px] text-muted-foreground">
+          <Switch
+            checked={includeArchived}
+            disabled={!displayStore.ready}
+            onCheckedChange={(v) => {
+              void displayStore.update((raw) => writeMissionRailDisplay({ ...readMissionRailDisplay(raw), includeArchived: v }));
+            }}
+            className="h-4 w-7 [&>span]:size-3 [&>span]:data-[state=checked]:translate-x-3"
+          />
+          {t('missionRail.includeArchived')}
+        </label>
         <div className="flex-1" />
         <span className="tabular-nums text-[12px] text-muted-foreground">
           <b className="font-medium text-foreground">{formats.number.format(rows.length)}</b>{' '}
@@ -570,6 +620,7 @@ export function MissionsClient() {
             {rows.map((m, i) => (
               <tr
                 key={m.fullId}
+                onContextMenu={(e) => { e.preventDefault(); setMenu({ row: m, x: e.clientX, y: e.clientY }); }}
                 onClick={() => select(m)}
                 className={cn(
                   'cursor-pointer transition-colors',
@@ -585,6 +636,21 @@ export function MissionsClient() {
                 <Td className="max-w-[380px] truncate font-medium text-foreground">
                   {m.origin && <MissionOriginIcon origin={m.origin} className="mr-1.5 align-[-1px]" />}
                   {m.title}
+                  {m.archiveSuggestion && !m.running && (
+                    <span className="ml-2 align-[1px]">
+                      <ArchiveSuggestionChip
+                        reason={m.archiveSuggestion.reason}
+                        onArchive={() => { void answerSuggestion(m, 'archive'); }}
+                        onDismiss={() => { void answerSuggestion(m, 'dismiss'); }}
+                      />
+                    </span>
+                  )}
+                  {m.archivedAt !== null && (
+                    <span data-mission-archived className="ml-2 inline-flex items-center gap-0.5 rounded bg-muted px-1 align-[1px] text-[10px] font-normal text-muted-foreground" title={t('missionRail.archivedHint')}>
+                      <Archive className="size-2.5" aria-hidden />
+                      {t('missionRail.archivedBadge')}
+                    </span>
+                  )}
                 </Td>
                 <Td>
                   <span className="inline-flex items-center gap-1.5 text-[11.5px]">
@@ -618,6 +684,17 @@ export function MissionsClient() {
                   <div className="flex flex-wrap items-center gap-1">
                     <StatusBadge status={m.status} />
                     <MissionBadgeSlot mission={m.item} />
+                    {m.archivedAt !== null && (
+                      <button
+                        type="button"
+                        title={t('missionRail.unarchive')}
+                        aria-label={t('missionRail.unarchive')}
+                        onClick={(e) => { e.stopPropagation(); void setArchived(m, false); }}
+                        className="grid size-5 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <ArchiveRestore className="size-3" />
+                      </button>
+                    )}
                   </div>
                 </Td>
               </tr>
@@ -635,6 +712,27 @@ export function MissionsClient() {
           </tbody>
         </table>
       </div>
+
+      {menu && (
+        <FileContextMenu
+          x={menu.x}
+          y={menu.y}
+          label={menu.row.title}
+          onClose={() => setMenu(null)}
+          items={[
+            menu.row.archivedAt !== null
+              ? { key: 'unarchive', label: t('missionRail.unarchive'), icon: <ArchiveRestore className="size-3.5" />, onSelect: () => { void setArchived(menu.row, false); } }
+              : {
+                  key: 'archive',
+                  label: t('missionRail.archive'),
+                  icon: <Archive className="size-3.5" />,
+                  disabled: !canArchive({ running: menu.row.running, archived_at: menu.row.archivedAt }),
+                  title: menu.row.running ? t('missionRail.archiveRunning') : undefined,
+                  onSelect: () => { void setArchived(menu.row, true); },
+                },
+          ]}
+        />
+      )}
 
       <Sheet open={!!selected} onOpenChange={(o) => !o && select(null)}>
         <SheetContent side="right" className="w-[560px] max-w-[96vw] p-0 sm:max-w-[560px]">
