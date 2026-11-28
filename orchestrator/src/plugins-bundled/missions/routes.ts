@@ -1489,10 +1489,8 @@ export function registerRoutes(
         res.status(409).json(apiError('title_generation_off', 'automatic titles are turned off'));
         return;
       case 'failed':
-        res.status(out.reason === 'quota' ? 429 : 502).json(apiError(
-          out.reason === 'quota' ? 'title_quota' : 'title_model_unavailable',
-          out.reason === 'quota' ? 'the title model is out of quota' : 'the title model is unavailable',
-        ));
+        if (out.reason === 'quota') res.status(429).json(apiError('title_quota', 'the title model is out of quota'));
+        else res.status(502).json(apiError('title_model_unavailable', 'the title model is unavailable'));
         return;
       default: {
         const m = dbApi.getMission(owned.id);
