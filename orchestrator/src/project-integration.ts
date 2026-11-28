@@ -75,6 +75,10 @@ export const ProjectIntegrationSchema = z.object({
   branch_prefix: BranchPrefix,
   // Added after the first stored settings: a row without it reads as unset.
   remote_url: RemoteUrl.nullable().default(null),
+  // Added with fork support: where the branch is pushed when the account
+  // cannot push to the target repository (`remote_url`). A pull request is
+  // then opened from this fork. Null pushes to `remote_url`.
+  push_remote_url: RemoteUrl.nullable().default(null),
   // Added later still: a row without it asks the contributor.
   contributor_conflicts: z.enum(CONTRIBUTOR_CONFLICT_MODES).default('ask'),
 }).strict();
@@ -82,7 +86,7 @@ export const ProjectIntegrationSchema = z.object({
 export type ProjectIntegration = z.infer<typeof ProjectIntegrationSchema>;
 
 /** Body of a write: only the fields to change; `null` clears `account`,
- *  `gh_config_dir` or `remote_url`. Unknown keys are refused rather than dropped. */
+ *  `gh_config_dir`, `remote_url` or `push_remote_url`. Unknown keys are refused rather than dropped. */
 export const ProjectIntegrationPatchSchema = z.object({
   mode: z.enum(PROJECT_INTEGRATION_MODES).optional(),
   remote: GitName.optional(),
@@ -92,6 +96,7 @@ export const ProjectIntegrationPatchSchema = z.object({
   gh_config_dir: GhConfigDir.nullable().optional(),
   branch_prefix: BranchPrefix.optional(),
   remote_url: RemoteUrl.nullable().optional(),
+  push_remote_url: RemoteUrl.nullable().optional(),
   contributor_conflicts: z.enum(CONTRIBUTOR_CONFLICT_MODES).optional(),
 }).strict();
 
@@ -106,6 +111,7 @@ export const DEFAULT_PROJECT_INTEGRATION: Readonly<ProjectIntegration> = Object.
   gh_config_dir: null,
   branch_prefix: 'feat/',
   remote_url: null,
+  push_remote_url: null,
   contributor_conflicts: 'ask',
 });
 
@@ -240,7 +246,7 @@ export function updateProjectIntegration(
 
 /** The fields that decide where a contributor's conflict resolution is
  *  fetched from and pushed to, and as whom (`forge-conflicts.ts`). */
-export const PUSH_TARGET_FIELDS = ['remote_url', 'account', 'gh_config_dir', 'mode', 'remote'] as const;
+export const PUSH_TARGET_FIELDS = ['remote_url', 'push_remote_url', 'account', 'gh_config_dir', 'mode', 'remote'] as const;
 
 /** The push-target fields `next` changes from `current`. */
 export function changedPushTargetFields(current: ProjectIntegration, next: ProjectIntegration): string[] {

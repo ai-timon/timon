@@ -105,7 +105,7 @@ test('a manager reads the default, sets, reads back and resets the setting', asy
   assert.equal(read.configured, true);
   assert.deepEqual(read.integration, {
     mode: 'pr', remote: 'origin', target: 'main', forge: 'github', account: 'ai-bot', gh_config_dir: ghDir, branch_prefix: 'sec/',
-    remote_url: null, contributor_conflicts: 'ask',
+    remote_url: null, push_remote_url: null, contributor_conflicts: 'ask',
   });
   assert.ok(dbApi.listAuditLog(50).some((row) => row.action === 'project.integration_set' && row.target === 'acme:pr'));
   const cleared = await (await call('DELETE', URL_, 'manager')).json() as { configured: boolean };

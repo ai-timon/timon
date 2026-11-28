@@ -108,6 +108,8 @@ beforeEach(() => {
 function deps(): PreviewDeps {
   const forge: Forge & ForgeChecksReader & ForgeThreadsReader = {
     async login() { calls.login += 1; return { ok: true, login: 'ai-bot' }; },
+    async repositoryAccess() { return { ok: true, exists: true, canPush: true }; },
+    async forkRepository() { return { ok: true }; },
     async createPullRequest() { calls.create += 1; return { ok: false, code: 'gh_failed', reason: 'stub' }; },
     async pullRequestChecks() { calls.checks += 1; return checksAnswer; },
     async pullRequestReviewThreads() { calls.threads += 1; return threadsAnswer; },

@@ -463,11 +463,14 @@ async function dryRun(row: IntegrationRow, title: string, body: string, deps: Pr
   const resolved = pullRequestSetting(row, row.project);
   if ('refusal' in resolved) return { ran: false, reason: resolved.refusal };
   const forge = (deps.forge ?? ((dir) => githubForge(dir, deps.runners)))(resolved.setting.gh_config_dir);
-  const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners)))(row.repo);
+  const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners, resolved.setting.gh_config_dir)))(row.repo);
   const { checks } = await runPrChecks({
     row,
     chainIds: chainIdsOf(row),
     remoteUrl: resolved.remoteUrl,
+    pushUrl: resolved.pushUrl,
+    pushRepository: resolved.pushRepository,
+    fork: resolved.headOwner !== null,
     account: resolved.account,
     forge,
     transport,
