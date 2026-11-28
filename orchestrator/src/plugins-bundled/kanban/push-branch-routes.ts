@@ -50,7 +50,10 @@ export function registerPushBranchRoutes(app: Router, deps: TicketPushDeps = {})
       res.json({ ok: true, remote: out.remote, branch: out.branch, source: out.source });
       return;
     }
-    const code = out.code === 'push_failed' || out.code === 'push_rejected' ? 'ticket_push_failed' : 'ticket_push_refused';
-    res.status(out.status).json(apiError(code, out.reason, { detail: out.reason }));
+    // Literal codes: the webview's message check reads them from the source.
+    const detail = { detail: out.reason };
+    res.status(out.status).json(out.code === 'push_failed' || out.code === 'push_rejected'
+      ? apiError('ticket_push_failed', out.reason, detail)
+      : apiError('ticket_push_refused', out.reason, detail));
   });
 }
