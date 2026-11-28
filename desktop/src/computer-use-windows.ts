@@ -213,15 +213,39 @@ async function linuxIdentity(exec: Exec, windowId: string): Promise<AppIdentity 
   return identityOf({ name: className || exe, exe });
 }
 
+/**
+ * The windows the window manager manages (_NET_CLIENT_LIST on the root window), as decimal ids like
+ * xdotool's, or null when it cannot be read: no xprop, or no window manager publishing it.
+ */
+async function linuxClientWindows(exec: Exec): Promise<Set<string> | null> {
+  const out = await tryTool(exec, { file: 'xprop', args: ['-root', '_NET_CLIENT_LIST'] });
+  // "_NET_CLIENT_LIST(WINDOW): window id # 0x1e00003, 0x2400007"; without a window manager: "not found."
+  const listed = out?.match(/^_NET_CLIENT_LIST\(WINDOW\): window id #(.*)$/m)?.[1];
+  if (listed === undefined) return null;
+  const ids = (listed.match(/0x[0-9a-fA-F]{1,8}/g) ?? []).map((hex) => String(Number.parseInt(hex, 16)));
+  return ids.length ? new Set(ids) : null;
+}
+
+/**
+ * Processes and classes that only draw another window's decorations. Mutter (GNOME 44+ under X11)
+ * draws server-side frames from a separate client, mutter-x11-frames, whose frame windows carry the
+ * client's title: listed, every decorated window came out twice. The client list already leaves them
+ * out; this catches them when that list cannot be read.
+ */
+const FRAME_APPS = new Set(['mutter-x11-frames']);
+const isFrame = (identity: AppIdentity): boolean => [identity.name, identity.exe].some((name) => !!name && FRAME_APPS.has(name.toLowerCase()));
+
 async function linuxWindows(exec: Exec): Promise<WindowEntry[]> {
   const active = (await exec(xdotool('getactivewindow')).catch(() => ({ stdout: '' }))).stdout.trim();
   const found = await exec(xdotool('search', '--onlyvisible', '--name', '.'));
+  const clients = await linuxClientWindows(exec);
   const out: WindowEntry[] = [];
-  for (const id of found.stdout.split('\n').map((line) => line.trim()).filter((line) => /^\d{1,20}$/.test(line)).slice(0, MAX_WINDOWS)) {
+  const ids = found.stdout.split('\n').map((line) => line.trim()).filter((line) => /^\d{1,20}$/.test(line));
+  for (const id of ids.filter((candidate) => !clients || clients.has(candidate)).slice(0, MAX_WINDOWS)) {
     let title = '';
     try { title = (await exec(xdotool('getwindowname', id))).stdout.trim(); } catch { continue; }
     const identity = await linuxIdentity(exec, id);
-    if (!identity) continue;
+    if (!identity || isFrame(identity)) continue;
     out.push({ id, title, app: identity.name || identity.exe || '', focused: id === active, identity });
   }
   return out;
