@@ -2349,6 +2349,22 @@ async function cmdTaskBlock(argv) {
   process.stdout.write(`task ${id} → BLOCKED (${reason})\n`);
 }
 
+async function cmdTaskPushBranch(argv) {
+  const id = argv[0];
+  const branch = argv[1];
+  if (!id || !branch || id.startsWith('-') || branch.startsWith('-')) {
+    process.stderr.write('usage: timon task push-branch <merge-task-id> <ticket-branch> [--source <task-id>] [--set-upstream]\n');
+    process.exit(64);
+  }
+  const rest = argv.slice(2);
+  const source = takeFlag(rest, 'source');
+  const body = { branch };
+  if (source) body.source_task = source;
+  if (rest.includes('--set-upstream') || rest.includes('-u')) body.set_upstream = true;
+  const j = await http('POST', `/api/tasks/${encodeURIComponent(id)}/push-branch`, body);
+  process.stdout.write(`pushed ${j.source} → ${j.remote}/${j.branch}\n`);
+}
+
 async function cmdTaskUpdate(argv) {
   const id = argv[0];
   if (!id) { process.stderr.write('usage: timon task update <id> [--status ...] [--priority N] [--title ...] [--scheduled ISO | --clear-scheduled]\n'); process.exit(64); }
@@ -2414,6 +2430,7 @@ async function cmdTask(argv) {
     case 'create':  return cmdTaskCreate(rest);
     case 'done':    return cmdTaskDone(rest);
     case 'block':   return cmdTaskBlock(rest);
+    case 'push-branch': return cmdTaskPushBranch(rest);
     case 'mark-as-done':   return cmdTaskMarkAsDone(rest);
     case 'mark-as-failed': return cmdTaskMarkAsFailed(rest);
     case 'mark-merged':    return cmdTaskMarkMerged(rest);
@@ -2422,7 +2439,7 @@ async function cmdTask(argv) {
     case 'delete':  return cmdTaskDelete(rest);
     case 'rm':      return cmdTaskDelete(rest);
     default:
-      process.stderr.write('usage: timon task <list|get|create|done|block|mark-as-done|mark-as-failed|mark-merged|attach|update|delete> …\n');
+      process.stderr.write('usage: timon task <list|get|create|done|block|mark-as-done|mark-as-failed|mark-merged|push-branch|attach|update|delete> …\n');
       process.exit(64);
   }
 }

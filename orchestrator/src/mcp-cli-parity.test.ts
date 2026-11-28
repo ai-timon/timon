@@ -65,6 +65,7 @@ const CASES: Array<[string, Record<string, unknown>, string, Record<string, unkn
   // A group rule is cleared by name, as a query (a label, never a path segment).
   ['series_fallback_clear', { scope: 'code', group: 'simple' }, 'DELETE /api/series/current/fallbacks/code?group=simple'],
   ['series_role_clear', { scope: 'review', group: 'hard one', series_id: 's1' }, 'DELETE /api/series/s1/roles/review?group=hard%20one'],
+  ['kanban_push_branch', { id: 't', branch: 'SELP-1_a', source_task: 's', set_upstream: true }, 'POST /api/tasks/t/push-branch', { branch: 'SELP-1_a', source_task: 's', set_upstream: true }],
   ['worktree_info', { task_id: 't' }, 'GET /api/tasks/t'],
   ['worktree_create', { task_id: 't', base: 'main' }, 'POST /api/tasks/t/worktree', { base: 'main' }],
   ['worktree_dispose', { task_id: 't', force: true }, 'DELETE /api/tasks/t/worktree?force=1'],

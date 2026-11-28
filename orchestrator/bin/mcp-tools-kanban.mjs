@@ -102,6 +102,26 @@ export const tools = [
     },
   },
   {
+    name: 'kanban_push_branch',
+    title: 'Push a ticket branch',
+    description:
+      'For the merger of a merge task: asks the daemon to push the branch `timon/task/<id>` of a task of the project ' +
+      'to a ticket branch of the remote (CLI `timon task push-branch`), with no approval card. The daemon pushes only ' +
+      '`<PREFIX>-<n>_<description>` (the prefixes of the project when it declares them), never develop, main, master, ' +
+      'production or release, never forced, from your own merge task, and audits every push. Anything else is refused: ' +
+      'then use the normal `git push` path.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The merge task this mission runs.' },
+        branch: { type: 'string', description: 'The ticket branch to push to, like SELP-123_short-description.' },
+        source_task: { type: 'string', description: 'The task whose timon/task/<id> branch is pushed; defaults to the merge task itself.' },
+        set_upstream: { type: 'boolean', description: 'Also set the upstream of the branch (git push -u).' },
+      },
+      required: ['id', 'branch'],
+    },
+  },
+  {
     name: 'pr_open',
     title: 'Open a job\'s pull request',
     description:
@@ -281,6 +301,12 @@ export const handlers = {
   async worktree_create(args, { call }) {
     const r = await call('POST', `/api/tasks/${enc(args.task_id)}/worktree`, args.base ? { base: args.base } : {});
     return r.worktree;
+  },
+  async kanban_push_branch(args, { call }) {
+    const payload = { branch: args.branch };
+    if (args.source_task !== undefined) payload.source_task = args.source_task;
+    if (args.set_upstream !== undefined) payload.set_upstream = args.set_upstream;
+    return await call('POST', `/api/tasks/${enc(args.id)}/push-branch`, payload);
   },
   async pr_open(args, { call }) {
     const payload = { title: args.title, body: args.body ?? '' };

@@ -31,7 +31,7 @@ const TITLED = [
   'mission_reindex', 'trace_backfill',
   // mcp-tools-kanban.mjs
   'kanban_get', 'kanban_attach_series', 'series_fallback_clear', 'series_role_clear', 'worktree_info', 'worktree_create',
-  'worktree_dispose', 'pr_open', 'pr_land', 'pr_branch', 'pipeline_list', 'pipeline_get', 'pipeline_create', 'pipeline_run',
+  'worktree_dispose', 'kanban_push_branch', 'pr_open', 'pr_land', 'pr_branch', 'pipeline_list', 'pipeline_get', 'pipeline_create', 'pipeline_run',
   'pipeline_run_status', 'pipeline_delete', 'routine_list', 'routine_create', 'routine_update',
   'routine_delete',
   // mcp-tools-projects.mjs
