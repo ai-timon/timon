@@ -373,6 +373,12 @@ From a terminal, `timon task mark-merged TASK_ID --sha SHA [--comment TEXT]` doe
 
 Timon refuses a commit that your local copy of the repository has and that is not in the task's base branch. A commit it does not have yet (a pull request merged on GitHub and not fetched) is accepted and noted as not verified in the task's comment.
 
+## The pull or merge request of a task
+
+A task that opened a pull request (GitHub) or a merge request (GitLab) carries it. Its card shows a chip, **PR #12** or **MR !1875**, with the state in its colour: green while open, purple once merged, red when closed. The same chip sits in the task's detail, under the tabs. A click opens the request in a new tab and does not open the card.
+
+The daemon records the request by itself when it opens a pull request for a task (`timon pr open`). An agent that opens a request on its own, a merge request on GitLab for instance, records it with `--mr-url URL` on `timon task done`, `block`, `mark-as-done`, `mark-as-failed` or `update`, with `--mr-state open|merged|closed` and `--mr-pipeline LABEL` to say where it stands. The `kanban_update`, `kanban_mark_as_done` and `kanban_mark_as_failed` tools take the same `merge_request` object (`url`, and optionally `state` and `pipeline`). Only the URL is required: the forge and the number come from it, and a URL that is neither a GitHub pull request nor a GitLab merge request is refused.
+
 ## A task waiting on you
 
 When the agent of a running task asks for a permission or asks you a question, its card says **Waiting for a permission (Bash) for 3 min**, or **Waiting for an answer**, followed by the time left before the request is refused automatically (an unattended task does not wait forever). Hover the line to see whether other requests wait behind it. The task's detail shows the same line under its status. Both change as soon as a request is raised, answered or refused. The card names the tool only: the command itself, and the Allow and Deny buttons, are in the task's mission, which the card's open-mission button reaches.

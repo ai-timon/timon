@@ -66,6 +66,12 @@ export type Task = {
   awaiting_merge?: boolean;
   /** TO DO idea the task carries out; its tags show on the card. */
   todo_id?: number | null;
+  /** The pull / merge request the task opened; all null when none. */
+  mr_url?: string | null;
+  mr_forge?: 'github' | 'gitlab' | null;
+  mr_number?: number | null;
+  mr_state?: 'open' | 'merged' | 'closed' | null;
+  mr_pipeline?: string | null;
   /** Files attached to the task; the list itself is read by the dialog. */
   attachment_count?: number;
 };

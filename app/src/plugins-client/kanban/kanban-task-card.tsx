@@ -26,6 +26,7 @@ import { hasSeriesGraph } from '@/lib/series-graph';
 import { taskRunAgent } from '@/lib/task-runner';
 import { cn } from '@/lib/utils';
 import type { CatalogTarget } from '@/components/model-picker';
+import { MergeRequestChip } from './merge-request-chip';
 import { MetaBadge, ProgressBadge, UrgencyBadge } from './project-todo-tag-chips';
 import type { ProjectTodo } from './project-todo-types';
 import { TaskLinksBadge } from './task-links-badge';
@@ -127,6 +128,7 @@ export function KanbanTaskCard({
         <StatusLabel status={t.status} />
       </span>
       {t.run_by && <TaskRunnerBadge named={t.agent_name} runBy={t.run_by} />}
+      <MergeRequestChip task={t} />
       {todo && (
         <>
           <MetaBadge title={i18n('kanbanPage.card.todoLink')}>#{todo.id}</MetaBadge>
