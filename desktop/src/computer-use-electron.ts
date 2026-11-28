@@ -147,7 +147,7 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
     display: () => { try { return primaryDisplay(); } catch { return null; } },
     cursor: () => screen.getCursorScreenPoint(),
     pointerMotionMs: () => readPointerSettings(home).motionMs,
-    capture: (size) => ghost.withoutGhost(() => capturePrimary(size)),
+    capture: (size, region) => ghost.withoutGhost(() => capturePrimary(size, region)),
     screenPermission: () => {
       if (process.platform !== 'darwin') return 'granted';
       const status = systemPreferences.getMediaAccessStatus('screen');
