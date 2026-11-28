@@ -2789,13 +2789,13 @@ async function cmdProjectSetRole(argv) {
 const INTEGRATION_FLAGS = [
   ['mode', 'mode'], ['remote', 'remote'], ['target', 'target'], ['forge', 'forge'],
   ['account', 'account'], ['gh-config-dir', 'gh_config_dir'], ['branch-prefix', 'branch_prefix'],
-  ['remote-url', 'remote_url'],
+  ['remote-url', 'remote_url'], ['push-remote-url', 'push_remote_url'],
 ];
-const INTEGRATION_NULLABLE = new Set(['account', 'gh_config_dir', 'remote_url']);
+const INTEGRATION_NULLABLE = new Set(['account', 'gh_config_dir', 'remote_url', 'push_remote_url']);
 const INTEGRATION_USAGE =
   'usage: timon project set-integration <slug> [--mode local|pr] [--remote NAME] [--target BRANCH]\n' +
   '       [--forge github] [--account LOGIN] [--gh-config-dir ABSOLUTE_PATH] [--branch-prefix PREFIX/]\n' +
-  '       [--remote-url PUSH_URL]\n' +
+  '       [--remote-url PUSH_URL] [--push-remote-url FORK_URL]\n' +
   '       timon project set-integration <slug> --reset   (back to the local merge)\n';
 
 async function cmdProjectGetIntegration(argv) {

@@ -370,13 +370,16 @@ export async function listPullRequests(slug: string, deps: ExternalPrDeps = {}):
     (listReviewsStmt.all(slug, value.repo) as ExternalPrReviewRow[]).map((r) => [r.pr_number, shownView(r)]),
   );
   const owner = value.repo.split('/')[0]!.toLowerCase();
+  // The project's own fork is not another repository: its pull requests are the project's.
+  const forkUrl = value.integration.push_remote_url;
+  const forkOwner = (forkUrl ? githubRepoFromUrl(forkUrl)?.split('/')[0]?.toLowerCase() : null) ?? owner;
   const account = value.integration.account?.toLowerCase() ?? null;
   return {
     ok: true,
     repo: value.repo,
     pulls: out.pulls.map((p) => ({
       ...p,
-      external: (p.headOwner !== null && p.headOwner.toLowerCase() !== owner)
+      external: (p.headOwner !== null && ![owner, forkOwner].includes(p.headOwner.toLowerCase()))
         || (p.author !== null && p.author.toLowerCase() !== account),
       review: reviews.get(p.number) ?? null,
     })),

@@ -28,22 +28,31 @@ app.use(express.json());
 // api-token holding the grants the header names.
 app.use((req, _res, next) => {
   const who = req.header('x-test-who');
-  if (who === 'manager') req.auth = { kind: 'api-token', user: null, isSuperadmin: false, permissions: ['projects:manage'] };
+  if (who === 'person') req.auth = { kind: 'session', user: null, isSuperadmin: true };
+  else if (who === 'manager') req.auth = { kind: 'api-token', user: null, isSuperadmin: false, permissions: ['projects:manage'] };
   else if (who === 'reader') req.auth = { kind: 'api-token', user: null, isSuperadmin: false, permissions: ['projects:read', 'kanban:write'] };
   else if (who === 'viewer') req.auth = { kind: 'api-token', user: null, isSuperadmin: false, permissions: ['projects:read'] };
   else if (who === 'bare') req.auth = { kind: 'api-token', user: null, isSuperadmin: false, permissions: [] };
   next();
 });
+type Rights = { ok: true; exists: true; canPush: boolean } | { ok: true; exists: false } | { ok: false; code: 'gh_failed'; reason: string };
+let rights: (repo: string) => Rights = () => ({ ok: true, exists: true, canPush: true });
+const forkCalls: string[] = [];
+let forkAnswer: { ok: true } | { ok: false; code: 'gh_failed'; reason: string } = { ok: true };
 registerIntegrationRoutes(app, {
   home,
   ghLogin: async (dir) => { ghCalls.push(dir); return ghAnswer; },
+  forge: () => ({
+    async repositoryAccess(repo) { return rights(repo); },
+    async forkRepository(repo) { forkCalls.push(repo); return forkAnswer; },
+  }),
 });
 const server = app.listen(0, '127.0.0.1');
 await once(server, 'listening');
 after(() => server.close());
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-function call(method: string, path: string, who: 'anonymous' | 'bare' | 'viewer' | 'reader' | 'manager', body?: unknown) {
+function call(method: string, path: string, who: 'anonymous' | 'bare' | 'viewer' | 'reader' | 'manager' | 'person', body?: unknown) {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (who !== 'anonymous') headers['x-test-who'] = who;
   return fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -56,6 +65,8 @@ test('an anonymous caller is refused on every verb, and nothing is written', asy
   assert.equal((await call('PUT', URL_, 'anonymous', { mode: 'pr', account: 'ai-bot' })).status, 401);
   assert.equal((await call('DELETE', URL_, 'anonymous')).status, 401);
   assert.equal((await call('POST', `${URL_}/check`, 'anonymous')).status, 401);
+  assert.equal((await call('POST', `${URL_}/fork`, 'anonymous', { confirm: true })).status, 401);
+  assert.deepEqual(forkCalls, []);
   assert.equal(dbApi.getProjectRow('acme')?.integration, null);
   assert.deepEqual(ghCalls, []);
 });
@@ -105,7 +116,7 @@ test('a manager reads the default, sets, reads back and resets the setting', asy
   assert.equal(read.configured, true);
   assert.deepEqual(read.integration, {
     mode: 'pr', remote: 'origin', target: 'main', forge: 'github', account: 'ai-bot', gh_config_dir: ghDir, branch_prefix: 'sec/',
-    remote_url: null, contributor_conflicts: 'ask',
+    remote_url: null, push_remote_url: null, contributor_conflicts: 'ask',
   });
   assert.ok(dbApi.listAuditLog(50).some((row) => row.action === 'project.integration_set' && row.target === 'acme:pr'));
   const cleared = await (await call('DELETE', URL_, 'manager')).json() as { configured: boolean };
@@ -277,4 +288,86 @@ test('the branch check takes a strict body', async () => {
   assert.equal((await call('POST', BRANCH, 'reader', { branch: 'topic', extra: 1 })).status, 400);
   assert.equal((await call('POST', BRANCH, 'reader', {})).status, 400);
   assert.equal((await call('POST', BRANCH, 'reader', { branch: 'topic', kind: 'old' })).status, 400);
+});
+
+/* Forking the target: a person's decision, confirmed, and only when it is needed. */
+
+const FORK = `${URL_}/fork`;
+const TARGET_URL = 'git@github.com:acme/app.git';
+
+async function withPrSetting(run: () => Promise<void>): Promise<void> {
+  assert.equal((await call('PUT', URL_, 'manager', { mode: 'pr', account: 'ai-bot', gh_config_dir: ghDir, remote_url: TARGET_URL })).status, 200);
+  forkCalls.length = 0;
+  try { await run(); } finally {
+    rights = () => ({ ok: true, exists: true, canPush: true });
+    forkAnswer = { ok: true };
+    assert.equal((await call('DELETE', URL_, 'manager')).status, 200);
+  }
+}
+
+test('the fork route refuses a caller without projects:manage and any caller that is not a person', async () => {
+  await withPrSetting(async () => {
+    rights = () => ({ ok: true, exists: true, canPush: false });
+    assert.equal((await call('POST', FORK, 'reader', { confirm: true })).status, 403);
+    // The daemon token, a mission's token and a plugin's are not people.
+    const res = await call('POST', FORK, 'manager', { confirm: true });
+    assert.equal(res.status, 403);
+    assert.equal(((await res.json()) as { code: string }).code, 'person_required');
+    assert.deepEqual(forkCalls, []);
+  });
+});
+
+test('a person who does not confirm creates nothing', async () => {
+  await withPrSetting(async () => {
+    rights = () => ({ ok: true, exists: true, canPush: false });
+    for (const body of [{}, { confirm: false }, { confirm: 'yes' }, { confirm: true, extra: 1 }]) {
+      assert.equal((await call('POST', FORK, 'person', body)).status, 400, JSON.stringify(body));
+    }
+    assert.deepEqual(forkCalls, []);
+  });
+});
+
+test('a confirmed fork is created, recorded as the push repository, and the account is checked first', async () => {
+  await withPrSetting(async () => {
+    rights = () => ({ ok: true, exists: true, canPush: false });
+    const res = await call('POST', FORK, 'person', { confirm: true });
+    assert.equal(res.status, 200, await res.clone().text());
+    const out = await res.json() as { fork: string; integration: { push_remote_url: string } };
+    assert.equal(out.fork, 'ai-bot/app');
+    assert.equal(out.integration.push_remote_url, 'git@github.com:ai-bot/app.git');
+    assert.deepEqual(forkCalls, ['acme/app']);
+    const stored = await (await call('GET', URL_, 'manager')).json() as { integration: { push_remote_url: string } };
+    assert.equal(stored.integration.push_remote_url, 'git@github.com:ai-bot/app.git');
+  });
+});
+
+test('no fork when the account can already push, when gh is another account, or when gh fails', async () => {
+  await withPrSetting(async () => {
+    const pushable = await call('POST', FORK, 'person', { confirm: true });
+    assert.equal(pushable.status, 409);
+    assert.equal(((await pushable.json()) as { code: string }).code, 'fork_not_needed');
+
+    rights = () => ({ ok: true, exists: true, canPush: false });
+    ghAnswer = { ok: true, login: 'someone-else' };
+    assert.equal(((await (await call('POST', FORK, 'person', { confirm: true })).json()) as { code: string }).code, 'fork_account_mismatch');
+    ghAnswer = { ok: true, login: 'ai-bot' };
+
+    forkAnswer = { ok: false, code: 'gh_failed', reason: 'secret detail from gh' };
+    const failed = await call('POST', FORK, 'person', { confirm: true });
+    assert.equal(failed.status, 502);
+    assert.ok(!(await failed.text()).includes('secret detail'), 'the forge\'s words are not echoed');
+    assert.equal(((await (await call('GET', URL_, 'manager')).json()) as { integration: { push_remote_url: string | null } }).integration.push_remote_url, null);
+  });
+});
+
+test('the check route reports the rights on the target and on the fork', async () => {
+  await withPrSetting(async () => {
+    rights = (repo) => repo === 'acme/app' ? { ok: true, exists: true, canPush: false } : { ok: true, exists: false };
+    assert.equal((await call('PUT', URL_, 'manager', { push_remote_url: 'git@github.com:ai-bot/app.git' })).status, 200);
+    const out = await (await call('POST', `${URL_}/check`, 'manager', {})).json() as {
+      access: { target: { can_push: boolean }; fork: { repository: string; exists: boolean } | null };
+    };
+    assert.equal(out.access.target.can_push, false);
+    assert.deepEqual(out.access.fork, { repository: 'ai-bot/app', exists: false, can_push: false });
+  });
 });
