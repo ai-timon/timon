@@ -35,6 +35,9 @@ const publish = (runId: string, nodeId: string | undefined, status: string) => {
     reportToWorkflowCoordinator(runId, 'terminal', { status, context: run ? parseJson(run.context) : null, error: run?.error });
   }
 };
+// Only the process awaiting the host can attest that a particular script attempt is alive.
+const liveScripts = new Set<string>();
+const scriptKey = (runId: string, nodeId: string, attempt: number) => JSON.stringify([runId, nodeId, attempt]);
 const latestNodes = (rows: WorkflowRunNodeRow[]) => rows.filter((row) => !rows.some((other) => other.node_id === row.node_id && other.attempt > row.attempt));
 
 // The run page is the anchor: a card with neither mission nor task opens it on click.
@@ -379,7 +382,7 @@ export async function advance(runId: string): Promise<void> {
   })();
   await Promise.all(candidates.map(async (row) => {
     if (!['running', 'waiting'].includes(dbApi.getWorkflowRun(runId)?.status ?? '')) return;
-    publish(runId, row.node_id, 'running'); await runNode(runId, row.node_id, definition, context);
+    publish(runId, row.node_id, 'running'); await runNode(runId, row.node_id, definition, context, row.attempt);
   }));
   if (!['running', 'waiting'].includes(dbApi.getWorkflowRun(runId)?.status ?? '')) return;
   snapshotContext(runId, context);
@@ -411,7 +414,7 @@ export async function advance(runId: string): Promise<void> {
   } else if (candidates.length || looped || relooped) void advance(runId);
 }
 
-async function runNode(runId: string, nodeId: string, definition: WorkflowDefinition, context: RunContext) {
+async function runNode(runId: string, nodeId: string, definition: WorkflowDefinition, context: RunContext, claimedAttempt: number) {
   const node = definition.nodes.find((item) => item.id === nodeId)!;
   const plugin = pluginNodeReference(node.type);
   if (plugin?.kind === 'executor') {
@@ -494,7 +497,20 @@ async function runNode(runId: string, nodeId: string, definition: WorkflowDefini
         // The system whitelist, never the daemon's own environment: the secrets
         // `loadSecretsAtBoot` puts there would reach any program a workflow names
         // (same rule as a trigger's script, `triggers/script-run.ts`).
-        const result = await getHost().execAsync(cfg.bin, cfg.args ?? [], { cwd, env: { ...systemEnv(), TIMON_HOME, ...env }, timeout: cfg.timeoutMs ?? 30_000, maxBuffer: 1_048_576 });
+        const key = scriptKey(runId, nodeId, claimedAttempt);
+        const timeout = cfg.timeoutMs ?? definition.settings.timeoutMs ?? 30_000;
+        liveScripts.add(key);
+        let result;
+        try {
+          result = await getHost().execAsync(cfg.bin, cfg.args ?? [], { cwd, env: { ...systemEnv(), TIMON_HOME, ...env }, timeout, maxBuffer: 1_048_576 });
+        } finally {
+          liveScripts.delete(key);
+        }
+        if (result.timedOut) {
+          status = 'timeout';
+          error = `script timed out after ${timeout} ms`;
+          break;
+        }
         if (result.code !== 0) throw new Error(String(redactDeep(`script failed (code ${result.code}): ${result.stderr}`)));
         try { output = JSON.parse(result.stdout); } catch { output = { text: result.stdout }; }
         output = redactDeep(output);
@@ -528,6 +544,16 @@ async function runNode(runId: string, nodeId: string, definition: WorkflowDefini
         throw new Error(`not implemented: ${node.type}`);
     }
   } catch (caught) { status = 'error'; port = 'failed'; error = String(redactDeep((caught as Error).message)); }
+  if (node.type === 'script') {
+    // A timeout, retry or cancellation may have settled the attempt during the await.
+    const row = latestNodes(dbApi.listWorkflowRunNodes(runId)).find((item) => item.node_id === nodeId);
+    if (row?.attempt !== claimedAttempt || row.status !== 'running' ||
+        !['running', 'waiting'].includes(dbApi.getWorkflowRun(runId)?.status ?? '')) return;
+    if (status === 'timeout') {
+      finishAgentNode(runId, nodeId, status, error);
+      return;
+    }
+  }
   // An in-process node with `done` / `failed` ports (script, http) follows the
   // agent rule (`finishAgentNode`): success leaves by `done`, and a failure the
   // graph wired a `failed` edge for is handled, not fatal to the run.
@@ -564,12 +590,15 @@ function missionNodeId(missionId: string, runId: string): string | undefined {
 export async function reconcile() {
   for (const row of db.prepare("SELECT id FROM workflow_runs WHERE status IN ('running','waiting')").all() as Array<{ id: string }>) {
     const { definition } = load(row.id);
-    for (const node of dbApi.listWorkflowRunNodes(row.id).filter((item) => item.status === 'running')) {
+    for (const node of latestNodes(dbApi.listWorkflowRunNodes(row.id)).filter((item) => item.status === 'running')) {
       // Live plugin calls own their deadline. Only a missing in-process call is
       // stranded after restart; treating every mission-less node as lost would
       // race a legitimate asynchronous executor on every reconciliation tick.
       if (pluginExecutorActive(row.id, node.node_id)) continue;
       const spec = definition.nodes.find((item) => item.id === node.node_id);
+      // The host owns the deadline until it reports the child exit. Retrying
+      // earlier could run both attempts of a side-effecting script at once.
+      if (spec?.type === 'script' && liveScripts.has(scriptKey(row.id, node.node_id, node.attempt))) continue;
       const timeout = Number(spec?.config.timeoutMs ?? definition.settings.timeoutMs ?? 0);
       if (timeout > 0 && node.started_at && node.started_at + timeout <= Date.now()) {
         finishAgentNode(row.id, node.node_id, 'timeout', 'node timeout');
