@@ -124,7 +124,7 @@ function RoutineDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="timon-window-layer fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <form
         onSubmit={submit}
         className="w-full max-w-md rounded-xl border border-border bg-popover p-5 shadow-elev-3"

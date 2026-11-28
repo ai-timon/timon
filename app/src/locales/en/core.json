@@ -2313,6 +2313,14 @@
     "topbarWidgets": "Top bar widgets",
     "topbarCenterWidgets": "Middle of the top bar"
   },
+  "windowFrame": {
+    "controls": "Window controls",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore down",
+    "exitFullScreen": "Exit full screen",
+    "close": "Close"
+  },
   "widgetCatalog": {
     "jobs": {"title": "Jobs", "description": "The Kanban jobs that land through a pull request, by what they wait for: state, checks, and a preview of the diff before the push."},
     "botsRail": {

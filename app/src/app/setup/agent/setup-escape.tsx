@@ -21,7 +21,7 @@ export function SetupEscape({ trouble, busy, error, onSkip, onRestart }: {
   onRestart: () => void;
 }): ReactNode {
   return (
-    <div data-setup-escape={trouble.level} className="fixed right-4 top-4 z-[60] flex max-w-sm flex-col items-end gap-2">
+    <div data-setup-escape={trouble.level} className="fixed right-[calc(1rem+var(--timon-window-controls-w,0px))] top-4 z-[60] flex max-w-sm flex-col items-end gap-2">
       {trouble.level === 'quiet' ? (
         <button
           type="button"

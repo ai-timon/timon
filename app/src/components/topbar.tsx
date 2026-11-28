@@ -17,6 +17,7 @@ import { useWidgetEditing } from '@/components/widget-host/widget-host';
 import { TOPBAR_CENTER_ZONE } from '@/components/widget-host/widget-catalog';
 import { useMobile } from '@/hooks/use-mobile';
 import { t } from '@/lib/i18n';
+import { WindowMachineName } from '@/components/window-frame';
 import { nextHeaderScrollState, topbarSlideFrames, TOPBAR_SLIDE } from '@/lib/header-scroll';
 
 export function TopBar({
@@ -173,8 +174,11 @@ export function TopBar({
             glued to the left for lack of an element pushing right. */}
         {/* The logotype sets the band height; the padding only breathes
             around it. The right-hand controls (h-9) are shorter and just
-            centre themselves in the row. */}
-        <div className="flex items-center gap-3 px-3 py-1.5 sm:px-4">
+            centre themselves in the row. In a desktop window without the
+            system's title bar, the row also keeps room at its ends for the
+            window's buttons or the macOS traffic lights (both 0 elsewhere,
+            see `components/window-frame.tsx`). */}
+        <div className="flex items-center gap-3 py-1.5 pl-[calc(0.75rem+var(--timon-window-lights-w,0px))] pr-[calc(0.75rem+var(--timon-window-controls-w,0px))] sm:pl-[calc(1rem+var(--timon-window-lights-w,0px))] sm:pr-[calc(1rem+var(--timon-window-controls-w,0px))]">
           <Link
             prefetch={false}
             href="/"
@@ -187,6 +191,9 @@ export function TopBar({
             {/* Only the development instance paints anything here. */}
             <InstanceBadge className="ml-1.5" />
           </Link>
+          {/* The machine the window drives, as the system's title bar named
+              it: only in a desktop window that has none. */}
+          <WindowMachineName className="hidden md:block" />
           {/* From `md` the middle zone sits in the bar, between the logo and
               the controls. On a phone it has its own row below (see after
               this bar): only a spacer here, pushing the controls to the right. */}

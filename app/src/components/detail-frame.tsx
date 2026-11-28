@@ -76,7 +76,7 @@ export function DetailFrame({ labelledBy, onClose, children }: DetailFrameProps)
   // would show through it.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm md:p-6"
+      className="timon-below-window-band timon-window-layer fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm md:p-6"
       onPointerDown={(e) => { pressedOnBackdrop.current = e.target === e.currentTarget; }}
       onClick={(e) => { if (pressedOnBackdrop.current && e.target === e.currentTarget) close(); }}
       onKeyDown={onKeyDown}

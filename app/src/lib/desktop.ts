@@ -76,6 +76,17 @@ declare global {
         set: (icon: string) => Promise<{ icon: string }>;
       };
       /**
+       * The frame of a window without the system's title bar: its state
+       * (`frameless`, who draws the buttons, maximized, full screen, the
+       * machine name) and the three gestures of the buttons the top bar
+       * draws. Read through `lib/window-frame`. Absent from an older desktop.
+       */
+      windowFrame?: {
+        get: () => Promise<unknown>;
+        act: (action: 'minimize' | 'toggle-maximize' | 'close') => Promise<unknown>;
+        onChange: (listener: (state: unknown) => void) => () => void;
+      };
+      /**
        * The size of the interface on this screen, every window alike. `set`
        * snaps to one of `steps`; `onChange` hears every change, made here,
        * in another window or with the keys. Read through `lib/ui-zoom`.

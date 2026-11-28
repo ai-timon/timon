@@ -153,7 +153,7 @@ export default function VaultNotePanel({ noteId, onClose, onFollowLink }: VaultN
   // out that does not depend on positioned ancestors.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-background/60 p-6 backdrop-blur-sm"
+      className="timon-window-layer fixed inset-0 z-50 grid place-items-center bg-background/60 p-6 backdrop-blur-sm"
       onClick={onClose}
     >
     <NativeViewCover />

@@ -31,6 +31,8 @@ export type ViewDeps = {
   scheme: () => 'light' | 'dark';
   /** No configuration yet: the waiting page takes the onboarding's look (`waitingPage`). */
   firstRun?: boolean;
+  /** The window has no system title bar: the waiting page keeps a strip to move it by. */
+  frameless?: boolean;
   probe: (url: string) => Promise<boolean>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
@@ -63,7 +65,7 @@ export class StartupView {
   private show(step: WaitingStep): void {
     this.state = step;
     if (this.target.isDestroyed()) return;
-    void this.target.loadURL(waitingUrl(this.deps.locale(), this.deps.scheme(), step, this.restarting !== null, this.deps.firstRun === true)).catch(() => { /* superseded navigation */ });
+    void this.target.loadURL(waitingUrl(this.deps.locale(), this.deps.scheme(), step, this.restarting !== null, this.deps.firstRun === true, this.deps.frameless === true)).catch(() => { /* superseded navigation */ });
   }
 
   /** First paint: the service is being started. */

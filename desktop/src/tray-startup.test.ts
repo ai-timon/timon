@@ -80,8 +80,9 @@ test('closing the window without a tray quits even with hidden browser sessions'
           let quits = 0;
           const removed: number[] = [];
           const detached: number[] = [];
+          const machineNames = new Map([[7, 'Office VPS']]);
           const context = {
-            id: 7, tray: hasTray ? {} : null, uninstalling, quittingAfterProblem,
+            id: 7, tray: hasTray ? {} : null, uninstalling, quittingAfterProblem, machineNames,
             windows: { remove: (id: number) => { removed.push(id); }, get size() { return others; } },
             layoutKeeper: null,
             browserOwners: new Map([[7, 70]]),
@@ -93,6 +94,7 @@ test('closing the window without a tray quits even with hidden browser sessions'
           };
           runInNewContext(closedHandler(), context);
           assert.deepEqual(removed, [7], 'the closed window is forgotten');
+          assert.equal(machineNames.has(7), false, 'and the machine name its top bar showed');
           assert.deepEqual(detached, [70], 'its presented tab returns to the browser host before the window is forgotten');
           assert.equal(quits, others === 0 && !hasTray && !uninstalling && !quittingAfterProblem ? 1 : 0);
         }

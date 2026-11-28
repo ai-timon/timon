@@ -46,6 +46,7 @@ import { localTarget, resolveTarget } from '@/lib/machines/target';
 import { activeScheme, describeActiveMachine, workspaceOwner } from '@/lib/machines/active-machine';
 import { previousLayoutOwner } from '@/lib/machines/acting-account';
 import { MachineBlockedScreen } from '@/components/machines/machine-blocked-screen';
+import { WindowFrame } from '@/components/window-frame';
 import { LastRouteRecorder } from '@/components/machines/last-route-recorder';
 import { LocaleProvider } from '@/components/locale-provider';
 import { applyRequestLocale } from '@/lib/locale-server';
@@ -184,6 +185,7 @@ export default async function RootLayout({
           <Suspense fallback={null}>
           <LocaleProvider locale={locale}>
           <InstanceProvider value={instance}>
+            <WindowFrame />
             <ThemeProvider initialScheme={scheme} initialAppearance={initialAppearance} initialTheme={me.theme} nonce={nonce}>
               <ThemeFloor appearance={initialAppearance} theme={me.theme} />
               <MachineBlockedScreen name={machine.name} reason={machine.reason} apiLevel={machine.apiLevel} />
@@ -202,6 +204,7 @@ export default async function RootLayout({
           <Suspense fallback={null}>
           <LocaleProvider locale={locale}>
           <InstanceProvider value={instance}>
+            <WindowFrame />
             <ThemeProvider initialScheme={scheme} initialAppearance={initialAppearance} initialTheme={me.theme} nonce={nonce}>
               <ThemeFloor appearance={initialAppearance} theme={me.theme} />
               {/* The licence follows the active machine: a remote one's lock
@@ -283,6 +286,10 @@ export default async function RootLayout({
             login and invite render the logotype outside `#timon-shell` and
             outside (main), and they must carry the same marker. */}
         <InstanceProvider value={instance}>
+        {/* The desktop window's title bar when it has none of the system's:
+            first in the page, before every control that must cut itself
+            out of its drag area (`components/window-frame.tsx`). */}
+        <WindowFrame />
         {/* One drag context for the whole app — not just (main)/AppFrame.
             Agents, Multichat and Chat render TopBar → VerticalNav →
             WidgetZone without going through AppFrame; without a host here

@@ -210,12 +210,12 @@ export function OnboardingShell({
           </div>
         )}
         {canGoBack(at.step) && (
-          <Button variant="ghost" size="sm" className="absolute left-4 top-3.5 z-20 gap-1" onClick={onBack}>
+          <Button variant="ghost" size="sm" className="absolute left-[calc(1rem+var(--timon-window-lights-w,0px))] top-3.5 z-20 gap-1 timon-window-band-centred" onClick={onBack}>
             <ChevronLeft className="h-4 w-4" aria-hidden />
             {t('onboarding.back')}
           </Button>
         )}
-        <div className="absolute right-4 top-3.5 z-20 flex items-center gap-2">
+        <div className="absolute right-[calc(1rem+var(--timon-window-controls-w,0px))] top-3.5 z-20 flex items-center gap-2 timon-window-band-centred">
           {at.step === 'splash' && <MascotStyleToggle />}
           <SchemeSwitch />
         </div>

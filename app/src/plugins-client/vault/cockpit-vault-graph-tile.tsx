@@ -103,7 +103,7 @@ export function CockpitVaultGraphTile({ handle, className }: WidgetProps) {
           full screen placed inside would therefore be contained in the tile, and
           clipped by its `overflow-hidden`. */}
       {fullscreen && createPortal(
-        <div className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4 backdrop-blur-sm">
+        <div className="timon-below-window-band timon-window-layer fixed inset-0 z-50 flex flex-col bg-background/95 p-4 backdrop-blur-sm">
           <NativeViewCover />
           <header className="flex shrink-0 items-center gap-2.5 pb-3">
             <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">

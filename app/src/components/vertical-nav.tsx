@@ -313,7 +313,7 @@ export function VerticalNav({
         aria-hidden
         onClick={() => closeRef.current?.()}
         className={cn(
-          'fixed inset-0 z-[29] bg-background/60 backdrop-blur-sm transition-opacity duration-200 md:hidden',
+          'timon-window-layer fixed inset-0 z-[29] bg-background/60 backdrop-blur-sm transition-opacity duration-200 md:hidden',
           mobileOpen ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
       />
@@ -324,7 +324,7 @@ export function VerticalNav({
         aria-label={t('nav.mainNav')}
         aria-hidden={!mobileOpen}
         className={cn(
-          'fixed right-0 top-0 bottom-0 z-30 flex w-64 max-w-[85vw] flex-col bg-popover shadow-elev-3 transition-transform duration-200 ease-out md:hidden',
+          'timon-below-window-band timon-window-layer fixed right-0 top-0 bottom-0 z-30 flex w-64 max-w-[85vw] flex-col bg-popover shadow-elev-3 transition-transform duration-200 ease-out md:hidden',
           mobileOpen ? 'translate-x-0' : 'translate-x-full',
         )}
       >

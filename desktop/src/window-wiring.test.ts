@@ -14,6 +14,7 @@ import { ViewPool } from './view-pool.js';
 import { machineForDetachedWindow, parseOpenWindowRequest } from './window-open.js';
 import { launchedOtherBuild } from './shell-build.js';
 import { parseWindowSchemeReport } from './appearance.js';
+import { framelessWindowOptions, parseWindowFrameAction, type WindowFrameAction } from './window-frame.js';
 import {
   UI_ZOOM_CHANNELS, UI_ZOOM_STEPS, parseUiZoomSetRequest, parseUiZoomStepRequest, stepUiZoom, zoomShortcut, type UiZoomFactor,
 } from './ui-zoom.js';
@@ -319,6 +320,7 @@ function pageWorld(options: { refuse?: Set<string> } = {}) {
   const windows = new WindowRegistry<unknown, unknown>();
   const children: unknown[] = [];
   const log: string[] = [];
+  const frames: (number | null)[] = [];
   const focusLog: string[] = [];
   let nextId = 100;
   /** The webContents holding the keyboard, as `webContents.getFocusedWebContents()` reports it. */
@@ -341,6 +343,10 @@ function pageWorld(options: { refuse?: Set<string> } = {}) {
     webContents: { getFocusedWebContents: () => (keyboard.holder === null ? null : { id: keyboard.holder }) },
     BrowserWindow: { getFocusedWindow: () => null },
     refreshTitle: async () => {},
+    // The frame state goes to every page of the window: which one is on screen decides who keeps its drag areas.
+    sendWindowFrame: (record: { pages: ViewPool<{ contentsId: number }> }) => {
+      frames.push(record.pages.active?.contentsId ?? null);
+    },
     app: { quit: () => { log.push('quit'); } },
     Promise,
   };
@@ -382,7 +388,7 @@ function pageWorld(options: { refuse?: Set<string> } = {}) {
   const holdQuit = () => (context.windowsHoldQuit as () => boolean)();
   const shown = () => (children as View[]).filter((v) => v.visible).map((v) => v.url);
   const focusPage = (why: string, take: string) => (context.focusActivePage as (r: unknown, w: string, t: string) => void)(record, why, take);
-  return { windows, record, context, children: children as View[], log, focusLog, keyboard, enter, closeWindow, holdQuit, shown, focusPage };
+  return { windows, record, context, children: children as View[], log, frames, focusLog, keyboard, enter, closeWindow, holdQuit, shown, focusPage };
 }
 
 const settled = () => new Promise((resolve) => setImmediate(resolve));
@@ -476,6 +482,7 @@ function windowWiring() {
     windowScheme: () => 'dark', windowBackground: () => '#000000',
     layoutKeeper: { changed: () => {} }, watchDisplays: () => {}, enterMachine: () => null,
     layoutPages: (record: unknown) => { layouts.push(record); },
+    process: { platform: 'win32' }, framelessWindows: true, framelessWindowOptions, sendWindowFrame: () => {},
     setImmediate: (run: Listener) => { timers.push({ kind: 'immediate', delay: 0, run }); },
     setTimeout: (run: Listener, delay: number) => { timers.push({ kind: 'timeout', delay, run }); },
   };
@@ -913,4 +920,59 @@ test('zoom: only a page of a Timon window sizes the interface, and only with a s
   for (const bad of [{ factor: 10 }, { factor: '1.25' }, 1.25, null]) assert.throws(() => set(event(10), bad), /between 0\.5 and 3/);
   for (const bad of [{ direction: 'up' }, 'in', null]) assert.throws(() => step(event(10), bad), /in, out or back/);
   assert.deepEqual(applied, []);
+});
+
+function frameHandlers(windows: ReturnType<typeof fleet>) {
+  const acted: { window: number; action: WindowFrameAction }[] = [];
+  const context: Record<string, unknown> = {
+    windows, canReadAppInfo, parseWindowFrameAction,
+    senderPage: pageFor(windows),
+    senderOf: (e: ReturnType<typeof event>) => ({ isWindow: windows.pageOf(e.sender.id) !== null, isMainFrame: true, url: e.senderFrame.url }),
+    frameStateOf: (record: { id: number }, page: { contentsId: number }) => ({ window: record.id, page: page.contentsId }),
+    runWindowFrameAction: (window: FakeWindow, action: WindowFrameAction) => { acted.push({ window: window.webContents.id, action }); },
+  };
+  const handler = (channel: string) => runInNewContext(compile(`(${handlerOf(channel)})`), context) as (e: unknown, input?: unknown) => unknown;
+  return { get: handler('WINDOW_FRAME_CHANNELS.get'), act: handler('WINDOW_FRAME_CHANNELS.action'), acted };
+}
+
+test('frame: every page of a Timon window reads the state of its window, another machine included', () => {
+  const windows = fleet();
+  const { get } = frameHandlers(windows);
+  assert.deepEqual(get(event(10)), { window: 1, page: 10 });
+  assert.deepEqual(get(event(20)), { window: 2, page: 20 }, 'a page of another machine draws the same bar');
+  assert.throws(() => get(event(1)), /Only a Timon window/, 'the blank webContents of the window');
+  assert.throws(() => get(event(9)), /Only a Timon window/, 'a stranger webContents');
+  assert.throws(() => get(event(10, 'https://evil.example/')), /Only a Timon window/, 'another origin');
+});
+
+test('frame: only the page on screen moves its window, and only with one of three gestures', () => {
+  const windows = fleet();
+  const { act, acted } = frameHandlers(windows);
+  assert.equal(JSON.stringify(act(event(10), { action: 'toggle-maximize' })), '{"done":true}');
+  assert.equal(JSON.stringify(act(event(20), { action: 'close' })), '{"done":true}');
+  assert.deepEqual(acted, [{ window: 1, action: 'toggle-maximize' }, { window: 2, action: 'close' }], 'each page moves its own window');
+  for (const bad of [{ action: 'destroy' }, 'close', null]) assert.throws(() => act(event(10), bad), /minimized, maximized or closed/);
+  assert.throws(() => act(event(10, 'https://evil.example/'), { action: 'close' }), /Only a Timon window/);
+  // Window 1 shows another machine: its first page is hidden, alive, and may no longer close the window.
+  windows.get(1)!.pages.enter('vps', () => ({ contentsId: 11, machineId: 'vps', view: { contents: { id: 11, isDestroyed: () => false } } }));
+  assert.throws(() => act(event(10), { action: 'close' }), /page on screen/);
+  act(event(11), { action: 'minimize' });
+  assert.deepEqual(acted.at(-1), { window: 1, action: 'minimize' });
+});
+
+test('frame: the window is frameless from its creation, and its maximize button follows the window', () => {
+  const create = functionText('createWindow');
+  assert.match(create, /\.\.\.framelessWindowOptions\(process\.platform, framelessWindows\)/);
+  for (const change of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) {
+    assert.ok(create.includes(`w.on('${change}', frameChanged);`), change);
+  }
+});
+
+test('frame: every switch of machine tells the pages which one is on screen, so only it drags the window', () => {
+  const world = pageWorld();
+  const a = world.enter('a', `${ORIGIN}/chat`);
+  const b = world.enter('b', `${ORIGIN}/missions`);
+  assert.deepEqual(world.frames, [a.contentsId, b.contentsId]);
+  world.enter('a', `${ORIGIN}/chat`);
+  assert.equal(world.frames.at(-1), a.contentsId, 'back on a page kept alive');
 });

@@ -92,3 +92,11 @@ test('a later launch keeps its diagnostic, in its own palette', () => {
   assert.match(waitingPage('en', 'dark', 'interface'), /<li class="done">.*Service ready/);
   assert.ok(!waitingPage('en', 'dark', 'interface').includes(FIRST_RUN_THEME.dark.background));
 });
+
+test('a window without a system title bar keeps a strip to move it by, and only then', () => {
+  const frameless = waitingPage('en', 'dark', 'service', false, false, true);
+  assert.match(frameless, /<div class="drag" aria-hidden="true"><\/div>/);
+  assert.match(frameless, /\.drag\{[^}]*-webkit-app-region:drag/);
+  assert.doesNotMatch(waitingPage('en', 'dark', 'service'), /class="drag"/);
+  assert.ok(decodeURIComponent(waitingUrl('en', 'dark', 'failed', false, false, true)).includes('class="drag"'), 'the failure page too');
+});

@@ -2313,6 +2313,14 @@
     "topbarWidgets": "Widgets de la barre du haut",
     "topbarCenterWidgets": "Milieu de la barre du haut"
   },
+  "windowFrame": {
+    "controls": "Boutons de la fenêtre",
+    "minimize": "Réduire",
+    "maximize": "Agrandir",
+    "restore": "Restaurer",
+    "exitFullScreen": "Quitter le plein écran",
+    "close": "Fermer"
+  },
   "widgetCatalog": {
     "jobs": {"title": "Chantiers", "description": "Les chantiers Kanban qui atterrissent par une pull request, rangés par ce qu'ils attendent : état, contrôles, et aperçu du diff avant le push."},
     "botsRail": {

@@ -29,6 +29,9 @@ import { app, BrowserWindow, Menu, Tray, WebContentsView, clipboard, dialog, she
 import { parseWindowSchemeReport, recordMachineScheme, WINDOW_BACKGROUND, WINDOW_SCHEME_CHANNEL, windowScheme, type Scheme } from './appearance.js';
 import { DOCK_ICON_CHANNELS, dockIconPath, parseDockIconRequest, readDockIcon, writeDockIcon, type DockIcon } from './dock-icon.js';
 import {
+  framelessWindowOptions, parseWindowFrameAction, runWindowFrameAction, WINDOW_FRAME_CHANNELS, windowFrameless, windowFrameState, type WindowFrameState,
+} from './window-frame.js';
+import {
   cascadeFrom, placeSavedWindows, readWindowLayout, routeOfUrl, WindowLayoutKeeper, writeWindowLayout, type DisplayArea, type SavedWindow, type WindowOpening,
 } from './window-layout.js';
 import {
@@ -163,6 +166,10 @@ let updateStage: UpdateStage = 'none';
 let desktopHome = '';
 /** The size of the interface on this screen, every page of every window alike; read from `ui-zoom.json` at launch. */
 let currentUiZoom: UiZoomFactor = DEFAULT_UI_ZOOM;
+/** The main windows have no system title bar unless `TIMON_SYSTEM_TITLE_BAR=1`; read once, a window cannot change frames. */
+const framelessWindows = windowFrameless(process.env);
+/** Window id → the machine name its system title carries: the frameless top bar shows it too. */
+const machineNames = new Map<number, string | null>();
 /**
  * A packaged install without `timon.config.json`: the onboarding comes next.
  * The windows then wait in its look rather than with the startup diagnostic.
@@ -366,7 +373,11 @@ async function refreshTitle(record: AppWindow): Promise<void> {
       name = res.ok ? machineNameIn(await res.json().catch(() => null), id) : null;
     }
     // The window may have closed, or moved to another machine, meanwhile.
-    if (!w.isDestroyed() && record.machineId === pinned) w.setTitle(windowTitle(DISPLAY_NAME, name));
+    if (!w.isDestroyed() && record.machineId === pinned) {
+      w.setTitle(windowTitle(DISPLAY_NAME, name));
+      machineNames.set(record.id, name);
+      sendWindowFrame(record);
+    }
   } catch (error) {
     console.log(`[desktop] window title: machine name unavailable (${(error as Error).message})`);
   }
@@ -374,6 +385,24 @@ async function refreshTitle(record: AppWindow): Promise<void> {
 
 /** The webContents of a page. */
 function contentsOf(page: Page): Electron.WebContents { return page.view.view.webContents; }
+
+/** What the top bar of a page of `record` draws in place of the system title bar. */
+function frameStateOf(record: AppWindow, page: Page): WindowFrameState {
+  const w = record.window;
+  return windowFrameState(process.platform, framelessWindows, {
+    maximized: w.isMaximized(), fullScreen: w.isFullScreen(), machineName: machineNames.get(record.id) ?? null,
+    active: record.pages.isActive(page.contentsId),
+  });
+}
+
+/** Every page of the window hears it, hidden ones included: a page put back on screen draws the right button at once. */
+function sendWindowFrame(record: AppWindow): void {
+  if (!framelessWindows || record.window.isDestroyed()) return;
+  for (const page of record.pages.list()) {
+    const contents = contentsOf(page);
+    if (!contents.isDestroyed()) contents.send(WINDOW_FRAME_CHANNELS.changed, frameStateOf(record, page));
+  }
+}
 
 /** The page on screen in a window, with its window. */
 function activeCaller(record: AppWindow | null): Caller | null {
@@ -482,6 +511,8 @@ function showPage(record: AppWindow, page: Page): void {
   record.route = page.view.route;
   layoutPages(record);
   page.view.view.setVisible(true);
+  // The page on screen takes the drag areas back; the one it replaces drops them.
+  sendWindowFrame(record);
   focusActivePage(record, 'shown', 'any');
 }
 
@@ -601,7 +632,7 @@ function createPage(record: AppWindow, machineId: string | null, url: string): P
   // interface once it answers, instead of sitting on its background colour.
   const startup = new StartupView(contents, url, {
     // The machine's mode as recorded now: the account made during onboarding writes it.
-    locale: uiLocale, scheme: () => windowScheme(desktopHome, machineId), firstRun,
+    locale: uiLocale, scheme: () => windowScheme(desktopHome, machineId), firstRun, frameless: framelessWindows,
     probe: probeUi,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     now: Date.now,
@@ -804,6 +835,8 @@ function createWindow(url: string, begin: 'service' | 'interface', opening: Wind
     icon: APP_ICON_PATH,
     backgroundColor: windowBackground(scheme),
     autoHideMenuBar: true,
+    // The top bar of the interface is the title bar (`window-frame.ts`).
+    ...framelessWindowOptions(process.platform, framelessWindows),
     // The window's own webContents stays blank under its pages: no preload, no bridge.
     webPreferences: { sandbox: true, nodeIntegration: false, contextIsolation: true },
   });
@@ -835,6 +868,13 @@ function createWindow(url: string, begin: 'service' | 'interface', opening: Wind
   w.on('unmaximize', relayoutSettled);
   w.on('enter-full-screen', relayoutSettled);
   w.on('leave-full-screen', relayoutSettled);
+  // The drawn maximize button reads "restore" once the window fills the screen, whoever maximized it (the button, a double click on the bar, a snap).
+  const frameChanged = () => sendWindowFrame(record);
+  w.on('maximize', frameChanged);
+  w.on('unmaximize', frameChanged);
+  w.on('enter-full-screen', frameChanged);
+  w.on('leave-full-screen', frameChanged);
+  w.on('restore', frameChanged);
   w.on('restore', relayout);
   w.on('move', () => layoutKeeper?.changed());
   watchDisplays();
@@ -863,6 +903,7 @@ function createWindow(url: string, begin: 'service' | 'interface', opening: Wind
     const owner = browserOwners.get(id);
     if (owner !== undefined) detachBrowser(owner);
     windows.remove(id);
+    machineNames.delete(id);
     // A view's webContents outlives its window: one still there (a window destroyed outright) is closed, unasked.
     for (const page of record.pages.everyPage()) if (!contentsOf(page).isDestroyed()) contentsOf(page).close();
     layoutKeeper?.save();
@@ -2373,6 +2414,24 @@ if (!app.requestSingleInstanceLock({ build: ownBuild } satisfies LaunchData)) {
     if (!report) throw new Error('A mode is light or dark.');
     paintPageScheme(caller, report.scheme);
     return { recorded: recordMachineScheme(desktopHome, caller.page.machineId ?? report.machineId, report.scheme) };
+  });
+
+  // The window's own buttons, drawn in the top bar (`window-frame.ts`). Any
+  // page of the window reads its state, a page of another machine included:
+  // it draws the same bar. Only the page on screen moves or closes the window.
+  ipcMain.handle(WINDOW_FRAME_CHANNELS.get, (event) => {
+    const caller = senderPage(event);
+    if (!caller || !canReadAppInfo(senderOf(event), caller.record.origin)) throw new Error('Only a Timon window reads its frame.');
+    return frameStateOf(caller.record, caller.page);
+  });
+  ipcMain.handle(WINDOW_FRAME_CHANNELS.action, (event, input: unknown) => {
+    const caller = senderPage(event);
+    if (!caller || !canReadAppInfo(senderOf(event), caller.record.origin)) throw new Error('Only a Timon window moves its frame.');
+    if (!caller.record.pages.isActive(caller.page.contentsId)) throw new Error('Only the page on screen moves its window.');
+    const action = parseWindowFrameAction(input);
+    if (!action) throw new Error('A window is minimized, maximized or closed.');
+    runWindowFrameAction(caller.record.window, action);
+    return { done: true };
   });
 
   // The Dock icon (macOS): a preference of this computer's shell, so a page

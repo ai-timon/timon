@@ -192,7 +192,7 @@ function ImageLightbox({ src, name, onClose }: { src: string; name: string; onCl
       role="dialog"
       aria-modal="true"
       aria-label={t('taskForm.attachments.enlarged', { name })}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-6"
+      className="timon-below-window-band fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-6"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); }

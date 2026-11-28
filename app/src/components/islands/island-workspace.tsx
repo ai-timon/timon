@@ -1274,7 +1274,7 @@ export function IslandWorkspaceView({
       )}
       {windowMove.state && typeof document !== 'undefined' && createPortal(
         // Above any iframe or canvas that would swallow the pointer on its way.
-        <div data-island-window-move="" className="fixed inset-0 z-[70] cursor-grabbing" />,
+        <div data-island-window-move="" className="timon-window-layer fixed inset-0 z-[70] cursor-grabbing" />,
         document.body,
       )}
       {drag && canDrop && (

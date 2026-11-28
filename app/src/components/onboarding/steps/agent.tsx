@@ -323,7 +323,7 @@ function ViewSwitcher({ view, recommended, styling, onPick }: {
       data-view-switcher
       className={cn(
         // In the corner from tablets up; above the card on a phone, where the corner is "Back"'s row.
-        'z-[25] mb-3 flex items-center gap-1 self-center rounded-xl bg-card p-1 md:fixed md:right-4 md:top-3.5 md:mb-0',
+        'z-[25] mb-3 flex items-center gap-1 self-center rounded-xl bg-card p-1 md:fixed md:right-[calc(1rem+var(--timon-window-controls-w,0px))] md:top-3.5 md:mb-0 timon-window-band-centred-md',
       )}
     >
       <span className="pl-2 pr-1.5 text-[11.5px] text-muted-foreground">{t('onboarding.agent.views.label')}</span>

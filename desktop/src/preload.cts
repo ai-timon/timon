@@ -65,6 +65,16 @@ contextBridge.exposeInMainWorld('timonDesktop', {
     get: (): Promise<{ icon: string } | null> => ipcRenderer.invoke('timon:dock-icon-get'),
     set: (icon: string): Promise<{ icon: string }> => ipcRenderer.invoke('timon:dock-icon-set', { icon }),
   },
+  // The window's frame (no system title bar): its state, and the three gestures of the buttons the top bar draws.
+  windowFrame: {
+    get: (): Promise<unknown> => ipcRenderer.invoke('timon:window-frame-get'),
+    act: (action: 'minimize' | 'toggle-maximize' | 'close'): Promise<unknown> => ipcRenderer.invoke('timon:window-frame-action', { action }),
+    onChange: (listener: (state: unknown) => void): (() => void) => {
+      const forward = (_event: unknown, payload: unknown): void => listener(payload);
+      ipcRenderer.on('timon:window-frame-changed', forward);
+      return () => { ipcRenderer.removeListener('timon:window-frame-changed', forward); };
+    },
+  },
   // The interface size of this screen, every window alike: a factor, snapped by the shell to one of `steps`.
   // `current`: the factor this page is laid out at now, read from Blink without a round trip.
   zoom: {

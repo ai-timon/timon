@@ -169,7 +169,7 @@ export function MobileAgentList() {
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-[21] md:hidden" role="dialog" aria-modal="true" aria-label={t('mobileAgentList.title')}>
+        <div className="timon-below-window-band fixed inset-0 z-[21] md:hidden" role="dialog" aria-modal="true" aria-label={t('mobileAgentList.title')}>
           {/* Backdrop — tap to close. */}
           <div
             className="absolute inset-0 bg-background/70 backdrop-blur-sm"

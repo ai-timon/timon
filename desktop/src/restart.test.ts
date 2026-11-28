@@ -6,6 +6,7 @@ import { APP_INFO_CHANNEL } from './app-info.js';
 import { ABOUT_CHANNEL } from './about.js';
 import { OPEN_LOGS_CHANNEL } from './diagnostic-dialog.js';
 import { UI_ZOOM_CHANNELS } from './ui-zoom.js';
+import { WINDOW_FRAME_CHANNELS } from './window-frame.js';
 import {
   canRestartFromSetup, handoverKeptMessage, handoverRoute, relaunchOptions, serviceHandover, serviceHandoverNeeded, setupRestarter,
   setupRestartPending, SETUP_HANDOVER_CHANNEL, SETUP_RESTART_CHANNEL, SETUP_RESTART_STATUS_CHANNEL, waitWhileBooting, lateHandover, type WaitClock,
@@ -121,6 +122,11 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
     openWindow: (...args: unknown[]) => Promise<unknown>;
     windowScheme: (...args: unknown[]) => Promise<unknown>;
     dockIcon: { get: (...args: unknown[]) => Promise<unknown>; set: (...args: unknown[]) => Promise<unknown> };
+    windowFrame: {
+      get: (...args: unknown[]) => Promise<unknown>;
+      act: (...args: unknown[]) => Promise<unknown>;
+      onChange: (listener: (state: unknown) => void) => () => void;
+    };
     zoom: {
       current: () => number;
       get: (...args: unknown[]) => Promise<unknown>;
@@ -171,7 +177,7 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
       };
     },
   });
-  assert.deepEqual(Object.keys(bridge), ['selectDirectory', 'selectPluginSource', 'selectExecutable', 'revealPath', 'setupRestartPending', 'restartAfterSetup', 'handOverToService', 'appInfo', 'openLogsFolder', 'openAbout', 'uninstall', 'speech', 'windowMachine', 'windowScheme', 'dockIcon', 'zoom', 'openWindow', 'browser', 'updates', 'tailscale']);
+  assert.deepEqual(Object.keys(bridge), ['selectDirectory', 'selectPluginSource', 'selectExecutable', 'revealPath', 'setupRestartPending', 'restartAfterSetup', 'handOverToService', 'appInfo', 'openLogsFolder', 'openAbout', 'uninstall', 'speech', 'windowMachine', 'windowScheme', 'dockIcon', 'windowFrame', 'zoom', 'openWindow', 'browser', 'updates', 'tailscale']);
   assert.deepEqual(Object.keys(bridge.browser), ['attach', 'detach']);
   // Multi-window V3: an id crosses, nothing else; the main process checks it is one.
   assert.deepEqual(Object.keys(bridge.windowMachine), ['set']);
@@ -191,6 +197,18 @@ test('the sandbox preload exposes narrow restart, directory and browser presenta
   assert.deepEqual(calls.pop(), ['timon:dock-icon-get']);
   await bridge.dockIcon.set('dark', '/Users/example/evil.png');
   assert.equal(JSON.stringify(calls.pop()), '["timon:dock-icon-set",{"icon":"dark"}]');
+  // The window's frame: a gesture's name crosses, nothing else; the main process checks it is one of three.
+  assert.deepEqual(Object.keys(bridge.windowFrame), ['get', 'act', 'onChange']);
+  await bridge.windowFrame.get('untrusted extra option');
+  assert.deepEqual(calls.pop(), [WINDOW_FRAME_CHANNELS.get]);
+  await bridge.windowFrame.act('close', { bounds: { x: 0, y: 0 } });
+  assert.equal(JSON.stringify(calls.pop()), `["${WINDOW_FRAME_CHANNELS.action}",{"action":"close"}]`);
+  const frames: unknown[] = [];
+  const stopFrame = bridge.windowFrame.onChange((state) => frames.push(state));
+  listeners.get(WINDOW_FRAME_CHANNELS.changed)?.({ sender: 'ipc event' }, { maximized: true });
+  assert.deepEqual(frames, [{ maximized: true }], 'the state reaches the page, the IPC event does not');
+  stopFrame();
+  assert.equal(listeners.has(WINDOW_FRAME_CHANNELS.changed), false);
   // The interface size: a number or a direction crosses, nothing else; the main process snaps and checks it.
   const callsBefore = calls.length;
   assert.deepEqual(Object.keys(bridge.zoom), ['current', 'get', 'set', 'step', 'onChange']);

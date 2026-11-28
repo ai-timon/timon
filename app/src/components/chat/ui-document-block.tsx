@@ -600,7 +600,7 @@ function LoadedDocumentFrame({ initialReply, deliverable }: { initialReply?: unk
             ref={boxRef}
             data-ui-document-box=""
             className={fullscreen
-              ? 'fixed inset-0 z-[70] m-0 flex h-full max-h-none w-full max-w-none flex-col gap-2 bg-background p-3'
+              ? 'timon-below-window-band timon-window-layer fixed inset-0 z-[70] m-0 flex h-full max-h-none w-full max-w-none flex-col gap-2 bg-background p-3'
               : 'relative flex w-full min-w-0 flex-col gap-1.5'}
           >
             {fullscreen && (

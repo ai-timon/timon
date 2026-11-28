@@ -250,7 +250,7 @@ export function SeriesGraphDialog<T extends SeriesTask>({
       <DialogPortal>
         <DialogOverlay />
         <DialogPrimitive.Content
-          className="fixed inset-0 left-0 top-0 z-50 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 border-0 bg-background p-0 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          className="timon-below-window-band fixed inset-0 left-0 top-0 z-50 flex h-screen w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 border-0 bg-background p-0 duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
           aria-describedby={undefined}
         >
           <NativeViewCover />
