@@ -2,6 +2,8 @@ import { LicenseCapabilityError } from '../license/capabilities.js';
 import { dbApi } from '../db.js';
 import { mutationLicenseState } from '../license/runtime.js';
 import { accountProviderHolder } from './account-provider-state.js';
+import { config } from '../config/load.js';
+import { PLUGIN_OWNER_PREFIX } from './api-tokens.js';
 
 /**
  * Whether accounts beyond the first superadmin can be served: an account
@@ -17,6 +19,13 @@ export function multiUserServed(): boolean {
  * and multi-user served; both back, they get their access back as they were. */
 export function freeAccountAllowed(userId: string): boolean {
   if (dbApi.getActiveSuperadmin()?.id === userId) return true;
+  // `plugin:<id>` owns the missions a plugin's background job starts (a bot, a bridge). It is not another
+  // person, and the operator already decided whether that plugin may spawn (`pluginPolicy.spawn.approved`),
+  // so a free install must not refuse it as "a second account".
+  // Only ever widens access: an owner that is not approved falls through to the account rule below.
+  if (userId.startsWith(PLUGIN_OWNER_PREFIX) && config().pluginPolicy.spawn.approved.includes(userId.slice(PLUGIN_OWNER_PREFIX.length))) {
+    return true;
+  }
   return !mutationLicenseState().localFree && multiUserServed();
 }
 
