@@ -324,7 +324,7 @@ export class ComputerUseService {
       case 'a11y_tree': return this.a11yTree(actor, platform, display, command, access);
       case 'a11y_action': return this.a11yAction(actor, platform, command, access, display);
       case 'a11y_probe_app': return this.probeApp(display, command.windowId);
-      case 'screenshot': return this.screenshot(actor, platform, display, command, allowedApps);
+      case 'screenshot': return this.screenshot(actor, platform, display, command, access);
       case 'cursor_position': {
         const point = this.deps.cursor();
         return pointsToImage(display, this.currentFrame(display), point.x, point.y);
@@ -502,14 +502,14 @@ export class ComputerUseService {
    * must be allowed in the foreground mode, as for the screen: the capture is a crop of the screen.
    */
   private async captureWindow(
-    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, windowId: string, allowedApps: readonly AllowedApp[],
+    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, windowId: string, access: AppAccess,
   ): Promise<{ region: Region; window: { id: string; title: string; app: string } }> {
     const front = windowId === FRONT_WINDOW;
     let entry;
     try { entry = await findWindow(platform, this.deps.exec, front ? null : windowId); }
     catch { throw new ComputerCommandError('Listing the windows failed.', 502, 'windows_failed'); }
     if (!entry) throw new ComputerCommandError(front ? 'No window is in front.' : 'No open window has this id.', 404, 'window_not_found');
-    if (actor === 'agent') await this.requireForeground(entry.identity, allowedApps, 'The application of that window');
+    if (actor === 'agent') await this.requireForeground(entry.identity, access, 'The application of that window');
     let bounds;
     try { bounds = await windowBounds(platform, this.deps.exec, entry, display.scaleFactor); }
     catch { throw new ComputerCommandError('Reading the window\'s position failed.', 502, 'windows_failed'); }
@@ -521,9 +521,9 @@ export class ComputerUseService {
   }
 
   private async screenshot(
-    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, command: Extract<ComputerCommand, { command: 'screenshot' }>, allowedApps: readonly AllowedApp[],
+    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, command: Extract<ComputerCommand, { command: 'screenshot' }>, access: AppAccess,
   ): Promise<unknown> {
-    const target = command.windowId ? await this.captureWindow(actor, platform, display, command.windowId, allowedApps) : null;
+    const target = command.windowId ? await this.captureWindow(actor, platform, display, command.windowId, access) : null;
     const size = screenshotSize(display, command.maxWidth, target?.region);
     const png = await this.deps.capture(size, target?.region);
     if (!png || png.length === 0) throw new ComputerCommandError('Computer use is unavailable: permission-screen.', 503, 'computer_unavailable');
