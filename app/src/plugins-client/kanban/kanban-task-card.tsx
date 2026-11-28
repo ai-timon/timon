@@ -3,6 +3,7 @@
 import { Clock, GitMerge, Network, Paperclip, ShieldAlert, Square, SquareArrowOutUpRight } from 'lucide-react';
 import { BoardCard } from '@/components/board-card';
 import { ChatLink } from '@/components/chat/chat-link';
+import { LinkifiedText } from '@/components/linkified-text';
 import { RoleBadge } from '@/components/role-badge';
 import { StatusLabel } from '@/components/task-form/task-form-parts';
 import { ActiveAgentAvatar, AgentAvatar, type AgentIdentity } from '@/components/agent-avatar';
@@ -164,12 +165,12 @@ export function KanbanTaskCard({
         <div className="flex items-center gap-1.5 text-[11px] text-warning">
           <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] uppercase tabular-nums">{t.interrupted_reason}</span>
           <span className="text-muted-foreground">
-            {interruptionLabel(t.interrupted_reason)}
+            <LinkifiedText text={interruptionLabel(t.interrupted_reason)} />
           </span>
         </div>
       )}
       {t.blocked_reason && (
-        <div className="rounded bg-destructive/10 px-2 py-1 text-[11.5px] text-destructive">{daemonMessageText(t.blocked_reason_code, t.blocked_reason)}</div>
+        <div className="rounded bg-destructive/10 px-2 py-1 text-[11.5px] text-destructive"><LinkifiedText text={daemonMessageText(t.blocked_reason_code, t.blocked_reason)} /></div>
       )}
     </>
   ) : null;
