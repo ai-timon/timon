@@ -2721,6 +2721,8 @@ export type MissionRow = {
   /** Workflow node that spawned the mission. NULL outside a workflow run. */
   workflow_run_id: string | null;
   workflow_node_id: string | null;
+  /** A person participated in this conversation or a prior turn it resumed. */
+  user_engaged: number;
   /** 1 while the mission sits idle after ignoring every closure question, 2 once the idle reap took it (see the column). */
   closure_ignored: number;
   /** Retention in days that deleted the history; NULL while nothing was deleted (see the column). */
