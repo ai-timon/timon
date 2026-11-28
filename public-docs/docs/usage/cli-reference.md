@@ -151,12 +151,14 @@ Tasks (Kanban backlog):
                    [--extra-skills s1,s2] [--extra-mcp mcp1,mcp2]
                    [--allow "Bash(timon:*),Read(/tmp/*)"]
   timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--summary TEXT]
-  timon task block <id> --reason TEXT
+  timon task block <id> --reason TEXT [--awaiting-user]
+                                               --awaiting-user: the task waits only for a person (the board shows "Waiting for you")
   timon task mark-as-done [id] --comment TEXT|--comment-file PATH|--comment-stdin [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]
                                                closes THE current mission's task (no id to copy)
   timon task mark-merged <id> --sha SHA [--comment TEXT]
                                                branch merged outside Timon: records its merge commit
-  timon task mark-as-failed [id] --reason TEXT closes it as BLOCKED
+  timon task mark-as-failed [id] --reason TEXT [--awaiting-user]
+                                               closes it as BLOCKED (--awaiting-user: waits only for a person)
   timon task attach <id> --series ID|current   attaches the task's chain (root, reviews, merge, doc)
                                                to a series and its pilot; current = this mission
   timon task update <id> [--status ...] [--priority N] [--title ...] [--agent ...] [--type ...]
@@ -760,16 +762,16 @@ usage: timon task mark-as-done [id] --comment TEXT | --comment-file PATH | --com
        [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]
 ```
 
-### timon task mark-as-failed [id] --reason TEXT
+### timon task mark-as-failed [id] --reason TEXT [--awaiting-user]
 
 ```text
-usage: timon task mark-as-failed [id] --reason TEXT
+usage: timon task mark-as-failed [id] --reason TEXT [--awaiting-user]
 ```
 
 ### timon task block id --reason ...
 
 ```text
-usage: timon task block <id> --reason ...
+usage: timon task block <id> --reason ... [--awaiting-user]
 ```
 
 ### timon task update id [--status ...] [--priority N] [--title ...] …

@@ -3,10 +3,12 @@
 import { Clock, GitMerge, Network, Paperclip, ShieldAlert, Square, SquareArrowOutUpRight } from 'lucide-react';
 import { BoardCard } from '@/components/board-card';
 import { ChatLink } from '@/components/chat/chat-link';
+import { LinkifiedText } from '@/components/linkified-text';
 import { RoleBadge } from '@/components/role-badge';
 import { StatusLabel } from '@/components/task-form/task-form-parts';
 import { ActiveAgentAvatar, AgentAvatar, type AgentIdentity } from '@/components/agent-avatar';
 import { daemonMessageText } from '@/lib/api-error';
+import { isAwaitingUser } from '@/lib/kanban-filters';
 import { chatHref } from '@/lib/chat-island-params';
 import { t as i18n } from '@/lib/i18n';
 import { INTERRUPTION_LABEL_KEYS } from '@/lib/interruption-labels';
@@ -26,6 +28,7 @@ import { hasSeriesGraph } from '@/lib/series-graph';
 import { taskRunAgent } from '@/lib/task-runner';
 import { cn } from '@/lib/utils';
 import type { CatalogTarget } from '@/components/model-picker';
+import { MergeRequestChip } from './merge-request-chip';
 import { MetaBadge, ProgressBadge, UrgencyBadge } from './project-todo-tag-chips';
 import type { ProjectTodo } from './project-todo-types';
 import { TaskLinksBadge } from './task-links-badge';
@@ -118,15 +121,26 @@ export function KanbanTaskCard({
     </>
   );
 
+  // A block on a person is not a breakdown: amber, never the red of a failure.
+  const awaitingUser = t.status === 'BLOCKED' && isAwaitingUser(t);
+
   // The status repeats the column on purpose: the tile reads the same once a
   // plugin or a filter shows it elsewhere.
   const badges = (
     <>
       {t.type && <RoleBadge role={t.type} size="sm" uppercase={false} />}
-      <span data-task-status={t.status} className="text-[11px] text-muted-foreground">
-        <StatusLabel status={t.status} />
-      </span>
+      {awaitingUser ? (
+        <span data-task-status={t.status} data-awaiting-user="" className="inline-flex items-center gap-1.5 text-[11px] font-medium text-warning">
+          <i className="size-1.5 flex-none rounded-full bg-warning" aria-hidden />
+          {i18n('kanbanPage.awaitingUser')}
+        </span>
+      ) : (
+        <span data-task-status={t.status} className="text-[11px] text-muted-foreground">
+          <StatusLabel status={t.status} />
+        </span>
+      )}
       {t.run_by && <TaskRunnerBadge named={t.agent_name} runBy={t.run_by} />}
+      <MergeRequestChip task={t} />
       {todo && (
         <>
           <MetaBadge title={i18n('kanbanPage.card.todoLink')}>#{todo.id}</MetaBadge>
@@ -163,13 +177,11 @@ export function KanbanTaskCard({
       {t.interrupted_reason && (
         <div className="flex items-center gap-1.5 text-[11px] text-warning">
           <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] uppercase tabular-nums">{t.interrupted_reason}</span>
-          <span className="text-muted-foreground">
-            {interruptionLabel(t.interrupted_reason)}
-          </span>
+          <span className="text-muted-foreground">{interruptionLabel(t.interrupted_reason)}</span>
         </div>
       )}
       {t.blocked_reason && (
-        <div className="rounded bg-destructive/10 px-2 py-1 text-[11.5px] text-destructive">{daemonMessageText(t.blocked_reason_code, t.blocked_reason)}</div>
+        <div className={cn('rounded px-2 py-1 text-[11.5px]', awaitingUser ? 'bg-warning/10 text-warning' : 'bg-destructive/10 text-destructive')}><LinkifiedText text={daemonMessageText(t.blocked_reason_code, t.blocked_reason)} /></div>
       )}
     </>
   ) : null;
@@ -273,7 +285,7 @@ export function KanbanTaskCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onOpen={onOpen}
-      tone={running ? 'running' : t.status === 'BLOCKED' ? 'blocked' : 'default'}
+      tone={running ? 'running' : awaitingUser ? 'awaiting' : t.status === 'BLOCKED' ? 'blocked' : 'default'}
       dragging={dragging}
       className={cn((t.status === 'PENDING' || t.status === 'BLOCKED') && 'active:cursor-grabbing')}
       identity={identity}

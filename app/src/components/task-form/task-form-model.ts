@@ -45,6 +45,12 @@ export type TaskFormSource = {
   /** The report the agent closed the task with. */
   done_comment?: string | null;
   mission_id?: string | null;
+  /** The pull / merge request the task opened (all null when none). */
+  mr_url?: string | null;
+  mr_forge?: 'github' | 'gitlab' | null;
+  mr_number?: number | null;
+  mr_state?: 'open' | 'merged' | 'closed' | null;
+  mr_pipeline?: string | null;
   /** The card a running task's mission waits on, as the task route reads it (TODO #1200). */
   pending_permission?: PendingPermission | null;
 };

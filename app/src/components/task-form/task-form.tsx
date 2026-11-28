@@ -17,6 +17,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type Keyboard
 import { toast } from 'sonner';
 import { ShieldAlert, ShieldCheck, Shuffle, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { MergeRequestChip } from '@/plugins-client/kanban/merge-request-chip';
 import { cn } from '@/lib/utils';
 import { t } from '@/lib/i18n';
 import { resolveRole } from '@/lib/roles';
@@ -524,6 +525,11 @@ function TaskForm({ host }: { host: TaskFormValue }): ReactElement {
             )}
             {isEdit && task.worktree_path && canDetachWorktree(task) && (
               <WorktreeDetachSection taskId={task.id} path={task.worktree_path} branch={task.branch_name} onDetached={host.finish} />
+            )}
+            {isEdit && task.mr_url && (
+              <Field label={t('kanbanPage.mergeRequest.label')}>
+                <div><MergeRequestChip task={task} className="h-6 text-[12px]" /></div>
+              </Field>
             )}
             <DescriptionField id={ids.description} value={form.description} onChange={(v) => update('description', v)} />
             {isEdit && task.done_comment && (

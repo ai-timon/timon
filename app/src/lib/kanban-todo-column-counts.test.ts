@@ -13,7 +13,7 @@ const page = Array.from({ length: 200 }, (_, n) => ({
   id: n + 1, text: `idea ${n + 1}`, urgency: null, status: 'open', project: 'timon', author: null, notes: null, progress: null,
 }));
 
-async function mount(filters: { agent: string; project: string; q: string }, calls: string[]) {
+async function mount(filters: { agent: string; project: string; q: string; mine: boolean }, calls: string[]) {
   const { JSDOM } = await import('jsdom');
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
   const install = (key: string, value: unknown) => {
@@ -50,7 +50,7 @@ async function mount(filters: { agent: string; project: string; q: string }, cal
 
 test('the column shows the daemon\'s count of open ideas and says the page is cut', async () => {
   const calls: string[] = [];
-  const { React, root } = await mount({ agent: '*', project: 'timon', q: '' }, calls);
+  const { React, root } = await mount({ agent: '*', project: 'timon', q: '', mine: false }, calls);
   // The board's project narrows on the daemon's side.
   assert.deepEqual(calls, ['/api/ui/project-todo?status=open&project=timon&limit=500']);
   const header = document.querySelector('section')!.textContent!;
@@ -62,7 +62,7 @@ test('the column shows the daemon\'s count of open ideas and says the page is cu
 
 test('a keyword counts the rows it keeps', async () => {
   const calls: string[] = [];
-  const { React, root } = await mount({ agent: '*', project: '*', q: 'idea 12' }, calls);
+  const { React, root } = await mount({ agent: '*', project: '*', q: 'idea 12', mine: false }, calls);
   assert.deepEqual(calls, ['/api/ui/project-todo?status=open&limit=500']);
   // "idea 12" and "idea 120 … 129": eleven cards.
   assert.equal(document.querySelectorAll('article').length, 11);

@@ -390,6 +390,19 @@ export function KanbanClient({ defaultAgent }: { defaultAgent?: string }) {
               className="h-8 w-48 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/70"
             />
           </label>
+          <button
+            type="button"
+            aria-pressed={filters.mine}
+            title={i18n('kanbanPage.filterMineTitle')}
+            onClick={() => changeFilters({ ...filters, mine: !filters.mine })}
+            className={cn(
+              controlClass,
+              'text-[12.5px] font-medium',
+              filters.mine ? 'bg-warning/15 text-warning' : 'text-muted-foreground',
+            )}
+          >
+            {i18n('kanbanPage.filterMine')}
+          </button>
           {isFiltered(filters) && (
             <Button
               variant="ghost"

@@ -1581,6 +1581,9 @@
     "filterAll": "tous",
     "filterSearch": "Recherche",
     "filterSearchPlaceholder": "Rechercher une task…",
+    "filterMine": "À moi d'agir",
+    "filterMineTitle": "Seulement les tâches qui t'attendent : une action à faire ou une permission à accorder",
+    "awaitingUser": "En attente de toi",
     "resetFilters": "Réinitialiser les filtres",
     "modelChange": "Changer le modèle (actuellement {model})",
     "modelSaveFailed": "Impossible de changer le modèle : {error}",
@@ -1601,6 +1604,16 @@
       "doneEmpty": "Rien de terminé pour l'instant",
       "blocked": "Bloqué",
       "blockedEmpty": "Rien de bloqué"
+    },
+    "mergeRequest": {
+      "label": "Pull / merge request",
+      "open": "Ouvrir {label} dans un nouvel onglet",
+      "pipeline": "pipeline {status}",
+      "state": {
+        "open": "ouverte",
+        "merged": "fusionnée",
+        "closed": "fermée"
+      }
     },
     "card": {
       "running": "En cours",
