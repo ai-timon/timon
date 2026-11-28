@@ -18,6 +18,8 @@
 import type { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { apiError } from '../../api-error.js';
+import { dbApi } from '../../db.js';
+import { parseMergeRequestUrl } from '../../merge-request.js';
 import { MAX_PLAN_BRANCH_CHARS } from '../../plan-landing.js';
 import { openPullRequest, type PrOpenDeps, type PrOpenRefusalCode } from '../../pr-open.js';
 import { prepareSeriesBranch, type SeriesBranchDeps, type SeriesBranchRefusalCode } from '../../series-integration.js';
@@ -96,6 +98,11 @@ export function registerPrRoutes(app: Router, deps: PrOpenDeps & SeriesBranchDep
       return;
     }
     auditRequest(req, 'integration.pr_opened', `${out.repository}#${out.pr.number}`);
+    // The task that asked for the pull request carries it as data, so its card shows a chip.
+    const opened = target === 'task' ? parseMergeRequestUrl(out.pr.url) : null;
+    if (opened && dbApi.getTask(params.data.id)) {
+      dbApi.setTaskMergeRequest(params.data.id, { ...opened, state: 'open', pipeline: null });
+    }
     res.json(out);
   };
   app.post('/api/tasks/:id/pull-request', handler('task'));

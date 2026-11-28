@@ -1991,6 +1991,11 @@ db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_todo_id ON tasks(todo_id)`);
 // sentences). Shown on the return card in the chat; `done_comment` stays the
 // full report for the pilot. Rewritten on every close, NULL when absent.
 if (!taskCols.includes('done_summary')) db.exec(`ALTER TABLE tasks ADD COLUMN done_summary TEXT`);
+// The pull / merge request a task opened, as data (merge-request.ts): the board
+// shows a chip instead of a URL inside `blocked_reason`. All NULL when none.
+for (const [name, type] of [['mr_url', 'TEXT'], ['mr_forge', 'TEXT'], ['mr_number', 'INTEGER'], ['mr_state', 'TEXT'], ['mr_pipeline', 'TEXT']] as const) {
+  if (!taskCols.includes(name)) db.exec(`ALTER TABLE tasks ADD COLUMN ${name} ${type}`);
+}
 // First dispatch of the task (TODO #424): set once, never cleared, so a requeue
 // or a restart of the same task does not announce it a second time. Tasks that
 // already ran when this column appeared are stamped with their last move, or a
@@ -2478,6 +2483,12 @@ export type TaskRow = {
   branch_name: string | null;
   base_branch: string | null;
   merged_commit_sha: string | null;
+  /** The pull / merge request the task opened (`merge-request.ts`); null columns when none. */
+  mr_url: string | null;
+  mr_forge: 'github' | 'gitlab' | null;
+  mr_number: number | null;
+  mr_state: 'open' | 'merged' | 'closed' | null;
+  mr_pipeline: string | null;
   backend_override: string | null;
   model_override: string | null;
   fallback_backend_override: string | null;
@@ -3265,6 +3276,10 @@ const detachTaskWorktreeStmt = db.prepare(
 );
 const setTaskMergedShaStmt = db.prepare(
   `UPDATE tasks SET merged_commit_sha = ?, updated_at = ? WHERE id = ?`,
+);
+const setTaskMergeRequestStmt = db.prepare(
+  `UPDATE tasks SET mr_url = @url, mr_forge = @forge, mr_number = @number, mr_state = @state,
+     mr_pipeline = @pipeline, updated_at = @now WHERE id = @id`,
 );
 // Appended, never prepended: the first line of a review's comment is its verdict.
 const appendTaskDoneCommentStmt = db.prepare(
@@ -5939,6 +5954,9 @@ export const dbApi = {
   },
   /** `null` clears the sha: it then designates a merge judged incorrect, and the
    *  close guard must demand the one from the repair (see merge-integrity). */
+  setTaskMergeRequest(id: string, ref: { url: string; forge: string; number: number; state: string; pipeline: string | null }): void {
+    setTaskMergeRequestStmt.run({ ...ref, now: Date.now(), id });
+  },
   setTaskMergedSha(id: string, sha: string | null): void {
     setTaskMergedShaStmt.run(sha, Date.now(), id);
   },
