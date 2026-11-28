@@ -490,6 +490,11 @@
       "description": "A built-in terminal keeps running when its window closes or the phone locks, so a long command finishes. With no window attached for this long, its shell is killed.",
       "unit": "min"
     },
+    "TIMON_COMMAND_RUN_TIMEOUT_SEC": {
+      "label": "Time limit of an allowed command",
+      "description": "When you click Allow on a command card, Timon runs the command itself and stops it (with what it started) after this long. The card then shows the code and the end of the output.",
+      "unit": "s"
+    },
     "TIMON_TERMINAL_WEB_SHELL": {
       "label": "Built-in terminal shell",
       "description": "Executable started in each built-in terminal. Empty: your login shell (PowerShell on Windows)."

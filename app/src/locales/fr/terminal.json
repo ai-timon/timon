@@ -58,20 +58,25 @@
       "copied": "Commande copiée dans le presse-papiers.",
       "hint": "Collée sans Entrée : relis-la, puis valide toi-même avec Entrée.",
       "state": {
-        "allow": "Autorisée : l'agent la lance",
+        "allow": "Autorisée : Timon l'exécute",
         "paste": "Collée dans un terminal",
-        "deny": "Ignorée"
+        "deny": "Ignorée",
+        "running": "Autorisée : en cours d'exécution…",
+        "ran": "Exécutée, code {code} ({seconds} s)",
+        "timedOut": "Exécutée, arrêtée après {seconds} s (limite de temps)",
+        "notRun": "Autorisée, mais elle n'a pas pu s'exécuter"
       },
       "errors": {
         "forbidden": "Ton compte ne peut pas ouvrir de terminal : rien n'a été collé.",
         "not_found": "Cette demande n'existe plus.",
         "already_decided": "Cette demande a déjà été tranchée.",
-        "not_offered": "Ce choix n'est plus proposé : l'agent ne peut plus lancer la commande.",
+        "not_offered": "Ce choix n'est plus proposé pour cette commande.",
         "failed": "Ta décision n'a pas pu être enregistrée. Réessaie."
       },
       "windowRefused": "Décision enregistrée, mais le terminal de {scope} n'est pas à l'écran. Ouvre une conversation de {scope} pour l'y coller ; la commande est dans ton presse-papiers.",
       "windowRefusedNoClipboard": "Décision enregistrée, mais le terminal de {scope} n'est pas à l'écran. Ouvre une conversation de {scope}, puis copie la commande depuis la carte.",
-      "pendingBadge": "{count, plural, one {# commande} other {# commandes}} en attente de ta décision"
+      "pendingBadge": "{count, plural, one {# commande} other {# commandes}} en attente de ta décision",
+      "output": "Sortie"
     }
   }
 }

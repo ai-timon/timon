@@ -1,7 +1,6 @@
 /**
  * The card of a command an agent asks the user to decide: its buttons are the
- * daemon's choices (three on a backend that can run it mid-turn, two on a
- * sandboxed one), "Paste into a terminal" records the decision before it
+ * daemon's choices (a plugin's card has two, an agent's three), "Paste into a terminal" records the decision before it
  * opens the terminal, and a decided card shows its outcome, not its buttons.
  */
 import assert from 'node:assert/strict';
@@ -13,7 +12,7 @@ import type { TerminalOpenRequest } from '@/lib/terminal-web';
 const request = (over: Partial<CommandRequestView> = {}): CommandRequestView => ({
   id: 'r1', missionId: 'm1', agent: 'timon.coder', command: 'sudo systemctl restart nginx', note: null,
   sessionId: null, project: 'timon', missionTitle: 'Fix nginx', taskId: null,
-  choices: ['allow', 'paste', 'deny'], status: 'pending', createdAt: 1, resolvedAt: null, ...over,
+  choices: ['allow', 'paste', 'deny'], status: 'pending', createdAt: 1, resolvedAt: null, run: null, running: false, ...over,
 });
 
 type Call = { method: string; url: string; body?: unknown };
@@ -67,7 +66,7 @@ async function mount(ctx: TestContext, listed: CommandRequestView[] = []) {
   return { render, buttons, click, until, calls, opened, refuse: () => { accept = false; } };
 }
 
-test('three choices where the agent can run the command itself, two on a sandboxed backend', async (t) => {
+test('three choices on an agent\'s card, two on a plugin\'s', async (t) => {
   const w = await mount(t);
   await w.render(request());
   assert.deepEqual(w.buttons(), ['allow', 'paste', 'deny']);
@@ -82,7 +81,7 @@ test('a replayed card takes the buttons the daemon offers now', async (t) => {
   const w = await mount(t, [request({ choices: ['paste', 'deny'] })]);
   await w.render(request());
   await w.until(() => w.buttons().length === 2, 'the daemon\'s current choices');
-  assert.deepEqual(w.buttons(), ['paste', 'deny'], 'allow is gone: the agent can no longer run it');
+  assert.deepEqual(w.buttons(), ['paste', 'deny'], 'the daemon narrowed the choices');
   assert.equal(w.calls[0]?.url, '/api/ui/terminal/web/proposals?mission_id=m1&limit=500');
 });
 
@@ -125,4 +124,29 @@ test('reloaded, a decided card shows its outcome and asks nothing of the daemon'
   assert.deepEqual(w.buttons(), []);
   assert.match(document.body.textContent ?? '', /Pasted into a terminal/);
   assert.equal(w.calls.length, 0, 'no reconciliation for a decided card');
+});
+
+test('an allowed command shows its exit code, with the output folded away', async (t) => {
+  const w = await mount(t);
+  await w.render(request({
+    status: 'allow', resolvedAt: 2,
+    run: { exitCode: 3, timedOut: false, output: 'boom: it failed', durationMs: 1200, notRun: false },
+  }));
+  assert.deepEqual(w.buttons(), []);
+  assert.match(document.body.textContent ?? '', /Executed, code 3 \(1\.2 s\)/);
+  const details = document.querySelector('details');
+  assert.ok(details, 'the output is a collapsible block');
+  assert.equal(details!.open, false);
+  assert.match(details!.textContent ?? '', /boom: it failed/);
+});
+
+test('an allowed command still running, stopped by the time limit, or never started', async (t) => {
+  const w = await mount(t);
+  await w.render(request({ status: 'allow', resolvedAt: 2, running: true }));
+  assert.match(document.body.textContent ?? '', /running/);
+  await w.render(request({ id: 'r2', status: 'allow', resolvedAt: 2, run: { exitCode: null, timedOut: true, output: '', durationMs: 120000, notRun: false } }));
+  assert.match(document.body.textContent ?? '', /stopped after 120\.0 s/);
+  assert.equal(document.querySelector('details'), null, 'no output, nothing to unfold');
+  await w.render(request({ id: 'r3', status: 'allow', resolvedAt: 2, run: { exitCode: null, timedOut: false, output: 'not run: outside', durationMs: 0, notRun: true } }));
+  assert.match(document.body.textContent ?? '', /could not run/);
 });
