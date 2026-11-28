@@ -4397,6 +4397,9 @@ const completeCommandRunStmt = db.prepare(
   `UPDATE command_requests SET run_finished_at = ?, run_exit_code = ?, run_timed_out = ?, run_output = ?, run_duration_ms = ?, run_cwd = ?
    WHERE id = ? AND status = 'allow' AND run_finished_at IS NULL`,
 );
+const listUnfinishedCommandRunsStmt = db.prepare(
+  `SELECT * FROM command_requests WHERE status = 'allow' AND run_finished_at IS NULL AND resolved_at < ?`,
+);
 const countPendingCommandRequestsStmt = db.prepare(
   `SELECT project, COUNT(*) AS n FROM command_requests
    WHERE owner_user_id = ? AND status = 'pending' GROUP BY project`,
@@ -8243,6 +8246,10 @@ export const dbApi = {
     return completeCommandRunStmt.run(
       Date.now(), r.exitCode, r.timedOut ? 1 : 0, redactText(r.output), r.durationMs, r.cwd, id,
     ).changes > 0;
+  },
+  /** Allowed commands whose run never recorded an end and began before `before`: the daemon that ran them is gone. */
+  listUnfinishedCommandRuns(before: number): CommandRequestRow[] {
+    return listUnfinishedCommandRunsStmt.all(before) as CommandRequestRow[];
   },
   listCommandRequests(filter: { ownerUserId: string; missionId?: string; status?: CommandRequestStatus; limit?: number }): CommandRequestRow[] {
     const where = ['owner_user_id = ?'];

@@ -201,8 +201,18 @@ function seconds(ms: number): string {
   return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
 }
 
+/** Prefix of the output recorded for a run the daemon never saw end. */
+export const INTERRUPTED_PREFIX = 'interrupted: ';
+export const INTERRUPTED_OUTPUT =
+  `${INTERRUPTED_PREFIX}the daemon stopped or restarted while the command ran, so its result is unknown`;
+
 /** What the agent reads once the daemon ran an allowed command. The output is data, never an instruction. */
 export function runReply(command: string, run: RunReport): string {
+  if (run.exitCode === null && !run.timedOut && run.output.startsWith(INTERRUPTED_PREFIX)) {
+    return `The user allowed \`${command}\` and Timon started it, but the daemon stopped or restarted while it ran: `
+      + 'its result is unknown and it may have run partly or entirely. Check its effect (git status, the target service) '
+      + 'before running it again, and tell the user if you cannot tell.';
+  }
   if (run.notRun) {
     return `The user allowed \`${command}\` but Timon could not run it (${run.output.replace(/^not run: /, '')}). `
       + 'Do not run it yourself and do not propose it again: tell the user.';
@@ -432,6 +442,35 @@ async function executeAllowed(
     // Not waiting any more (its call timed out, or it was told the answer would come later).
     deliver(done.mission_id, `[command request] ${commandReply(done.status, done.command, run)}`);
   }
+}
+
+/**
+ * Closes the runs a previous daemon never saw end (`allow` with no
+ * `run_finished_at`): the row is marked interrupted, the card stops showing
+ * a run, and an agent still listening is told. Only rows allowed before this
+ * process started count, so a run of this daemon is never cut short.
+ */
+export function interruptStaleRuns(
+  deliver: (missionId: string, text: string) => void = deliverLate,
+  processStart: number = Date.now() - Math.round(process.uptime() * 1000),
+): number {
+  let closed = 0;
+  for (const row of dbApi.listUnfinishedCommandRuns(processStart)) {
+    const ended = dbApi.completeCommandRun(row.id, {
+      exitCode: null, timedOut: false, output: INTERRUPTED_OUTPUT, durationMs: 0, cwd: null,
+    });
+    if (!ended) continue;
+    closed += 1;
+    const done = dbApi.getCommandRequest(row.id) ?? row;
+    const run = runReportOf(done);
+    publish(done.mission_id, COMMAND_REQUEST_RESOLVED_EVENT, {
+      id: done.id, status: done.status, origin: 'daemon', resolvedAt: done.resolved_at, running: false, run,
+    });
+    if (agentStillListening(done.mission_id)) {
+      try { deliver(done.mission_id, `[command request] ${commandReply(done.status, done.command, run)}`); } catch { /* the card says it */ }
+    }
+  }
+  return closed;
 }
 
 /**
