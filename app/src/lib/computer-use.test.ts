@@ -155,3 +155,29 @@ test('the probe of an open window goes through the UI proxy with its window id o
   assert.equal(uiComputerBody('a11y_probe_app', null), null);
   assert.deepEqual(uiComputerBody('list_windows', { windowId: '1' }), {}, 'no other command forwards a body');
 });
+
+test('the default exclusions are the daemon\'s, name for name', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const { DEFAULT_EXCLUDED_APPS } = await import('./computer-use');
+  const source = readFileSync(join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..', 'orchestrator', 'src', 'agent-config.ts'), 'utf8');
+  const start = source.indexOf('DEFAULT_COMPUTER_USE_EXCLUDED_APPS: readonly string[] = Object.freeze([');
+  assert.ok(start > 0, 'the daemon list is where this test reads it');
+  const block = source.slice(start, source.indexOf(']);', start));
+  const daemon = [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  assert.deepEqual([...DEFAULT_EXCLUDED_APPS], daemon);
+  assert.ok(daemon.includes('KeePassXC') && daemon.includes('Timon') && daemon.includes('gnome-terminal'));
+});
+
+test('excluded applications: the defaults when absent, null on save while unchanged, the names once edited', async () => {
+  const { DEFAULT_EXCLUDED_APPS, excludedAppsToSave, isDefaultExcludedApps, normalizeExcludedApps } = await import('./computer-use');
+  assert.deepEqual(normalizeExcludedApps(undefined), [...DEFAULT_EXCLUDED_APPS]);
+  assert.deepEqual(normalizeExcludedApps([' Slack ', 'slack', '', 3, 'Terminal']), ['Slack', 'Terminal']);
+  assert.deepEqual(normalizeExcludedApps([]), [], 'an empty list a person chose stays empty');
+  assert.equal(isDefaultExcludedApps([...DEFAULT_EXCLUDED_APPS].reverse().map((app) => app.toUpperCase())), true, 'order and case apart');
+  assert.equal(excludedAppsToSave([...DEFAULT_EXCLUDED_APPS]), null);
+  assert.deepEqual(excludedAppsToSave(['Slack']), ['Slack']);
+  assert.deepEqual(excludedAppsToSave([]), []);
+  assert.notEqual(excludedAppsToSave(DEFAULT_EXCLUDED_APPS.slice(1)), null, 'one entry removed is an edit');
+});

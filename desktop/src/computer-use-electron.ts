@@ -1,12 +1,15 @@
 /**
- * Electron half of computer use: screen capture, the global stop shortcut and the on-screen indicator.
+ * Electron half of computer use: screen capture, the global stop shortcut, the on-screen indicator
+ * and the agent's ghost pointer.
  * What can be decided without Electron lives in `computer-use-service.ts`; this file only wires it.
  */
 import { BrowserWindow, desktopCapturer, globalShortcut, screen, shell, systemPreferences } from 'electron';
 import { ComputerUseService } from './computer-use-service.js';
 import { startComputerServer } from './computer-use-server.js';
 import { createSystemExecutor } from './computer-use-exec.js';
-import type { DisplayInfo, ImageSize } from './computer-use-geometry.js';
+import type { DisplayInfo, ImageSize, Region } from './computer-use-geometry.js';
+import { readPointerSettings } from './computer-use-pointer.js';
+import { GhostPointer } from './computer-use-overlay.js';
 
 export type ShellText = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -22,7 +25,7 @@ function primaryDisplay(): DisplayInfo {
   return { width: display.bounds.width, height: display.bounds.height, scaleFactor: display.scaleFactor, originX: display.bounds.x, originY: display.bounds.y };
 }
 
-async function capturePrimary(size: ImageSize): Promise<Buffer | null> {
+async function capturePrimary(size: ImageSize, region?: Region): Promise<Buffer | null> {
   const display = screen.getPrimaryDisplay();
   // Asked at the physical size, then resized once with the best filter: the thumbnail is the only capture API.
   const sources = await desktopCapturer.getSources({
@@ -31,9 +34,25 @@ async function capturePrimary(size: ImageSize): Promise<Buffer | null> {
   });
   const source = sources.find((candidate) => candidate.display_id === String(display.id)) ?? sources[0];
   if (!source || source.thumbnail.isEmpty()) return null;
+  let shot = source.thumbnail;
+  if (region) {
+    // A window capture is a crop of the screen in its pixels: the thumbnail's own size gives the
+    // scale, in case the system answered smaller than asked.
+    const full = shot.getSize();
+    const sx = full.width / display.bounds.width;
+    const sy = full.height / display.bounds.height;
+    const x = Math.min(Math.max(0, Math.round(region.x * sx)), full.width - 1);
+    const y = Math.min(Math.max(0, Math.round(region.y * sy)), full.height - 1);
+    const rect = { x, y, width: Math.max(1, Math.min(full.width - x, Math.round(region.width * sx))), height: Math.max(1, Math.min(full.height - y, Math.round(region.height * sy))) };
+    let cropped = shot.crop(rect);
+    // The same lazy macOS bitmap as below: a copy at full size has one to crop from.
+    if (cropped.isEmpty()) cropped = shot.resize({ width: full.width, height: full.height }).crop(rect);
+    if (cropped.isEmpty()) return null;
+    shot = cropped;
+  }
   // Always through resize, even at the same size: on macOS a capture's thumbnail has no bitmap of its
   // own yet and its toJPEG came back empty on the CI runner, while the resized copy encodes.
-  const image = source.thumbnail.resize({ width: size.width, height: size.height, quality: 'best' });
+  const image = shot.resize({ width: size.width, height: size.height, quality: 'best' });
   // JPEG: five to ten times lighter than PNG for a screen, so faster to send and to store in the
   // conversation; quality 75 keeps small text readable. PNG remains when an encoder gives nothing.
   const jpeg = image.toJPEG(75);
@@ -69,6 +88,11 @@ class Indicator {
   hide(): void {
     if (this.window && !this.window.isDestroyed()) this.window.close();
     this.window = null;
+  }
+
+  /** Back over the ghost pointer's sheet, which covers the display at the same level. */
+  raise(): void {
+    if (this.window && !this.window.isDestroyed()) this.window.moveTop();
   }
 
   private page(): string {
@@ -114,6 +138,7 @@ export interface ComputerUseDesktop { close: () => Promise<void>; service: Compu
 
 export async function startComputerUse(home: string, t: ShellText, restart?: () => void): Promise<ComputerUseDesktop> {
   let indicator: Indicator | null = null;
+  const ghost = new GhostPointer(() => screen.getPrimaryDisplay(), () => indicator?.raise());
   const executor = createSystemExecutor();
   const service: ComputerUseService = new ComputerUseService({
     platform: process.platform,
@@ -121,7 +146,8 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
     exec: (command) => executor.run(command),
     display: () => { try { return primaryDisplay(); } catch { return null; } },
     cursor: () => screen.getCursorScreenPoint(),
-    capture: capturePrimary,
+    pointerMotionMs: () => readPointerSettings(home).motionMs,
+    capture: (size, region) => ghost.withoutGhost(() => capturePrimary(size, region)),
     screenPermission: () => {
       if (process.platform !== 'darwin') return 'granted';
       const status = systemPreferences.getMediaAccessStatus('screen');
@@ -129,13 +155,22 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
     },
     requestPermission: requestMacPermission,
     restart,
-    onState: ({ active }) => { if (active) indicator?.show(); else indicator?.hide(); },
+    onState: ({ active }) => {
+      if (active) { indicator?.show(); return; }
+      indicator?.hide();
+      ghost.hide();
+    },
+    // Read at each action: turning the ghost off applies to the next one.
+    onPointer: (event, agent) => {
+      if (!service.isActive) return;
+      if (readPointerSettings(home).ghost) ghost.draw(event, agent); else ghost.hide();
+    },
   });
   indicator = new Indicator(t, () => service.stop());
   // A person can always stop, even when the agent has focus on another window.
   const registered = globalShortcut.register(COMPUTER_STOP_SHORTCUT, () => service.stop());
   if (!registered) console.warn('[computer-use] The global stop shortcut is taken by another application; the indicator button still stops.');
-  const provider = await startComputerServer(home, (actor, command, allowedApps, mode) => service.handle(actor, command, allowedApps, mode));
+  const provider = await startComputerServer(home, (actor, command, allowedApps, mode, everything, agent) => service.handle(actor, command, allowedApps, mode, everything, agent));
   return {
     service,
     close: async () => {
@@ -143,6 +178,7 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
       service.dispose();
       executor.dispose();
       indicator?.hide();
+      ghost.hide();
       await provider.close();
     },
   };

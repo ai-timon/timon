@@ -13,7 +13,7 @@ Computer use needs the **Timon desktop app** running on the machine to control. 
 2. Switch on **Computer use**.
 3. Follow the setup card that appears under the switch: it checks each requirement (desktop app connected, system permissions, input tool) and marks it ✅ or ❌. On macOS, **Allow** shows the system prompt; when macOS asks for it, **Restart Timon** reopens the app. Elsewhere the card gives the exact steps or the install command. It updates by itself when you come back from System Settings.
 
-Only that agent gets the screen and input tools; other agents are unaffected. Switching it off removes them at the agent's next conversation. The agent can list and focus windows, read a window as a tree of elements and act on them, take a screenshot (a JPEG, 1024 px wide by default), move the pointer, click, double-click, drag, scroll, type text and press key combinations. To keep the cost in tokens down, it chains the steps it can predict in a single call and looks at the screen only when the next step depends on it.
+Only that agent gets the screen and input tools; other agents are unaffected. Switching it off removes them at the agent's next conversation. The agent can list and focus windows, read a window as a tree of elements and act on them, take a screenshot (a JPEG, 1024 px wide by default, of the whole screen or of [one window](#capture-one-window)), move the pointer, click, double-click, drag, scroll, type text and press key combinations. To keep the cost in tokens down, it chains the steps it can predict in a single call and looks at the screen only when the next step depends on it.
 
 ## Choose the applications it may use
 
@@ -22,9 +22,29 @@ Computer use is **refused for everything except an explicit list of applications
 The foreground application is checked just before each action. A window change in the interval between the check and the action remains possible.
 
 - An entry can be the application's name, the name of its executable, or on macOS its bundle identifier (for example `TextEdit`, `notepad` or `com.apple.TextEdit`). The case does not matter, and a trailing `.exe` is ignored.
-- **An empty list means the agent cannot do anything with the computer.** The card warns you about it. Only listing the windows and waiting stay possible.
+- **An empty list means the agent cannot do anything with the computer**, unless [All applications](#allow-every-application) is on. The card warns you about it. Only listing the windows and waiting stay possible.
 - **Add from open windows** lists the applications that have a window open right now: click one to add it. Timon reads its accessibility tree first and pre-fills the mode (see below).
 - Only a person can edit the list. An agent cannot add to it, whatever its account holds; it can only remove entries, and it can **ask you** to add some, as the next section describes.
+
+**Known limit:** a screenshot of the whole screen shows everything on it, not only the allowed application in front. The agent can [capture one window](#capture-one-window) instead, but that capture is cut from the screen, so whatever covers the window shows in it too. Close or hide whatever the agent must not see before you let it work.
+
+## Capture one window
+
+The agent can capture a single window instead of the whole screen: `computer_screenshot` and the capture that ends `computer_actions` take a `windowId`, an id from `computer_list_windows`, or `front` for the window in front. On a wide screen this keeps the text readable without a larger, costlier image: a 5120 × 1440 screen shrunk to 1024 px is 288 px tall, while one window of it keeps the whole 1024 px.
+
+- The window's application must be allowed in the foreground mode, like the application in front, which every screenshot already needs. Otherwise the capture is refused with `computer_app_not_allowed` or `computer_background_only`.
+- Only the part of the window on the main screen is captured. A minimised window, or one on another screen, is refused with `window_not_visible`: the agent brings it forward with `computer_focus_window`, or captures the whole screen.
+- The coordinates of the next clicks, moves, drags and scrolls are pixels of that capture, and they stay inside the window. The next screenshot, of a window or of the screen, sets the frame again: the agent takes one after a window moves.
+
+### Allow every application
+
+Rather than listing applications one by one, you can let the agent use the whole screen. In the card **All applications**, turn on **Allow every application**:
+
+- Every application is allowed, **except the excluded applications**, which are always refused, even when they are also in the allowed list. The agent gets `computer_app_excluded` for them and is told not to work around it.
+- **Applications not in the list** run in the mode you pick on that row (foreground or background). An application of the allowed list keeps its own mode.
+- **Excluded applications** starts with a default list: password managers (KeePassXC, 1Password, Bitwarden and others, the macOS Keychain and Passwords apps), the usual terminals of macOS, Windows and Linux (a shell can run anything), and Timon itself. **Edit** opens the list: add or remove names, then **Save**. The **…** menu restores the default list. Names match like the allowed list: the application's name, its executable or its bundle identifier, case apart.
+- **Only you can turn it on**, from the agent's Permissions. An agent cannot, nor can the `timon` command line, a script using the daemon's token, or a proposal card: `computer_use_propose` refuses it. Taking an application out of the exclusions is refused to them the same way; turning the switch off or adding an exclusion is not.
+- The action journal notes when the switch is turned on or off.
 
 **Known limit:** a screenshot shows your whole screen, not only the allowed application in front of it. Close or hide whatever the agent must not see before you let it work.
 
@@ -80,9 +100,10 @@ Both can be used as a step of a chained call. The window `id` is only valid unti
 
 Before looking at pixels, the agent reads a window as a **tree of elements** (buttons, fields, menus, with their names, values and the actions they accept) and acts on an element directly. This is faster, cheaper (text instead of an image) and more reliable than guessing coordinates, and it moves neither your mouse nor your keyboard.
 
-- `computer_a11y_tree` reads the window in front, or the one given by its `id` from `list_windows`. `query` keeps the elements whose name, value or role contains a word, together with the elements that contain them. Positions are only returned on request. Without `maxDepth` it reads up to 15 levels (the maximum), so the web content of a browser or Electron window is reached; `maxNodes` is the real limit.
+- `computer_a11y_tree` reads the window in front, or the one given by its `id` from `list_windows`. `query` keeps the elements whose name, value or role contains a word, together with the elements that contain them. Positions are only returned on request. Without `maxDepth` it reads up to 15 levels (the maximum), so the web content of a browser or Electron window is reached; `maxNodes` is the real limit. With a `query`, only the matches and the elements that contain them count against `maxNodes`: it is the way to search a large window.
 - `computer_a11y_action` acts on an element by its id: `press`, `focus`, `set_value` (writes a value into a field), `select`, `expand`, `collapse`, `show_menu` or `scroll_into_view`. The element lists the actions it accepts; any other is refused with the possible ones. It can also be a step of a chained call.
 - An element id lasts as long as the window does not change. After a change the agent gets `a11y_element_stale` and reads the tree again.
+- A very large window (an editor with dozens of tabs open, for example) may take too long to read whole. The agent then gets what could be read, marked as cut short, or the error `a11y_tree_too_large` (HTTP 504), and narrows its request: a `query`, a smaller window by its `id`, or a lower `maxDepth`. On Linux the elements closest to the top of the window (toolbars, visible controls) are read first, and the pages that are not on screen are skipped.
 - The agent takes a screenshot and clicks in pixels only when an element is missing from the tree.
 
 The same list of allowed applications applies: the tree of a window, or an action on one of its elements, is refused with `computer_app_not_allowed` unless its application is listed. The action journal keeps the length of a value written with `set_value`, never the value.
@@ -108,6 +129,23 @@ Set every application to Background (or pick Background as the default mode) to 
 | Linux | An **X11** session with the `xdotool` tool installed (`sudo apt install xdotool`, `sudo dnf install xdotool` or `sudo pacman -S xdotool`). |
 
 **Wayland is not supported**: under Wayland the system does not let an application inject mouse and keyboard events, so Computer use reports itself as unavailable. Log in to an X11 session instead. The same happens when `xdotool` is missing or when macOS permissions are not granted yet; the agent's settings tell you which.
+
+## Watch the agent's pointer
+
+You see where the agent goes. Before a click, a double-click or a move, the mouse pointer glides to its target in about 200 ms instead of jumping there. While the agent is in control, Timon also draws its pointer over the screen: an arrow with the agent's name, the path it just took and a ring on each click. When the agent acts on an element through accessibility (as it does in the background, without moving the mouse), a frame shows the element it touched, when the application gives its position.
+
+This drawing lets your clicks through, never takes the keyboard and is left out of the screenshots sent to the model. It disappears when the agent stops acting and when you press **Stop**.
+
+To change it, create `computer-pointer.json` in Timon's folder (`~/.timon` on macOS and Linux, `%USERPROFILE%\.timon` on Windows):
+
+```json
+{ "motionMs": 200, "ghost": true }
+```
+
+- `motionMs`: how long the pointer glides, in milliseconds, up to 2000. `0` makes it jump as before.
+- `ghost`: `false` hides the pointer Timon draws over the screen.
+
+Changes apply to the next action, without restarting Timon. On Linux, the drawing needs a desktop with compositing (GNOME, KDE Plasma, Cinnamon and most desktops have it); on a window manager without it, set `"ghost": false`.
 
 ## Stop it at any time
 

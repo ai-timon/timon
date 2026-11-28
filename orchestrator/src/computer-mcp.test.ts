@@ -87,6 +87,24 @@ test('computer_actions runs the steps in order and returns one screenshot at the
   ]);
 });
 
+test('computer_screenshot and the capture of computer_actions pass windowId on, and the answer names the window', async (t) => {
+  const { requests, call } = await harness(t, (path) => path.endsWith('/screenshot')
+    ? { body: { ok: true, result: { mimeType: 'image/jpeg', data: 'CCCC', width: 1024, height: 768, window: { id: '4242', title: 'Docs', app: 'Firefox' } } } }
+    : { body: { ok: true, result: {} } });
+  const shot = await call('tools/call', { name: 'computer_screenshot', arguments: { windowId: 'front', maxWidth: 1024 } });
+  assert.deepEqual(JSON.parse(shot.result.content[1].text), { width: 1024, height: 768, windowId: '4242' });
+  const out = await call('tools/call', { name: 'computer_actions', arguments: { windowId: '4242', steps: [{ action: 'key', keys: 'Enter' }] } });
+  assert.deepEqual(JSON.parse(out.result.content[1].text), { width: 1024, height: 768, windowId: '4242', steps: 1 });
+  assert.deepEqual(requests.map((r) => [r.path, r.body]), [
+    ['/api/computer/screenshot', { windowId: 'front', maxWidth: 1024 }],
+    ['/api/computer/key', { keys: 'Enter' }], ['/api/computer/screenshot', { windowId: '4242' }],
+  ]);
+  const listed = (await call('tools/list')).result.tools as Array<{ name: string; inputSchema: { properties: Record<string, { type: string }> } }>;
+  for (const name of ['computer_screenshot', 'computer_actions']) {
+    assert.equal(listed.find((entry) => entry.name === name)?.inputSchema.properties.windowId?.type, 'string', name);
+  }
+});
+
 test('computer_actions stops at the first refused step, says which, and reads nothing', async (t) => {
   const { requests, call } = await harness(t, (path) => path.endsWith('/type')
     ? { status: 409, body: { error: 'Computer use was stopped by the user.', code: 'computer_stopped' } }
@@ -136,6 +154,16 @@ test('computer_a11y_tree renders an indented text, with positions only on reques
   const bounded = await call('tools/call', { name: 'computer_a11y_tree', arguments: { withBounds: true } });
   assert.match(bounded.result.content[0].text, /\[focus,set_value\] @20,30/);
   assert.deepEqual(requests.map((r) => [r.path, r.body]), [['/api/computer/a11y_tree', { query: 'nom', maxDepth: 3 }], ['/api/computer/a11y_tree', {}]]);
+});
+
+test('computer_a11y_tree says why a tree is cut: a limit to raise, or a reading that took too long', async (t) => {
+  let result: Record<string, unknown> = { ...TREE, truncated: true };
+  const { call } = await harness(t, () => ({ body: { ok: true, result } }));
+  const limited = await call('tools/call', { name: 'computer_a11y_tree', arguments: {} });
+  assert.match(limited.result.content[0].text.split('\n')[0], /truncated: raise maxNodes or maxDepth, or use query$/);
+  result = { ...TREE, truncated: true, timedOut: true };
+  const slow = await call('tools/call', { name: 'computer_a11y_tree', arguments: {} });
+  assert.match(slow.result.content[0].text.split('\n')[0], /truncated: reading took too long, use query, the windowId of a smaller window or a lower maxDepth$/);
 });
 
 test('computer_a11y_action reaches its command, with or without the # an id is shown with, also as a step', async (t) => {

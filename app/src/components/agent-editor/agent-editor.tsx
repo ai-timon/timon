@@ -32,8 +32,9 @@ import { BackendLimitsBadge } from '@/components/backend-limits-badge';
 import { t } from '@/lib/i18n';
 import { ComputerJournal, ComputerUseSetup } from './computer-use-setup';
 import { ComputerUseApps } from './computer-use-apps';
+import { ComputerUseAllApps } from './computer-use-all-apps';
 import { ComputerUseMode } from './computer-use-mode';
-import { normalizeAllowedApps, type AllowedApp } from '@/lib/computer-use';
+import { excludedAppsToSave, normalizeAllowedApps, normalizeExcludedApps, type AllowedApp } from '@/lib/computer-use';
 import { isValidAgentName, normalizeAgentName } from '@/lib/agent-name-rule';
 import { renameFollowUps } from '@/lib/agent-rename';
 import { agentSaveWarnings } from '@/lib/agent-save-warnings';
@@ -108,6 +109,10 @@ type AgentSummary = {
   /** The applications the agent may click and type in (absent or empty = none). */
   computer_use_apps?: (string | { app: string; mode: 'foreground' | 'background' })[];
   computer_use_mode?: 'foreground' | 'background';
+  /** Every application but the excluded ones (absent = off); only a person turns it on. */
+  computer_use_all_apps?: boolean;
+  /** Never driven while all applications are allowed; the daemon serves the defaults until a person edits them. */
+  computer_use_excluded_apps?: string[];
   /** Explicit manager (the canvas sets it) and team of bots (an id). */
   reports_to?: string | null;
   team?: string | null;
@@ -208,6 +213,8 @@ type Draft = {
   computerUse: boolean;
   computerUseApps: AllowedApp[];
   computerUseMode: 'foreground' | 'background';
+  computerUseAllApps: boolean;
+  computerUseExcludedApps: string[];
 };
 
 /** Auto-derive project slug from a cwd. Mirrors orchestrator helper. */
@@ -325,6 +332,8 @@ function toDraft(a: AgentSummary, cat: BackendCatalog): Draft {
     computerUse: a.computer_use ?? false,
     computerUseApps: normalizeAllowedApps(a.computer_use_apps, a.computer_use_mode === 'background' ? 'background' : 'foreground'),
     computerUseMode: a.computer_use_mode === 'background' ? 'background' : 'foreground',
+    computerUseAllApps: a.computer_use_all_apps === true,
+    computerUseExcludedApps: normalizeExcludedApps(a.computer_use_excluded_apps),
   };
 }
 
@@ -899,6 +908,9 @@ export function AgentEditor({ agent, isNew, onClose, onDirtyChange, initialTab }
           // Always sent too: an empty list must say so, or the stored one is kept.
           computer_use_apps: draft.computerUseApps,
           computer_use_mode: draft.computerUseMode,
+          computer_use_all_apps: draft.computerUseAllApps,
+          // null while the list is the default one: the agent keeps following the product's defaults.
+          computer_use_excluded_apps: excludedAppsToSave(draft.computerUseExcludedApps),
         },
       };
       // Rename: if the name changed, RENAME the agent (moves the folder +
@@ -1463,7 +1475,17 @@ export function AgentEditor({ agent, isNew, onClose, onDirtyChange, initialTab }
                 {draft.computerUse && <ComputerUseSetup />}
                 {draft.computerUse && draft.name && <ComputerJournal agent={draft.name} />}
                 {draft.computerUse && <ComputerUseMode value={draft.computerUseMode} onChange={(next) => updateDraft('computerUseMode', next)} />}
-                {draft.computerUse && <ComputerUseApps values={draft.computerUseApps} defaultMode={draft.computerUseMode} onChange={(next) => updateDraft('computerUseApps', next)} />}
+                {draft.computerUse && (
+                  <ComputerUseAllApps
+                    enabled={draft.computerUseAllApps}
+                    onEnabledChange={(next) => updateDraft('computerUseAllApps', next)}
+                    mode={draft.computerUseMode}
+                    onModeChange={(next) => updateDraft('computerUseMode', next)}
+                    excluded={draft.computerUseExcludedApps}
+                    onExcludedChange={(next) => updateDraft('computerUseExcludedApps', next)}
+                  />
+                )}
+                {draft.computerUse && <ComputerUseApps values={draft.computerUseApps} defaultMode={draft.computerUseMode} allApps={draft.computerUseAllApps} onChange={(next) => updateDraft('computerUseApps', next)} />}
                 {draft.computerUse && (
                   <p
                     role="note"

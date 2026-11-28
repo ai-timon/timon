@@ -9,6 +9,7 @@
 import { WINDOWS_UIA_LIB } from './computer-use-a11y-win32-script.js';
 import { ComputerCommandError, type MouseButton } from './computer-use-protocol.js';
 import type { DisplayInfo } from './computer-use-geometry.js';
+import { pointerPath, type PointerPath } from './computer-use-pointer.js';
 
 export interface SystemCommand {
   file: string;
@@ -30,6 +31,18 @@ export type InputAction =
   | { kind: 'type'; text: string }
   | { kind: 'key'; keys: string }
   | { kind: 'scroll'; x: number; y: number; deltaX: number; deltaY: number };
+
+/**
+ * Where the pointer is before a `move` or a `click` and how long it takes to reach the target, in
+ * the same points as the action. Absent: the pointer jumps, as it always did.
+ */
+export interface PointerMotion { fromX: number; fromY: number; durationMs: number }
+
+/** The glide of an action, or nothing for the actions that do not take one. */
+function glideOf(action: InputAction, motion: PointerMotion | undefined): PointerPath {
+  if (!motion || (action.kind !== 'move' && action.kind !== 'click')) return { points: [], stepMs: 0 };
+  return pointerPath(motion.fromX, motion.fromY, action.x, action.y, motion.durationMs);
+}
 
 // ── Key names ──────────────────────────────────────────────────────────────
 
@@ -186,7 +199,12 @@ function splitText(text: string): Array<{ text: string } | { control: 'enter' | 
   return out;
 }
 
-function macSteps(action: InputAction): MacStep[] {
+function macSteps(action: InputAction, glide: PointerPath): MacStep[] {
+  const approach = glide.points.flatMap((point): MacStep[] => [{ t: 'move', x: point.x, y: point.y }, { t: 'sleep', ms: glide.stepMs }]);
+  return [...approach, ...macActionSteps(action)];
+}
+
+function macActionSteps(action: InputAction): MacStep[] {
   switch (action.kind) {
     case 'move': return [{ t: 'move', x: action.x, y: action.y }];
     case 'click': {
@@ -235,7 +253,13 @@ function macSteps(action: InputAction): MacStep[] {
 // ── Windows: PowerShell + SendInput ────────────────────────────────────────
 
 /**
- * Fixed text, shared by the one-shot and the persistent forms. Compiling the C# helper is what costs
+ * Fixed text, shared by the one-shot and the persistent forms. Comments stay out of it: the worker
+ * form travels in an environment variable, capped at 32 767 characters.
+ *
+ * `Rect` gives a window as drawn (DWM extended frame bounds, without the invisible resize border that
+ * GetWindowRect counts; composition is always on since Windows 8, the oldest an Electron 45 app runs
+ * on), in physical pixels once the process is DPI-aware, divided by the system scale into the points
+ * Electron uses, as the accessibility bounds are; null for a minimised or gone window. Compiling the C# helper is what costs
  * (hundreds of milliseconds per `powershell.exe`), so the persistent form does it once.
  */
 const WINDOWS_INPUT_LIB = `
@@ -272,6 +296,10 @@ public static class TimonInput {
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr l);
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
+  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] static extern uint GetDpiForSystem();
   public static long Foreground() { return GetForegroundWindow().ToInt64(); }
   public static uint Pid(long h) { uint pid; GetWindowThreadProcessId(new IntPtr(h), out pid); return pid; }
   public static string Title(long h) {
@@ -293,6 +321,13 @@ public static class TimonInput {
     keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero);
     SetForegroundWindow(h);
     return GetForegroundWindow() == h;
+  }
+  public static double[] Rect(long n) {
+    IntPtr h = new IntPtr(n); RECT r; double s = 1;
+    if (!IsWindow(h) || IsIconic(h)) return null;
+    try { SetProcessDPIAware(); s = GetDpiForSystem() / 96.0; } catch (Exception) { }
+    if (DwmGetWindowAttribute(h, 9, out r, 16) != 0) return null;
+    return new double[] { r.L / s, r.T / s, (r.R - r.L) / s, (r.B - r.T) / s };
   }
 }
 "@
@@ -333,6 +368,7 @@ function Invoke-TimonQuery($q) {
       $result = @(foreach ($h in [TimonInput]::Visible()) { $a = Get-TimonApp $h; @{ id = [string]$h; title = [TimonInput]::Title($h); app = $a.name; exe = $a.exe; focused = ($h -eq $fg) } })
     }
     'focus' { $result = @{ ok = [TimonInput]::Focus([long]$q.id) } }
+    'rect' { $r = [TimonInput]::Rect([long]$q.id); if ($r) { $result = @{ x = $r[0]; y = $r[1]; width = $r[2]; height = $r[3] } } }
     'a11y_probe' { try { Initialize-TimonUia; $result = @{ ok = $true } } catch { $result = @{ ok = $false } } }
     'a11y_tree' { $result = Invoke-TimonUiaTree $q }
     'a11y_act' { $result = Invoke-TimonUiaAct $q }
@@ -398,8 +434,13 @@ const normalize = (value: number, points: number, scaleFactor: number): number =
   return Math.min(65535, Math.ceil(pixel * 65536 / physical));
 };
 
-function windowsSteps(action: InputAction, display: DisplayInfo): WinStep[] {
+function windowsSteps(action: InputAction, display: DisplayInfo, glide: PointerPath): WinStep[] {
   const at = (x: number, y: number): WinStep => ({ t: 'move', x: normalize(x, display.width, display.scaleFactor), y: normalize(y, display.height, display.scaleFactor) });
+  const approach = glide.points.flatMap((point): WinStep[] => [at(point.x, point.y), { t: 'sleep', ms: glide.stepMs }]);
+  return [...approach, ...windowsActionSteps(action, at)];
+}
+
+function windowsActionSteps(action: InputAction, at: (x: number, y: number) => WinStep): WinStep[] {
   switch (action.kind) {
     case 'move': return [at(action.x, action.y)];
     case 'click': {
@@ -453,7 +494,7 @@ Write-Output (Invoke-TimonQuery ($env:TIMON_CU_QUERY | ConvertFrom-Json))
 `;
 
 export type WindowsQuery =
-  | { q: 'foreground' } | { q: 'windows' } | { q: 'focus'; id: string }
+  | { q: 'foreground' } | { q: 'windows' } | { q: 'focus'; id: string } | { q: 'rect'; id: string }
   | { q: 'a11y_probe' }
   | { q: 'a11y_tree'; id: string; maxDepth: number; maxNodes: number }
   | { q: 'a11y_act'; id: string; path: string; action: string; value?: string; background?: boolean };
@@ -493,11 +534,15 @@ function windowsCommand(steps: WinStep[]): SystemCommand {
 
 // ── Linux: xdotool under X11 ───────────────────────────────────────────────
 
-function linuxCommand(action: InputAction, display: DisplayInfo): SystemCommand {
+function linuxCommand(action: InputAction, display: DisplayInfo, glide: PointerPath): SystemCommand {
   const px = (value: number, origin: number | undefined): string => String(Math.round(((origin ?? 0) + value) * display.scaleFactor));
   const px2 = (x: number, y: number): string[] => [px(x, display.originX), px(y, display.originY)];
   const button = (name: MouseButton): string => name === 'left' ? '1' : name === 'middle' ? '2' : '3';
   const args: string[] = [];
+  // xdotool chains its commands in one process; its `sleep` takes seconds, read with the C locale's dot
+  // (libxdo only sets LC_CTYPE, so a French session does not turn "0.017" into 0).
+  const pause = (glide.stepMs / 1000).toFixed(3);
+  for (const point of glide.points) args.push('mousemove', ...px2(point.x, point.y), 'sleep', pause);
   switch (action.kind) {
     case 'move': args.push('mousemove', ...px2(action.x, action.y)); break;
     case 'click':
@@ -525,10 +570,11 @@ function linuxCommand(action: InputAction, display: DisplayInfo): SystemCommand 
 }
 
 /** The single entry point: one action → the one command that performs it on this platform. */
-export function buildInputCommand(platform: InputPlatform, action: InputAction, display: DisplayInfo): SystemCommand {
+export function buildInputCommand(platform: InputPlatform, action: InputAction, display: DisplayInfo, motion?: PointerMotion): SystemCommand {
+  const glide = glideOf(action, motion);
   switch (platform) {
-    case 'darwin': return macCommand(MAC_INPUT_SCRIPT, macSteps(action));
-    case 'win32': return windowsCommand(windowsSteps(action, display));
-    case 'linux': return linuxCommand(action, display);
+    case 'darwin': return macCommand(MAC_INPUT_SCRIPT, macSteps(action, glide));
+    case 'win32': return windowsCommand(windowsSteps(action, display, glide));
+    case 'linux': return linuxCommand(action, display, glide);
   }
 }

@@ -20,18 +20,21 @@ const NO_FOCUS = ' Prefer acting by windowId with computer_a11y_tree and compute
 // The order to work in: the tree first, pixels only for what the tree does not show.
 const A11Y_FIRST = ' Read the window first with computer_a11y_tree and act by element. Take a screenshot and click in pixels only if the element is missing from the tree.' + NO_FOCUS;
 const MAX_STEPS = 20;
+// A wide screen (32:9) shrunk to 1024 px is unreadable: one window keeps its text at the same cost.
+const ONE_WINDOW = ' Pass windowId (an id from computer_list_windows, or "front" for the window in front) to capture only that window: on a wide screen it stays readable at 1024 px. Its application must be allowed in the foreground mode, and the coordinates of the next actions are pixels of that capture.';
+const WINDOW_ID = { type: 'string', minLength: 1, maxLength: 64, description: 'An id from computer_list_windows, or "front".' };
 const tools = [
-  { name: 'computer_a11y_tree', description: `Read a window as a tree of elements (buttons, fields, menus...), with no screenshot. One line per element, indented by depth: #id role "name" = value [actions] @x,y. The id is what follows the first "#". Without windowId it reads the window in front. Use query to find an element by part of its name, value or role (case does not matter): the answer keeps the matches and the elements that contain them. Roles: button, textfield, textarea, checkbox, radio, combobox, list, listitem, menu, menuitem, menubar, tab, tablist, link, image, text, group, window, toolbar, table, row, cell, slider, scrollbar, other. Ids last as long as the interface does not change: an a11y_element_stale error means read the tree again. Set withBounds only if you need the positions (in screenshot pixels).${A11Y_FIRST}`, inputSchema: schema({
+  { name: 'computer_a11y_tree', description: `Read a window as a tree of elements (buttons, fields, menus...), with no screenshot. One line per element, indented by depth: #id role "name" = value [actions] @x,y. The id is what follows the first "#". Without windowId it reads the window in front. Use query to find an element by part of its name, value or role (case does not matter): the answer keeps the matches and the elements that contain them, and only those count against maxNodes, so a query is the way to search a large window. Roles: button, textfield, textarea, checkbox, radio, combobox, list, listitem, menu, menuitem, menubar, tab, tablist, link, image, text, group, window, toolbar, table, row, cell, slider, scrollbar, other. Ids last as long as the interface does not change: an a11y_element_stale error means read the tree again. Set withBounds only if you need the positions (in screenshot pixels); an element whose position the system cannot give has no @x,y.${A11Y_FIRST}`, inputSchema: schema({
     windowId: { type: 'string', minLength: 1, maxLength: 64 }, query: { type: 'string', maxLength: 200 },
     maxDepth: { type: 'integer', minimum: 1, maximum: 15 }, maxNodes: { type: 'integer', minimum: 1, maximum: 1500 }, withBounds: { type: 'boolean' },
   }) },
   { name: 'computer_a11y_action', description: `Act on one element by the id computer_a11y_tree returned, without moving the mouse or the keyboard. action: ${A11Y_ACTIONS.join(', ')}. press clicks a button or link, set_value writes the value into a field (at most 2000 characters, never log a password: ask the user to do it), select picks a list item or tab, expand and collapse open or close a group, show_menu opens the context menu, scroll_into_view brings the element into sight. An element only accepts the actions in its [brackets]; otherwise the error lists the possible ones.${A11Y_FIRST}${NO_PASSWORD}`, inputSchema: schema({
     id: { type: 'string', minLength: 1, maxLength: 120 }, action: { type: 'string', enum: A11Y_ACTIONS }, value: { type: 'string', maxLength: 2000 },
   }, ['id', 'action']) },
-  { name: 'computer_screenshot', description: `Capture the main screen as a JPEG, 1024 px wide by default. Ask for a larger maxWidth only to read small text, a smaller one (768) for a quick look.${THRIFT}`, inputSchema: schema({ maxWidth: { type: 'integer', minimum: 64, maximum: 4096 } }) },
-  { name: 'computer_actions', description: `Run several steps in a row, then return one screenshot (unless screenshot is false). Each step is an object with an "action" (click, double_click, move, drag, type, key, scroll, wait, focus_window, a11y_action) and that action's arguments (an a11y_action step names the element action as \"do\": {\"action\":\"a11y_action\",\"id\":\"...\",\"do\":\"press\"}), for example [{"action":"key","keys":"cmd+space"},{"action":"type","text":"TextEdit"},{"action":"key","keys":"Enter"},{"action":"wait","ms":1500}]. Stops at the first failing step and says which.${A11Y_FIRST}${SEE_FIRST}${NO_PASSWORD}`, inputSchema: schema({
+  { name: 'computer_screenshot', description: `Capture the main screen as a JPEG, 1024 px wide by default. Ask for a larger maxWidth only to read small text, a smaller one (768) for a quick look.${ONE_WINDOW}${THRIFT}`, inputSchema: schema({ maxWidth: { type: 'integer', minimum: 64, maximum: 4096 }, windowId: WINDOW_ID }) },
+  { name: 'computer_actions', description: `Run several steps in a row, then return one screenshot (unless screenshot is false; windowId limits it to one window, as for computer_screenshot). Each step is an object with an "action" (click, double_click, move, drag, type, key, scroll, wait, focus_window, a11y_action) and that action's arguments (an a11y_action step names the element action as \"do\": {\"action\":\"a11y_action\",\"id\":\"...\",\"do\":\"press\"}), for example [{"action":"key","keys":"cmd+space"},{"action":"type","text":"TextEdit"},{"action":"key","keys":"Enter"},{"action":"wait","ms":1500}]. Stops at the first failing step and says which.${A11Y_FIRST}${SEE_FIRST}${NO_PASSWORD}`, inputSchema: schema({
     steps: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: { action: { type: 'string', enum: [...BATCH_ACTIONS] } }, required: ['action'] } },
-    screenshot: { type: 'boolean' }, maxWidth: { type: 'integer', minimum: 64, maximum: 4096 },
+    screenshot: { type: 'boolean' }, maxWidth: { type: 'integer', minimum: 64, maximum: 4096 }, windowId: WINDOW_ID,
   }, ['steps']) },
   { name: 'computer_click', description: `Click at a point of the screen.${SEE_FIRST}`, inputSchema: schema({ x: num, y: num, button: { type: 'string', enum: ['left', 'right', 'middle'] } }, ['x', 'y']) },
   { name: 'computer_double_click', description: `Double-click at a point of the screen.${SEE_FIRST}`, inputSchema: schema({ x: num, y: num }, ['x', 'y']) },
@@ -40,7 +43,7 @@ const tools = [
   { name: 'computer_type', description: `Type text with the keyboard into the focused field (at most 2000 characters). Click the field first.${NO_PASSWORD}`, inputSchema: schema({ text: { type: 'string', minLength: 1, maxLength: 2000 } }, ['text']) },
   { name: 'computer_key', description: `Press a key or a shortcut, such as "Enter", "cmd+c" or "ctrl+shift+t".${NO_PASSWORD}`, inputSchema: schema({ keys: { type: 'string', minLength: 1, maxLength: 100 } }, ['keys']) },
   { name: 'computer_scroll', description: `Scroll the wheel at a point of the screen; a positive deltaY scrolls down.${SEE_FIRST}`, inputSchema: schema({ x: num, y: num, deltaX: num, deltaY: num }, ['x', 'y', 'deltaY']) },
-  { name: 'computer_list_windows', description: 'List the open windows as [{ id, title, app, focused }]. Use it to find a window id for computer_a11y_tree, or the window to bring to the front with computer_focus_window. The user allows only some applications, each in the foreground or the background mode: screenshots, the mouse and the keyboard are refused unless the application in front is allowed in the foreground mode (computer_app_not_allowed if it is not listed, computer_background_only if it is background-only); computer_a11y_tree and computer_a11y_action work for any allowed application.', inputSchema: schema() },
+  { name: 'computer_list_windows', description: 'List the open windows as [{ id, title, app, focused }]. Use it to find a window id for computer_a11y_tree, or the window to bring to the front with computer_focus_window. The user allows only some applications, each in the foreground or the background mode: screenshots, the mouse and the keyboard are refused unless the application in front is allowed in the foreground mode (computer_app_not_allowed if it is not listed, computer_background_only if it is background-only, computer_app_excluded if the user allowed all applications but excluded this one); computer_a11y_tree and computer_a11y_action work for any allowed application.', inputSchema: schema() },
   { name: 'computer_focus_window', description: 'Bring a window to the front, by the id computer_list_windows returned. Refused when its application is not allowed in the foreground mode (computer_background_only if it is allowed in the background only). Take a screenshot afterwards: the windows may have moved. It takes the focus from the user: prefer computer_a11y_tree with a windowId.', inputSchema: schema({ id: { type: 'string', minLength: 1, maxLength: 64 } }, ['id']) },
   { name: 'computer_cursor_position', description: 'Read the current position of the mouse pointer, in screenshot coordinates.', inputSchema: schema() },
   { name: 'computer_wait', description: `Wait for the screen to settle, at most 10 seconds.${THRIFT}`, inputSchema: schema({ ms: { type: 'integer', minimum: 0, maximum: 10000 } }, ['ms']) },
@@ -81,7 +84,8 @@ async function runActions(args) {
   }
   if (args.screenshot === false) return { steps: done };
   let shot;
-  try { shot = await command('screenshot', args.maxWidth === undefined ? {} : { maxWidth: args.maxWidth }); } catch (error) {
+  const shotArgs = { ...(args.maxWidth === undefined ? {} : { maxWidth: args.maxWidth }), ...(args.windowId === undefined ? {} : { windowId: args.windowId }) };
+  try { shot = await command('screenshot', shotArgs); } catch (error) {
     // A background agent never gets a capture of the user's screen: the steps are done, so say so.
     if (error.code === 'computer_background_only') return { steps: done, note: error.message };
     throw error;
@@ -91,7 +95,10 @@ async function runActions(args) {
 /** The tree as indented text: far fewer tokens than the JSON, and the ids stay readable. */
 function renderTree(tree, withBounds) {
   const quote = text => JSON.stringify(String(text));
-  const lines = [`window #${tree.window.id} ${quote(tree.window.title)} (${tree.window.app})${tree.truncated ? ' - truncated: raise maxNodes or maxDepth, or use query' : ''}`];
+  // A reading cut at the desktop's deadline: more nodes would not help, a narrower request would.
+  const cut = tree.timedOut ? ' - truncated: reading took too long, use query, the windowId of a smaller window or a lower maxDepth'
+    : tree.truncated ? ' - truncated: raise maxNodes or maxDepth, or use query' : '';
+  const lines = [`window #${tree.window.id} ${quote(tree.window.title)} (${tree.window.app})${cut}`];
   for (const node of Array.isArray(tree.nodes) ? tree.nodes : []) {
     let line = `${'  '.repeat(node.depth)}#${node.id} ${node.role}`;
     if (node.name) line += ` ${quote(node.name)}`;
@@ -137,7 +144,7 @@ lines.on('line', async line => {
       result = { content: typeof value?.text === 'string' && Object.keys(value).length === 1 ? [{ type: 'text', text: value.text }]
         : typeof value?.data === 'string'
         ? [{ type: 'image', data: value.data, mimeType: value.mimeType || 'image/jpeg' },
-          { type: 'text', text: JSON.stringify({ width: value.width, height: value.height, ...(value.steps === undefined ? {} : { steps: value.steps }) }) }]
+          { type: 'text', text: JSON.stringify({ width: value.width, height: value.height, ...(value.window?.id === undefined ? {} : { windowId: value.window.id }), ...(value.steps === undefined ? {} : { steps: value.steps }) }) }]
         : [{ type: 'text', text: JSON.stringify(value) }] };
     } else return send({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } });
     send({ jsonrpc: '2.0', id: msg.id, result });

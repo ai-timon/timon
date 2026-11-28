@@ -46,6 +46,14 @@ export type AgentConfig = {
   /** How the agent drives the screen: `background` = accessibility only, never the user's screen,
    *  mouse or keyboard. Absent = `foreground`. Changing it is a person's act, like `computer_use_apps`. */
   computer_use_mode?: ComputerUseMode;
+  /** Every application is allowed, the unlisted ones in `computer_use_mode`, minus `computer_use_excluded_apps`.
+   *  Absent = off. Only a person at the screen (a session or a paired device) turns it on: an agent's,
+   *  a mission's and the daemon's token cannot (`personOnlyComputerRefusal`). */
+  computer_use_all_apps?: boolean;
+  /** The applications never driven while `computer_use_all_apps` is on, an explicit entry included.
+   *  Absent or null = `DEFAULT_COMPUTER_USE_EXCLUDED_APPS` (null is how a save restores them, since an absent key keeps
+   *  the stored list). Removing an entry is a person's act, like turning the switch on. */
+  computer_use_excluded_apps?: string[] | null;
   /** DEFAULT LLM backend of the agent. 'claude' (default) = long-lived Claude
    *  CLI; 'codex' = one-shot OpenAI Codex CLI on the ChatGPT subscription.
    *  The agent is AGNOSTIC: this field is only a default, overridable per
@@ -398,6 +406,74 @@ export function storedComputerUseApps(cfg: Pick<AgentConfig, 'computer_use_apps'
     if (out.length >= COMPUTER_USE_APPS_MAX) break;
   }
   return out;
+}
+
+export const COMPUTER_USE_EXCLUDED_APPS_MAX = 200;
+
+/**
+ * What "All applications" leaves out until a person edits the list: password managers, the usual
+ * terminals of the three systems (a shell runs anything), and Timon itself (an agent would reach its
+ * own permissions). Each application is named by every spelling the desktop may read for it: the
+ * macOS bundle id, the displayed name, the executable name or the X11 window class.
+ */
+export const DEFAULT_COMPUTER_USE_EXCLUDED_APPS: readonly string[] = Object.freeze([
+  // Password managers and key stores.
+  'KeePassXC', 'org.keepassxc.keepassxc', 'KeePass', 'KeeWeb',
+  '1Password', 'com.1password.1password', 'com.agilebits.onepassword7',
+  'Bitwarden', 'com.bitwarden.desktop',
+  'Dashlane', 'LastPass', 'Enpass', 'Proton Pass', 'ProtonPass', 'NordPass', 'RoboForm', 'Keeper Password Manager',
+  'Keychain Access', 'com.apple.keychainaccess', 'Passwords', 'com.apple.Passwords',
+  'Seahorse', 'org.gnome.seahorse.Application', 'kwalletmanager5', 'KWalletManager',
+  // Terminals.
+  'Terminal', 'com.apple.Terminal', 'iTerm2', 'com.googlecode.iterm2', 'Warp', 'dev.warp.Warp-Stable',
+  'Ghostty', 'com.mitchellh.ghostty', 'Alacritty', 'kitty', 'WezTerm', 'wezterm-gui', 'org.wezfurlong.wezterm',
+  'Hyper', 'Tabby',
+  'gnome-terminal', 'gnome-terminal-server', 'org.gnome.Terminal', 'kgx', 'org.gnome.Console', 'ptyxis', 'org.gnome.Ptyxis',
+  'konsole', 'xterm', 'uxterm', 'urxvt', 'rxvt', 'xfce4-terminal', 'tilix', 'terminator', 'mate-terminal', 'lxterminal',
+  'qterminal', 'foot', 'terminology', 'deepin-terminal', 'guake', 'yakuake', 'tilda', 'st',
+  'WindowsTerminal', 'Windows Terminal', 'wt', 'cmd', 'powershell', 'pwsh', 'Windows PowerShell', 'conhost', 'OpenConsole', 'mintty',
+  // Timon itself, packaged and run from the sources.
+  'Timon', 'com.timon.desktop', 'timon-desktop', 'timon-dev',
+]);
+
+/** The switch as stored, read defensively: only `true` turns it on. */
+export function storedComputerUseAllApps(cfg: Pick<AgentConfig, 'computer_use_all_apps'>): boolean {
+  return cfg.computer_use_all_apps === true;
+}
+
+/**
+ * The excluded applications as stored, read defensively: the defaults when the field is absent or
+ * not a list, the stored names otherwise (trimmed, non-empty, a repeated name once, case apart).
+ */
+export function storedComputerUseExcludedApps(cfg: Pick<AgentConfig, 'computer_use_excluded_apps'>): string[] {
+  const raw: unknown = cfg.computer_use_excluded_apps;
+  if (!Array.isArray(raw)) return [...DEFAULT_COMPUTER_USE_EXCLUDED_APPS];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'string') continue;
+    const app = entry.trim();
+    if (!app || seen.has(app.toLowerCase())) continue;
+    seen.add(app.toLowerCase());
+    out.push(app);
+    if (out.length >= COMPUTER_USE_EXCLUDED_APPS_MAX) break;
+  }
+  return out;
+}
+
+/** Why a `computer_use_all_apps` value is not acceptable, or null. */
+export function computerUseAllAppsRefusal(value: unknown): string | null {
+  return typeof value === 'boolean' ? null : 'computer_use_all_apps must be a boolean';
+}
+
+/** Why a `computer_use_excluded_apps` value is not acceptable, or null. `null` restores the default list. */
+export function computerUseExcludedAppsRefusal(value: unknown): string | null {
+  if (value === null) return null;
+  const shape = `computer_use_excluded_apps must be null (the default list) or an array of non-empty names of at most ${COMPUTER_USE_APP_MAX_LENGTH} characters`;
+  if (!Array.isArray(value)) return shape;
+  if (value.some((entry) => typeof entry !== 'string' || entry.trim() === '' || entry.length > COMPUTER_USE_APP_MAX_LENGTH)) return shape;
+  if (value.length > COMPUTER_USE_EXCLUDED_APPS_MAX) return `computer_use_excluded_apps holds at most ${COMPUTER_USE_EXCLUDED_APPS_MAX} applications`;
+  return null;
 }
 
 /** Why a `computer_use_apps` value is not acceptable, or null. */

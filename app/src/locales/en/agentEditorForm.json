@@ -69,6 +69,24 @@
     "computerAppsVerdictRich": "Rich accessibility: background possible",
     "computerAppsVerdictPoor": "Limited accessibility: foreground advised",
     "computerAppsVerdictEmpty": "Empty tree: foreground only",
-    "computerAppsVerdictUnchecked": "Not checked: open the application and add it from the open windows to check it"
+    "computerAppsVerdictUnchecked": "Not checked: open the application and add it from the open windows to check it",
+    "computerAllApps": "All applications",
+    "computerAllAppsToggle": "Allow every application",
+    "computerAllAppsOff": "Off: only the allowed applications below",
+    "computerAllAppsOn": "On: every application except the excluded ones",
+    "computerAllAppsUnlisted": "Applications not in the list",
+    "computerAllAppsUnlistedForeground": "Foreground: screen, mouse and keyboard",
+    "computerAllAppsUnlistedBackground": "Background: accessibility only",
+    "computerAllAppsExcluded": "Excluded applications",
+    "computerAllAppsExcludedDefault": "Default list: {count, plural, one {# application} other {# applications}}",
+    "computerAllAppsExcludedCount": "{count, plural, =0 {None} one {# application} other {# applications}}",
+    "computerAllAppsExcludedEdit": "Edit",
+    "computerAllAppsExcludedMore": "More about the excluded applications",
+    "computerAllAppsExcludedReset": "Restore the default list",
+    "computerAllAppsExcludedDescription": "Never controlled, even when they are in the allowed list.",
+    "computerAllAppsExcludedAdd": "Application name",
+    "computerAllAppsExcludedAddButton": "Add",
+    "computerAllAppsExcludedCancel": "Cancel",
+    "computerAllAppsExcludedSave": "Save"
   }
 }

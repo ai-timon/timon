@@ -39,7 +39,7 @@ function setup(allowed: readonly string[] = ['TextEdit'], overrides: Partial<Com
     },
     ...overrides,
   });
-  const run = (command: string, args?: unknown, actor: 'agent' | 'human' = 'agent', mode: 'foreground' | 'background' = 'foreground') => service.handle(actor, parseComputerCommand(command, args), allowed, mode);
+  const run = (command: string, args?: unknown, actor: 'agent' | 'human' = 'agent', mode: 'foreground' | 'background' = 'foreground', agent?: string) => service.handle(actor, parseComputerCommand(command, args), allowed, mode, null, agent);
   return { backend, service, run, calls };
 }
 
@@ -234,4 +234,50 @@ test('accessibility rules are per application: background ones never get focus o
   const only = (command: string, args?: unknown) => service.handle('agent', parseComputerCommand(command, args), [{ app: 'Mail', mode: 'background' }]);
   await assert.rejects(only('a11y_tree', { windowId: '10:1' }), (e: ComputerCommandError) => e.code === 'computer_app_not_allowed');
   await assert.rejects(only('a11y_action', { id: '10:1#0.1', action: 'press' }), (e: ComputerCommandError) => e.code === 'computer_app_not_allowed');
+});
+
+test('a tree too large to read in time has its own code and advice, and a reading cut at the deadline says so', async () => {
+  const slow = createFakeA11yBackend({});
+  slow.tree = async () => { throw new A11yError('too_large', 'too large'); };
+  await assert.rejects(setup(['TextEdit'], { a11y: slow }).run('a11y_tree'), (e: ComputerCommandError) => {
+    assert.equal(e.code, 'a11y_tree_too_large');
+    assert.equal(e.statusCode, 504);
+    assert.match(e.message, /query/);
+    assert.match(e.message, /windowId/);
+    return true;
+  });
+  const partial = createFakeA11yBackend({});
+  partial.tree = async () => ({ truncated: true, timedOut: true, nodes: [node('0', 'window', 'Form')] });
+  const tree = await setup(['TextEdit'], { a11y: partial }).run('a11y_tree') as ReturnType<typeof buildTree>;
+  assert.equal(tree.truncated, true);
+  assert.equal(tree.timedOut, true);
+  assert.equal('timedOut' in (await setup().run('a11y_tree') as object), false);
+});
+
+test('a window list that runs out of time says so instead of a bare failure', async () => {
+  // Only the window list fails: the readiness probe still gets its answer.
+  const failing = (error: Error): ComputerUseDeps['exec'] => async (command) => {
+    if (command.args.some((arg) => arg.includes('kCGWindowListOptionOnScreenOnly'))) throw error;
+    return { stdout: 'true' };
+  };
+  const timedOut = Object.assign(new Error('Command failed'), { killed: true, signal: 'SIGTERM' });
+  const { run } = setup(['TextEdit'], { exec: failing(timedOut) });
+  await assert.rejects(run('a11y_tree'), (e: ComputerCommandError) => e.code === 'windows_failed' && e.statusCode === 504 && /timed out/.test(e.message));
+  await assert.rejects(run('list_windows'), (e: ComputerCommandError) => e.code === 'windows_failed' && /timed out/.test(e.message));
+  const { run: broken } = setup(['TextEdit'], { exec: failing(new Error('boom')) });
+  await assert.rejects(broken('list_windows'), (e: ComputerCommandError) => e.code === 'windows_failed' && e.statusCode === 502 && e.message === 'Listing the windows failed.');
+});
+
+test('an accessibility action frames its element for the ghost pointer, in points of the display, when its bounds are known', async () => {
+  const drawn: Array<{ event: unknown; agent: string | undefined }> = [];
+  const { run } = setup(['TextEdit'], { display: () => ({ ...display, originX: 1440, originY: 0 }), onPointer: (event, agent) => drawn.push({ event, agent }) });
+  // No tree read yet: no bounds, no frame.
+  await run('a11y_action', { id: '10:1#0.0.0', action: 'set_value', value: 'x' }, 'agent', 'background', 'clerk');
+  assert.equal(drawn.length, 0);
+  await run('a11y_tree', undefined, 'agent', 'background', 'clerk');
+  await run('a11y_action', { id: '10:1#0.0.0', action: 'set_value', value: 'y' }, 'agent', 'background', 'clerk');
+  assert.deepEqual(drawn, [{ event: { t: 'frame', x: 120 - 1440, y: 70, w: 200, h: 20 }, agent: 'clerk' }]);
+  // An element read without bounds draws nothing.
+  await run('a11y_action', { id: '10:1#0.1', action: 'press' }, 'agent', 'background', 'clerk');
+  assert.equal(drawn.length, 1);
 });

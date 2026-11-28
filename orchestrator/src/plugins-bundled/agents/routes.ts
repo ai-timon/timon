@@ -20,7 +20,7 @@ import { agentAvatarSchema, applyAgentAvatar } from '../../agent-avatar.js';
 import { recordWriteOrigin } from '../../write-origin.js';
 import { GLOBAL_INSTRUCTIONS_FILE } from '../../paths.js';
 import { GLOBAL_INSTRUCTIONS_MAX_CHARS, readGlobalInstructions, writeGlobalInstructions } from '../../global-instructions.js';
-import { agentConfigRefusal, agentWideningDenied, canonicalizePermissionMode, isPrivilegedCaller, overrideAuthority, PRIVILEGED_CONFIG_PERMISSION, promptRewriteRefusal, rejectOverride, skillWideningDenied } from '../../users/privileged-overrides.js';
+import { agentConfigRefusal, agentWideningDenied, canonicalizePermissionMode, isPrivilegedCaller, overrideAuthority, personOnlyComputerDenied, PRIVILEGED_CONFIG_PERMISSION, promptRewriteRefusal, rejectOverride, skillWideningDenied } from '../../users/privileged-overrides.js';
 import { listSkillAttachments } from '../../skill-attachments.js';
 import { scopedDb } from '../../users/scoped-db.js';
 import { browseAgentFiles, deleteAgentPath, mkdirAgentPath, moveAgentPath, openAgentFileRaw, openExternalFileRaw, readExternalFile, renameAgentPath, writeAgentFile, writeExternalFile } from '../../files.js';
@@ -30,7 +30,7 @@ import { defaultExcludedMcpIds, deleteMcp, getMcp, listMcp, mcpOAuthClient, miss
 import { buildAuthorizeUrl, discoverOAuth, dynamicRegister, exchangeCode, OAUTH_CALLBACK_PATH, OAuthExchangeError, oauthErrorCode, oauthRedirectUri, oauthReturnPath, oauthState, pkcePair, putPending, settleState, takePending, usedState, type OAuthReturn } from '../../oauth.js';
 import { apiPort } from '../../api-url.js';
 import { agentDir, skillFile } from '../../paths.js';
-import { computerUseAppsRefusal, computerUseModeRefusal, findAgentFolder, isValidAgentName } from '../../agent-config.js';
+import { computerUseAllAppsRefusal, computerUseAppsRefusal, computerUseExcludedAppsRefusal, computerUseModeRefusal, findAgentFolder, isValidAgentName, storedComputerUseAllApps } from '../../agent-config.js';
 import { normalizeAgentName } from '../../agent-name.js';
 import { normalizeAgentNameParam } from '../../agent-name-param.js';
 import { buildInjections } from '../../prompt-injections.js';
@@ -424,6 +424,38 @@ function addedAgentSkills(name: string, skills: unknown): unknown {
   return skills.filter((id) => typeof id !== 'string' || !held.has(id.trim()));
 }
 
+/** Why the computer-use fields of a config are malformed, or null: the save and the patch share it. */
+function computerFieldsRefusal(config: Record<string, unknown>): string | null {
+  if ('computer_use_apps' in config && config.computer_use_apps !== undefined) {
+    const refusal = computerUseAppsRefusal(config.computer_use_apps);
+    if (refusal) return refusal;
+  }
+  if ('computer_use_mode' in config && config.computer_use_mode !== undefined) {
+    const refusal = computerUseModeRefusal(config.computer_use_mode);
+    if (refusal) return refusal;
+  }
+  if ('computer_use_all_apps' in config && config.computer_use_all_apps !== undefined) {
+    const refusal = computerUseAllAppsRefusal(config.computer_use_all_apps);
+    if (refusal) return refusal;
+  }
+  if ('computer_use_excluded_apps' in config && config.computer_use_excluded_apps !== undefined) {
+    const refusal = computerUseExcludedAppsRefusal(config.computer_use_excluded_apps);
+    if (refusal) return refusal;
+  }
+  return null;
+}
+
+/**
+ * The computer-use journal keeps the moment "All applications" was turned on or off, next to the
+ * actions it allowed: who reads the journal sees under which scope they ran.
+ */
+function journalAllAppsChange(agent: string, before: { computer_use_all_apps?: boolean } | null, after: boolean): void {
+  if (storedComputerUseAllApps(before ?? {}) === after) return;
+  try {
+    dbApi.recordComputerJournal({ agent, command: after ? 'all_apps_on' : 'all_apps_off', args: {}, result: 'ok', duration_ms: 0 });
+  } catch { /* best effort, like every journal line */ }
+}
+
 /**
  * A restore recreates an agent, so it obeys what creating it would (TODO #527):
  * the trashed config is judged as a NEW agent's (`agentConfigRefusal` with no
@@ -443,6 +475,8 @@ function trashRestoreRefusal(req: express.Request, id: string, cfg: Record<strin
   }
   const widening = agentWideningDenied(req, cfg, null);
   if (widening) return `restoring this agent brings its tools and MCP servers back: ${widening}`;
+  const everything = personOnlyComputerDenied(req, cfg, null);
+  if (everything) return `restoring this agent brings its computer-use access back: ${everything}`;
   // Its extra folders come back with it: only who may set them may restore them.
   const folders = Array.isArray(cfg.extra_dirs) && cfg.extra_dirs.length > 0;
   if (folders && !privileged && !requestHasPermission(req, PRIVILEGED_CONFIG_PERMISSION)) {
@@ -1045,7 +1079,10 @@ export function registerRoutes(app: express.IRouter): void {
       // Adding a tool or a stdio MCP server needs a person, whatever an
       // agent's token holds: checked before the privileged exemption, which a
       // developer-owner mission passes.
+      const computerShape = computerFieldsRefusal((body.config ?? {}) as Record<string, unknown>);
+      if (computerShape) { res.status(400).json(apiError('agent_save_refused', computerShape, { detail: computerShape })); return; }
       const widening = agentWideningDenied(req, (body.config ?? {}) as Record<string, unknown>, existing)
+        ?? personOnlyComputerDenied(req, (body.config ?? {}) as Record<string, unknown>, existing)
         ?? skillWideningDenied(req, addedAgentSkills(body.name, body.config?.skills), body.name, existing);
       if (widening) {
         rejectOverride(req, res, 'agent.config_denied', `agent:${body.name}`, widening);
@@ -1095,6 +1132,7 @@ export function registerRoutes(app: express.IRouter): void {
         system_prompt: body.system_prompt,
         config: cfg,
       });
+      journalAllAppsChange(body.name, existing, agent.computer_use_all_apps);
       // After an explicit Save through the agent editor, kill any
       // currently-running process for that agent so the next user turn
       // re-spawns with the updated args (model, permission_mode, skills,
@@ -1130,6 +1168,8 @@ export function registerRoutes(app: express.IRouter): void {
       res.status(400).json(apiError('ephemeral_fields_required', 'mission and system_prompt required'));
       return;
     }
+    const everything = personOnlyComputerDenied(req, (body.config ?? {}) as Record<string, unknown>, null);
+    if (everything) { rejectOverride(req, res, 'agent.config_denied', 'agent:ephemeral', everything); return; }
     try {
       if (body.config?.cwd) validateCwd(body.config.cwd);
       const agent = createEphemeralAgent({
@@ -1281,6 +1321,7 @@ export function registerRoutes(app: express.IRouter): void {
         'skills', 'mcp_servers', 'excluded_mcp_servers', 'project',
         'emoji', 'color', 'icon_url', 'look', 'avatar',
         'role', 'directives', 'global_context', 'browser_profile_id', 'computer_use', 'computer_use_apps', 'computer_use_mode',
+        'computer_use_all_apps', 'computer_use_excluded_apps',
         'team', 'reports_to', 'memory_scope', 'reasoningEffort',
       ];
       const patch: Record<string, unknown> = {};
@@ -1289,14 +1330,8 @@ export function registerRoutes(app: express.IRouter): void {
       }
       // `timon agent set-scope` and agent_set_scope send this; it used to be
       // dropped here, so the scope never changed.
-      if ('computer_use_apps' in patch) {
-        const refusal = computerUseAppsRefusal(patch.computer_use_apps);
-        if (refusal) { res.status(400).json(apiError('agent_update_refused', refusal, { detail: refusal })); return; }
-      }
-      if ('computer_use_mode' in patch) {
-        const refusal = computerUseModeRefusal(patch.computer_use_mode);
-        if (refusal) { res.status(400).json(apiError('agent_update_refused', refusal, { detail: refusal })); return; }
-      }
+      const computerShape = computerFieldsRefusal(patch);
+      if (computerShape) { res.status(400).json(apiError('agent_update_refused', computerShape, { detail: computerShape })); return; }
       if ('memory_scope' in patch && !['NONE', 'SESSION', 'AGENT', 'GLOBAL'].includes(patch.memory_scope as string)) {
         res.status(400).json(apiError('memory_scope_invalid', 'memory_scope must be NONE, SESSION, AGENT or GLOBAL'));
         return;
@@ -1327,6 +1362,7 @@ export function registerRoutes(app: express.IRouter): void {
       // Same rule as the creation path: no tool, no skill that pre-authorises
       // one and no stdio MCP server added by an agent's token, privileged or not.
       const widening = agentWideningDenied(req, patch, configured)
+        ?? personOnlyComputerDenied(req, patch, configured)
         ?? ('skills' in patch ? skillWideningDenied(req, addedAgentSkills(req.params.name, patch.skills), req.params.name, configured) : null);
       if (widening) {
         rejectOverride(req, res, 'agent.config_denied', `agent:${req.params.name}`, widening);
@@ -1355,6 +1391,7 @@ export function registerRoutes(app: express.IRouter): void {
         }
       }
       const next = patchAgentConfig(req.params.name, patch);
+      journalAllAppsChange(req.params.name, configured, next.computer_use_all_apps);
       // Skills, MCP servers and allowed_tools all affect how claude is spawned
       // (--append-system-prompt content, --mcp-config, --allowedTools). The
       // running process was started with the old values, so kill it to force
@@ -1363,7 +1400,8 @@ export function registerRoutes(app: express.IRouter): void {
       const respawnTriggers = [
         'skills', 'mcp_servers', 'excluded_mcp_servers',
         'allowed_tools', 'disallowed_tools', 'model', 'permission_mode',
-        'role', 'directives', 'browser_profile_id', 'computer_use', 'computer_use_apps', 'computer_use_mode', 'memory_scope', 'reasoningEffort',
+        'role', 'directives', 'browser_profile_id', 'computer_use', 'computer_use_apps', 'computer_use_mode',
+        'computer_use_all_apps', 'computer_use_excluded_apps', 'memory_scope', 'reasoningEffort',
       ] as const;
       const needsRespawn = respawnTriggers.some((k) => k in patch);
       let killed = 0;

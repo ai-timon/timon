@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ComputerCommandError, parseAllowedApps, parseComputerCommand } from './computer-use-protocol.js';
+import { ComputerCommandError, parseAllAppsScope, parseAllowedApps, parseComputerCommand } from './computer-use-protocol.js';
 import type { SystemCommand } from './computer-use-input.js';
-import { appMode, focusWindow, isAppAllowed, listWindows, readForegroundApp, windowApp } from './computer-use-windows.js';
+import { appMode, findWindow, focusWindow, isAppAllowed, isAppExcluded, listWindows, readForegroundApp, windowApp, windowBounds } from './computer-use-windows.js';
 
 test('the allow-list compares case-insensitively with the bundle id, the displayed name or the executable', () => {
   const app = { bundle: 'com.microsoft.VSCode', name: 'Visual Studio Code', exe: 'Code' };
@@ -68,6 +68,33 @@ test('Linux: without xprop the process name names the application, and the missi
   assert.equal(calls.filter((file) => file === 'xprop').length, 1);
 });
 
+test('Linux: the frame windows Mutter draws decorations in are not listed, so each window comes out once', async () => {
+  // xdotool finds every decorated window twice under Mutter X11: the client, and its frame window
+  // (same title) owned by the mutter-x11-frames process. Ids: client 31457283 = 0x1e00003, 37748743 = 0x2400007.
+  const scripted = (clientList: string) => async (command: SystemCommand) => {
+    const [verb, id] = command.args;
+    if (command.file === 'xprop' && verb === '-root') return { stdout: clientList };
+    if (command.file === 'xprop') return { stdout: id === '31457283' ? 'WM_CLASS(STRING) = "Navigator", "Firefox"\n' : id === '37748743' ? 'WM_CLASS(STRING) = "gnome-terminal-server", "Gnome-terminal"\n' : 'WM_CLASS(STRING) = "mutter-x11-frames", "mutter-x11-frames"\n' };
+    if (command.file === 'ps') return { stdout: id === '1' ? 'firefox\n' : id === '2' ? 'gnome-terminal-\n' : 'mutter-x11-fram\n' };
+    if (verb === 'getactivewindow') return { stdout: '31457283\n' };
+    if (verb === 'search') return { stdout: '8388614\n31457283\n8388620\n37748743\n' };
+    if (verb === 'getwindowname') return { stdout: id === '31457283' || id === '8388614' ? 'Docs - Firefox\n' : 'Terminal\n' };
+    if (verb === 'getwindowpid') return { stdout: id === '31457283' ? '1\n' : id === '37748743' ? '2\n' : '3\n' };
+    return { stdout: '' };
+  };
+  const expected = [['31457283', 'Docs - Firefox', 'Firefox', true], ['37748743', 'Terminal', 'Gnome-terminal', false]];
+
+  const withClientList = scripted('_NET_CLIENT_LIST(WINDOW): window id # 0x1e00003, 0x2400007\n');
+  assert.deepEqual((await listWindows('linux', withClientList)).map((w) => [w.id, w.title, w.app, w.focused]), expected);
+  assert.equal(await windowApp('linux', withClientList, '8388614'), null, 'a frame id is no window of the list');
+  assert.deepEqual(await windowApp('linux', withClientList, '31457283'), { name: 'Firefox', exe: 'firefox' });
+  assert.deepEqual(await readForegroundApp('linux', withClientList), { name: 'Firefox', exe: 'firefox' });
+
+  // No client list published (no window manager, or an unreadable root): the frame class is dropped instead.
+  const withoutClientList = scripted('_NET_CLIENT_LIST:  not found.\n');
+  assert.deepEqual((await listWindows('linux', withoutClientList)).map((w) => [w.id, w.title, w.app, w.focused]), expected);
+});
+
 test('Linux focus: falls back to map, raise and focus without a window manager, and checks the result', async () => {
   let active = '4242';
   const calls: string[] = [];
@@ -124,4 +151,99 @@ test('the new commands and the allowed list are validated', () => {
   assert.throws(() => parseAllowedApps([{ mode: 'background' }]), ComputerCommandError);
   assert.throws(() => parseAllowedApps('Notepad'), ComputerCommandError);
   assert.throws(() => parseAllowedApps([1]), ComputerCommandError);
+});
+
+const XWININFO = `
+xwininfo: Window id: 0x4a00003 "Docs - Firefox"
+
+  Absolute upper-left X:  1290
+  Absolute upper-left Y:  37
+  Relative upper-left X:  0
+  Relative upper-left Y:  0
+  Width: 2540
+  Height: 1403
+  Depth: 24
+  Map State: IsViewable
+`;
+
+test('Linux: a window\'s rectangle comes from xwininfo, frame included, in points', async () => {
+  const exec = async (command: SystemCommand) => {
+    if (command.file === 'xwininfo') return { stdout: XWININFO };
+    if (command.file === 'xprop') return { stdout: '_NET_FRAME_EXTENTS(CARDINAL) = 10, 10, 37, 10\n' };
+    throw new Error(`unexpected ${command.file}`);
+  };
+  const entry = { id: '4242', title: 'Docs', app: 'Firefox', focused: true, identity: { name: 'Firefox' } };
+  assert.deepEqual(await windowBounds('linux', exec, entry, 1), { x: 1280, y: 0, width: 2560, height: 1450 });
+  assert.deepEqual(await windowBounds('linux', exec, entry, 2), { x: 640, y: 0, width: 1280, height: 725 }, 'X11 pixels are turned into points');
+  const unmapped = async (command: SystemCommand) => ({ stdout: command.file === 'xwininfo' ? XWININFO.replace('IsViewable', 'IsUnMapped') : '' });
+  assert.equal(await windowBounds('linux', unmapped, entry, 1), null, 'a minimised window has no rectangle');
+});
+
+test('Linux: without xwininfo, xdotool getwindowgeometry gives the rectangle', async () => {
+  const calls: string[] = [];
+  const exec = async (command: SystemCommand) => {
+    calls.push(command.file);
+    if (command.file === 'xwininfo' || command.file === 'xprop') throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    if (command.args[0] === 'getwindowgeometry') return { stdout: 'WINDOW=4242\nX=10\nY=20\nWIDTH=640\nHEIGHT=480\nSCREEN=0\n' };
+    return { stdout: '' };
+  };
+  const entry = { id: '4242', title: '', app: 'x', focused: false, identity: { name: 'x' } };
+  assert.deepEqual(await windowBounds('linux', exec, entry, 1), { x: 10, y: 20, width: 640, height: 480 });
+  await windowBounds('linux', exec, entry, 1);
+  assert.equal(calls.filter((file) => file === 'xwininfo').length, 1, 'the missing tool is asked once');
+});
+
+test('Windows and macOS: the rectangle comes from the system in points; a bad answer gives none', async () => {
+  const seen: unknown[] = [];
+  const win = async (command: SystemCommand) => {
+    const query = JSON.parse(command.worker!.input) as { q: string };
+    seen.push(query);
+    if (query.q === 'rect') return { stdout: '{"x":-8,"y":0,"width":1296.5,"height":1040}' };
+    return { stdout: '[{"id":"197284","title":"a.txt - Notepad","app":"Notepad","exe":"notepad","focused":true}]' };
+  };
+  const notepad = await findWindow('win32', win, null);
+  assert.equal(notepad?.id, '197284');
+  assert.deepEqual(await windowBounds('win32', win, notepad!, 1.5), { x: -8, y: 0, width: 1296.5, height: 1040 });
+  assert.deepEqual(seen.at(-1), { q: 'rect', id: '197284' });
+  assert.equal(await windowBounds('win32', async () => ({ stdout: 'null' }), notepad!, 1), null);
+
+  const mac = async () => ({ stdout: JSON.stringify([
+    { id: '10:1', title: 'Notes', app: 'TextEdit', focused: true, bounds: { x: 0, y: 25, width: 800, height: 600 } },
+    { id: '10:2', title: 'Bad', app: 'TextEdit', focused: false, bounds: { x: 'a', y: 0, width: 800, height: 600 } },
+  ]) });
+  const notes = await findWindow('darwin', mac, '10:1');
+  assert.deepEqual(await windowBounds('darwin', mac, notes!, 2), { x: 0, y: 25, width: 800, height: 600 });
+  assert.equal(await windowBounds('darwin', mac, (await findWindow('darwin', mac, '10:2'))!, 2), null);
+  assert.equal(await findWindow('darwin', mac, '99:1'), null);
+});
+
+test('"All applications": the unlisted take the scope\'s mode, a listed one keeps its own, an exclusion always wins', () => {
+  const notes = { bundle: 'com.apple.Notes', name: 'Notes', exe: 'Notes' };
+  const keepass = { name: 'KeePassXC', exe: 'keepassxc' };
+  const notepad = { name: 'Notepad', exe: 'notepad.exe' };
+  const everything = { mode: 'background' as const, excluded: ['KeePassXC', 'NOTEPAD'] };
+  assert.equal(appMode(notes, [], 'foreground', everything), 'background', 'unlisted: the default mode');
+  assert.equal(appMode(notes, [], 'foreground', { mode: 'foreground', excluded: [] }), 'foreground');
+  assert.equal(appMode(notes, [{ app: 'Notes', mode: 'foreground' }], 'foreground', everything), 'foreground', 'an explicit entry keeps its mode');
+  assert.equal(appMode(keepass, [], 'foreground', everything), null, 'excluded');
+  assert.equal(appMode(keepass, [{ app: 'keepassxc', mode: 'foreground' }], 'foreground', everything), null, 'the exclusion wins over an explicit entry');
+  assert.equal(appMode(notepad, [], 'foreground', everything), null, 'any name, case and .exe apart');
+  assert.equal(appMode(null, [], 'foreground', everything), null, 'an unreadable application stays refused');
+  assert.equal(appMode(keepass, [{ app: 'KeePassXC', mode: 'foreground' }]), 'foreground', 'the exclusions only apply with the switch on');
+  assert.equal(appMode(notes, []), null, 'off: an empty list allows nothing');
+  assert.equal(isAppAllowed(notes, [], everything), true);
+  assert.equal(isAppExcluded(keepass, ['  keepassxc '.trim()]), true);
+  assert.equal(isAppExcluded(keepass, ['', 'KeePass']), false, 'exact names only, an empty entry matches nothing');
+});
+
+test('"All applications" is parsed off by default and refused on without its exclusions', () => {
+  assert.equal(parseAllAppsScope(undefined, undefined, 'foreground'), null);
+  assert.equal(parseAllAppsScope(false, ['x'], 'foreground'), null);
+  assert.deepEqual(parseAllAppsScope(true, ['KeePassXC'], 'background'), { mode: 'background', excluded: ['KeePassXC'] });
+  assert.deepEqual(parseAllAppsScope(true, [], 'foreground'), { mode: 'foreground', excluded: [] }, 'an empty list a person chose is kept');
+  assert.throws(() => parseAllAppsScope(true, undefined, 'foreground'), ComputerCommandError);
+  assert.throws(() => parseAllAppsScope('yes', [], 'foreground'), ComputerCommandError);
+  assert.throws(() => parseAllAppsScope(true, [3], 'foreground'), ComputerCommandError);
+  assert.throws(() => parseAllAppsScope(true, Array.from({ length: 201 }, (_, i) => `a${i}`), 'foreground'), ComputerCommandError);
+
 });

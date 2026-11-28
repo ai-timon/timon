@@ -83,6 +83,11 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
     const found = message ?? 'The foreground application is not in the agent\'s allowed list.';
     return new NativeComputerError(apiError('computer_app_not_allowed', `${found} Ask the user to add the application to the allowed applications in this agent's settings, or to bring an allowed one to the front.`, { detail: found }), 403);
   }
+  if (code === 'computer_app_excluded') {
+    // "All applications" is on, but the user excluded this one: asking to add it to the list changes nothing.
+    const found = message ?? 'The foreground application is excluded for this agent.';
+    return new NativeComputerError(apiError('computer_app_excluded', `${found} Do not work around it: bring another application to the front, or ask the user to do this step themselves.`, { detail: found }), 403);
+  }
   if (code === 'computer_background_only') {
     return new NativeComputerError(apiError('computer_background_only', 'This agent works in the background: use a11y_tree and a11y_action. Screenshots, the mouse, the keyboard and focusing a window are refused, so the user keeps their screen.'), 403);
   }
@@ -93,6 +98,10 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
     // The desktop's text lists the actions the element does accept: the agent picks one of them.
     const found = message ?? 'That element cannot do this.';
     return new NativeComputerError(apiError('a11y_action_unsupported', found, { detail: found }), 422);
+  }
+  if (code === 'a11y_tree_too_large') {
+    return new NativeComputerError(apiError('a11y_tree_too_large', 'This window\'s accessibility tree is too large to read in time. Call computer_a11y_tree again with a query '
+      + '(part of the element\'s name, or its role such as "button"), with the windowId of a smaller window, or with a lower maxDepth.'), 504);
   }
   if (code === 'a11y_unavailable') {
     return new NativeComputerError(apiError('a11y_unavailable', `The accessibility tree is not available on this machine. ${A11Y_HINT} Work from screenshots meanwhile.`), 503);
@@ -106,6 +115,13 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
   return new NativeComputerError(apiError('computer_command_failed', `Computer command failed: ${detail}`, { detail }), 502);
 }
 
+/** What the desktop needs to judge an agent's command: its applications, its default mode and, when on, "All applications". */
+function agentScope(options: Parameters<typeof callNativeComputer>[3]): Record<string, unknown> {
+  const scope: Record<string, unknown> = { allowedApps: options?.allowedApps ?? [], mode: options?.mode ?? 'foreground' };
+  if (options?.allApps === true) Object.assign(scope, { allApps: true, excludedApps: options.excludedApps ?? [] });
+  return scope;
+}
+
 /**
  * Sends one command to the desktop's computer-use server. `actor` is the
  * daemon's, derived from the authentication, never the caller's.
@@ -114,7 +130,17 @@ export async function callNativeComputer(
   command: string,
   args: Record<string, unknown>,
   actor: ComputerActor,
-  options: { home?: string; timeoutMs?: number; allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[]; mode?: 'foreground' | 'background' } = {},
+  options: {
+    home?: string;
+    timeoutMs?: number;
+    allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[];
+    mode?: 'foreground' | 'background';
+    /** Every application but `excludedApps`, the unlisted ones in `mode`. Sent only when on: a desktop that predates it then reads the list alone. */
+    allApps?: boolean;
+    excludedApps?: readonly string[];
+    /** The agent behind the command, shown beside the pointer the desktop draws; never a permission. */
+    agent?: string;
+  } = {},
 ): Promise<unknown> {
   const provider = readComputerProvider(options.home);
   if (!provider) throw new NativeComputerError(apiError('computer_unavailable', 'Computer use is unavailable: the Timon desktop app must be running on the host machine. Ask the user to open it.'), 503);
@@ -123,7 +149,7 @@ export async function callNativeComputer(
   try {
     response = await fetch(`${provider.origin}/command`, {
       method: 'POST', headers: { authorization: `Bearer ${provider.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ command, args, actor, ...(actor === 'agent' ? { allowedApps: options.allowedApps ?? [], mode: options.mode ?? 'foreground' } : {}) }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
+      body: JSON.stringify({ command, args, actor, ...(actor === 'agent' ? { ...agentScope(options), ...(options.agent ? { agent: options.agent } : {}) } : {}) }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
       redirect: 'error',
     });
   } catch {

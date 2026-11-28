@@ -1,6 +1,6 @@
 import type { Request, Response, Router } from 'express';
 import { z } from 'zod';
-import { loadConfig, storedComputerUseApps, storedComputerUseMode, type ComputerUseApp, type ComputerUseMode } from '../../agent-config.js';
+import { loadConfig, storedComputerUseAllApps, storedComputerUseApps, storedComputerUseExcludedApps, storedComputerUseMode, type ComputerUseApp, type ComputerUseMode } from '../../agent-config.js';
 import { apiError } from '../../api-error.js';
 import { dbApi } from '../../db.js';
 import { scopedDb } from '../../users/scoped-db.js';
@@ -16,7 +16,8 @@ const point = z.object({ x: coord, y: coord }).strict();
 /** The closed list of commands, each with the only arguments it accepts. */
 const SCHEMAS = {
   status: empty,
-  screenshot: z.object({ maxWidth: z.number().int().min(64).max(4096).optional() }).strict(),
+  // `windowId`: an id from list_windows, or "front" for the window in front; only its rectangle is captured.
+  screenshot: z.object({ maxWidth: z.number().int().min(64).max(4096).optional(), windowId: z.string().regex(/^[A-Za-z0-9:_.-]{1,64}$/).optional() }).strict(),
   cursor_position: empty,
   move: point,
   click: z.object({ x: coord, y: coord, button: z.enum(['left', 'right', 'middle']).optional() }).strict(),
@@ -66,7 +67,9 @@ function refuse(error: ReturnType<typeof apiError>, status: number): never {
 }
 
 /** Who the desktop sees behind a command: the daemon's reading of the authentication, never the caller's. */
-function actorOf(req: Request, command: ComputerCommand): { actor: ComputerActor; allowedApps?: ComputerUseApp[]; mode?: ComputerUseMode } {
+type AgentScope = { allowedApps: ComputerUseApp[]; mode: ComputerUseMode; allApps?: true; excludedApps?: string[] };
+
+function actorOf(req: Request, command: ComputerCommand): { actor: ComputerActor; scope?: AgentScope; agent?: string } {
   if (isPersonAuth(req.auth)) {
     if (!personCommands.has(command)) refuse(apiError('computer_mission_token_required', 'A mission-bound token is required to control the computer.'), 403);
     return { actor: 'human' };
@@ -77,17 +80,21 @@ function actorOf(req: Request, command: ComputerCommand): { actor: ComputerActor
   if (humanOnly.has(command)) refuse(apiError('computer_command_user_only', 'Stopping, resuming and setting up computer control is reserved for the user.'), 403);
   const mission = scopedDb(viewerFromRequest(req)).getMission(req.auth.missionId);
   let enabled = false;
-  let allowedApps: ComputerUseApp[] = [];
-  let mode: ComputerUseMode = 'foreground';
+  let scope: AgentScope = { allowedApps: [], mode: 'foreground' };
   try {
     const config = mission ? loadConfig(mission.agent_name) : null;
     enabled = config?.computer_use === true;
-    if (config) { allowedApps = storedComputerUseApps(config); mode = storedComputerUseMode(config); }
+    if (config) {
+      scope = { allowedApps: storedComputerUseApps(config), mode: storedComputerUseMode(config) };
+      // The exclusions always travel with the switch: the desktop refuses "All applications" without them.
+      if (storedComputerUseAllApps(config)) Object.assign(scope, { allApps: true, excludedApps: storedComputerUseExcludedApps(config) });
+    }
   } catch { /* an unreadable config grants nothing */ }
   if (!enabled) refuse(apiError('computer_use_disabled', 'Computer use is turned off for this agent.'), 403);
   // Read here, from the agent's own config, and handed to the desktop with every command: the desktop refuses what is not listed.
   // The mode travels the same way: the desktop enforces it, the caller cannot choose it.
-  return { actor: 'agent', allowedApps, mode };
+  // The agent's name only labels the pointer the desktop draws over the screen: it grants nothing.
+  return { actor: 'agent', scope, ...(mission ? { agent: mission.agent_name } : {}) };
 }
 
 /** The agent and mission behind an agent's command, for the journal; null for a person or an unbound token. */
@@ -155,7 +162,7 @@ export function registerComputerRoutes(app: Router, deps: { call?: typeof callNa
       if (!isCommand(command)) refuse(apiError('computer_command_unknown', 'Unknown computer command.'), 400);
       known = command;
       ctx = journalContext(req);
-      const { actor, allowedApps, mode } = actorOf(req, command);
+      const { actor, scope, agent } = actorOf(req, command);
       // `actor` and every other key a caller adds are refused: the schema is strict, the body is only the arguments.
       const parsed = SCHEMAS[command].safeParse(req.body ?? {});
       if (!parsed.success) refuse(apiError('computer_args_invalid', 'Invalid arguments for this computer command.'), 400);
@@ -165,7 +172,7 @@ export function registerComputerRoutes(app: Router, deps: { call?: typeof callNa
         res.json({ ok: true, result: { waited: args.ms } });
         return;
       }
-      res.json({ ok: true, result: await call(command, args, actor, allowedApps ? { allowedApps, ...(mode ? { mode } : {}) } : {}) });
+      res.json({ ok: true, result: await call(command, args, actor, scope ? { ...scope, ...(agent ? { agent } : {}) } : {}) });
     } catch (error) {
       result = computerErrorBody(error).code;
       res.status(error instanceof NativeComputerError ? error.status : 400).json(computerErrorBody(error));

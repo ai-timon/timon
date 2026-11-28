@@ -116,6 +116,13 @@ export function ComputerUseSetupView({
   );
 }
 
+/** A command as the journal names it; the switch of "All applications" reads as a sentence. */
+function journalCommand(command: string): string {
+  if (command === 'all_apps_on') return t('computerSetup.journalAllAppsOn');
+  if (command === 'all_apps_off') return t('computerSetup.journalAllAppsOff');
+  return command;
+}
+
 /** The last actions of the agent: time, action, result. `entries` null means the journal could not be read. */
 export function ComputerJournalView({
   entries, onRefresh,
@@ -137,7 +144,7 @@ export function ComputerJournalView({
           {entries.map((entry) => (
             <li key={entry.id} data-computer-journal-row className="flex items-baseline gap-2 text-[12px]">
               <span className="shrink-0 text-muted-foreground">{formatTime(entry.at, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-              <span className="min-w-0 flex-1 truncate">{entry.command}</span>
+              <span className="min-w-0 flex-1 truncate">{journalCommand(entry.command)}</span>
               <span className={entry.result === 'ok' ? 'shrink-0 text-emerald-700 dark:text-emerald-400' : 'shrink-0 text-amber-700 dark:text-amber-400'}>
                 {entry.result === 'ok' ? t('computerSetup.journalResultOk') : t('computerSetup.journalResultRefused', { code: entry.result })}
               </span>

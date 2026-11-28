@@ -178,3 +178,18 @@ test('a proposal carries the mode of each application, shown on the card and app
     { app: 'Notes', mode: 'foreground' }, { app: 'Mail', mode: 'foreground' }, { app: 'Discord', mode: 'foreground' },
   ]);
 });
+
+test('"All applications" and its exclusions cannot be proposed: the card is never drawn', async () => {
+  const before = configOf('cu-target');
+  for (const body of [
+    { agent: 'cu-target', allApps: true },
+    { agent: 'cu-target', computer_use_all_apps: true, addApps: ['x'] },
+    { agent: 'cu-target', excludedApps: [] },
+    { agent: 'cu-target', computer_use_excluded_apps: ['Timon'] },
+  ]) {
+    const res = await propose(body);
+    assert.equal(res.status, 403, JSON.stringify(res.json));
+    assert.equal(res.json.code, 'computer_proposal_all_apps_refused');
+  }
+  assert.deepEqual(configOf('cu-target'), before);
+});

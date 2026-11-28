@@ -45,12 +45,14 @@ const MODES: { value: ComputerAppMode; label: string }[] = [
 ];
 
 export function ComputerUseApps({
-  values, onChange, defaultMode = 'foreground', load = fetchComputerWindows, probe = probeComputerApp,
+  values, onChange, defaultMode = 'foreground', allApps = false, load = fetchComputerWindows, probe = probeComputerApp,
 }: {
   values: AllowedApp[];
   onChange: (next: AllowedApp[]) => void;
   /** The mode of an application added by name: the agent's setting. */
   defaultMode?: ComputerAppMode;
+  /** "All applications" is on: an empty list no longer means the agent can do nothing. */
+  allApps?: boolean;
   /** The open windows; injected by tests. */
   load?: typeof fetchComputerWindows;
   /** The eligibility probe of an open window; injected by tests. */
@@ -139,7 +141,7 @@ export function ComputerUseApps({
           className="w-full border-0 bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground/70"
         />
       </div>
-      {values.length === 0 && (
+      {values.length === 0 && !allApps && (
         <p role="note" data-computer-use-apps-empty className="mt-2 flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2.5 py-2 text-[12px] text-amber-900 dark:text-amber-200">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           <span>{t('editPage.computerAppsEmptyWarning')}</span>
