@@ -354,6 +354,7 @@ test('the desktop\'s accessibility refusals keep their own codes', async () => {
     stale: { status: 409, code: 'a11y_element_stale', error: 'gone' },
     unsupported: { status: 422, code: 'a11y_action_unsupported', error: 'That element cannot do this. Possible actions: press, focus.' },
     unavailable: { status: 503, code: 'a11y_unavailable', error: 'The accessibility tree is unavailable on this machine (missing).' },
+    tooLarge: { status: 504, code: 'a11y_tree_too_large', error: 'too large' },
   };
   let current = answers.stale!;
   const server = (await import('node:http')).createServer((_req, res) => {
@@ -370,7 +371,7 @@ test('the desktop\'s accessibility refusals keep their own codes', async () => {
   mk(join(home, 'computer-native'));
   write(join(home, 'computer-native', 'provider.json'), JSON.stringify({ version: 1, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, token: 'x'.repeat(40), pid: 1 }));
   try {
-    for (const [name, status, match] of [['stale', 409, /a11y_tree again/], ['unsupported', 422, /Possible actions: press, focus/], ['unavailable', 503, /setup card/]] as const) {
+    for (const [name, status, match] of [['stale', 409, /a11y_tree again/], ['unsupported', 422, /Possible actions: press, focus/], ['unavailable', 503, /setup card/], ['tooLarge', 504, /query.*windowId.*maxDepth/]] as const) {
       current = answers[name]!;
       await assert.rejects(callNativeComputer('a11y_action', {}, 'agent', { home }), (error: NativeComputerError) => {
         assert.equal(error.status, status);

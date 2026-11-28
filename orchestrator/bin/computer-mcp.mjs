@@ -21,7 +21,7 @@ const NO_FOCUS = ' Prefer acting by windowId with computer_a11y_tree and compute
 const A11Y_FIRST = ' Read the window first with computer_a11y_tree and act by element. Take a screenshot and click in pixels only if the element is missing from the tree.' + NO_FOCUS;
 const MAX_STEPS = 20;
 const tools = [
-  { name: 'computer_a11y_tree', description: `Read a window as a tree of elements (buttons, fields, menus...), with no screenshot. One line per element, indented by depth: #id role "name" = value [actions] @x,y. The id is what follows the first "#". Without windowId it reads the window in front. Use query to find an element by part of its name, value or role (case does not matter): the answer keeps the matches and the elements that contain them. Roles: button, textfield, textarea, checkbox, radio, combobox, list, listitem, menu, menuitem, menubar, tab, tablist, link, image, text, group, window, toolbar, table, row, cell, slider, scrollbar, other. Ids last as long as the interface does not change: an a11y_element_stale error means read the tree again. Set withBounds only if you need the positions (in screenshot pixels).${A11Y_FIRST}`, inputSchema: schema({
+  { name: 'computer_a11y_tree', description: `Read a window as a tree of elements (buttons, fields, menus...), with no screenshot. One line per element, indented by depth: #id role "name" = value [actions] @x,y. The id is what follows the first "#". Without windowId it reads the window in front. Use query to find an element by part of its name, value or role (case does not matter): the answer keeps the matches and the elements that contain them, and only those count against maxNodes, so a query is the way to search a large window. Roles: button, textfield, textarea, checkbox, radio, combobox, list, listitem, menu, menuitem, menubar, tab, tablist, link, image, text, group, window, toolbar, table, row, cell, slider, scrollbar, other. Ids last as long as the interface does not change: an a11y_element_stale error means read the tree again. Set withBounds only if you need the positions (in screenshot pixels).${A11Y_FIRST}`, inputSchema: schema({
     windowId: { type: 'string', minLength: 1, maxLength: 64 }, query: { type: 'string', maxLength: 200 },
     maxDepth: { type: 'integer', minimum: 1, maximum: 15 }, maxNodes: { type: 'integer', minimum: 1, maximum: 1500 }, withBounds: { type: 'boolean' },
   }) },
@@ -91,7 +91,10 @@ async function runActions(args) {
 /** The tree as indented text: far fewer tokens than the JSON, and the ids stay readable. */
 function renderTree(tree, withBounds) {
   const quote = text => JSON.stringify(String(text));
-  const lines = [`window #${tree.window.id} ${quote(tree.window.title)} (${tree.window.app})${tree.truncated ? ' - truncated: raise maxNodes or maxDepth, or use query' : ''}`];
+  // A reading cut at the desktop's deadline: more nodes would not help, a narrower request would.
+  const cut = tree.timedOut ? ' - truncated: reading took too long, use query, the windowId of a smaller window or a lower maxDepth'
+    : tree.truncated ? ' - truncated: raise maxNodes or maxDepth, or use query' : '';
+  const lines = [`window #${tree.window.id} ${quote(tree.window.title)} (${tree.window.app})${cut}`];
   for (const node of Array.isArray(tree.nodes) ? tree.nodes : []) {
     let line = `${'  '.repeat(node.depth)}#${node.id} ${node.role}`;
     if (node.name) line += ` ${quote(node.name)}`;
