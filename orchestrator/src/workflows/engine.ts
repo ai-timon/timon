@@ -37,6 +37,16 @@ const publish = (runId: string, nodeId: string | undefined, status: string) => {
 };
 const latestNodes = (rows: WorkflowRunNodeRow[]) => rows.filter((row) => !rows.some((other) => other.node_id === row.node_id && other.attempt > row.attempt));
 
+/** The cause a failed run carries: its first failed node, by the time it
+ * ended. Without it the run row is silent and every reader (the pilot, the
+ * API, a script polling the run) has to walk the nodes to learn why. */
+const RUN_ERROR_MAX = 2000;
+function firstNodeFailure(rows: WorkflowRunNodeRow[]): string | undefined {
+  const failed = rows.filter((row) => ['error', 'timeout'].includes(row.status)).sort((a, b) => (a.ended_at ?? Infinity) - (b.ended_at ?? Infinity))[0];
+  if (!failed) return undefined;
+  return String(redactDeep(`${failed.node_id}: ${failed.error ?? failed.status}`)).slice(0, RUN_ERROR_MAX);
+}
+
 // The run page is the anchor: a card with neither mission nor task opens it on click.
 function runPageAnchor(runId: string): string | null {
   const run = dbApi.getWorkflowRun(runId);
@@ -391,7 +401,8 @@ export async function advance(runId: string): Promise<void> {
       dbApi.updateWorkflowRunNode(runId, row.node_id, { status: 'skipped', ended_at: Date.now() });
       if (row.status === 'waiting') closeHumanCard(runId, row.node_id);
     }
-    dbApi.updateWorkflowRun(runId, { status: 'failed', ended_at: Date.now() });
+    const cause = firstNodeFailure(after);
+    dbApi.updateWorkflowRun(runId, { status: 'failed', error: cause, ended_at: Date.now() });
     dbApi.upsertSpans([{ op: 'close', id: `workflow:${runId}`, status: 'error', ended_at: Date.now() }]);
     publish(runId, undefined, 'failed'); return;
   }
@@ -405,7 +416,8 @@ export async function advance(runId: string): Promise<void> {
   if (!active) {
     const failed = settled.some((row) => ['error', 'timeout'].includes(row.status));
     const status = failed && definition.settings.onError !== 'continue' ? 'failed' : 'completed';
-    dbApi.updateWorkflowRun(runId, { status, ended_at: Date.now() });
+    const cause = status === 'failed' ? firstNodeFailure(settled) : undefined;
+    dbApi.updateWorkflowRun(runId, { status, error: cause, ended_at: Date.now() });
     dbApi.upsertSpans([{ op: 'close', id: `workflow:${runId}`, status: status === 'completed' ? 'ok' : 'error', ended_at: Date.now() }]);
     publish(runId, undefined, status);
   } else if (candidates.length || looped || relooped) void advance(runId);
