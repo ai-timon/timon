@@ -31,9 +31,9 @@ const TEXT_CAP = 200;
 
 export type A11yCheck = 'ok' | 'missing' | 'unsupported';
 
-/** Why a backend refused: the element is gone, or it cannot do that. */
+/** Why a backend refused: the element is gone, it cannot do that, or the window's tree is too large to read in time. */
 export class A11yError extends Error {
-  constructor(readonly kind: 'stale' | 'unsupported' | 'failed', message: string, readonly actions: readonly A11yAction[] = []) {
+  constructor(readonly kind: 'stale' | 'unsupported' | 'failed' | 'too_large', message: string, readonly actions: readonly A11yAction[] = []) {
     super(message);
   }
 }
@@ -57,7 +57,8 @@ export interface A11yRawNode {
   actions: string[];
 }
 
-export interface A11yRawTree { truncated: boolean; nodes: A11yRawNode[] }
+/** `timedOut`: the backend stopped at its deadline and answered what it had read; more nodes would not help. */
+export interface A11yRawTree { truncated: boolean; timedOut?: boolean; nodes: A11yRawNode[] }
 
 export interface A11yTreeArgs {
   windowId: string;
@@ -101,6 +102,8 @@ export interface A11yNode {
 export interface A11yTree {
   window: { id: string; title: string; app: string };
   truncated: boolean;
+  /** The reading stopped at the backend's deadline: narrow it (query, windowId, maxDepth) rather than raise maxNodes. */
+  timedOut?: true;
   nodes: A11yNode[];
 }
 
@@ -189,7 +192,7 @@ export function buildTree(
     if (bounds) out.bounds = bounds;
     nodes.push(out);
   }
-  return { window, truncated, nodes };
+  return { window, truncated, ...(raw.timedOut ? { timedOut: true as const } : {}), nodes };
 }
 
 /** Whether an application is worth driving from the background: how rich its accessibility tree is. */
