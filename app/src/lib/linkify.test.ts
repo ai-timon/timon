@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { splitLinks } from './linkify';
 
 test('a URL at the end of a sentence drops the final punctuation', () => {
-  assert.deepEqual(splitLinks('MR opened: https://gitlab.example/mr/1875.'), [
-    { kind: 'text', text: 'MR opened: ' },
-    { kind: 'link', text: 'https://gitlab.example/mr/1875', href: 'https://gitlab.example/mr/1875' },
+  assert.deepEqual(splitLinks('Waiting on https://example.com/issues/12.'), [
+    { kind: 'text', text: 'Waiting on ' },
+    { kind: 'link', text: 'https://example.com/issues/12', href: 'https://example.com/issues/12' },
     { kind: 'text', text: '.' },
   ]);
   assert.equal(splitLinks('(see https://a.io/x),')[1]?.text, 'https://a.io/x');
