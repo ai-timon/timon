@@ -21,7 +21,8 @@ export const LINUX_A11Y_HINT =
 
 /** Fixed text: read it, never build it from input. */
 const SCRIPT = String.raw`
-import sys, json
+import sys, json, time
+from collections import deque
 import gi
 gi.require_version('Atspi', '2.0')
 from gi.repository import Atspi
@@ -242,31 +243,122 @@ def at_path(win, path):
             return None
     return acc
 
-def walk(win, max_depth, max_nodes):
-    nodes = []
+# What a name or a value keeps: the tree caps text at 200 characters, one more marks the cut.
+CLIP = 201
+# Roles whose kind or value is only known after reading the element fully: a query checks them in full.
+RICH_ROLES = ('entry', 'password text', 'text', 'slider', 'check box', 'check menu item', 'radio button', 'radio menu item')
+
+def clip(text):
+    return text[:CLIP] if text else text
+
+def shown(acc):
+    """Hidden pages (the other tabs of a notebook) can hold thousands of elements: never enter them."""
+    try:
+        states = acc.get_state_set()
+        return has(states, Atspi.StateType.SHOWING) and has(states, Atspi.StateType.VISIBLE)
+    except Exception:
+        return False
+
+def matches(node, query):
+    return any(query in (text or '').lower() for text in (node.get('name'), node.get('value'), node.get('role')))
+
+class Entry:
+    __slots__ = ('acc', 'path', 'depth', 'parent', 'node', 'ifaces', 'kept')
+    def __init__(self, acc, path, depth, parent):
+        self.acc, self.path, self.depth, self.parent = acc, path, depth, parent
+        self.node = None
+        self.ifaces = None
+        self.kept = False
+
+def ifaces_of(entry):
+    if entry is None:
+        return set()
+    if entry.ifaces is None:
+        entry.ifaces = interfaces(entry.acc)
+    return entry.ifaces
+
+def read(entry):
+    if entry.node is not None:
+        return entry.node
+    try:
+        node, entry.ifaces = describe(entry.acc, entry.path, ifaces_of(entry.parent))
+    except Exception:
+        # The element vanished while it was read: it keeps its place, with nothing to act on.
+        node = {'path': entry.path, 'role': 'other', 'name': '', 'enabled': False, 'actions': []}
+    node['name'] = clip(node['name'])
+    if 'value' in node:
+        node['value'] = clip(node['value'])
+    entry.node = node
+    return node
+
+def hit(entry, query):
+    """Name and role are cheap to read; only the roles that may carry a value are read in full."""
+    try:
+        role = entry.acc.get_role_name().lower()
+        name = clip(entry.acc.get_name() or '')
+    except Exception:
+        return False
+    if role in RICH_ROLES:
+        return matches(read(entry), query)
+    return matches({'name': name, 'role': ROLES.get(role, 'other')}, query)
+
+def walk(win, max_depth, max_nodes, query=None, deadline_ms=10000, max_visits=10000):
+    """Breadth first, so the toolbars and the visible controls come before the deep content. Without a
+    query, max_nodes counts every element read; with one, only the matches and their ancestors, while
+    max_visits and the deadline bound the search. Reaching the deadline answers what was found so far."""
+    deadline = time.monotonic() + deadline_ms / 1000.0
+    kept = []
     truncated = False
-    def visit(acc, path, depth, parent_ifaces):
-        nonlocal truncated
-        if len(nodes) >= max_nodes:
+    timed_out = False
+    visits = 0
+    queue = deque([Entry(win, '0', 0, None)])
+    while queue:
+        if time.monotonic() >= deadline:
+            truncated = timed_out = True
+            break
+        if visits >= max_visits or (not query and len(kept) >= max_nodes):
             truncated = True
-            return
-        node, ifaces = describe(acc, path, parent_ifaces)
-        nodes.append(node)
-        if depth + 1 >= max_depth:
-            if acc.get_child_count() > 0:
+            break
+        entry = queue.popleft()
+        visits += 1
+        if not query:
+            read(entry)
+            kept.append(entry.node)
+        elif hit(entry, query):
+            # The match and those of its ancestors not kept yet: a hit is read in its place.
+            chain = []
+            up = entry
+            while up is not None and not up.kept:
+                chain.append(up)
+                up = up.parent
+            if len(kept) + len(chain) > max_nodes:
                 truncated = True
-            return
-        for index in range(acc.get_child_count()):
-            child = acc.get_child_at_index(index)
-            if child is None:
-                continue
-            if depth >= 0 and not has(child.get_state_set(), Atspi.StateType.SHOWING):
-                continue
-            visit(child, path + '.' + str(index), depth + 1, ifaces)
-            if truncated and len(nodes) >= max_nodes:
-                return
-    visit(win, '0', 0, set())
-    return {'truncated': truncated, 'nodes': nodes}
+                break
+            for item in reversed(chain):
+                kept.append(read(item))
+                item.kept = True
+        try:
+            count = entry.acc.get_child_count()
+        except Exception:
+            count = 0
+        if count <= 0:
+            continue
+        if entry.depth + 1 >= max_depth:
+            truncated = True
+            continue
+        for index in range(count):
+            try:
+                child = entry.acc.get_child_at_index(index)
+            except Exception:
+                child = None
+            if child is not None and shown(child):
+                queue.append(Entry(child, entry.path + '.' + str(index), entry.depth + 1, entry))
+    # Parents before their children, siblings in order: the order the tree is read in.
+    kept.sort(key=lambda node: [int(part) for part in node['path'].split('.')])
+    out = {'truncated': truncated, 'nodes': kept}
+    if timed_out:
+        out['timedOut'] = True
+    return out
 
 def write_text(acc, text, background=False):
     """EditableText.set_text_contents first; when the toolkit refuses, focus the field and replace
@@ -343,16 +435,29 @@ def main():
             out = {'error': 'stale', 'seen': seen}
         elif op == 'tree':
             PLACE.update(window=req.get('window'), frame=req.get('frame'), root=win)
-            out = walk(win, req['maxDepth'], req['maxNodes'])
+            out = walk(win, req['maxDepth'], req['maxNodes'], (req.get('query') or '').lower() or None, req.get('deadlineMs') or 10000)
         else:
             out = act(win, req)
-    sys.stdout.write(json.dumps(out))
+    sys.stdout.write(json.dumps(out, separators=(',', ':')))
 
 main()
 `;
 
 const python = (request: Record<string, unknown>): SystemCommand => ({ file: 'python3', args: ['-c', SCRIPT, JSON.stringify(request)] });
 const xdotool = (...args: string[]): SystemCommand => ({ file: 'xdotool', args });
+
+/**
+ * How long the reader walks a tree before answering what it found: well under the 20 s the executor
+ * and the daemon give the whole command, which also lists the windows first.
+ */
+export const LINUX_A11Y_DEADLINE_MS = 10_000;
+
+/** The executor killed the reader (its time ran out) or cut its output: the tree is too large to read whole. */
+function tooLarge(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { killed, signal, code } = error as { killed?: unknown; signal?: unknown; code?: unknown };
+  return killed === true || signal === 'SIGTERM' || code === 'ETIMEDOUT' || code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
+}
 
 /** The X11 geometry of a window, and its CSD shadow as _GTK_FRAME_EXTENTS orders it: left, right, top, bottom. */
 type WindowPlace = { window?: { x: number; y: number; width: number; height: number }; frame?: number[] };
@@ -396,7 +501,10 @@ export function linuxA11yBackend(exec: Exec): A11yBackend {
   async function run(request: Record<string, unknown>): Promise<Record<string, unknown>> {
     let stdout: string;
     try { stdout = (await exec(python(request))).stdout; }
-    catch { throw new A11yError('failed', 'Reading the accessibility tree failed. Is the accessibility bus running?'); }
+    catch (error) {
+      if (request.op === 'tree' && tooLarge(error)) throw new A11yError('too_large', 'The accessibility tree of this window is too large to read in time.');
+      throw new A11yError('failed', 'Reading the accessibility tree failed. Is the accessibility bus running?');
+    }
     try {
       const parsed: unknown = JSON.parse(stdout);
       if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
@@ -423,11 +531,12 @@ export function linuxA11yBackend(exec: Exec): A11yBackend {
     },
     async tree(args: A11yTreeArgs): Promise<A11yRawTree> {
       const ref = await windowRef(args.windowId);
+      const query = args.query?.trim().toLowerCase();
       const place = await windowPlace(args.windowId);
-      const out = await run({ op: 'tree', ...ref, ...place, maxDepth: args.maxDepth, maxNodes: args.maxNodes });
+      const out = await run({ op: 'tree', ...ref, ...place, maxDepth: args.maxDepth, maxNodes: args.maxNodes, ...(query ? { query } : {}), deadlineMs: LINUX_A11Y_DEADLINE_MS });
       refuse(out);
       if (!Array.isArray(out.nodes)) throw new A11yError('failed', 'The accessibility reader answered something unreadable.');
-      return { truncated: out.truncated === true, nodes: out.nodes as A11yRawTree['nodes'] };
+      return { truncated: out.truncated === true || out.timedOut === true, nodes: out.nodes as A11yRawTree['nodes'], ...(out.timedOut === true ? { timedOut: true } : {}) };
     },
     async act(args: A11yActArgs): Promise<void> {
       const ref = await windowRef(args.windowId);

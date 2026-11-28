@@ -235,3 +235,35 @@ test('accessibility rules are per application: background ones never get focus o
   await assert.rejects(only('a11y_tree', { windowId: '10:1' }), (e: ComputerCommandError) => e.code === 'computer_app_not_allowed');
   await assert.rejects(only('a11y_action', { id: '10:1#0.1', action: 'press' }), (e: ComputerCommandError) => e.code === 'computer_app_not_allowed');
 });
+
+test('a tree too large to read in time has its own code and advice, and a reading cut at the deadline says so', async () => {
+  const slow = createFakeA11yBackend({});
+  slow.tree = async () => { throw new A11yError('too_large', 'too large'); };
+  await assert.rejects(setup(['TextEdit'], { a11y: slow }).run('a11y_tree'), (e: ComputerCommandError) => {
+    assert.equal(e.code, 'a11y_tree_too_large');
+    assert.equal(e.statusCode, 504);
+    assert.match(e.message, /query/);
+    assert.match(e.message, /windowId/);
+    return true;
+  });
+  const partial = createFakeA11yBackend({});
+  partial.tree = async () => ({ truncated: true, timedOut: true, nodes: [node('0', 'window', 'Form')] });
+  const tree = await setup(['TextEdit'], { a11y: partial }).run('a11y_tree') as ReturnType<typeof buildTree>;
+  assert.equal(tree.truncated, true);
+  assert.equal(tree.timedOut, true);
+  assert.equal('timedOut' in (await setup().run('a11y_tree') as object), false);
+});
+
+test('a window list that runs out of time says so instead of a bare failure', async () => {
+  // Only the window list fails: the readiness probe still gets its answer.
+  const failing = (error: Error): ComputerUseDeps['exec'] => async (command) => {
+    if (command.args.some((arg) => arg.includes('kCGWindowListOptionOnScreenOnly'))) throw error;
+    return { stdout: 'true' };
+  };
+  const timedOut = Object.assign(new Error('Command failed'), { killed: true, signal: 'SIGTERM' });
+  const { run } = setup(['TextEdit'], { exec: failing(timedOut) });
+  await assert.rejects(run('a11y_tree'), (e: ComputerCommandError) => e.code === 'windows_failed' && e.statusCode === 504 && /timed out/.test(e.message));
+  await assert.rejects(run('list_windows'), (e: ComputerCommandError) => e.code === 'windows_failed' && /timed out/.test(e.message));
+  const { run: broken } = setup(['TextEdit'], { exec: failing(new Error('boom')) });
+  await assert.rejects(broken('list_windows'), (e: ComputerCommandError) => e.code === 'windows_failed' && e.statusCode === 502 && e.message === 'Listing the windows failed.');
+});

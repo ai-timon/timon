@@ -91,6 +91,18 @@ const INPUT_TIMEOUT_NOTE = 'Input command failed.';
 // `focus_window` is judged on the window it targets, in `focus`.
 const FOREGROUND_GATED = new Set(['screenshot', 'cursor_position', 'click', 'double_click', 'move', 'drag', 'type', 'key', 'scroll']);
 
+/**
+ * Listing the windows failed: say whether a system command ran out of time, which a busy window
+ * system or a reader still walking a large tree can cause, rather than one sentence for every cause.
+ */
+function windowsFailure(error: unknown): ComputerCommandError {
+  const { killed, code } = (error && typeof error === 'object' ? error : {}) as { killed?: unknown; code?: unknown };
+  // Diagnostic mode only: which command failed and how. Window titles are never part of it.
+  if (process.env.TIMON_COMPUTER_USE_DEBUG === '1') console.error(`[computer-use] listing the windows failed: ${error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300)}`);
+  if (killed === true || code === 'ETIMEDOUT') return new ComputerCommandError('Listing the windows timed out: the window system did not answer in time. Try again.', 504, 'windows_failed');
+  return new ComputerCommandError('Listing the windows failed.', 502, 'windows_failed');
+}
+
 export class ComputerUseService {
   private stopped = false;
   private lastAgentAt = 0;
@@ -324,7 +336,7 @@ export class ComputerUseService {
 
   private async windows(platform: InputPlatform): Promise<unknown> {
     try { return await listWindows(platform, this.deps.exec); }
-    catch { throw new ComputerCommandError('Listing the windows failed.', 502, 'windows_failed'); }
+    catch (error) { throw windowsFailure(error); }
   }
 
   /** The accessibility check as the commands need it: a refusal, with what the person can do, when the tree cannot be read. */
@@ -337,6 +349,11 @@ export class ComputerUseService {
   private a11yFailure(error: unknown, fallback: string): ComputerCommandError {
     if (error instanceof A11yError) {
       if (error.kind === 'stale') return new ComputerCommandError('That element or window no longer exists: read the tree again with a11y_tree.', 409, 'a11y_element_stale');
+      if (error.kind === 'too_large') {
+        return new ComputerCommandError(
+          'The accessibility tree of this window is too large to read in time. Pass a query (part of the element\'s name or its role), '
+          + 'read a smaller window by its windowId, or lower maxDepth.', 504, 'a11y_tree_too_large');
+      }
       if (error.kind === 'unsupported') {
         const possible = error.actions.length ? ` Possible actions: ${error.actions.join(', ')}.` : ' This element accepts no action.';
         return new ComputerCommandError(`That element cannot do this.${possible}`, 422, 'a11y_action_unsupported');
@@ -352,7 +369,7 @@ export class ComputerUseService {
     await this.requireA11y();
     let windows;
     try { windows = await listWindows(platform, this.deps.exec); }
-    catch { throw new ComputerCommandError('Listing the windows failed.', 502, 'windows_failed'); }
+    catch (error) { throw windowsFailure(error); }
     const info = command.windowId ? windows.find((window) => window.id === command.windowId) : windows.find((window) => window.focused);
     if (!info) throw new ComputerCommandError(command.windowId ? 'No open window has this id.' : 'No window is in front.', 404, 'window_not_found');
     let app;

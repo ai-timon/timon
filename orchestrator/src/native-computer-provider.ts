@@ -94,6 +94,10 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
     const found = message ?? 'That element cannot do this.';
     return new NativeComputerError(apiError('a11y_action_unsupported', found, { detail: found }), 422);
   }
+  if (code === 'a11y_tree_too_large') {
+    return new NativeComputerError(apiError('a11y_tree_too_large', 'This window\'s accessibility tree is too large to read in time. Call computer_a11y_tree again with a query '
+      + '(part of the element\'s name, or its role such as "button"), with the windowId of a smaller window, or with a lower maxDepth.'), 504);
+  }
   if (code === 'a11y_unavailable') {
     return new NativeComputerError(apiError('a11y_unavailable', `The accessibility tree is not available on this machine. ${A11Y_HINT} Work from screenshots meanwhile.`), 503);
   }

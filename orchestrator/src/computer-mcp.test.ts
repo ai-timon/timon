@@ -156,6 +156,16 @@ test('computer_a11y_tree renders an indented text, with positions only on reques
   assert.deepEqual(requests.map((r) => [r.path, r.body]), [['/api/computer/a11y_tree', { query: 'nom', maxDepth: 3 }], ['/api/computer/a11y_tree', {}]]);
 });
 
+test('computer_a11y_tree says why a tree is cut: a limit to raise, or a reading that took too long', async (t) => {
+  let result: Record<string, unknown> = { ...TREE, truncated: true };
+  const { call } = await harness(t, () => ({ body: { ok: true, result } }));
+  const limited = await call('tools/call', { name: 'computer_a11y_tree', arguments: {} });
+  assert.match(limited.result.content[0].text.split('\n')[0], /truncated: raise maxNodes or maxDepth, or use query$/);
+  result = { ...TREE, truncated: true, timedOut: true };
+  const slow = await call('tools/call', { name: 'computer_a11y_tree', arguments: {} });
+  assert.match(slow.result.content[0].text.split('\n')[0], /truncated: reading took too long, use query, the windowId of a smaller window or a lower maxDepth$/);
+});
+
 test('computer_a11y_action reaches its command, with or without the # an id is shown with, also as a step', async (t) => {
   const { requests, call } = await harness(t, () => ({ body: { ok: true, result: { ok: true } } }));
   await call('tools/call', { name: 'computer_a11y_action', arguments: { id: '#10:1#0.0', action: 'set_value', value: 'timon' } });
