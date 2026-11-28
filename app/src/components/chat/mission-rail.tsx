@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Archive, ArchiveRestore, Check, ChevronDown, Columns2, Copy, ListFilter, Pencil, Square, SquarePen, TerminalSquare } from 'lucide-react';
+import { AlertCircle, Archive, ArchiveRestore, Check, ChevronDown, Columns2, Copy, ListFilter, Pencil, Square, Sparkles, SquarePen, TerminalSquare } from 'lucide-react';
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
 import { toast } from 'sonner';
 
@@ -90,6 +90,8 @@ export function MissionRail({
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   /** Names just typed, shown until the next poll brings the stored one. */
   const [renamed, setRenamed] = useState<Record<string, string | null>>({});
+  /** Missions whose title is being regenerated: one call at a time per row. */
+  const [regenerating, setRegenerating] = useState<ReadonlySet<string>>(() => new Set());
   /** Archive flags just set from here, shown until the stream or the poll brings the stored ones. */
   const [archivedHere, setArchivedHere] = useState<Record<string, boolean>>({});
   /** Role filter, client-side and per window: the roles present vary from one
@@ -183,6 +185,49 @@ export function MissionRail({
     }
   }
 
+  /**
+   * "Regenerate the title": asks the daemon for a new generated title. A name
+   * typed by hand or set by the launcher is protected, so the user confirms
+   * first and the call carries `force`. Loading and failure are a toast.
+   */
+  async function regenerateTitle(m: MissionSummary) {
+    if (regenerating.has(m.id)) return;
+    const protectedTitle = m.title_source === 'manual' || m.title_source === 'preset';
+    if (protectedTitle) {
+      const yes = await confirmAction({
+        title: i18n('missionRail.regenerateConfirm'),
+        confirmLabel: i18n('confirmDialog.replace'),
+      });
+      if (!yes) return;
+    }
+    const toastId = `regenerate-title-${m.id}`;
+    setRegenerating((prev) => new Set(prev).add(m.id));
+    toast.loading(i18n('missionRail.regenerating'), { id: toastId });
+    try {
+      const r = await fetch(`/api/ui/missions/${encodeURIComponent(m.id)}/title/regenerate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(protectedTitle ? { force: true } : {}),
+      });
+      const body = await r.json().catch(() => ({})) as { title?: string | null; error?: { code?: string } | string; code?: string };
+      if (!r.ok) {
+        const code = body.code ?? (typeof body.error === 'object' ? body.error?.code : undefined);
+        const key = code === 'title_quota' ? 'missionRail.regenerateQuota'
+          : code === 'title_generation_off' ? 'missionRail.regenerateOff'
+          : code === 'title_protected' ? 'missionRail.regenerateProtected'
+          : 'missionRail.regenerateFailed';
+        toast.error(i18n(key), { id: toastId });
+        return;
+      }
+      if (typeof body.title === 'string') setRenamed((prev) => ({ ...prev, [m.id]: body.title ?? null }));
+      toast.success(i18n('missionRail.regenerated'), { id: toastId });
+    } catch {
+      toast.error(i18n('missionRail.regenerateFailed'), { id: toastId });
+    } finally {
+      setRegenerating((prev) => { const next = new Set(prev); next.delete(m.id); return next; });
+    }
+  }
+
   /** Proposals answered from here, hidden until the poll brings the stored state. */
   const [answeredHere, setAnsweredHere] = useState<Record<string, boolean>>({});
   async function answerSuggestion(id: string, answer: 'archive' | 'dismiss') {
@@ -250,6 +295,12 @@ export function MissionRail({
               title: canArchive(menuMission) ? undefined : i18n('missionRail.archiveRunning'),
               onSelect: () => { void setArchived(menuMission.id, true); },
             },
+        {
+          key: 'regenerate-title',
+          label: i18n('missionRail.regenerateTitle'),
+          icon: <Sparkles className="size-3.5" />,
+          onSelect: () => { void regenerateTitle(menuMission); },
+        },
         {
           key: 'copy-id',
           label: i18n('chatPage.copyMissionId'),

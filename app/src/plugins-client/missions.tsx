@@ -28,6 +28,7 @@ const DelegationsWidget = dynamic(() => import('./missions/delegations-widget').
 // Framed by the host (`frame` left to `tile`): the props it is typed with never reach it.
 const EgressWidget = dynamic<WidgetProps>(() => import('./missions/egress-view').then((m) => m.EgressWidget), { ssr: false });
 const EgressIsland = dynamic(() => import('./missions/egress-view').then((m) => m.EgressIsland), { ssr: false });
+const MissionTitleBackfillSettings = dynamic(() => import('./missions/title-backfill-settings').then((m) => m.MissionTitleBackfillSettings), { ssr: false });
 const MissionTitleModelSettings = dynamic(() => import('./missions/title-model-settings').then((m) => m.MissionTitleModelSettings), { ssr: false });
 
 const TAB_SURFACE: Readonly<Record<ActivityTabId, { href: string; zone?: string }>> = {
@@ -76,6 +77,7 @@ export const coreMissionsClient: BundledClientPlugin = {
     // Which model names the account's conversations (TODO #358): a graft of
     // the native Missions category, as a third-party plugin would add one.
     ctx.register({ slot: 'settings.missions' }, MissionTitleModelSettings);
+    ctx.register({ slot: 'settings.missions', key: 'title-backfill' }, MissionTitleBackfillSettings);
     // An agent's chat as a content of the island workspace. Same slot, same
     // contract as a third-party content: no privilege (§5).
     ctx.register({

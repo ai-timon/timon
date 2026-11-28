@@ -152,6 +152,16 @@ export const SETTINGS: SettingDef[] = [
       + "its first turn. Past this delay the call is killed and the mission keeps the first "
       + "message as its label; nothing is retried.",
     advanced: true },
+  { key: 'TIMON_MISSION_TITLE_BACKFILL_MAX', type: 'int', default: 200, group: 'Missions', min: 1, max: 1000,
+    label: 'Title catch-up ceiling',
+    description: "Most conversations one catch-up run may title. The run is started by hand (Settings or "
+      + "`timon missions retitle --apply`), never automatically, and each title costs one short call on "
+      + "the title model's quota. A request above this is lowered to it.",
+    advanced: true },
+  { key: 'TIMON_MISSION_TITLE_BACKFILL_DELAY_MS', type: 'int', default: 1_000, group: 'Missions', unit: 'ms', min: 0,
+    label: 'Title catch-up pause',
+    description: "Pause between two calls of a title catch-up run, so a long run does not burst the quota.",
+    advanced: true },
   { key: 'TIMON_SUMMARY_TIMEOUT_MS', type: 'int', default: 300_000, group: 'Missions', unit: 'ms',
     label: 'Summariser timeout',
     description: "Compacting a transcript spawns a one-shot CLI that no reaper watches: "

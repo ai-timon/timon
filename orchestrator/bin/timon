@@ -860,6 +860,10 @@ Agents & missions:
                                          never above your own level, others need agents:privileged-config)
   timon mission egress <id> [--limit N] [--before ID]
                                          outbound connections the mission made through the egress proxy (off by default)
+  timon missions retitle [--since 7d|ISO] [--limit N] [--apply]
+                                         name old conversations that have no title; a dry run unless --apply
+                                         (default 50 per run, one short model call each, never a renamed one);
+                                         --apply starts a background job and follows its progress
 
 Skills (~/.timon/skills/<id>/SKILL.md):
   timon skill list                        list installed skills
@@ -2074,6 +2078,66 @@ async function cmdMissionEgress(argv) {
   // On stderr too: piped into `jq .connections`, stdout alone would read as "no connection".
   if (j.notice) process.stderr.write(`${j.notice}\n`);
   process.stdout.write(JSON.stringify(j, null, 2) + '\n');
+}
+
+/** `timon missions retitle [--since 7d|ISO] [--limit N] [--apply]` — catch up the
+ *  titles of old conversations. A dry run unless `--apply`: it prints how many
+ *  missions it would name and how many model calls that costs, and writes
+ *  nothing. The daemon holds the rules (never a manual, preset or native
+ *  title; the ceiling per run; stop at the first quota signal). */
+async function cmdMissionsRetitle(argv) {
+  const apply = argv.includes('--apply');
+  const rest = argv.filter((a) => a !== '--apply');
+  const since = takeFlag(rest, 'since');
+  const limitRaw = takeFlag(rest, 'limit');
+  if (rest.length) {
+    process.stderr.write('usage: timon missions retitle [--since 7d|ISO] [--limit N] [--apply]\n');
+    process.exit(64);
+  }
+  const body = { dryRun: !apply };
+  if (since) {
+    const rel = /^(\d+)([mhd])$/.exec(since);
+    body.since = rel ? Date.now() - Number(rel[1]) * { m: 60_000, h: 3_600_000, d: 86_400_000 }[rel[2]] : since;
+  }
+  if (limitRaw !== undefined) {
+    const n = Number(limitRaw);
+    if (!Number.isInteger(n) || n < 1) {
+      process.stderr.write('timon: --limit must be a positive integer\n');
+      process.exit(64);
+    }
+    body.limit = n;
+  }
+  const j = await http('POST', '/api/missions/titles/backfill', body);
+  const out = process.stdout;
+  if (j.dryRun) {
+    out.write(`dry run: ${j.targeted} mission(s) would be titled, ${j.calls} model call(s) (limit ${j.limit}, ceiling ${j.ceiling})\n`);
+    out.write(j.targeted ? 'nothing was written; add --apply to run it\n' : 'nothing to do\n');
+    return;
+  }
+  // A real run is a job in the daemon: follow it until it ends. Ctrl+C only
+  // stops this follower, the job keeps going (cancel it from Settings).
+  const jobId = j.jobId;
+  out.write(`catch-up started (job ${jobId}); it keeps running in the daemon if you stop watching\n`);
+  process.once('SIGINT', () => {
+    out.write(`\nstopped watching; the job ${jobId} is still running in the daemon\n`);
+    process.exit(130);
+  });
+  const pollMs = Number(process.env.TIMON_RETITLE_POLL_MS) > 0 ? Number(process.env.TIMON_RETITLE_POLL_MS) : 2000;
+  let last = '';
+  for (;;) {
+    const s = await http('GET', `/api/missions/titles/backfill/${encodeURIComponent(jobId)}`);
+    const line = `${s.processed}/${s.targeted} processed: ${s.written} written, ${s.skipped} skipped, ${s.errored} failed`;
+    if (line !== last) { out.write(`${line}\n`); last = line; }
+    if (s.status !== 'running') {
+      if (s.status === 'done') out.write('done\n');
+      else if (s.status === 'stopped_quota') out.write('stopped early: the title model is out of quota\n');
+      else if (s.status === 'stopped_off') out.write('stopped early: automatic titles are turned off\n');
+      else if (s.status === 'cancelled') out.write('cancelled\n');
+      else out.write(`failed${s.lastError ? `: ${s.lastError}` : ''}\n`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
 }
 
 async function cmdMission(argv) {
@@ -6008,6 +6072,13 @@ async function main() {
         break;
       case 'mission':
         await cmdMission(rest);
+        break;
+      case 'missions':
+        if (rest[0] !== 'retitle') {
+          process.stderr.write('usage: timon missions retitle [--since 7d|ISO] [--limit N] [--apply]\n');
+          process.exit(64);
+        }
+        await cmdMissionsRetitle(rest.slice(1));
         break;
       case 'skill':
         await cmdSkill(rest);
