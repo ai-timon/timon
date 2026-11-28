@@ -23,6 +23,7 @@
     "invalid_file": "Fichier invalide.",
     "memory_preset_invalid": "Choisissez 8, 16, 32 ou 64 Go de mémoire.",
     "setting_invalid": "Ce réglage a été refusé : {detail}",
+    "merge_request_invalid": "Ce lien de pull / merge request a été refusé : {detail}",
     "export_out_not_allowed": "Cette version a expiré : l'export ne peut être écrit que sous son nom par défaut.",
     "export_out_outside_home": "L'export doit être écrit dans le dossier de Timon.",
     "export_failed": "L'export a échoué : {detail}",
