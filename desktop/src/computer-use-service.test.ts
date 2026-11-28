@@ -330,3 +330,20 @@ test('a11y_probe_app is a person\'s command and judges the tree', async () => {
   assert.deepEqual(await run('a11y_probe_app', { windowId: '30:1' }, 'human'), { nodes: 2, actionable: 1, verdict: 'poor' });
   await assert.rejects(run('a11y_probe_app', { windowId: '10:1' }), (e: ComputerCommandError) => e.code === 'forbidden');
 });
+
+test('"All applications": an unlisted application is driven in the default mode, an excluded one is refused with its own code', async () => {
+  const service = new ComputerUseService({
+    platform: 'darwin', env: {}, display: () => display, cursor: () => ({ x: 0, y: 0 }), capture: async () => Buffer.from([0xff, 0xd8]),
+    screenPermission: () => 'granted', sleep: async () => {}, a11y: createFakeA11yBackend({}, 'unsupported'),
+    exec: async (command) => ({ stdout: isForegroundRead(command) ? JSON.stringify(FRONT) : 'true' }),
+  });
+  const click = parseComputerCommand('click', { x: 1, y: 1 });
+  await assert.rejects(service.handle('agent', click, [], 'foreground'), (e: ComputerCommandError) => e.code === 'computer_app_not_allowed', 'off: nothing listed, nothing allowed');
+  await service.handle('agent', click, [], 'foreground', { mode: 'foreground', excluded: ['Terminal'] });
+  await assert.rejects(service.handle('agent', click, [], 'background', { mode: 'background', excluded: [] }),
+    (e: ComputerCommandError) => e.code === 'computer_background_only', 'the default mode applies to an unlisted application');
+  await service.handle('agent', click, [{ app: 'TextEdit', mode: 'foreground' }], 'background', { mode: 'background', excluded: [] });
+  await assert.rejects(service.handle('agent', click, [{ app: 'TextEdit', mode: 'foreground' }], 'foreground', { mode: 'foreground', excluded: ['com.apple.textedit'] }),
+    (e: ComputerCommandError) => e.code === 'computer_app_excluded' && e.statusCode === 403 && /TextEdit/.test(e.message), 'an exclusion wins over an explicit entry');
+  await service.handle('human', click, [], 'foreground', { mode: 'foreground', excluded: ['TextEdit'] });
+});

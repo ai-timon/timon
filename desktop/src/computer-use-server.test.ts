@@ -10,8 +10,10 @@ test('provider publishes a private descriptor, authenticates, validates, and cle
   const home = await mkdtemp(join(tmpdir(), 'timon-computer-server-'));
   const seen: unknown[] = [];
   const modes: string[] = [];
-  const provider = await startComputerServer(home, async (actor, command, allowedApps, mode) => {
+  const scopes: unknown[] = [];
+  const provider = await startComputerServer(home, async (actor, command, allowedApps, mode, everything) => {
     modes.push(mode);
+    scopes.push(everything);
     seen.push(allowedApps.length ? [actor, command, allowedApps] : [actor, command]);
     if (command.command === 'stop') throw new ComputerCommandError('nope', 409, 'computer_stopped');
     return { done: true };
@@ -39,6 +41,10 @@ test('provider publishes a private descriptor, authenticates, validates, and cle
     await post({ command: 'a11y_tree', actor: 'agent', allowedApps: ['Notepad'], mode: 'background' });
     assert.equal(modes.at(-1), 'background');
     assert.equal((await post({ command: 'a11y_tree', actor: 'agent', mode: 'sideways' })).status, 400);
+    assert.equal(scopes.at(-1), null, 'no allApps sent = off');
+    await post({ command: 'a11y_tree', actor: 'agent', mode: 'background', allApps: true, excludedApps: ['KeePassXC'] });
+    assert.deepEqual(scopes.at(-1), { mode: 'background', excluded: ['KeePassXC'] }, 'the scope takes the agent\'s default mode');
+    assert.equal((await post({ command: 'a11y_tree', actor: 'agent', allApps: true })).status, 400, 'on without its exclusions is refused');
     assert.equal((await post({ command: 'click', args: { x: 1 }, actor: 'agent' })).status, 400);
     assert.equal((await post({ command: 'click', args: { x: 1, y: 1 } })).status, 400);
     assert.equal((await post({ command: 'nope', actor: 'agent' })).status, 404);

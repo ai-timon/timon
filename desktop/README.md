@@ -260,6 +260,9 @@ Coordinates are in the pixels of the last screenshot; the shell converts them to
     injected executor (no shell, arguments as JSON). Electron and Chromium applications: macOS sets `AXManualAccessibility` on the application element
     before reading, Linux needs accessibility enabled in the session, Windows UI Automation switches the tree on by itself.
   - The daemon never journals the `value` of a `set_value`, only its length.
+  - "All applications": an agent command may carry `allApps: true` with `excludedApps` (names, at most 200; required when on). Every application is
+    then allowed, the unlisted ones in the command's `mode`, a listed one in its own; an excluded one is refused with `computer_app_excluded` (403),
+    an explicit entry included. Only a person turns it on in the daemon; the desktop never assumes an empty exclusion list.
 - Code: `desktop/src/computer-use-*.ts`. Scripts are fixed text fed with JSON; typed text never reaches a script or a shell.
 
 ## Uninstall

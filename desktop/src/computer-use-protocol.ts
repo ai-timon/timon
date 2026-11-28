@@ -84,6 +84,25 @@ export function parseAllowedApps(value: unknown, fallback: ComputerUseMode = 'fo
   });
 }
 
+export const COMPUTER_EXCLUDED_APPS_MAX = 200;
+
+/** "All applications": every application but `excluded`, the unlisted ones in `mode`. */
+export interface AllAppsScope { mode: ComputerUseMode; excluded: string[] }
+
+/**
+ * "All applications" as the daemon sends it with an agent command: `allApps: true` with the list of
+ * excluded names. Absent or false is off. On without a list is refused: the exclusions are what makes
+ * the switch safe, so the desktop never assumes there are none.
+ */
+export function parseAllAppsScope(allApps: unknown, excludedApps: unknown, mode: ComputerUseMode): AllAppsScope | null {
+  if (allApps === undefined || allApps === null || allApps === false) return null;
+  if (allApps !== true) throw new ComputerCommandError('"allApps" must be a boolean.');
+  const bad = () => new ComputerCommandError(`"excludedApps" must be an array of at most ${COMPUTER_EXCLUDED_APPS_MAX} short names when "allApps" is on.`);
+  if (!Array.isArray(excludedApps) || excludedApps.length > COMPUTER_EXCLUDED_APPS_MAX) throw bad();
+  if (excludedApps.some((entry) => typeof entry !== 'string' || entry.length > 200)) throw bad();
+  return { mode, excluded: excludedApps as string[] };
+}
+
 /** The agent's default mode as the daemon sends it with each agent command; absent means the foreground. */
 export function parseComputerMode(value: unknown): ComputerUseMode {
   if (value === undefined || value === null || value === 'foreground') return 'foreground';
