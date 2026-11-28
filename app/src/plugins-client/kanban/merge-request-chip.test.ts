@@ -37,6 +37,7 @@ test('the chip links out in a new tab and carries its state, in English and Fren
   assert.match(html, /title="Open MR !1875 in a new tab · open · pipeline running"/);
   assert.match(renderToStaticMarkup(createElement(MergeRequestChip, { task: GITHUB })), /data-merge-request-chip="merged"[\s\S]*PR #12/);
   setLocale('fr');
+  // french-ok: the French translation is what this line checks
   assert.match(renderToStaticMarkup(createElement(MergeRequestChip, { task: GITHUB })), /Ouvrir PR #12 dans un nouvel onglet · fusionnée/);
   setLocale('en');
 });
