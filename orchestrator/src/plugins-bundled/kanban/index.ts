@@ -20,6 +20,7 @@ import { startDispatcher } from '../../dispatcher.js';
 import { startTaskChain } from '../../task-chain.js';
 import { startWake } from '../../wake.js';
 import { startIntegrationPoller } from '../../integration-poller.js';
+import { startMergeRequestWatch } from '../../merge-request-watch.js';
 import { watchIssueOutcomes } from '../../issue-outcome.js';
 import { watchLocalLandings } from '../../local-landing.js';
 import { settingInt } from '../../settings.js';
@@ -88,6 +89,8 @@ export function apply(ctx: Context): void {
   // Learns when the pull request of a job is merged or closed; reaches the
   // network only while one is open.
   ctx.effect(() => startIntegrationPoller());
+  // Tasks that carry a merge request close by themselves once it is merged.
+  ctx.effect(() => startMergeRequestWatch());
   // A job of a project that merges locally lands when its `--landing local`
   // task is DONE, not through the forge.
   ctx.effect(() => watchLocalLandings());
