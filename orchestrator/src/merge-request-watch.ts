@@ -21,7 +21,7 @@
  * pass replayed changes nothing either, because only an `open` chip moves.
  */
 import { loadConfig } from './agent-config.js';
-import { dbApi, type TaskRow } from './db.js';
+import { CHAIN_DONE, dbApi, type TaskRow } from './db.js';
 import { githubForge, githubRepoFromUrl, type ForgeRunners, type ForgeStateReader } from './host/forge.js';
 import { mergeRequestOf, type MergeRequestRef, type MergeRequestState } from './merge-request.js';
 import { notifyUser } from './notify.js';
@@ -142,13 +142,31 @@ function needsSha(task: TaskRow): boolean {
   return task.type === 'merge' || (task.type === 'code' && task.pipeline === 'code-self');
 }
 
-function markMerged(task: TaskRow, mergeSha: string | null): WatchResult {
+/**
+ * Statuses a merge may close. A task in any other state (a failed or cancelled
+ * one, should the board grow them) keeps it: the chip says `merged` and a
+ * person is told, but nothing is brought back to life.
+ */
+const CLOSABLE_STATUSES: ReadonlySet<string> = new Set(['PENDING', 'IN_PROGRESS', 'BLOCKED', 'DONE']);
+
+function markMerged(task: TaskRow, mergeSha: string | null, notify: typeof notifyUser): WatchResult {
   // Without a commit, a task the close guard would block waits for the next
   // pass instead of landing BLOCKED on a merge that did happen.
   if (needsSha(task) && !mergeSha && !task.merged_commit_sha) return 'unknown';
-  if (mergeSha && !task.merged_commit_sha) dbApi.setTaskMergedSha(task.id, mergeSha);
+  // The open check comes first: a pass that lost the race writes nothing, not
+  // even the commit.
   if (!dbApi.setTaskMergeRequestState(task.id, 'merged')) return 'open';
-  if (task.status !== 'DONE') {
+  if (mergeSha && !task.merged_commit_sha) dbApi.setTaskMergedSha(task.id, mergeSha);
+  if (!CLOSABLE_STATUSES.has(task.status)) {
+    notify(
+      `Merge request merged: ${task.title}`,
+      `${task.id} was merged on the forge, but the task is ${task.status} and was left as it is.`,
+      { taskId: task.id, type: 'report' },
+    );
+  } else if (task.status !== 'DONE') {
+    // The forge closed this task: the follow-up chain (review, merge) must not
+    // run on work a person already merged. Settled before DONE is published.
+    dbApi.setTaskChainState(task.id, CHAIN_DONE);
     dbApi.setTaskStatusOnly(task.id, 'DONE', 'Closed automatically: its merge request was merged.');
   }
   console.log(`[mr-watch] merge request of task ${task.id} merged`);
@@ -183,7 +201,7 @@ export async function watchTask(task: TaskRow, deps: WatchDeps = {}): Promise<Wa
     console.warn(`[mr-watch] cannot read the ${ref.forge} request of task ${task.id}: ${reading.reason}`);
     return 'unknown';
   }
-  if (reading.state === 'merged') return markMerged(task, reading.mergeSha);
+  if (reading.state === 'merged') return markMerged(task, reading.mergeSha, deps.notify ?? notifyUser);
   if (reading.state === 'closed') return markClosed(task, ref, deps.notify ?? notifyUser);
   return 'open';
 }
