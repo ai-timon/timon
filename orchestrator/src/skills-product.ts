@@ -17,7 +17,7 @@
 export const PRODUCT_SKILLS: ReadonlyArray<{ id: string; content: string; version?: number }> = [
   {
     id: 'timon-task',
-    version: 3,
+    version: 4,
     content: `---
 allowed_tools: ["Bash(timon:*)"]
 ---
@@ -294,6 +294,14 @@ If the move refuses, the base has moved: go back to your worktree,
 \`git merge --no-edit -m "merge: bring <base> into the task branch" <base>\`,
 resolve, try again. Never \`--force\`.
 
+### Publishing a ticket branch: ask the daemon
+
+A merger that must publish a ticket branch (\`PREFIX-123_description\`) to the
+remote calls \`timon task push-branch <merge-task-id> <ticket-branch>\` (MCP
+\`kanban_push_branch\`) BEFORE any \`git push\`: the daemon pushes it with
+no approval card, never forced, never to develop, main, master, production or
+release. A refusal comes with its reason; only then use the normal path.
+
 ### Merge messages
 
 Every merge commit you create carries an explicit English message (\`-m\`)
@@ -471,7 +479,7 @@ timon task update <TASK_ID> --priority 5 --title "New title"
   },
   {
     id: 'timon-worktree',
-    version: 1,
+    version: 2,
     content: `---
 allowed_tools: ["Bash(timon:*)", "Bash(git:*)"]
 ---
@@ -560,7 +568,18 @@ You have YOUR worktree (branch \`timon/merge/<TASK_ID>\`). You integrate
    MERGED_SHA=$(git -C <main-repository> rev-parse <base>)
    test "$MERGED_SHA" = "$(git rev-parse HEAD)"   # the base really moved
    \`\`\`
-5. **Only if a push is authorised**: \`git push\`. Say so in the close comment.
+5. **Publishing a ticket branch** (\`SELP-123_short-description\`, never
+   develop, main or release): do NOT run \`git push\` yourself first, the
+   permission classifier of your CLI often refuses it. Ask the daemon, which
+   pushes with no card and audits it:
+   \`\`\`bash
+   timon task push-branch <TASK_ID> <TICKET_BRANCH> [--source <task-id>] [--set-upstream]
+   \`\`\`
+   The MCP tool \`kanban_push_branch\` does the same. It works only for a
+   merge task whose agent has the merger role, never forces, and refuses
+   anything but a ticket branch: on a refusal, read the reason, then fall
+   back to \`git push\` if a push is authorised, else block the task with the
+   exact command. Other pushes: only if authorised, say so in the close comment.
    A job that lands through a pull request never pushes from here: see below.
 6. Close with the sha:
    \`\`\`bash
