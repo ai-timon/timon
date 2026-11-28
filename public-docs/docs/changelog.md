@@ -7,6 +7,150 @@ slug: /changelog
 
 Published Timon releases. Preview changes are shown in the app when you install a release candidate.
 
+## 0.1.12 — 2026-11-28
+
+### Highlights
+- **Computer use:** let an agent control the desktop applications you allow. It reads windows through accessibility first, can work in the background, and you can watch its pointer glide to each click and stop it at any moment.
+- **The built-in browser now works on a Linux server with no screen**, with nothing more to install.
+- **New built-in providers:** GLM (Z.ai) and Qwen Code. Codex now signs in from its page in the app, without a terminal.
+- **Pull requests, inside Timon:** labels, force-pushes, reactions and review comments in the pull request window, and a notification card as soon as your agents open one.
+
+### Added
+- An agent's extra folders can also be listed and changed with `timon agent extra-dirs` and the `agent_extra_dirs` agent tool, under the same rules as the Workspace tab.
+- `timon job branch` gives a sequential job its branch and a working folder on it in any project, and the planner names it for a project that merges locally; `timon pr branch` still works.
+- Codex can be signed in from its page in the app, through the browser with a one-time code, without opening a terminal; a computer already signed in from a terminal keeps using that session.
+- Each agent's page now shows an Action journal for Computer use: its last actions with time and result, and a Refresh button. Typed text is never recorded.
+- An agent can now be allowed to control your computer: switch on Computer use in its Permissions settings (off by default) and a setup card checks what your system needs, then the agent sees your screen and drives the mouse and keyboard on macOS, Windows and Linux (X11), until you stop it with the banner's Stop button or Control+Option+Command+Esc (Ctrl+Alt+Shift+Esc on Windows and Linux). It can only click and type in the applications you list under Allowed applications (an empty list allows nothing), and it can list the open windows and bring one to the front. It reads windows through the system's accessibility first (macOS, Windows UI Automation, Linux AT-SPI) and presses buttons or fills fields by element, without moving your pointer; screenshots and clicks by position remain the fallback. An agent can also ask you to allow an application, and you validate it with one click on a card in the conversation, without opening the settings; only you can press Allow. Each allowed application has its own Foreground or Background mode (the agent's setting is the default for new ones): in the background it works through accessibility only, without screenshots, mouse, keyboard or focus, so you can keep using your computer while it works, and games or canvas applications, which have no accessibility tree, stay in the foreground. When you add an open application, Timon reads its accessibility tree and tells you whether the background is possible.
+- Computer use can now allow every application at once: turn on All applications in the agent's Permissions, pick the mode of the applications you did not list, and edit the excluded applications, which are always refused (password managers, terminals and Timon itself by default); only you can turn it on, never an agent.
+- With Computer use, the mouse pointer now glides to each click instead of jumping, and Timon draws the agent's pointer over the screen with its name, its path, a ring on each click and a frame on the element it touches in the background.
+- Computer use: an agent can capture a single window instead of the whole screen, which keeps text readable on a wide screen, and its next clicks land in that window's pixels.
+- A project can be given extra folders that every agent of the project reaches, from its settings or with **Allow for the project** on the chat card of a refused folder; allowing a folder for a Kanban task the fence stopped puts the task back in the queue.
+- GitHub issues: a declined, duplicate or needs-info idea prepares an answer and the issue's closing for you to publish, a contributor's merged pull request closes the imported idea, and the Issues tab gains "Import and plan", a per-project switch and a review of hidden issues.
+- GLM (Z.ai) is a new built-in provider: save a `ZAI_API_KEY` in the Secret Vault and run agents on GLM-5.4, GLM-5.3 or GLM-5.3-Flash through Claude Code, with your GLM Coding Plan or your Z.ai API key.
+- The built-in browser now works on a Linux server with no screen, with nothing more to install: agents browse there and you follow them from the interface on your computer. When it does not answer, `timon doctor --browser` says why and gives the command that repairs it.
+- When a job's pull request opens, a card in the notifications gives its link and the conversation that planned the job is told, unless the job's own final task opened it.
+- A new Mistral Vibe page in the documentation explains how to install it from the provider catalog, sign it in with its own setup, and which Mistral sign-ins are a subscription or billed by the token.
+- For plugin authors: `onAccountChange` from `@timon/ui` tells a plugin's interface that another account signed in on the page, so it can drop what it read for the previous one (plugin API 20).
+- For plugin authors: a plugin can redraw an agent's extra folders, on the agent's page and in a project's settings at once, through the `agent.folders` slot and `useAgentFolders()` (plugin API 20).
+- For plugin authors: `ctx.caller()` tells a plugin route whether a person signed in at a screen, an agent's mission or a service such as the CLI made the request, so a plugin can keep a gesture for a person (plugin API 20).
+- For plugin authors: a plugin that redraws the chat card of a refused folder can now offer **Allow for the project** too, with `allowProject` from `useFenceGrant()` (plugin API 20).
+- Plugins can show images from any public site, such as the images and sender avatars of a mail, without you opening each site in `pluginPolicy.http`: they declare the `http:public-images` permission (plugin API 20), Timon fetches only verified images and never from your local network, and `pluginPolicy.publicImages` turns it off for every plugin or for one.
+- For plugin authors: a plugin can redraw a pull request's detail window, opened from the Pull requests widget, through the `kanban.pull.dialog` slot and `usePullRequestDialog()` (plugin API 20).
+- The pull request window now shows the labels added or removed and the force-pushes among the comments, the reactions under each text, and up to 300 review threads with up to 100 replies each.
+- Qwen Code is a new built-in provider: install it from its card, sign in with `/auth` inside `qwen`, and run agents on the Qwen OAuth or Coding Plan account it holds, with Timon's Allow / Deny cards and tools.
+- A running task's detail now shows the same "waiting for a permission" line as its Kanban card, and both change as soon as the request is raised, answered or refused, instead of a few seconds later.
+- A running task whose agent waits on a permission or a question now says so on its Kanban card, with the tool, how long it has waited and when it is refused automatically; `timon task get`, `timon status`, `kanban_get` and `mission_status` report the same.
+
+### Fixed
+- An agent from the ACP catalogue whose install could not be saved on disk no longer stays usable until the next restart and then disappears: the install fails cleanly and the previous version stays in use.
+- Saving an agent whose `Bash` pre-allow Claude Code ignores now shows the warning on the Permissions tab of the agent editor, and the warning also covers an agent that sets no permission mode, which Claude Code can start in auto mode from its own settings.
+- When an agent shows a file with `chat_show_media` or `ui_render` and the file sits in a hidden folder or outside its working folder, the agent is now told so instead of receiving a bare "not found", so it no longer reports the tool as broken.
+- On Windows, the built-in browser no longer stays unavailable for a whole session when the antivirus scans the app as it starts.
+- When installing or updating an agent from the provider catalog is refused, the message now says why, and the Timon log records it.
+- Chat: a tool the previous turn left unfinished now shows as interrupted, instead of still running with its old duration while the next turn is prepared.
+- On macOS with mission isolation turned off, the usage gauge of a Claude subscription account shows its figures after a mission instead of staying on "This sign-in is still in the macOS keychain".
+- Compacting a long Codex conversation on the same model now uses Codex's native in-place compaction (`thread/compact/start`) instead of summarizing the full transcript. Cross-model and cross-provider compaction now splits oversized transcripts into bounded sections summarized in parallel so long conversations no longer fail input-size limits or time out.
+- Codex installed with npm no longer needs Node.js: Timon starts the native Codex program its npm package ships, so missions, sign-in, the version check and `timon doctor` work on a machine with no trusted Node.js.
+- Codex (or another CLI) installed with npm now starts when Node.js was installed with fnm, mise or asdf, or is not installed at all, instead of failing with `env: node: No such file or directory`; a Node.js in a folder other accounts can write is never used, and with no other Node.js the mission stops on `no trusted Node.js to run codex` instead of using the first `node` on its PATH.
+- An agent running on GitHub Copilot now reaches its read and write extra folders, and its read-only ones in Plan mode.
+- The desktop app now runs on a supported Electron release (Electron 45, Chromium 156), with more than a year of Chromium security fixes, including for the built-in browser.
+- Desktop app: a right click in a text field now opens Cut, Copy, Paste and Select All (Paste and Select All only in a password field), with spelling suggestions where the system offers them.
+- Timon no longer fills the disk on its own: tasks wait with an alert when free space runs low instead of crashing the daemon, finished worktrees whose work is already in the remote's main branch and their `.next` build caches are removed, and each agent's event archive is capped.
+- `timon doctor --browser` now says when the browser host of a server crashes at every start, with its exit status and the command that shows its log, instead of saying it is starting.
+- `timon doctor` no longer reports `node not found` as blocking on a machine where Timon was installed from its package: the Node the package ships is enough.
+- `timon doctor` and the daemon log now show the profile of your operating system (`macos` or `windows`) instead of `linux-desktop` when the configuration file names none, and no longer list Traefik on macOS, on Windows or without Docker.
+- When the desktop app runs its own built-in daemon, Timon now asks you to quit and reopen the app to restart it, instead of suggesting a `systemctl`, `launchctl` or `schtasks` command that restarts another service.
+- Checking a provider's program version and creating a task's worktree no longer leave background processes running when the program started one that detached itself, and such a call no longer runs past its time limit while cleaning up.
+- On Linux, a mission whose Timon home sits inside a crowded temporary folder (`/tmp` with tens of thousands of entries) is no longer refused with "the fence needs more than 50000 rules".
+- The chat now says when the fence refused a path to a command in the middle of a turn that went on, and when a tool stopped on "Operation not permitted" without naming a path; `timon doctor` checks the command line each active backend would really get against the fence.
+- The count on a Pull requests or Issues tab of the Git stack left behind another tab is now read again every minute or so, instead of only when the tab comes forward.
+- The Pull requests and Jobs tabs of the Git stack now say that a project merges its jobs locally to every account that sees the project, not only to accounts allowed to manage projects.
+- After another account signs in on the same page, the Issues widget of the Git stack no longer shows the previous account's issues, and the LLM quota monitor no longer shows the previous account's quotas.
+- MCP servers you add over HTTP now reach opencode agents.
+- On a server, the install script now keeps Timon running after the SSH session ends, and an account without sudo is told to run it as root before anything is downloaded.
+- A job's preview left open now follows its pull request as it opens, merges or gets new check results, and the idea tags on the Kanban's task cards change as soon as the job lands.
+- In the Jobs tab, the last merge of a job kept on its branch updates within a minute, instead of waiting for the next change of a pull request.
+- A Kanban card now shows the agent and the model that really run the task when the project's roles hand it to another agent than the one it was assigned to, instead of the assigned agent's model; the task form says who will run it, and creating such a task answers with a warning naming that agent.
+- An agent listing Kanban tasks now gets a short list of its own project instead of every task of every project with their full texts, which some backends refused as too large; it can still ask for another project, a status or a higher limit.
+- The Linux `.deb` package now starts on Ubuntu 23.10 and later (24.04 included) without any manual setting: it installs an AppArmor profile that lets Timon's sandbox work. When the sandbox is still unusable, the built-in browser of a server stops with the cause and its repair instead of restarting in a loop.
+- The Linux `.deb` package now installs every library it needs on a server with no desktop: the built-in browser no longer restarts in a loop on a bare Ubuntu Server for lack of the sound library.
+- **TIM-0162** — On Linux, the built-in terminal starts again on Debian 13 and older systems. The diagnostic report now lists what `timon doctor` reports as blocking, a terminal that cannot start and unfenced missions, instead of "none detected".
+- macOS: the usage of a Claude subscription account, and of a Claude sign-in made in Timon, is shown in the LLM quotas widget and under the chat composer once a mission has run on it.
+- On macOS, Timon's icon in the Dock, classic or dark, is now the same size as the other apps instead of standing larger.
+- **TIM-0163** — On macOS, Mistral Vibe and other agents of the catalog whose archive holds internal links now install instead of being refused as a dangerous archive.
+- Connecting an MCP server that signs in with OAuth now completes even if Timon restarted between **Connect** and the publisher's authorization page.
+- A path under your user folder in an MCP server's variable now follows a `timon export` restored on another machine or under another user folder, like the server's command and arguments.
+- The notice saying an MCP server was left out of a mission now shows in the interface's language.
+- An MCP server saved while the system keyring was still locked gets its keys moved into the secrets vault as soon as the keyring opens, instead of staying unavailable to agents until Timon restarts.
+- In every "…" and right-click menu, hovering an entry that removes something (**Remove**, **Delete**, **Delete team**, **Empty the grid**…) now shows it on a faint red highlight instead of red text on the accent colour, which was unreadable in light and dark.
+- A new installation no longer shows a `timon` project with no folder in the Projects list and the Agents chart.
+- Timon stays responsive during the nightly backup and can finish recording a verified backup after a restart without exporting it again.
+- The nightly backup routine is now named “Nightly backup” instead of a French name, on existing installations too unless you renamed it.
+- A message sent to a Pi agent that is still finishing a run is now queued and answered, instead of ending the turn with "Agent is already processing" and being lost.
+- A provider's pinned path now names the CLI it expects (Ollama Cloud asks for the Codex CLI) and refuses a file that is another program, such as `ollama`, instead of saving it and failing every mission; `timon doctor` marks such a path as failed.
+- A plugin installed from a local folder now runs all of its files in the new version after an update, instead of mixing old and new files until Timon restarts.
+- **TIM-0168** — Skills of a Claude Code plugin that files them by category, such as mattpocock-skills, now appear on the Skills page, in `/` commands and in the import, and `/handoff` reaches `mattpocock-skills:handoff` when no other plugin has a skill of that name.
+- Installing a newer `.tgz` of a plugin you already have now updates it and keeps the hosts you ticked on the install sheet, instead of failing with "no new package detected"; picking the very version already installed says so.
+- Switching off the Layout module on the Plugins page no longer leaves the app on a blank page reading "No layout mounted": its switch is locked like the theme's, and an installation already stuck that way shows its interface again after the update.
+- In Settings › AI models › Providers, a provider that runs on an API key (Z.ai, Kimi, Ollama Cloud, an endpoint you added) no longer shows "Account connected" when its key is missing just because Claude Code or Codex is signed in on this computer.
+- Signing in to a provider whose command-line tool runs on Node now uses the same Node as its missions, instead of whichever `node` comes first on the machine.
+- A row of the Pull requests widget is now a single button for screen readers and the keyboard, its "to approve" chip reachable on its own instead of nested inside it.
+- The pull request window no longer reads GitHub when `gh` signs in as another account than the project's: it says the account differs and shows nothing.
+- **TIM-0167** — Replying in a conversation Timon had just closed for inactivity continues that same conversation instead of opening a second one on the same session, which used to split the agent's replies and Kanban updates between the two.
+- Merger, researcher and librarian agents shown as a mascot now get a look that matches their job instead of the plain default head.
+- The Tasks widget, the series graph and the tasks linked to a TO DO idea now name the agent and the model that really run each task, as its Kanban card does, instead of the agent the task was assigned to.
+- **TIM-0165** — A connector sign-in that fails, expires or is opened twice now shows the reason on a Timon page with a link back to the app, instead of a page that cannot be reached.
+- On Linux, a Node.js installed by fnm, mise, asdf or Volta is no longer skipped when its folders are writable by your own private group, as a `002` umask leaves them on Ubuntu.
+- Windows: installing or updating an agent from the ACP catalogue no longer fails now and then with "EPERM: operation not permitted, rename".
+- Windows: an update now lets the background service stop on its own before the installer replaces its files, instead of ending it by force; the installer only ends it if it has not stopped after a few seconds.
+- Creating or renaming a pole no longer pulls another pole's projects into it: a name that would designate an existing pole is refused, with the reason.
+- Renaming a workspace a second time no longer creates an extra workspace under its previous name that takes some of its projects away.
+- **TIM-0164** — A Kanban task on a large repository is no longer blocked after 30 seconds while git is still checking out its worktree: Timon waits as long as git reports progress, and a checkout that stalls is stopped and cleaned up instead of being left half-made.
+- A finished task's worktree is no longer removed while it holds uncommitted changes, untracked files or a commit that was never merged, and `timon worktree dispose` refuses a task that is not done.
+
+### Changed
+- When Timon runs on macOS as a service that keeps running after you log out, Claude's page and Claude's row in setup offer **Create a token** instead of **Sign in**, since no sign-in can be read there.
+- The background service of the desktop app, its web app and the `timon` command now run on the Node.js 24 the app ships, so plugins that require Node.js 24 install and run.
+- Resolving a contributor's conflict refuses at once a repository or fork GitHub reports larger than 512 MB, instead of downloading it first, and reads both sizes again when the resolution is published.
+- Publishing a comment, a branch update or a conflict resolution on GitHub now takes the new "Publish proposed writes on GitHub" right in Administration › Roles; an account with "Create, update and delete projects" alone can still prepare and discard them, and sees a greyed Publish button that names the missing right. A paired device cannot publish, even for an administrator's account.
+- Asking Timon to address the review comments of a job's pull request now also passes the text the reviewers wrote in their reviews, not only the unresolved line comments.
+- In the Jobs tab, the button of a job kept on its branch in a pull request project opens the pull request after a confirmation, under a title made from the branch, and a job whose pull request was closed offers to open a new one.
+- Landing a kept job whose pull request was closed without being merged now opens a new pull request, from the Jobs tab, `timon pr land` or the `pr_land` tool, instead of being refused.
+- On macOS, the desktop app now requires macOS 13.5 Ventura or later: the installer refuses macOS 13.4 or older.
+- A key passed to an MCP server on its command line, such as `--api-key …` or `--header "Authorization: Bearer …"`, is now kept in the secrets vault, shows as `***`, and is never written into the agent's configuration.
+- The environment variables of a local MCP server are no longer written into the agent's configuration: Timon keeps them in its secrets vault, starts the server itself and relays the agent's calls to it.
+- **TIM-0161** — `GET /api/missions` no longer stops at 1000 missions in silence: an out-of-range `limit` is refused, each page says whether more follow and gives the cursor to read them, and `task_id` keeps the missions of one task.
+- With several accounts, only a superadmin signed in to the app can set or remove the path of a provider's program; Timon also refuses a program that does not answer its version check properly, and the diagnostic no longer holds Timon while a pinned program is checked.
+- For plugin authors: a mascot pack that draws its own head now declares `apiVersion: 19`, like its template, so Timon 0.1.9 refuses it with "needs a newer Timon" instead of installing it and showing its own mascot; the plugin documentation now gives API 19 for the other capabilities that arrived in 0.1.10 (`reportsTo` on `ctx.agents`, several statuses in `ctx.kanban.list`, a `get` result written back with `ctx.mcpServers.put`).
+- Plugins run on Timon's own React 19: a plugin that bundles its own React or uses an API React 19 removed stops working, and the shared `react` module now also exports `use`, `useActionState`, `useOptimistic`, `useTransition`, `forwardRef`, `Children` and the other React 19 APIs by name (plugin API 20).
+- For plugin authors: a provider plugin's manifest may now list up to 16 sign-in folders in `provider.credentialDirs` instead of 4, so a plugin that runs several agents can declare each one's folders; more than 4 needs plugin API 20, and every folder is still checked and shown on the install sheet.
+- The AI tool cards of the "cannot start" screen no longer show where each tool is installed in permanence: **Show where it is installed** in the card's **…** menu reveals it, and the desktop app card's install item now reads **Install the standalone CLI**.
+- When no AI tool answers, the troubleshooting cards (including **Desktop app — sign in**) sign Claude in from a dialog in the app, like setup, with one button per card: the terminal command now waits in the card's **…** menu.
+
+### Known issues
+- A Kanban task that depends on a `code` task which never gets a merge (no changes to review, or no reviewer) waits indefinitely; remove that dependency to release it.
+- An agent's island card applied to a page other than the one on screen removes the tabs it replaces, but a replaced terminal keeps running: end it from the Terminal page.
+- Chat: pressing Escape to close a dialog while dictating also cancels the dictation and puts the message back as it was before you clicked the mic.
+- Linux: a Hermes agent stops with "Gateway could not start" in a fenced mission; an exception that allows Unix sockets for its agent lets it answer, but then opens every Unix socket of your session to that mission.
+- MCP servers you add over HTTP are not passed to Hermes and Antigravity agents; Timon's own tools and stdio servers are.
+- If your organisation disables third-party MCP servers in Copilot, agents on Copilot cannot use Timon's tools and fall back to the `timon` command.
+- macOS: while Timon runs with no session open, Git over HTTPS and `gh` fail in missions; Git over SSH works.
+- Onboarding form details are still in English outside English, French and Simplified Chinese; the step titles are translated.
+- opencode and Hermes have not yet been tried on a tester's own account, so a first mission (Hermes especially) may still fail.
+- opencode decides its own tool permissions: Timon shows no Allow/Deny card for it and cannot restrict what it does. The agent editor says so.
+- Opening the model list of opencode or Hermes leaves one empty session per agent in that agent's own history.
+- Pi has not been tried with a tester's own model provider yet, so a first mission may fail.
+- **Sign in with Chrome** copies cookies only: a site that keeps its sign-in in the page's own storage (many apps built on Firebase) is not signed in by it.
+- **Sign in with Chrome** copies the sign-in into the built-in browser; whether Google keeps it valid there over time has not been verified, and a password or 2FA step has not been tried. Run it again if the session is lost.
+- **TIM-0034** — The installers are not code-signed: Windows SmartScreen or Smart App Control and macOS Gatekeeper warn about them or block them. On Windows, choose **More info → Run anyway** (turn Smart App Control off in Windows Security if it blocks); on macOS, allow the app in **System Settings → Privacy & Security**.
+- Windows: a CLI installed with pnpm or yarn can keep running after Timon stops or crashes; end it from Task Manager, or install it with npm.
+- Windows: a Codex agent in auto or acceptEdits mode cannot `git commit` (Codex keeps `.git` read-only); give its code and merge tasks the bypassPermissions mode, or run them on another backend.
+- Windows: where your organisation blocks Windows PowerShell, the installer cannot update or reinstall Timon and stops on "The check that Timon is stopped in the background did not run"; it stops a new installation the same way when an earlier Timon left its background service on the computer.
+- Windows: installing a new version of the app closes the built-in terminal's shells.
+- Windows, and Linux without Landlock: missions are not fenced and can read Timon's private files; on an installation with several accounts, set the mission isolation to Required, or give the Spawn missions permission only to people you trust with the whole installation.
+- Windows: on a work or school account of a PC joined to Microsoft Entra ID, Windows may refuse to run Timon's background task; Timon then runs only while its window is open.
+- With Pi as the only backend, conversations keep their default title.
+
 ## 0.1.11 — 2026-11-24
 
 ### Highlights
