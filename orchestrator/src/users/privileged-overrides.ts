@@ -21,13 +21,13 @@ import { existsSync, realpathSync } from 'node:fs';
 import { sep } from 'node:path';
 import { dbApi } from '../db.js';
 import { auditRequest } from './audit-actor.js';
-import { requestHasPermission, forbidden } from './identity.js';
+import { isPersonAuth, requestHasPermission, forbidden } from './identity.js';
 import { isDeveloperAccount } from './agent-permissions.js';
 import { userAllows } from './permissions.js';
 import { catalogBackend, catalogClaimsModel, resolvedPermissionModeFor } from '../backends/catalog.js';
 import { implicitBackendName, defaultBackendName } from '../backends/index.js';
 import { accountInstanceRefusal } from '../backends/account-launch.js';
-import { loadConfig, storedComputerUseApps, type AgentConfig } from '../agent-config.js';
+import { loadConfig, storedComputerUseApps, storedComputerUseExcludedApps, type AgentConfig } from '../agent-config.js';
 import { delegationRefusal } from '../delegation-guard.js';
 import { getMcp } from '../mcp.js';
 import { isInjectedMcpServer } from '../injected-mcp.js';
@@ -630,6 +630,46 @@ export function agentWideningRefusal(
     }
   }
   return null;
+}
+
+/**
+ * "All applications" lets an agent drive every window of the machine but the excluded ones: a
+ * person turns it on, at the screen, never a token. An agent's or a mission's token, the daemon's
+ * (the CLI, the MCP servers, a script) and a plugin job are all refused, whatever their account holds,
+ * when they turn it on or take an application out of the exclusions. Turning it off, adding an
+ * exclusion or sending the stored values back narrows and passes.
+ *
+ * `granted` is the stored config (null for a new agent); `actor` says whether a person calls.
+ */
+export function personOnlyComputerRefusal(
+  wanted: { computer_use_all_apps?: unknown; computer_use_excluded_apps?: unknown },
+  granted: Pick<AgentConfig, 'computer_use_all_apps' | 'computer_use_excluded_apps'> | null,
+  actor: { person: boolean },
+): string | null {
+  if (actor.person) return null;
+  if (wanted.computer_use_all_apps === true && granted?.computer_use_all_apps !== true) {
+    return "computer_use_all_apps lets the agent drive every application of the machine: only a person turns it on, "
+      + "from the agent's Permissions in the app, never a token (an agent's, a mission's or the daemon's). Turning it off, or sending it unchanged, is accepted";
+  }
+  const excluded = wanted.computer_use_excluded_apps;
+  if (Array.isArray(excluded)) {
+    const kept = new Set(excluded.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim().toLowerCase()));
+    for (const held of storedComputerUseExcludedApps(granted ?? {})) {
+      if (kept.has(held.toLowerCase())) continue;
+      return `computer_use_excluded_apps lifts ${held}: only a person takes an application out of the exclusions, `
+        + "from the agent's Permissions in the app, never a token. Adding exclusions, or sending the list unchanged, is accepted";
+    }
+  }
+  return null;
+}
+
+/** `personOnlyComputerRefusal` for a request: a session or a paired device is a person, any token is not. */
+export function personOnlyComputerDenied(
+  req: Pick<Request, 'auth'>,
+  wanted: { computer_use_all_apps?: unknown; computer_use_excluded_apps?: unknown },
+  granted: Pick<AgentConfig, 'computer_use_all_apps' | 'computer_use_excluded_apps'> | null,
+): string | null {
+  return personOnlyComputerRefusal(wanted, granted, { person: isPersonAuth(req.auth) });
 }
 
 /** `agentWideningRefusal` for a request: null for anyone but an agent's token. */

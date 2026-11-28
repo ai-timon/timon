@@ -297,7 +297,9 @@ import {
   loadSystemPrompt,
   isValidAgentName,
   validName,
+  storedComputerUseAllApps,
   storedComputerUseApps,
+  storedComputerUseExcludedApps,
   storedComputerUseMode,
   type ComputerUseApp,
   type ComputerUseMode,
@@ -5080,6 +5082,10 @@ export type AgentSummary = {
   computer_use_apps: ComputerUseApp[];
   /** 'background' = accessibility only, the user's screen, mouse and keyboard are never touched. */
   computer_use_mode: ComputerUseMode;
+  /** Every application is allowed but the excluded ones; only a person turns it on. */
+  computer_use_all_apps: boolean;
+  /** Never driven while `computer_use_all_apps` is on; the defaults until a person edits them. */
+  computer_use_excluded_apps: string[];
 };
 
 export type AgentDetails = AgentSummary & { system_prompt: string };
@@ -5129,6 +5135,8 @@ export function getAgent(name: string): AgentDetails | null {
     computer_use: cfg.computer_use === true,
     computer_use_apps: storedComputerUseApps(cfg),
     computer_use_mode: storedComputerUseMode(cfg),
+    computer_use_all_apps: storedComputerUseAllApps(cfg),
+    computer_use_excluded_apps: storedComputerUseExcludedApps(cfg),
   };
 }
 
@@ -5216,7 +5224,7 @@ export function upsertAgent(input: {
     // them would take the delegation rights away without anyone asking.
     // The mascot look and the avatar mode are picked elsewhere too
     // (onboarding, the Avatar tab, `agent_update look`, `agent_set_look`).
-    for (const key of ['reports_to', 'team', 'orchestrator', 'orchestrates', 'directives', 'created_by', 'uid', 'look', 'avatar', 'extra_dirs', 'computer_use', 'computer_use_apps', 'computer_use_mode'] as const) {
+    for (const key of ['reports_to', 'team', 'orchestrator', 'orchestrates', 'directives', 'created_by', 'uid', 'look', 'avatar', 'extra_dirs', 'computer_use', 'computer_use_apps', 'computer_use_mode', 'computer_use_all_apps', 'computer_use_excluded_apps'] as const) {
       if (!(key in config) && current[key] !== undefined) (config as Record<string, unknown>)[key] = current[key];
     }
   }
@@ -6162,6 +6170,8 @@ export function listAgents(): AgentSummary[] {
       computer_use: cfg.computer_use === true,
       computer_use_apps: storedComputerUseApps(cfg),
       computer_use_mode: storedComputerUseMode(cfg),
+      computer_use_all_apps: storedComputerUseAllApps(cfg),
+      computer_use_excluded_apps: storedComputerUseExcludedApps(cfg),
     });
   }
   return out;

@@ -106,6 +106,13 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
   return new NativeComputerError(apiError('computer_command_failed', `Computer command failed: ${detail}`, { detail }), 502);
 }
 
+/** What the desktop needs to judge an agent's command: its applications, its default mode and, when on, "All applications". */
+function agentScope(options: Parameters<typeof callNativeComputer>[3]): Record<string, unknown> {
+  const scope: Record<string, unknown> = { allowedApps: options?.allowedApps ?? [], mode: options?.mode ?? 'foreground' };
+  if (options?.allApps === true) Object.assign(scope, { allApps: true, excludedApps: options.excludedApps ?? [] });
+  return scope;
+}
+
 /**
  * Sends one command to the desktop's computer-use server. `actor` is the
  * daemon's, derived from the authentication, never the caller's.
@@ -114,7 +121,15 @@ export async function callNativeComputer(
   command: string,
   args: Record<string, unknown>,
   actor: ComputerActor,
-  options: { home?: string; timeoutMs?: number; allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[]; mode?: 'foreground' | 'background' } = {},
+  options: {
+    home?: string;
+    timeoutMs?: number;
+    allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[];
+    mode?: 'foreground' | 'background';
+    /** Every application but `excludedApps`, the unlisted ones in `mode`. Sent only when on: a desktop that predates it then reads the list alone. */
+    allApps?: boolean;
+    excludedApps?: readonly string[];
+  } = {},
 ): Promise<unknown> {
   const provider = readComputerProvider(options.home);
   if (!provider) throw new NativeComputerError(apiError('computer_unavailable', 'Computer use is unavailable: the Timon desktop app must be running on the host machine. Ask the user to open it.'), 503);
@@ -123,7 +138,7 @@ export async function callNativeComputer(
   try {
     response = await fetch(`${provider.origin}/command`, {
       method: 'POST', headers: { authorization: `Bearer ${provider.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ command, args, actor, ...(actor === 'agent' ? { allowedApps: options.allowedApps ?? [], mode: options.mode ?? 'foreground' } : {}) }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
+      body: JSON.stringify({ command, args, actor, ...(actor === 'agent' ? agentScope(options) : {}) }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
       redirect: 'error',
     });
   } catch {

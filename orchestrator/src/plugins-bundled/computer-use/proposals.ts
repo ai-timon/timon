@@ -2,7 +2,8 @@
  * `computer_use_propose`: an agent asks, a person grants.
  *
  * Widening what an agent may control (`computer_use`, `computer_use_apps`) is
- * a person's decision, never an agent's (`agentWideningRefusal`). The agent
+ * a person's decision, never an agent's (`agentWideningRefusal`). "All
+ * applications" is not even proposed: a person sets it in the editor. The agent
  * only PROPOSES: the proposal becomes a card in its mission's conversation,
  * the shared layout-proposal mechanism (`settings/layout-proposals.ts`, the one
  * `widgets_propose` and trigger approvals use). Applying it is a decision of a
@@ -164,6 +165,16 @@ export function registerComputerUseProposalKind(): void {
   });
 }
 
+/**
+ * Keys that would reach "All applications" or its exclusions, however spelled. The strict schema
+ * already refuses them; naming them answers the agent with the reason instead of a shape error.
+ */
+const EVERYTHING_KEYS = ['allApps', 'all_apps', 'computer_use_all_apps', 'excludedApps', 'excluded_apps', 'computer_use_excluded_apps', 'removeExcludedApps'];
+
+function asksForEverything(raw: unknown): boolean {
+  return !!raw && typeof raw === 'object' && EVERYTHING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(raw, key));
+}
+
 /** `POST /api/computer/proposals`: a mission's token only. Answers `{ status, body }` like the other proposal routes. */
 export function proposeComputerUse(req: Request, raw: unknown): { status: number; body: unknown } {
   const missionId = req.auth?.kind === 'api-token' ? req.auth.missionId : undefined;
@@ -173,6 +184,13 @@ export function proposeComputerUse(req: Request, raw: unknown): { status: number
   const mission = scopedDb(viewerFromRequest(req)).getMission(missionId);
   const owner = req.auth?.user ?? null;
   if (!mission || !owner) return { status: 403, body: apiError('computer_proposal_mission_unknown', 'This mission is unknown.') };
+  if (asksForEverything(raw)) {
+    return {
+      status: 403,
+      body: apiError('computer_proposal_all_apps_refused', '"All applications" and its exclusions are not proposed: only a person sets them, from the agent\'s Permissions in the app. '
+        + 'Propose the applications you need with addApps instead.'),
+    };
+  }
   const parsed = ProposalBody.safeParse(raw ?? {});
   if (!parsed.success) {
     return { status: 400, body: apiError('computer_proposal_invalid', 'Expected { agent, addApps?: (string | { app, mode })[<=20], removeApps?: string[<=20], enable?: boolean, note?: string }.') };

@@ -33,6 +33,7 @@ const enabledToken = agentWith('computer-on', { computer_use: true });
 const disabledToken = agentWith('computer-off', {});
 
 const forwarded: ({ allowedApps: { app: string; mode: string }[] } | undefined)[] = [];
+const everything: ({ allApps?: boolean; excludedApps?: readonly string[] } | undefined)[] = [];
 const modes: (string | undefined)[] = [];
 const calls: { command: string; args: Record<string, unknown>; actor: string }[] = [];
 let desktop: 'up' | 'down' | 'stopped' | 'echo' = 'up';
@@ -43,6 +44,7 @@ registerComputerRoutes(app, {
   call: async (command, args, actor, options) => {
     calls.push({ command, args, actor });
     modes.push(options?.mode);
+    everything.push(options?.allApps === undefined ? undefined : { allApps: options.allApps, excludedApps: options.excludedApps });
     forwarded.push(options?.allowedApps === undefined ? undefined : { allowedApps: [...options.allowedApps] });
     if (desktop === 'down') throw new NativeComputerError(apiError('computer_unavailable', 'down'), 503);
     if (desktop === 'stopped') throw new NativeComputerError(apiError('computer_stopped', 'stopped'), 409);
@@ -380,4 +382,21 @@ test('the desktop\'s accessibility refusals keep their own codes', async () => {
       });
     }
   } finally { server.close(); }
+});
+
+test('"All applications" travels with an agent\'s commands with its exclusions, the defaults until a person edits them', async () => {
+  const all = agentWith('computer-all', { computer_use: true, computer_use_all_apps: true, computer_use_mode: 'background' });
+  const send = (token: string) => fetch(`${base}/a11y_tree`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: '{}' });
+  assert.equal((await send(all)).status, 200);
+  assert.equal(everything.at(-1)?.allApps, true);
+  assert.ok(everything.at(-1)?.excludedApps?.includes('KeePassXC'), 'the defaults travel while nobody edited the list');
+  assert.equal(modes.at(-1), 'background', 'the default mode of the unlisted applications');
+  const edited = agentWith('computer-all-edited', { computer_use: true, computer_use_all_apps: true, computer_use_excluded_apps: ['Slack', ' ', 'slack'] });
+  await send(edited);
+  assert.deepEqual(everything.at(-1), { allApps: true, excludedApps: ['Slack'] });
+  await post('a11y_tree', {}, 'enabled');
+  assert.equal(everything.at(-1), undefined, 'off: nothing about it is sent');
+  const stray = agentWith('computer-all-stray', { computer_use: true, computer_use_all_apps: 'yes' });
+  await send(stray);
+  assert.equal(everything.at(-1), undefined, 'only true turns it on');
 });
