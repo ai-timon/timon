@@ -332,8 +332,10 @@ export function fenceRefusalMessage(refusal: FenceRefusal): string {
   const head = `${when} mission fence (${fenceMechanismName(refusal.mechanism)}) does not let this mission ${verb} ${refusal.display}, which its ${refusal.backend} CLI needs`;
   const dropped = refusal.dropped ? ` (${refusal.dropped} when the fence was computed)` : '';
   if (refusal.timonHome) {
-    return `${head}${dropped}. This is a defect of Timon, not of your setup: please report it. `
-      + 'Workaround: Settings › System › Security, set Mission isolation to Off, then start the mission again.';
+    return `${head}${dropped}. This path is inside the Timon home, which extra folders cannot open, so this is a defect of Timon: please report it. `
+      + 'A lead or merge mission of a project already reaches its project\'s task worktrees and repository git directory, '
+      + 'listed when the mission starts: start the mission again if the folder was made after it. '
+      + 'Last resort only: Settings › System › Security, set Mission isolation to Off.';
   }
   if (!refusal.grantable) {
     return `${head}${dropped}. The fence always keeps this folder from missions (credentials, or a path `

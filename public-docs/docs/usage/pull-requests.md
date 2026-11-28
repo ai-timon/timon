@@ -110,6 +110,17 @@ Name the job by its series, or by the conversation that planned it (`current` fr
 
 Once the branch is in the target, the job's TO DO ideas close and its documentation task is created, once. Running the command again on a job that already landed, or whose pull request is already open, says so and changes nothing. When the job's pull request was closed without being merged, landing it again opens a new pull request, with the same checks and a new title; the closed one stays as it is on GitHub. A branch under embargo (`sec/…`) never lands this way.
 
+## Your checkout follows the branch Timon moves
+
+Agents never write in your project's own working folder: they work in separate worktrees. When the branch they land on (your `main`, or the target of a job) is the one checked out in that folder, Timon itself brings the folder up to date after a task is merged into it, after a landing, and after it fetches the target from the remote. It does so only under strict conditions:
+
+- the folder is on that branch (not a detached HEAD, not another branch);
+- it has no uncommitted change and no untracked file that is not ignored;
+- no merge, rebase, cherry-pick, revert or bisect is under way;
+- the move is a fast-forward: the branch only moves forward, and the files follow it.
+
+Otherwise nothing is touched. Timon never resets, stashes or forces a checkout: it prints a warning and records the reason in the audit log (`clone.follow.skipped`), and your folder stays as it is until you pull or commit. A branch that is not checked out in your folder keeps moving by reference alone, as before.
+
 ## Open the pull request
 
 When the job's work is merged into its integration branch, the agent (or you) asks Timon to open the pull request:

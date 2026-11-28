@@ -27,12 +27,12 @@ import { db, dbApi, type RenamedAgentTrigger, type Source, type MemoryRuleRow } 
 import { originFromSpawnSource, type UserEventOrigin } from './user-origin.js';
 import type { PromptPresentation } from './prompt-presentation.js';
 import { recordRequestDelivery } from './agent-request-replies.js';
-import { projectFromCwd } from './task-project.js';
+import { projectFromCwd, projectFromRegisteredCwd } from './task-project.js';
 import {
   dropAgentBrowserProfiles, holdAgentBrowserProfiles, resolveBrowserProfile, resolveMissionBrowserProfile,
   restoreAgentBrowserProfiles, revokeAgentBrowserGrants,
 } from './browser-profiles.js';
-import { projectOfTask, resolveBrowserProject, taskIdOfSource } from './browser-project.js';
+import { projectOfTask, registeredProjects, resolveBrowserProject, taskIdOfSource } from './browser-project.js';
 import { dropAgentMemory, holdAgentMemory, restoreAgentMemory } from './agent-memory-trash.js';
 import { listProjects, readRoles, writeRoles, readProjectMemory } from './projects.js';
 import { buildGlobalDigest } from './global-digest.js';
@@ -51,7 +51,7 @@ import {
 } from './skill-attachments.js';
 import { getMcp, refreshToolsCacheFromInit, listMcp } from './mcp.js';
 import { ensureChatAttachmentsDir } from './chat-attachments.js';
-import { pluginPackageDirs, removeAgentPackageCache, worktreeGitDirs } from './mission-fence-target.js';
+import { leadFenceGrants, pluginPackageDirs, removeAgentPackageCache, worktreeGitDirs } from './mission-fence-target.js';
 import { forgetMissionFence, missionFenced, prepareMissionLaunch, recordMissionFence } from './mission-fence-state.js';
 import { credentialAccountOf } from './backends/host-sign-in.js';
 import { setAcpFenceSource } from './backends/acp/provider.js';
@@ -1932,9 +1932,31 @@ export function missionFenceTarget(input: {
   backend: string;
   cwd: string | null;
   mcpServers: readonly string[];
+  /** `config.role` of the agent, never read from its name. */
+  role?: string | null;
 }): Partial<FenceTarget> {
   const git = input.cwd ? worktreeGitDirs(input.cwd, homedir()) : { dirs: [], refused: null };
   if (git.refused) console.warn(`[agent] mission ${input.missionId.slice(0, 8)}: git directory not opened to the fence: ${git.refused}`);
+  // A lead, a merger or a merge task integrates the project's tasks: their
+  // worktrees and the repository's git directory, for `git push/fetch/merge`.
+  const task = dbApi.getTaskByMission(input.missionId);
+  // `input.project` only knows the `.../projects/<slug>` layout: a project registered
+  // anywhere else (`/home/x/work/app`) reads as none there. For this grant alone the
+  // task's project, then the registry, say which project the mission works in.
+  const leadProject = input.project
+    || task?.project
+    || projectFromRegisteredCwd(input.cwd, registeredProjects())
+    || '';
+  const lead = leadFenceGrants({
+    role: input.role,
+    taskType: task?.type,
+    project: leadProject,
+    timonHome: TIMON_HOME,
+    home: homedir(),
+    repoCwd: leadProject ? dbApi.getProjectRow(leadProject)?.cwd : null,
+    taskWorktrees: leadProject ? dbApi.taskWorktreePathsOfProject(leadProject) : [],
+  });
+  for (const why of lead.refused) console.warn(`[agent] mission ${input.missionId.slice(0, 8)}: project git directory not opened to the fence: ${why}`);
   const commandLines = input.mcpServers.flatMap((id) => {
     try {
       const server = getMcp(id);
@@ -1961,6 +1983,8 @@ export function missionFenceTarget(input: {
     // and the profile's folder is shared by every account of that profile.
     providerProfile: instance.accountId ? undefined : instance.backend,
     gitDirs: git.dirs,
+    projectWorktrees: lead.worktrees,
+    projectGitDirs: lead.gitDirs,
     pluginDirs: pluginPackageDirs(commandLines, TIMON_HOME),
     timonRead: attachments ? [attachments] : [],
     // Read again from the agent's config file and the project's row, like
@@ -2086,7 +2110,7 @@ async function spawnMissionProcess(
     timonHome: TIMON_HOME,
     nestedSandbox: nestedSandboxOf(backend.name),
     interpreter,
-    ...missionFenceTarget({ missionId, agentName, project, backend: backend.name, cwd: cwd ?? null, mcpServers: cfg.mcp_servers ?? [] }),
+    ...missionFenceTarget({ missionId, agentName, project, backend: backend.name, cwd: cwd ?? null, mcpServers: cfg.mcp_servers ?? [], role: cfg.role ?? null }),
   });
   // Vault slice computed HERE so the inject journal (§8 / §12.8) records the
   // identities without `missionEnv` writing to the database — that function

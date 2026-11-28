@@ -399,6 +399,15 @@ export type FenceTarget = {
   providerProfile?: string | undefined;
   /** Git directories the worktree commits into (the main repository's `.git`). */
   gitDirs?: readonly string[] | undefined;
+  /**
+   * The checkouts of the project's tasks (`<timonHome>/worktrees/<task>`) and the
+   * repository's common git directory, read-write, for a mission that integrates
+   * the project's work (lead, merger, merge task: `leadFenceGrants`). Always
+   * read-write whatever `workspace` says: `git push`, `fetch`, `merge` and
+   * `update-ref` write there. Each is checked like any handed path.
+   */
+  projectWorktrees?: readonly string[] | undefined;
+  projectGitDirs?: readonly string[] | undefined;
   /** Install folders of the plugins whose MCP servers the mission runs: readable and executable. */
   pluginDirs?: readonly string[] | undefined;
   /**
@@ -752,6 +761,7 @@ export function resolveFence(config: TimonConfig, target: FenceTarget): FencePol
   const shared = isSharedRoot(target.cwd) && isSharedRoot(target.agentCwd);
   const sharedWorkspace = target.cwd ? workspaceGrant(target.cwd, shared ? 'agent-workspace' : 'mission') : null;
   for (const dir of target.gitDirs ?? []) workspaceGrant(dir);
+  for (const dir of [...(target.projectWorktrees ?? []), ...(target.projectGitDirs ?? [])]) grant(resolve(dir), 'rw', 'mission');
 
   const missionId = segment('mission id', target.missionId);
   const agent = target.agent !== undefined && target.agent !== '' && isFenceAgent(target.agent)

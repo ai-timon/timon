@@ -965,3 +965,19 @@ test('extraDirFenceProblem: the refusal names the reason, `fenceAccess` gives th
   });
   assert.match(missing ?? '', /does not exist/);
 });
+
+test('fence: the project worktrees and git directory of a lead are read-write, another project\'s and the worktrees folder itself are not', () => {
+  const lead = resolveFence(cfg(), fullTarget({
+    workspace: 'ro',
+    projectWorktrees: [`${TH}/worktrees/task-2`, `${TH}/worktrees`],
+    projectGitDirs: [`${FAKE_HOME}/code/other/.git`],
+  }));
+  assert.equal(access(lead, `${TH}/worktrees/task-2/src/a.ts`), 'rw', 'a project task worktree, even at a read-only workspace level');
+  assert.equal(access(lead, `${FAKE_HOME}/code/other/.git/refs/heads/main`), 'rw');
+  assert.equal(access(lead, `${TH}/worktrees/task-3/src/a.ts`), 'none', 'a worktree of another project is not listed');
+  assert.equal(access(lead, `${TH}/worktrees`), 'none', 'the folder holding every worktree stays closed');
+  assert.ok(lead.ignored.some((entry) => entry.path === `${TH}/worktrees`), 'the bare folder is dropped and reported');
+  // A coder gets none of it.
+  const coder = resolveFence(cfg(), fullTarget());
+  assert.equal(access(coder, `${TH}/worktrees/task-2/src/a.ts`), 'none');
+});

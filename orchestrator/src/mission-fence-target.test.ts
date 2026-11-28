@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, utimesSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  daemonRuntimePaths, pluginPackageDirs, purgeMissionTmpDirs, purgeOrphanAgentPackageCaches, removeAgentPackageCache, worktreeGitDirs,
+  daemonRuntimePaths, integratesProject, leadFenceGrants, pluginPackageDirs, purgeMissionTmpDirs, purgeOrphanAgentPackageCaches, removeAgentPackageCache, worktreeGitDirs,
 } from './mission-fence-target.js';
 
 /** A home holding a main checkout, a linked worktree of it, and a folder a mission could aim at. */
@@ -195,4 +195,52 @@ test('the daemon\'s runtime: its executable, its orchestrator folder and the Nod
   // By default, the orchestrator folder is the one this code runs from, which holds the MCP scripts.
   const [, root] = daemonRuntimePaths({ command: 'node', env: {} });
   assert.ok(root && existsSync(join(root, 'bin', 'timon-mcp.mjs')) && existsSync(join(root, 'bin', 'permission-mcp.mjs')));
+});
+
+/** A project repository with its common git directory, and the Timon home holding task worktrees. */
+function leadLayout() {
+  const l = layout();
+  const timonHome = join(l.root, 'timon');
+  const other = join(timonHome, 'worktrees', 'task-other-project');
+  mkdirSync(other, { recursive: true });
+  return { ...l, timonHome, other };
+}
+
+test('a lead, a merger and a merge task get the project worktrees and common git directory', () => {
+  const { home, main, common, wt, timonHome, other } = leadLayout();
+  const input = { project: 'app', timonHome, home, repoCwd: main, taskWorktrees: [wt] };
+  for (const [role, taskType] of [['orchestrator', undefined], ['merger', undefined], ['coder', 'merge']] as const) {
+    const grants = leadFenceGrants({ ...input, role, taskType });
+    assert.deepEqual(grants.worktrees, [wt], `${role}/${taskType}`);
+    assert.deepEqual(grants.gitDirs, [common], 'the common .git only, not the checkout around it');
+    assert.equal(grants.worktrees.includes(other), false, 'a worktree no task of the project records is never listed');
+  }
+});
+
+test('a coder, or an agent whose name only says merge, gets nothing', () => {
+  const { home, main, wt, timonHome } = leadLayout();
+  const input = { project: 'app', timonHome, home, repoCwd: main, taskWorktrees: [wt] };
+  assert.equal(integratesProject('coder', 'code'), false);
+  assert.equal(integratesProject(null, undefined), false);
+  assert.deepEqual(leadFenceGrants({ ...input, role: 'coder', taskType: 'code' }), { worktrees: [], gitDirs: [], refused: [] });
+  // The name is not an input at all: only the role field and the task type count.
+  assert.deepEqual(leadFenceGrants({ ...input, role: 'reviewer', taskType: 'review' }).worktrees, []);
+  assert.deepEqual(leadFenceGrants({ ...input, role: 'orchestrator', taskType: 'review', project: '' }).worktrees, [], 'no project, no grant');
+});
+
+test('only existing folders directly below the worktrees folder are listed', () => {
+  const { home, main, wt, timonHome } = leadLayout();
+  const grants = leadFenceGrants({
+    role: 'merger', taskType: undefined, project: 'app', timonHome, home, repoCwd: main,
+    taskWorktrees: [wt, join(timonHome, 'worktrees', 'gone'), join(wt, 'src'), join(home, 'code', 'app'), join(timonHome, 'worktrees', '..', 'agents')],
+  });
+  assert.deepEqual(grants.worktrees, [wt]);
+});
+
+test('a project repository holding the home folder opens no git directory', () => {
+  const { home, wt, timonHome, root } = leadLayout();
+  mkdirSync(join(root, '.git'), { recursive: true });
+  const grants = leadFenceGrants({ role: 'merger', taskType: undefined, project: 'app', timonHome, home, repoCwd: root, taskWorktrees: [wt] });
+  assert.deepEqual(grants.gitDirs, []);
+  assert.equal(grants.refused.length, 1);
 });
