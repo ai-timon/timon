@@ -279,7 +279,7 @@ test.describe('command requests', { concurrency: false }, () => {
 
   test('a double click on allow runs the command once', async () => {
     ran.length = 0;
-    const { id, reply } = await openCard('m-claude', 'npm run rebuild');
+    const { id, reply } = await openCard('m-claude', 'npm run lint');
     const [a, b] = await Promise.all([
       decide(id, ownerBrowser, { decision: 'allow' }),
       decide(id, ownerBrowser, { decision: 'allow' }),
