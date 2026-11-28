@@ -12,9 +12,10 @@
 export const ALL_FILTER = '*';
 
 /** `q` is a case-insensitive keyword over id, title, agent and description; '' = none. */
-export type KanbanFilters = { agent: string; project: string; q: string };
+/** `mine` keeps only the tasks that wait for the person: a block they must lift or a permission to answer. */
+export type KanbanFilters = { agent: string; project: string; q: string; mine: boolean };
 
-export const DEFAULT_KANBAN_FILTERS: KanbanFilters = { agent: ALL_FILTER, project: ALL_FILTER, q: '' };
+export const DEFAULT_KANBAN_FILTERS: KanbanFilters = { agent: ALL_FILTER, project: ALL_FILTER, q: '', mine: false };
 
 /** Per browser, like the Project TO DO widget's choice. */
 export const KANBAN_FILTERS_KEY = 'timon.kanban.filters';
@@ -25,6 +26,8 @@ type FilterableTask = {
   id?: string;
   title?: string;
   description?: string | null;
+  awaiting_user?: number | boolean | null;
+  pending_permission?: unknown;
 };
 type FilterableAgent = { name: string; project?: string | null };
 
@@ -35,8 +38,18 @@ export function taskProject(
   return task.project || projectByAgent.get(task.agent_name) || null;
 }
 
+/** A BLOCKED task flagged as waiting for the person. */
+export function isAwaitingUser(task: { awaiting_user?: number | boolean | null }): boolean {
+  return !!task.awaiting_user;
+}
+
+/** Waits for the person: flagged so, or stopped on a permission card. */
+export function needsMyAction(task: FilterableTask): boolean {
+  return isAwaitingUser(task) || !!task.pending_permission;
+}
+
 export function isFiltered(filters: KanbanFilters): boolean {
-  return filters.agent !== ALL_FILTER || filters.project !== ALL_FILTER || filters.q.trim() !== '';
+  return filters.mine || filters.agent !== ALL_FILTER || filters.project !== ALL_FILTER || filters.q.trim() !== '';
 }
 
 export function filterBoardTasks<T extends FilterableTask>(
@@ -48,6 +61,7 @@ export function filterBoardTasks<T extends FilterableTask>(
   return tasks.filter((t) =>
     (filters.agent === ALL_FILTER || t.agent_name === filters.agent)
     && (filters.project === ALL_FILTER || taskProject(t, projectByAgent) === filters.project)
+    && (!filters.mine || needsMyAction(t))
     && matchesQuery([t.id, t.title, t.agent_name, t.description], filters.q));
 }
 
@@ -119,11 +133,12 @@ export function readKanbanFilters(storage: Pick<Storage, 'getItem'> | null): Kan
     if (!raw) return DEFAULT_KANBAN_FILTERS;
     const parsed: unknown = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return DEFAULT_KANBAN_FILTERS;
-    const { agent, project, q } = parsed as Record<string, unknown>;
+    const { agent, project, q, mine } = parsed as Record<string, unknown>;
     return {
       agent: typeof agent === 'string' && agent ? agent : ALL_FILTER,
       project: typeof project === 'string' && project ? project : ALL_FILTER,
       q: typeof q === 'string' ? q : '',
+      mine: mine === true,
     };
   } catch {
     // Corrupt value or storage refused (private browsing): no filter.

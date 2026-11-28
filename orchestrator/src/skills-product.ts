@@ -17,7 +17,7 @@
 export const PRODUCT_SKILLS: ReadonlyArray<{ id: string; content: string; version?: number }> = [
   {
     id: 'timon-task',
-    version: 3,
+    version: 4,
     content: `---
 allowed_tools: ["Bash(timon:*)"]
 ---
@@ -452,6 +452,19 @@ timon task block <TASK_ID> --reason "Precise reason"
 \`\`\`
 Use BLOCKED when you cannot go on without a human, or when an external
 dependency is not met.
+
+**Waiting only for a person is not a failure.** When the single thing missing
+is an action of the user (a merge request or pull request to merge, a
+validation, a decision), add \`--awaiting-user\` and say in the reason exactly
+what they must do. The board then shows an amber "Waiting for you" badge
+instead of a red "Blocked", and the user can filter on it. The task stays
+BLOCKED, so the dispatcher never restarts it. A real obstacle (a conflict, a
+failing check, a missing dependency) stays a plain block.
+\`\`\`bash
+timon task block <TASK_ID> --awaiting-user --reason "Merge request !42 is ready: merge it, then reopen this task"
+\`\`\`
+The MCP tool \`kanban_mark_as_failed\` takes the same switch as
+\`awaiting_user: true\`.
 
 ## Updating metadata
 \`\`\`bash

@@ -45,8 +45,8 @@ export type BoardCardProps = Omit<HTMLAttributes<HTMLElement>, 'title' | 'childr
   onOpen?: () => void;
   /** Done, closed: the title fades and is struck through. */
   muted?: boolean;
-  /** `running` and `blocked` ring the card in their colour. */
-  tone?: 'default' | 'running' | 'blocked';
+  /** `running`, `blocked` and `awaiting` (a person's turn) ring the card in their colour. */
+  tone?: 'default' | 'running' | 'blocked' | 'awaiting';
   /** Lifted by a drag: the card dims. */
   dragging?: boolean;
 };
@@ -170,6 +170,7 @@ export function BoardCard({
         interactive && 'cursor-pointer',
         tone === 'running' && 'ring-1 ring-inset ring-primary/30',
         tone === 'blocked' && 'ring-1 ring-inset ring-destructive/30',
+        tone === 'awaiting' && 'ring-1 ring-inset ring-warning/40',
         dragging && 'opacity-50',
         className,
       )}

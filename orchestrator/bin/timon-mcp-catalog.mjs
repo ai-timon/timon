@@ -312,6 +312,10 @@ const TOOLS = [
           description: 'true = clears scheduling (resets scheduled_at to NULL). Only way to unschedule a task.',
         },
         blocked_reason: { type: 'string' },
+        awaiting_user: {
+          type: 'boolean',
+          description: 'With status BLOCKED: the task waits only for a person (shown as "Waiting for you" on the board).',
+        },
         done_comment: { type: 'string' },
         merged_commit_sha: {
           type: 'string',
@@ -397,13 +401,21 @@ const TOOLS = [
       'Closes the task you are running as BLOCKED: you cannot continue without ' +
       'a human decision or an unmet external dependency. Resolved from your ' +
       'current mission, no id to copy. `reason` is mandatory and is what the ' +
-      'orchestrator reads to decide what comes next.',
+      'orchestrator reads to decide what comes next. Set `awaiting_user` when ' +
+      'the only thing missing is a person (a pull request to merge, a go-ahead): ' +
+      'the board then shows "Waiting for you" instead of a failure.',
     inputSchema: {
       type: 'object',
       properties: {
         reason: {
           type: 'string',
           description: 'Precise reason for the blockage (what is missing, what was tried).',
+        },
+        awaiting_user: {
+          type: 'boolean',
+          description:
+            'True when the task waits only for a person to act (merge a pull request, ' +
+            'validate, decide); the reason then says exactly what to do. False or unset: a real blockage.',
         },
         id: {
           type: 'string',
@@ -1538,6 +1550,7 @@ async function runTool(rawName, args, ctx) {
     }
     case 'kanban_mark_as_failed': {
       const body = { outcome: 'failed', reason: args.reason };
+      if (args.awaiting_user !== undefined) body.awaiting_user = args.awaiting_user === true;
       if (args.id !== undefined) body.id = args.id;
       const r = await call('POST', '/api/tasks/close', body);
       return r.task;

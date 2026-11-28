@@ -198,6 +198,25 @@ test('a running task whose mission waits on a card says on what, since when and 
   }
 });
 
+test('a task that waits for the person is amber and says so, never the red of a breakdown', async () => {
+  const m = await mount();
+  try {
+    await m.render(task({ status: 'BLOCKED', awaiting_user: 1, blocked_reason: 'Merge request !42 is ready' }));
+    assert.match(m.card().className, /ring-warning/);
+    assert.doesNotMatch(m.card().className, /ring-destructive/);
+    assert.match(m.text('badges'), /Waiting for you/);
+    assert.doesNotMatch(m.text('badges'), /Blocked/);
+    assert.match(m.text('context'), /Merge request !42 is ready/);
+    assert.ok(!m.zone('context')?.querySelector('.text-destructive'), 'no red text');
+
+    await m.render(task({ status: 'BLOCKED', awaiting_user: 0, blocked_reason: 'Conflict' }));
+    assert.match(m.card().className, /ring-destructive/, 'a real block stays red');
+    assert.ok(!m.card().querySelector('[data-awaiting-user]'));
+  } finally {
+    await m.unmount();
+  }
+});
+
 test('a blocked or interrupted task says why in the context zone, and a finished one offers mark-merged', async () => {
   const m = await mount();
   try {

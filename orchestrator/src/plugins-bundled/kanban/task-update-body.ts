@@ -35,6 +35,8 @@ export const TASK_UPDATE_FIELDS = {
   /** Sentinel clearing the scheduling: `scheduled_at: null` is a deliberate no-op. */
   clear_scheduled_at: z.boolean(),
   blocked_reason: text,
+  /** With `status: BLOCKED`: the block waits for a person, not for a repair. */
+  awaiting_user: z.boolean(),
   done_comment: text,
   extra_skills: names,
   extra_mcp_servers: names,
@@ -90,7 +92,7 @@ export function parseTaskUpdateBody(raw: unknown): { ok: true; value: TaskUpdate
 }
 
 /** What closing a task carries: `timon task done` / `timon task block` send nothing else. */
-const CLOSING_FIELDS: ReadonlySet<string> = new Set(['status', 'done_comment', 'blocked_reason', 'done_summary', 'merged_commit_sha']);
+const CLOSING_FIELDS: ReadonlySet<string> = new Set(['status', 'done_comment', 'blocked_reason', 'awaiting_user', 'done_summary', 'merged_commit_sha']);
 
 /**
  * A body that only closes the task (DONE or BLOCKED, with its note). The one
