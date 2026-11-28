@@ -19,6 +19,7 @@ import miro from './catalog/miro.json' with { type: 'json' };
 import monday from './catalog/monday.json' with { type: 'json' };
 import neon from './catalog/neon.json' with { type: 'json' };
 import notion from './catalog/notion.json' with { type: 'json' };
+import parallel from './catalog/parallel.json' with { type: 'json' };
 import paypal from './catalog/paypal.json' with { type: 'json' };
 import posthog from './catalog/posthog.json' with { type: 'json' };
 import sentry from './catalog/sentry.json' with { type: 'json' };
@@ -28,7 +29,7 @@ import vercel from './catalog/vercel.json' with { type: 'json' };
 import webflow from './catalog/webflow.json' with { type: 'json' };
 import { appEntrySchema, type AppEntry } from './schema.js';
 
-const RAW: readonly unknown[] = [airtable, atlassian, canva, cloudflare, context7, github, gitlab, huggingface, linear, miro, monday, neon, notion, paypal, posthog, sentry, stripe, supabase, vercel, webflow];
+const RAW: readonly unknown[] = [airtable, atlassian, canva, cloudflare, context7, github, gitlab, huggingface, linear, miro, monday, neon, notion, parallel, paypal, posthog, sentry, stripe, supabase, vercel, webflow];
 
 function load(raw: readonly unknown[]): readonly AppEntry[] {
   const seen = new Set<string>();

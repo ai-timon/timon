@@ -191,9 +191,11 @@ export function driftOf(entry, record) {
   const status = record._meta?.['io.modelcontextprotocol.registry/official']?.status;
   if (status && status !== 'active') problems.push(`registry status is ${status}`);
   const remotes = httpRemotes(record.server).map((r) => r.url);
-  if (!remotes.includes(entry.mcp.url)) problems.push(`${entry.mcp.url} is not among its remotes (${remotes.join(', ') || 'none'})`);
-  if (entry.registry.proof === 'domain' && !hostedByNamespace(entry.registry.name, entry.mcp.url)) {
-    problems.push(`${entry.mcp.url} is not hosted on the namespace domain of ${entry.registry.name}`);
+  if (entry.registry.proof === 'domain') {
+    if (!remotes.includes(entry.mcp.url)) problems.push(`${entry.mcp.url} is not among its remotes (${remotes.join(', ') || 'none'})`);
+    if (!hostedByNamespace(entry.registry.name, entry.mcp.url)) {
+      problems.push(`${entry.mcp.url} is not hosted on the namespace domain of ${entry.registry.name}`);
+    }
   }
   if (entry.registry.proof === 'documented' && !/^https:\/\//.test(entry.registry.evidence ?? '')) {
     problems.push('proof "documented" without an https evidence page');
@@ -257,9 +259,27 @@ async function probeEndpoint(entry) {
     return first.ok ? { ok: true, detail: `initialize → ${first.status}` } : { ok: false, detail: `initialize → ${first.status}` };
   }
   if (entry.auth.type === 'key') {
-    return first.status === 401 || first.status === 403
-      ? { ok: true, detail: `refuses an anonymous call (${first.status}), a key is expected` }
-      : { ok: false, detail: `anonymous initialize → ${first.status}, expected 401/403` };
+    let invalid;
+    try {
+      invalid = await fetch(url, {
+        method: 'POST',
+        headers: {
+          accept: 'application/json,text/event-stream',
+          'content-type': 'application/json',
+          [entry.auth.header]: `${entry.auth.prefix ?? ''}timon_invalid_probe_key`,
+        },
+        body: INITIALIZE,
+        signal: AbortSignal.timeout(20_000),
+      });
+    } catch (e) {
+      return { ok: false, detail: `invalid-key probe unreachable: ${e.message}` };
+    }
+    if (invalid.status !== 401 && invalid.status !== 403) {
+      return { ok: false, detail: `invalid key initialize → ${invalid.status}, expected 401/403` };
+    }
+    return first.ok || first.status === 401 || first.status === 403
+      ? { ok: true, detail: `anonymous initialize → ${first.status}; invalid key → ${invalid.status}` }
+      : { ok: false, detail: `anonymous initialize → ${first.status}, expected success or 401/403` };
   }
   const origin = new URL(url).origin;
   const issuers = [];
