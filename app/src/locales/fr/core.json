@@ -1582,7 +1582,7 @@
     "filterSearch": "Recherche",
     "filterSearchPlaceholder": "Rechercher une task…",
     "filterMine": "À moi d'agir",
-    "filterMineTitle": "Seulement les tasks qui t'attendent : une action à faire ou une permission à accorder",
+    "filterMineTitle": "Seulement les tâches qui t'attendent : une action à faire ou une permission à accorder",
     "awaitingUser": "En attente de toi",
     "resetFilters": "Réinitialiser les filtres",
     "modelChange": "Changer le modèle (actuellement {model})",
