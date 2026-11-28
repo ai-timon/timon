@@ -5,7 +5,9 @@
  * nothing it sends can be interpreted as code.
  *
  * The window id is the X11 id (decimal) from list_windows. AT-SPI does not know X ids, so the
- * window is found through what xdotool says about it: its process and its title.
+ * window is found through what xdotool says about it: its process and its title. Its geometry
+ * (xdotool) and client-side shadow (xprop) place the elements of toolkits that only know positions
+ * inside their window, as GTK4 does.
  */
 import { A11yError, type A11yActArgs, type A11yBackend, type A11yCheck, type A11yRawTree, type A11yTreeArgs } from './computer-use-a11y.js';
 import type { SystemCommand } from './computer-use-input.js';
@@ -124,13 +126,58 @@ def describe(acc, path, parent_ifaces):
     if has(states, Atspi.StateType.FOCUSED):
         node['focused'] = True
     if 'Component' in ifaces:
-        try:
-            r = Atspi.Component.get_extents(acc, Atspi.CoordType.SCREEN)
-            if r.width > 0 and r.height > 0:
-                node['bounds'] = {'x': r.x, 'y': r.y, 'width': r.width, 'height': r.height}
-        except Exception:
-            pass
+        bounds = extents(acc)
+        if bounds is not None:
+            node['bounds'] = bounds
     return node, ifaces
+
+# Where the window being read sits on the screen, from xdotool and the CSD shadow (set by main).
+PLACE = {'window': None, 'frame': None, 'root': None, 'origin': False}
+
+def window_origin():
+    """Screen position of the window's content: the X11 window's corner plus the left and top of its
+    client-side shadow (_GTK_FRAME_EXTENTS). Without the shadow read, it is assumed even on both
+    sides, from the size the toolkit gives its root. None when the window's place is unknown."""
+    if PLACE['origin'] is not False:
+        return PLACE['origin']
+    origin = None
+    geo = PLACE['window']
+    if geo is not None:
+        frame = PLACE['frame']
+        if frame is not None:
+            origin = (geo['x'] + frame[0], geo['y'] + frame[2])
+        else:
+            dx, dy = 0, 0
+            try:
+                r = Atspi.Component.get_extents(PLACE['root'], Atspi.CoordType.WINDOW)
+                if 0 < r.width <= geo['width'] and 0 < r.height <= geo['height']:
+                    dx, dy = (geo['width'] - r.width) // 2, (geo['height'] - r.height) // 2
+            except Exception:
+                pass
+            origin = (geo['x'] + dx, geo['y'] + dy)
+    PLACE['origin'] = origin
+    return origin
+
+def extents(acc):
+    """Screen extents. GTK4 answers 0,0 for every element in SCREEN coordinates (it cannot know
+    where its window is): then the WINDOW extents plus the window's origin, and no position at all
+    when that origin is unknown, rather than a false 0,0."""
+    try:
+        r = Atspi.Component.get_extents(acc, Atspi.CoordType.SCREEN)
+    except Exception:
+        return None
+    if r.width <= 0 or r.height <= 0:
+        return None
+    if r.x != 0 or r.y != 0:
+        return {'x': r.x, 'y': r.y, 'width': r.width, 'height': r.height}
+    origin = window_origin()
+    if origin is None:
+        return None
+    try:
+        w = Atspi.Component.get_extents(acc, Atspi.CoordType.WINDOW)
+    except Exception:
+        return None
+    return {'x': origin[0] + w.x, 'y': origin[1] + w.y, 'width': r.width, 'height': r.height}
 
 def children_of(acc):
     out = []
@@ -387,6 +434,7 @@ def main():
         if win is None:
             out = {'error': 'stale', 'seen': seen}
         elif op == 'tree':
+            PLACE.update(window=req.get('window'), frame=req.get('frame'), root=win)
             out = walk(win, req['maxDepth'], req['maxNodes'], (req.get('query') or '').lower() or None, req.get('deadlineMs') or 10000)
         else:
             out = act(win, req)
@@ -411,6 +459,9 @@ function tooLarge(error: unknown): boolean {
   return killed === true || signal === 'SIGTERM' || code === 'ETIMEDOUT' || code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
 }
 
+/** The X11 geometry of a window, and its CSD shadow as _GTK_FRAME_EXTENTS orders it: left, right, top, bottom. */
+type WindowPlace = { window?: { x: number; y: number; width: number; height: number }; frame?: number[] };
+
 const ACTIONS = ['press', 'focus', 'set_value', 'select', 'expand', 'collapse', 'show_menu', 'scroll_into_view'] as const;
 
 export function linuxA11yBackend(exec: Exec): A11yBackend {
@@ -422,6 +473,29 @@ export function linuxA11yBackend(exec: Exec): A11yBackend {
     try { const title = (await exec(xdotool('getwindowname', windowId))).stdout.replace(/\n$/, ''); if (title) ref.title = title; } catch { /* same */ }
     if (ref.pid === undefined && ref.title === undefined) throw new A11yError('stale', 'No such window.');
     return ref;
+  }
+
+  /**
+   * Where the window sits, for the toolkits that give element positions only relative to it (GTK4):
+   * its X11 geometry, and the client-side shadow drawn inside it. Each part is left out when unread;
+   * a frame of zeros means xprop answered and the window has no such shadow.
+   */
+  async function windowPlace(windowId: string): Promise<WindowPlace> {
+    const place: WindowPlace = {};
+    try {
+      const shell = (await exec(xdotool('getwindowgeometry', '--shell', windowId))).stdout;
+      const field = (name: string): number => Number(new RegExp(`^${name}=(-?\\d+)$`, 'm').exec(shell)?.[1] ?? Number.NaN);
+      const geo = { x: field('X'), y: field('Y'), width: field('WIDTH'), height: field('HEIGHT') };
+      if (Object.values(geo).every(Number.isInteger) && geo.width > 0 && geo.height > 0) place.window = geo;
+    } catch { /* positions relative to the window are then left out */ }
+    if (place.window === undefined) return place;
+    try {
+      const out = (await exec({ file: 'xprop', args: ['-id', windowId, '_GTK_FRAME_EXTENTS'] })).stdout;
+      const sides = /=\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/.exec(out);
+      if (sides) place.frame = sides.slice(1, 5).map(Number);
+      else if (/not found/.test(out)) place.frame = [0, 0, 0, 0];
+    } catch { /* no xprop: the reader estimates the shadow */ }
+    return place;
   }
 
   async function run(request: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -458,7 +532,8 @@ export function linuxA11yBackend(exec: Exec): A11yBackend {
     async tree(args: A11yTreeArgs): Promise<A11yRawTree> {
       const ref = await windowRef(args.windowId);
       const query = args.query?.trim().toLowerCase();
-      const out = await run({ op: 'tree', ...ref, maxDepth: args.maxDepth, maxNodes: args.maxNodes, ...(query ? { query } : {}), deadlineMs: LINUX_A11Y_DEADLINE_MS });
+      const place = await windowPlace(args.windowId);
+      const out = await run({ op: 'tree', ...ref, ...place, maxDepth: args.maxDepth, maxNodes: args.maxNodes, ...(query ? { query } : {}), deadlineMs: LINUX_A11Y_DEADLINE_MS });
       refuse(out);
       if (!Array.isArray(out.nodes)) throw new A11yError('failed', 'The accessibility reader answered something unreadable.');
       return { truncated: out.truncated === true || out.timedOut === true, nodes: out.nodes as A11yRawTree['nodes'], ...(out.timedOut === true ? { timedOut: true } : {}) };

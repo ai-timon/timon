@@ -68,6 +68,33 @@ test('Linux: without xprop the process name names the application, and the missi
   assert.equal(calls.filter((file) => file === 'xprop').length, 1);
 });
 
+test('Linux: the frame windows Mutter draws decorations in are not listed, so each window comes out once', async () => {
+  // xdotool finds every decorated window twice under Mutter X11: the client, and its frame window
+  // (same title) owned by the mutter-x11-frames process. Ids: client 31457283 = 0x1e00003, 37748743 = 0x2400007.
+  const scripted = (clientList: string) => async (command: SystemCommand) => {
+    const [verb, id] = command.args;
+    if (command.file === 'xprop' && verb === '-root') return { stdout: clientList };
+    if (command.file === 'xprop') return { stdout: id === '31457283' ? 'WM_CLASS(STRING) = "Navigator", "Firefox"\n' : id === '37748743' ? 'WM_CLASS(STRING) = "gnome-terminal-server", "Gnome-terminal"\n' : 'WM_CLASS(STRING) = "mutter-x11-frames", "mutter-x11-frames"\n' };
+    if (command.file === 'ps') return { stdout: id === '1' ? 'firefox\n' : id === '2' ? 'gnome-terminal-\n' : 'mutter-x11-fram\n' };
+    if (verb === 'getactivewindow') return { stdout: '31457283\n' };
+    if (verb === 'search') return { stdout: '8388614\n31457283\n8388620\n37748743\n' };
+    if (verb === 'getwindowname') return { stdout: id === '31457283' || id === '8388614' ? 'Docs - Firefox\n' : 'Terminal\n' };
+    if (verb === 'getwindowpid') return { stdout: id === '31457283' ? '1\n' : id === '37748743' ? '2\n' : '3\n' };
+    return { stdout: '' };
+  };
+  const expected = [['31457283', 'Docs - Firefox', 'Firefox', true], ['37748743', 'Terminal', 'Gnome-terminal', false]];
+
+  const withClientList = scripted('_NET_CLIENT_LIST(WINDOW): window id # 0x1e00003, 0x2400007\n');
+  assert.deepEqual((await listWindows('linux', withClientList)).map((w) => [w.id, w.title, w.app, w.focused]), expected);
+  assert.equal(await windowApp('linux', withClientList, '8388614'), null, 'a frame id is no window of the list');
+  assert.deepEqual(await windowApp('linux', withClientList, '31457283'), { name: 'Firefox', exe: 'firefox' });
+  assert.deepEqual(await readForegroundApp('linux', withClientList), { name: 'Firefox', exe: 'firefox' });
+
+  // No client list published (no window manager, or an unreadable root): the frame class is dropped instead.
+  const withoutClientList = scripted('_NET_CLIENT_LIST:  not found.\n');
+  assert.deepEqual((await listWindows('linux', withoutClientList)).map((w) => [w.id, w.title, w.app, w.focused]), expected);
+});
+
 test('Linux focus: falls back to map, raise and focus without a window manager, and checks the result', async () => {
   let active = '4242';
   const calls: string[] = [];
