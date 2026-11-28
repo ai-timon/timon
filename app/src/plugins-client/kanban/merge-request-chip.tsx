@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The pull (GitHub) or merge (GitLab) request a task opened: "MR !1875" /
+ * The pull (GitHub) or merge (GitLab) request a task opened: "MR !7" /
  * "PR #12", coloured by its state. A click opens it in a new tab and never the
  * card it sits on.
  */
@@ -32,7 +32,7 @@ export function mergeRequestOf(task: Pick<Task, 'mr_url' | 'mr_forge' | 'mr_numb
   return { url, forge, number, state, pipeline: task.mr_pipeline ?? null };
 }
 
-/** `MR !1875` on GitLab, `PR #12` on GitHub. */
+/** `MR !7` on GitLab, `PR #12` on GitHub. */
 export function mergeRequestLabel(mr: Pick<MergeRequestRef, 'forge' | 'number'>): string {
   return mr.forge === 'gitlab' ? `MR !${mr.number}` : `PR #${mr.number}`;
 }

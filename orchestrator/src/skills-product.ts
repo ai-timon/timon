@@ -469,7 +469,7 @@ The MCP tool \`kanban_mark_as_failed\` takes the same switch as
 ## Recording the pull / merge request you opened
 
 A pull request (GitHub) or merge request (GitLab) you open is recorded on the
-task as data, so its card shows a chip (\`MR !1875\`, \`PR #12\`) that opens it.
+task as data, so its card shows a chip (\`MR !7\`, \`PR #12\`) that opens it.
 Do not leave its URL in free text only. Pass it when you close or block the
 task, or in a \`timon task update\`:
 

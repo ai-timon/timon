@@ -39,11 +39,11 @@ function seed(): string {
   dbApi.createTask(id, 'MR witness', 'witness', { ownerUserId: OWNER, type: 'merge' });
   return id;
 }
-const GITLAB = 'https://gitlab.example.com/group/sub/project/-/merge_requests/1875';
+const GITLAB = 'https://gitlab.example.com/group/sub/project/-/merge_requests/7';
 const GITHUB = 'https://github.com/ai-timon/timon/pull/12';
 
 test('the forge and number come from the URL', () => {
-  assert.deepEqual(parseMergeRequestUrl(`${GITLAB}/diffs?x=1#note`), { url: GITLAB, forge: 'gitlab', number: 1875 });
+  assert.deepEqual(parseMergeRequestUrl(`${GITLAB}/diffs?x=1#note`), { url: GITLAB, forge: 'gitlab', number: 7 });
   assert.deepEqual(parseMergeRequestUrl(GITHUB), { url: GITHUB, forge: 'github', number: 12 });
 });
 
@@ -59,9 +59,9 @@ test('PUT records the request, defaulting to open, and keeps it when only the st
   const id = seed();
   const put = await call('PUT', `/api/tasks/${id}`, 'writer', { merge_request: { url: GITLAB, pipeline: 'running' } });
   assert.equal(put.status, 200);
-  assert.deepEqual(mergeRequestOf(dbApi.getTask(id)!), { url: GITLAB, forge: 'gitlab', number: 1875, state: 'open', pipeline: 'running' });
+  assert.deepEqual(mergeRequestOf(dbApi.getTask(id)!), { url: GITLAB, forge: 'gitlab', number: 7, state: 'open', pipeline: 'running' });
   await call('PUT', `/api/tasks/${id}`, 'writer', { merge_request: { url: GITLAB, state: 'merged' } });
-  assert.deepEqual(mergeRequestOf(dbApi.getTask(id)!), { url: GITLAB, forge: 'gitlab', number: 1875, state: 'merged', pipeline: 'running' });
+  assert.deepEqual(mergeRequestOf(dbApi.getTask(id)!), { url: GITLAB, forge: 'gitlab', number: 7, state: 'merged', pipeline: 'running' });
 });
 
 test('an invalid URL or state is a 400 and writes nothing', async () => {
