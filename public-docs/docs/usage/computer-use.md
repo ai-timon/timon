@@ -13,7 +13,7 @@ Computer use needs the **Timon desktop app** running on the machine to control. 
 2. Switch on **Computer use**.
 3. Follow the setup card that appears under the switch: it checks each requirement (desktop app connected, system permissions, input tool) and marks it ✅ or ❌. On macOS, **Allow** shows the system prompt; when macOS asks for it, **Restart Timon** reopens the app. Elsewhere the card gives the exact steps or the install command. It updates by itself when you come back from System Settings.
 
-Only that agent gets the screen and input tools; other agents are unaffected. Switching it off removes them at the agent's next conversation. The agent can list and focus windows, read a window as a tree of elements and act on them, take a screenshot (a JPEG, 1024 px wide by default), move the pointer, click, double-click, drag, scroll, type text and press key combinations. To keep the cost in tokens down, it chains the steps it can predict in a single call and looks at the screen only when the next step depends on it.
+Only that agent gets the screen and input tools; other agents are unaffected. Switching it off removes them at the agent's next conversation. The agent can list and focus windows, read a window as a tree of elements and act on them, take a screenshot (a JPEG, 1024 px wide by default, of the whole screen or of [one window](#capture-one-window)), move the pointer, click, double-click, drag, scroll, type text and press key combinations. To keep the cost in tokens down, it chains the steps it can predict in a single call and looks at the screen only when the next step depends on it.
 
 ## Choose the applications it may use
 
@@ -26,7 +26,15 @@ The foreground application is checked just before each action. A window change i
 - **Add from open windows** lists the applications that have a window open right now: click one to add it. Timon reads its accessibility tree first and pre-fills the mode (see below).
 - Only a person can edit the list. An agent cannot add to it, whatever its account holds; it can only remove entries, and it can **ask you** to add some, as the next section describes.
 
-**Known limit:** a screenshot shows your whole screen, not only the allowed application in front of it. Close or hide whatever the agent must not see before you let it work.
+**Known limit:** a screenshot of the whole screen shows everything on it, not only the allowed application in front. The agent can [capture one window](#capture-one-window) instead, but that capture is cut from the screen, so whatever covers the window shows in it too. Close or hide whatever the agent must not see before you let it work.
+
+## Capture one window
+
+The agent can capture a single window instead of the whole screen: `computer_screenshot` and the capture that ends `computer_actions` take a `windowId`, an id from `computer_list_windows`, or `front` for the window in front. On a wide screen this keeps the text readable without a larger, costlier image: a 5120 × 1440 screen shrunk to 1024 px is 288 px tall, while one window of it keeps the whole 1024 px.
+
+- The window's application must be allowed in the foreground mode, like the application in front, which every screenshot already needs. Otherwise the capture is refused with `computer_app_not_allowed` or `computer_background_only`.
+- Only the part of the window on the main screen is captured. A minimised window, or one on another screen, is refused with `window_not_visible`: the agent brings it forward with `computer_focus_window`, or captures the whole screen.
+- The coordinates of the next clicks, moves, drags and scrolls are pixels of that capture, and they stay inside the window. The next screenshot, of a window or of the screen, sets the frame again: the agent takes one after a window moves.
 
 ## Choose a mode per application
 
