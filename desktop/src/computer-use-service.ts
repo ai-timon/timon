@@ -12,7 +12,7 @@ import { A11Y_DEFAULT_MAX_DEPTH, A11Y_PROBE_MAX_NODES, A11yError, buildTree, par
 import { selectA11yBackend } from './computer-use-a11y-select.js';
 import { appMode, describeApp, focusWindow, listWindows, readForegroundApp, windowApp } from './computer-use-windows.js';
 import {
-  MAC_TRUST_SCRIPT, buildInputCommand, macCommand, type InputAction, type InputPlatform, type SystemCommand,
+  MAC_TRUST_SCRIPT, buildInputCommand, macCommand, type InputAction, type InputPlatform, type PointerMotion, type SystemCommand,
 } from './computer-use-input.js';
 
 export interface ComputerUseDeps {
@@ -24,6 +24,8 @@ export interface ComputerUseDeps {
   display: () => DisplayInfo | null;
   /** The pointer, in screen points. */
   cursor: () => { x: number; y: number };
+  /** How long the real pointer glides to its target before a click or a move; 0 or absent = it jumps. */
+  pointerMotionMs?: () => number;
   /** A JPEG (PNG when JPEG encoding fails) of the primary display at exactly this size, or null when the system gave an empty frame. */
   capture: (size: ImageSize) => Promise<Buffer | null>;
   /** macOS Screen Recording grant. `not-determined`: never asked yet, so asking shows the system prompt. */
@@ -459,6 +461,20 @@ export class ComputerUseService {
     return { mimeType, data: png.toString('base64'), width: size.width, height: size.height };
   }
 
+  /** Where the glide starts: the real pointer, in points of the display, when it is on it. */
+  private motion(display: DisplayInfo): PointerMotion | undefined {
+    let durationMs = 0;
+    try { durationMs = this.deps.pointerMotionMs?.() ?? 0; } catch { /* unreadable settings: the pointer jumps */ }
+    if (!(durationMs > 0)) return undefined;
+    let cursor: { x: number; y: number };
+    try { cursor = this.deps.cursor(); } catch { return undefined; }
+    const fromX = cursor.x - (display.originX ?? 0);
+    const fromY = cursor.y - (display.originY ?? 0);
+    // On another display the glide would cross the screen edge from nowhere: the pointer jumps instead.
+    if (!(fromX >= 0 && fromY >= 0 && fromX < display.width && fromY < display.height)) return undefined;
+    return { fromX, fromY, durationMs };
+  }
+
   private async input(display: DisplayInfo, command: ComputerCommand): Promise<unknown> {
     const frame = this.currentFrame(display);
     const point = (x: number, y: number) => imageToPoints(display, frame, x, y);
@@ -478,7 +494,7 @@ export class ComputerUseService {
       case 'scroll': action = { kind: 'scroll', ...point(command.x, command.y), deltaX: command.deltaX, deltaY: command.deltaY }; break;
       default: throw new ComputerCommandError('Unknown computer command.', 404, 'unknown_command');
     }
-    const system = buildInputCommand(this.deps.platform as InputPlatform, action, display);
+    const system = buildInputCommand(this.deps.platform as InputPlatform, action, display, this.motion(display));
     try {
       await this.deps.exec(system);
     } catch {

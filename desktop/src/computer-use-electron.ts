@@ -7,6 +7,7 @@ import { ComputerUseService } from './computer-use-service.js';
 import { startComputerServer } from './computer-use-server.js';
 import { createSystemExecutor } from './computer-use-exec.js';
 import type { DisplayInfo, ImageSize } from './computer-use-geometry.js';
+import { readPointerSettings } from './computer-use-pointer.js';
 
 export type ShellText = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -121,6 +122,7 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
     exec: (command) => executor.run(command),
     display: () => { try { return primaryDisplay(); } catch { return null; } },
     cursor: () => screen.getCursorScreenPoint(),
+    pointerMotionMs: () => readPointerSettings(home).motionMs,
     capture: capturePrimary,
     screenPermission: () => {
       if (process.platform !== 'darwin') return 'granted';

@@ -120,3 +120,34 @@ test('the Windows worker answers reads on one ASCII JSON line and the one-shot f
   assert.equal(command.worker?.input, '{"q":"focus","id":"42"}');
   assert.equal(command.worker?.reply, true);
 });
+
+test('the pointer glides to a click or a move on the three systems, and only there', () => {
+  const motion = { fromX: 0, fromY: 0, durationMs: 200 };
+  const flat = { width: 1000, height: 800, scaleFactor: 1 };
+  // macOS: intermediate moves, each followed by a pause, then the action's own steps unchanged.
+  const mac = JSON.parse(buildInputCommand('darwin', { kind: 'click', x: 400, y: 200, button: 'left', count: 1 }, flat, motion).args[4]!) as Array<{ t: string; x?: number; ms?: number }>;
+  assert.equal(mac.filter((s) => s.t === 'move').length, 13);
+  assert.deepEqual(mac.slice(-3), [{ t: 'move', x: 400, y: 200 }, { t: 'down', b: 'left', n: 1 }, { t: 'up', b: 'left', n: 1 }]);
+  assert.deepEqual(mac[1], { t: 'sleep', ms: 15 });
+  const xs = mac.filter((s) => s.t === 'move').map((s) => s.x!);
+  assert.deepEqual([...xs].sort((a, b) => a - b), xs, 'the pointer only goes forward');
+  // Windows: the same glide in normalised integers, still ASCII JSON for the worker.
+  const win = buildInputCommand('win32', { kind: 'move', x: 500, y: 400 }, flat, motion);
+  const winSteps = JSON.parse(win.worker!.input) as Array<{ t: string; x?: number; ms?: number }>;
+  assert.equal(winSteps.filter((s) => s.t === 'sleep').length, 12);
+  assert.deepEqual(winSteps.at(-1), { t: 'move', x: 32768, y: 32768 });
+  assert.ok(winSteps.every((s) => s.t !== 'move' || (Number.isInteger(s.x) && Number.isInteger(s.y))));
+  assert.equal(/[^\x20-\x7e]/.test(win.worker!.input), false);
+  // Linux: one xdotool chain, `mousemove x y sleep 0.015` per step, then the click as before.
+  const linux = buildInputCommand('linux', { kind: 'click', x: 400, y: 200, button: 'left', count: 2 }, retina, motion).args;
+  assert.equal(linux.filter((arg) => arg === 'sleep').length, 12);
+  assert.equal(linux[0], 'mousemove');
+  assert.ok(/^\d+$/.test(linux[1]!) && /^\d+$/.test(linux[2]!), 'whole physical pixels');
+  assert.deepEqual(linux.slice(3, 5), ['sleep', '0.015']);
+  assert.deepEqual(linux.slice(-9), ['mousemove', '800', '400', 'click', '--repeat', '2', '--delay', '40', '1']);
+  // Typing, keys, scrolls and drags take no glide; nor does a motion of 0 ms.
+  for (const action of [{ kind: 'type', text: 'a' }, { kind: 'key', keys: 'a' }, { kind: 'scroll', x: 5, y: 5, deltaX: 0, deltaY: 1 }, { kind: 'drag', fromX: 1, fromY: 1, toX: 9, toY: 9 }] as const) {
+    assert.deepEqual(buildInputCommand('linux', action, flat, motion), buildInputCommand('linux', action, flat), action.kind);
+  }
+  assert.deepEqual(buildInputCommand('darwin', { kind: 'move', x: 400, y: 200 }, flat, { ...motion, durationMs: 0 }), buildInputCommand('darwin', { kind: 'move', x: 400, y: 200 }, flat));
+});

@@ -330,3 +330,23 @@ test('a11y_probe_app is a person\'s command and judges the tree', async () => {
   assert.deepEqual(await run('a11y_probe_app', { windowId: '30:1' }, 'human'), { nodes: 2, actionable: 1, verdict: 'poor' });
   await assert.rejects(run('a11y_probe_app', { windowId: '10:1' }), (e: ComputerCommandError) => e.code === 'forbidden');
 });
+
+test('the real pointer glides from where it is, in points of the display, unless the motion is off', async () => {
+  let motionMs = 200;
+  let cursor = { x: 100, y: 100 };
+  const { run, calls } = setup({ pointerMotionMs: () => motionMs, cursor: () => cursor });
+  const moves = () => (JSON.parse(calls.at(-1)!.args[4]!) as Array<{ t: string; x?: number }>).filter((s) => s.t === 'move');
+  await run('screenshot', { maxWidth: 1440 });
+  await run('click', { x: 700, y: 100 });
+  assert.equal(moves().length, 13);
+  assert.ok(moves()[0]!.x! > 100 && moves()[0]!.x! < 700, 'the glide starts next to the real pointer');
+  // Off: one move, straight to the target, as before.
+  motionMs = 0;
+  await run('double_click', { x: 10, y: 10 });
+  assert.equal(moves().length, 1);
+  // A pointer on another display does not glide in from outside the screen.
+  motionMs = 200;
+  cursor = { x: -300, y: 100 };
+  await run('move', { x: 10, y: 10 });
+  assert.equal(moves().length, 1);
+});
