@@ -307,6 +307,15 @@ test('list_windows is open to a person and an agent; focus_window only to an age
   assert.equal((await post('focus_window', {}, 'enabled')).json.code, 'computer_args_invalid');
 });
 
+test('screenshot accepts a window id or "front" and refuses anything else', async () => {
+  assert.equal((await post('screenshot', { windowId: 'front' }, 'enabled')).status, 200);
+  assert.deepEqual(calls.at(-1), { command: 'screenshot', args: { windowId: 'front' }, actor: 'agent' });
+  assert.equal((await post('screenshot', { windowId: '12:3', maxWidth: 2048 }, 'enabled')).status, 200);
+  for (const bad of [{ windowId: '../etc' }, { windowId: '' }, { windowId: 12 }, { windowId: 'x'.repeat(65) }]) {
+    assert.equal((await post('screenshot', bad, 'enabled')).json.code, 'computer_args_invalid', JSON.stringify(bad));
+  }
+});
+
 test('a11y_probe_app is a person\'s command: an agent\'s token and an anonymous caller are refused, the window id is validated', async () => {
   assert.equal((await post('a11y_probe_app', { windowId: '12:3' }, 'user')).status, 200);
   assert.equal((await post('a11y_probe_app', { windowId: '12:3' }, 'enabled')).json.code, 'computer_command_user_only');
