@@ -25,6 +25,8 @@ export type Task = {
   blocked_reason?: string | null;
   /** JSON code of a reason the daemon wrote, translated on display (`daemonMessageText`). */
   blocked_reason_code?: string | null;
+  /** The BLOCKED task waits for a person (a merge to do, a go-ahead), not for a repair. */
+  awaiting_user?: number | boolean | null;
   done_comment?: string | null;
   /** SYSTEM death cause of the mission (rate_limit | killed | timeout |
    *  crash), set by the orchestrator. Null = the task was not interrupted:
