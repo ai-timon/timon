@@ -1864,6 +1864,8 @@
     "composerProject": "Project {name}",
     "projectSettings": "Project settings…",
     "copyMarkdown": "Copy as Markdown",
+    "quoteSelection": "Quote in chat",
+    "quoteAdded": "Quote added to the draft.",
     "reply": "Reply",
     "replyToAgent": "In reply to the agent",
     "replyToSelf": "In reply to your message",

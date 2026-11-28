@@ -1864,6 +1864,8 @@
     "composerProject": "Projet {name}",
     "projectSettings": "Réglages du projet…",
     "copyMarkdown": "Copier en Markdown",
+    "quoteSelection": "Citer dans le chat",
+    "quoteAdded": "Citation ajoutée au brouillon.",
     "reply": "Répondre",
     "replyToAgent": "En réponse à l'agent",
     "replyToSelf": "En réponse à votre message",

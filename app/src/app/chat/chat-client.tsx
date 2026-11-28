@@ -6425,6 +6425,7 @@ export function ChatClient({
               placeholder,
               send,
               taRef,
+              threadRef: scrollRef,
               fileRef,
               pendingImages,
               setPendingImages,
@@ -7339,7 +7340,7 @@ function MessageBody({
           {msg.thinking && <ThinkingBlock text={msg.thinking} />}
           {msg.reply && <ReplyQuote reply={msg.reply} />}
           {html && (
-            <div dangerouslySetInnerHTML={{ __html: html }} />
+            <div data-chat-quote-source={msg.role === 'agent' || sender ? '' : undefined} dangerouslySetInnerHTML={{ __html: html }} />
           )}
           {msg.annotations && <AnnotationCard card={msg.annotations} />}
           {msg.media && missionId && msg.media.map((block) => (

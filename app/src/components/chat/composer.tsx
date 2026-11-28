@@ -69,6 +69,7 @@ import { ContextRing } from './context-ring';
 import { PermissionModeMenu } from './permission-mode-menu';
 import { ThinkingLevelMenu } from './thinking-level-menu';
 import { useComposerReply } from './message-actions';
+import { QuoteSelection } from './quote-selection';
 import { ReplyStrip } from './reply-quote';
 import { NewMissionMenu, type NewMissionOptions } from './new-mission-menu';
 import { ComposerProjectMenu } from './composer-project-menu';
@@ -139,6 +140,7 @@ export type ChatComposerValue = {
    *  user's preference. */
   send: (mode?: WorkingEnterMode) => void;
   taRef: RefObject<HTMLTextAreaElement | null>;
+  threadRef: RefObject<HTMLDivElement | null>;
   fileRef: RefObject<HTMLInputElement | null>;
   pendingImages: PendingImage[];
   setPendingImages: Dispatch<SetStateAction<PendingImage[]>>;
@@ -229,6 +231,7 @@ export function mountComposerSlot(): () => void {
       { slot: CHAT_COMPOSER_SLOT, pluginId: '@timon/missions', fallback: true },
       ChatComposer,
     ));
+    undoers.push(register({ slot: CHAT_COMPOSER_ACTION_SLOT, pluginId: '@timon/missions' }, QuoteSelectionAction));
   }
   return () => {
     if (--mountedChats === 0) {
@@ -256,6 +259,12 @@ export function ChatComposerSlot({ value, variant }: { value: ChatComposerValue;
       <SlotSingle name={CHAT_COMPOSER_SLOT} />
     </ChatComposerContext.Provider>
   );
+}
+
+function QuoteSelectionAction() {
+  const c = useContext(ChatComposerContext);
+  if (!c) return null;
+  return <QuoteSelection key={c.currentMissionId} threadRef={c.threadRef} composerRef={c.taRef} setInput={c.setInput} />;
 }
 
 /** The chat input. Without a context (outside the chat) it paints nothing. */

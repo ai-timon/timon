@@ -71,13 +71,16 @@ test('two chats side by side share a registration, and the last one to leave giv
   const first = mountComposerSlot();
   const second = mountComposerSlot();
   assert.equal(slotEntries(CHAT_COMPOSER_SLOT).length, 1, 'one description, not one per cell');
+  assert.deepEqual(slotEntries(CHAT_COMPOSER_ACTION_SLOT).map((entry) => entry.pluginId), ['@timon/missions']);
 
   first();
   assert.equal(slotKind(CHAT_COMPOSER_SLOT), 'single', 'closing a cell does not deprive the others');
   assert.equal(slotEntries(CHAT_COMPOSER_SLOT).length, 1);
 
+  assert.equal(slotEntries(CHAT_COMPOSER_ACTION_SLOT).length, 1);
   second();
   assert.equal(slotKind(CHAT_COMPOSER_SLOT), null);
+  assert.deepEqual(slotEntries(CHAT_COMPOSER_ACTION_SLOT), []);
 });
 
 test('the chat mounted in a layout that already declares the slots does not redeclare them', () => {
