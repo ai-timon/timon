@@ -64,6 +64,10 @@ async function mount(opts: Options) {
         { name: 'upstream', url: 'https://github.com/up/app.git', push_url: 'git@github.com:up/app.git' },
       ] });
     }
+    if (url === '/api/ui/projects/acme/integration/fork') {
+      stored = { ...(stored ?? DEFAULT), push_remote_url: 'git@github.com:acme-bot/app.git' };
+      return Response.json({ ok: true, fork: 'acme-bot/app', integration: stored });
+    }
     if (url === '/api/ui/projects/acme/integration/check') {
       const c = opts.check ?? { ok: true, login: 'acme-bot', expected: 'acme-bot', matches: true };
       if ('status' in c && typeof c.status === 'number') return Response.json(c.body, { status: c.status });
@@ -184,7 +188,7 @@ test('local: "Jobs merge locally", no menu, and the dialog turns pull requests o
     const put = m.calls.find((c) => c.method === 'PUT');
     assert.deepEqual(put?.body, {
       mode: 'pr', remote: 'upstream', target: 'main', account: 'acme-bot', gh_config_dir: '/home/me/.config/gh-acme',
-      branch_prefix: 'feat/', remote_url: 'git@github.com:up/app.git',
+      branch_prefix: 'feat/', remote_url: 'git@github.com:up/app.git', push_remote_url: null,
     });
     assert.ok(!document.querySelector('[data-pr-setting-dialog]'));
     assert.equal(status()?.textContent, 'Pull request to upstream/main · account acme-bot');
@@ -259,5 +263,61 @@ test('pr: the status names the target and the account; the menu checks gh and go
     assert.ok(!document.querySelector('[data-pr-setting-menu]'));
   } finally {
     await m.unmount();
+  }
+});
+
+const PR_SETTING = { ...DEFAULT, mode: 'pr', account: 'acme-bot', remote_url: 'git@github.com:acme/app.git' };
+const NO_PUSH = {
+  ok: true, login: 'acme-bot', expected: 'acme-bot', matches: true,
+  access: { target: { repository: 'acme/app', exists: true, can_push: false }, fork: null },
+};
+
+test('a target the account cannot push to offers a fork, created only after an explicit confirmation', async () => {
+  const m = await mount({ who: 'manager', integration: PR_SETTING, check: NO_PUSH });
+  try {
+    await m.click(configure());
+    assert.ok(!document.querySelector('[data-pr-setting-fork-offer]'), 'nothing is offered before the rights are read');
+    await m.click(document.querySelector('[data-pr-setting-access-run]'));
+    assert.deepEqual(m.calls.find((c) => c.url.endsWith('/integration/check'))?.body, {}, 'the stored setting is read');
+    assert.equal(document.querySelector('[data-pr-setting-access]')?.textContent, 'Your account cannot push to acme/app.');
+
+    await m.click(document.querySelector('[data-pr-setting-fork-offer]'));
+    assert.ok(document.querySelector('[data-pr-setting-fork-confirm]'), 'the confirmation is shown');
+    assert.ok(!m.calls.some((c) => c.url.endsWith('/integration/fork')), 'nothing is created yet');
+
+    await m.click(document.querySelector('[data-pr-setting-fork-create]'));
+    const fork = m.calls.find((c) => c.url.endsWith('/integration/fork'));
+    assert.equal(fork?.method, 'POST');
+    assert.deepEqual(fork?.body, { confirm: true });
+    assert.equal((document.querySelector('[data-pr-setting-fork-url]') as HTMLInputElement).value, 'git@github.com:acme-bot/app.git');
+  } finally {
+    await m.unmount();
+  }
+});
+
+test('cancelling the confirmation creates no fork; a target the account can push to offers none', async () => {
+  const m = await mount({ who: 'manager', integration: PR_SETTING, check: NO_PUSH });
+  try {
+    await m.click(configure());
+    await m.click(document.querySelector('[data-pr-setting-access-run]'));
+    await m.click(document.querySelector('[data-pr-setting-fork-offer]'));
+    const cancel = [...document.querySelectorAll('[data-pr-setting-fork-confirm] button')].find((b) => b.textContent === 'Cancel');
+    await m.click(cancel ?? null);
+    assert.ok(!document.querySelector('[data-pr-setting-fork-confirm]'));
+    assert.ok(!m.calls.some((c) => c.url.endsWith('/integration/fork')));
+  } finally {
+    await m.unmount();
+  }
+  const pushable = await mount({
+    who: 'manager', integration: PR_SETTING,
+    check: { ...NO_PUSH, access: { target: { repository: 'acme/app', exists: true, can_push: true }, fork: null } },
+  });
+  try {
+    await pushable.click(configure());
+    await pushable.click(document.querySelector('[data-pr-setting-access-run]'));
+    assert.equal(document.querySelector('[data-pr-setting-access]')?.textContent, 'Your account can push to acme/app: no fork is needed.');
+    assert.ok(!document.querySelector('[data-pr-setting-fork-offer]'));
+  } finally {
+    await pushable.unmount();
   }
 });

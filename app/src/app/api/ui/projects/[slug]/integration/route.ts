@@ -15,7 +15,7 @@ const path = (slug: string) => `/api/projects/${encodeURIComponent(slug)}/integr
 
 /** What the screen writes: the pull request row's dialog, and whether Timon
  *  may resolve a contributor's conflict. `forge` stays on its only value. */
-const WRITABLE = ['mode', 'remote', 'target', 'account', 'gh_config_dir', 'branch_prefix', 'remote_url', 'contributor_conflicts'] as const;
+const WRITABLE = ['mode', 'remote', 'target', 'account', 'gh_config_dir', 'branch_prefix', 'remote_url', 'push_remote_url', 'contributor_conflicts'] as const;
 
 export async function GET(_req: Request, props: Ctx): Promise<Response> {
   const params = await props.params;
