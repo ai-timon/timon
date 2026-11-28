@@ -365,7 +365,7 @@ export async function requestRepair(
     if (kind === 'checks') data = await checksData(resolved.repository, number, read.view, forge);
     else if (kind === 'comments') data = await commentsData(resolved.repository, number, read.view, forge);
     else {
-      const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners)))(row.repo);
+      const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners, resolved.setting.gh_config_dir)))(row.repo);
       data = await conflictData(row, resolved.remoteUrl, number, read.view, transport);
     }
     if (typeof data === 'string') return refuse(409, 'landing_repair_refused', data);

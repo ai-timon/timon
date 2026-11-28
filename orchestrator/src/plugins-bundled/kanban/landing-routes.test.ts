@@ -63,6 +63,8 @@ let forgeCalls = 0;
 const deps: PreviewDeps = {
   forge: () => ({
     async login() { forgeCalls += 1; return { ok: true, login: 'ai-bot' }; },
+    async repositoryAccess() { return { ok: true, exists: true, canPush: true }; },
+    async forkRepository() { return { ok: true, fullName: 'bot/app' }; },
     async createPullRequest() { forgeCalls += 1; return { ok: false, code: 'gh_failed', reason: 'stub' }; },
     async pullRequestChecks() { forgeCalls += 1; return { ok: false, code: 'gh_failed', reason: 'stub' }; },
   }),

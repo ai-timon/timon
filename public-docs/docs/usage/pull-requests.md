@@ -15,6 +15,7 @@ Open the project's window: **Edit** on its card in the agents grid, or, from a c
 
 - **Remote** and **Push URL of the remote**: pick one of the repository's remotes; the URL it pushes to is filled in for you. A remote that later points elsewhere is refused.
 - **Target branch** (`main` by default) and **Branch prefix** (`feat/` by default).
+- **Push URL of your fork** (optional): fill it when your account has no push right on the repository above ([Open the pull request from a fork](#open-the-pull-request-from-a-fork)).
 - **GitHub account**: the login `gh` must be signed in as.
 - **gh configuration folder** (optional): a `gh` configuration folder kept for this project, inside your home folder and outside every project folder.
 
@@ -35,6 +36,7 @@ timon project get-integration my-app --check
 
 - `--account`: the GitHub login `gh` must be signed in as. Timon refuses to push when `gh` answers another one.
 - `--remote-url`: the push URL the project's remote (`origin` unless `--remote` says otherwise) must have. A remote that points elsewhere is refused.
+- `--push-remote-url` (optional): the push URL of your fork of the target, when your account cannot push to it ([Open the pull request from a fork](#open-the-pull-request-from-a-fork)). An empty value clears it.
 - `--gh-config-dir` (optional): a `gh` configuration folder kept for this project, inside your home folder and outside every project folder. Without it, `gh` uses its default sign-in.
 - `--target` (default `main`) and `--branch-prefix` (default `feat/`) name the target branch and the prefix of the integration branches.
 
@@ -125,7 +127,8 @@ Before anything leaves your machine, Timon checks the branch. If one check fails
 | Check | Refused when |
 | --- | --- |
 | Account | `gh` is signed in as another account than the project's, or cannot answer |
-| Remote URL | the remote does not push to the URL the project expects |
+| Remote URL | the remote does not push to the URL the project expects (the target's, or the fork's when the project names one) |
+| Push right | the account cannot push to the repository the branch goes to: the target, or the fork when there is one, and a fork that does not exist is said so |
 | Identity | a commit of the branch was not authored and committed with the repository's `user.name` and `user.email` |
 | Messages | a commit message, the title or the description carries a task id or an internal TODO number; the title and the description also carry no attribution line |
 | Ignored files | the branch adds a file your `.gitignore` covers (a folder that must stay private, force-added by mistake) |
@@ -135,6 +138,14 @@ Before anything leaves your machine, Timon checks the branch. If one check fails
 Timon then adds to the description a `Fixes` or `Refs` line for each GitHub issue of the job's ideas ([The issue, the pull request and the comment](git.md#the-issue-the-pull-request-and-the-comment)).
 
 Then Timon pushes the integration branch and opens the pull request. The push is never forced: a branch already on the remote only moves forward, and one that moved on its own is never overwritten. Merge it into your local branch, then run the command again.
+
+### Open the pull request from a fork
+
+An account that can only read the target repository cannot push its branch there. Name the account's fork of it, in **Push URL of your fork** or with `--push-remote-url`: Timon then pushes the integration branch to the fork and opens the pull request on the target, from `your-login:branch`. The target branch is still read from the target, and the checks read the account's right to push on the fork, not on the target.
+
+The dialog helps when the fork does not exist yet. Under **Your fork**, **Check my rights** reads what the account may push to. If it cannot push to the target and has no usable fork, **Create my fork…** offers to create one: Timon shows what it is about to do (a fork of the target in your GitHub account, created on GitHub, nothing cloned to your machine) and creates it only when you confirm, then fills in its URL. Only a signed-in person can do it: the CLI, the agents and the other tokens are refused, and Timon never creates a fork on its own.
+
+Git reaches the fork with the project's `gh` account as its credential helper (the `gh` configuration folder of the project), so the push does not depend on another account's credentials stored on the machine. Nothing is forced, and no token ever appears in a URL or a log. A pull request opened from your fork is followed like any other one of the project: the lists mark it as the project's own, not as a contributor's.
 
 A branch under embargo (`sec/<topic>`, for a security fix) is never pushed by this command, whatever the setting says: it lands by hand once the advisory is published.
 

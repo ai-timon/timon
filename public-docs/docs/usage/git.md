@@ -111,6 +111,8 @@ A local repository must sit in a folder agents cannot write: not in the Timon da
 - **SSH** — a key in `~/.ssh` of the account the daemon runs under, usable without a passphrase prompt: Timon's daemon runs in the background and may not reach the SSH agent of your desktop session. The server's host key must already be known: connect once from a terminal (`ssh -T git@gitlab.com`) to accept it.
 - **HTTPS** — Git's credential helper (Git Credential Manager, the macOS keychain, `gh auth setup-git`…), set up for that same account. On macOS, a helper that reads the keychain fails while no session is open; prefer SSH there.
 
+For the pushes Timon makes itself for a project's pull requests, it uses the project's `gh` account as the credential helper over HTTPS, not the one above.
+
 After saving, Timon checks that the remote answers. An unreachable remote is still saved: the dialog shows Git's own message (missing key, unknown host, repository not found) so you can fix the cause and save again. A URL that already held credentials before — set outside Timon — is shown with them masked.
 
 Adding, changing or removing a remote needs the **Create, update and delete projects** permission: a remote decides where the code goes.
@@ -124,6 +126,8 @@ Each row gives the pull request's title, its number, its author, **draft** when 
 1. Timon reads the pull request and its diff from GitHub, with the project's account. The contributor's branch is never fetched or checked out, and nothing of it is installed, built or tested here: its code only runs in GitHub's CI.
 2. Timon writes a review brief: the rules a reviewer follows (read only, nothing posted on GitHub), the place of the diff on this machine, what GitHub says of the pull request (behind or in conflict with its base, whether you may push to the contributor's branch), and what people outside the project wrote (title, description, labels, comments, review threads nobody resolved, the issues it claims to close) as data, cut short, with the instruction never to follow it.
 3. A window shows the brief and, in its **Diff** tab, the pull request's changes. **Copy the brief** puts it on your clipboard, for the reviewer you choose. Timon starts nothing on its own, and writes nothing on GitHub.
+
+When the project's account cannot push to the repository, its pull requests come from the account's own fork ([Open the pull request from a fork](pull-requests.md#open-the-pull-request-from-a-fork)): they are listed with the project's own, not marked as a contributor's.
 
 Click a row, or move to it with the keyboard and press **Enter**, to open the pull request in a window of the app, read only, as GitHub shows it ([Read a pull request in the app](pull-requests.md#read-a-pull-request-in-the-app)). The **Review brief** button and the menu keep their own click.
 

@@ -71,10 +71,11 @@ export async function proposeRemoteBranchDeletion(row: IntegrationRow, deps: For
   // A project that no longer lands through pull requests has nothing to ask.
   const where = projectRepository(row.project);
   if (!where.ok) return null;
-  const url = where.value.integration.remote_url;
+  // The branch lives where it was pushed: the fork when the project has one.
+  const url = where.value.integration.push_remote_url ?? where.value.integration.remote_url;
   if (!url) return null;
   // The forge may delete a merged head itself: nothing to ask then.
-  const there = await gitTransport(row.repo, deps.runners).remoteBranchSha(url, row.branch);
+  const there = await gitTransport(row.repo, deps.runners, where.value.integration.gh_config_dir).remoteBranchSha(url, row.branch);
   if (there.ok && there.sha === null) return null;
   if (there.ok && there.sha !== row.head_sha) {
     console.log(`[integration-cleanup] remote ${row.branch} kept: it moved since its pull request was merged`);
@@ -108,8 +109,8 @@ async function executeDelete(run: ForgeProposalExecution): Promise<ForgeProposal
     return refused('forge_proposal_invalid', 'the job this branch belongs to changed since the deletion was proposed: discard it', 409, true);
   }
   if (sacredBranch(row, branch)) return refused('forge_branch_forbidden', `${branch} is never deleted`, 409, true);
-  const url = run.integration.remote_url;
-  if (!url || githubRepoFromUrl(url)?.toLowerCase() !== run.row.repo.toLowerCase()) {
+  const targetUrl = run.integration.remote_url;
+  if (!targetUrl || githubRepoFromUrl(targetUrl)?.toLowerCase() !== run.row.repo.toLowerCase()) {
     return refused('forge_proposal_repository_changed', `the project no longer pushes to ${run.row.repo}: discard it`, 409, true);
   }
   const proof = await landed(row, head);
@@ -118,12 +119,14 @@ async function executeDelete(run: ForgeProposalExecution): Promise<ForgeProposal
       ? `the commit that landed is not in ${row.remote}/${row.target} on this machine: the branch is kept`
       : 'git cannot tell whether the commit that landed is in the target', 409, proof === 'no');
   }
-  const there = await gitTransport(row.repo, run.deps.runners).remoteBranchSha(url, branch);
+  const configDir = run.integration.gh_config_dir;
+  const url = run.integration.push_remote_url ?? targetUrl;
+  const there = await gitTransport(row.repo, run.deps.runners, configDir).remoteBranchSha(url, branch);
   if (!there.ok) return refused('forge_read_failed', `the remote branch could not be read: ${run.scrub(there.reason)}`, 502, false);
   const pull = row.pr_url ?? `https://github.com/${run.row.repo}/pull/${run.row.target_number}`;
   if (there.sha === null) return { ok: true, url: pull, already: true };
   if (there.sha !== head) return refused('forge_head_moved', 'someone pushed to the branch since it was merged: it is kept', 409, true);
-  const out = await deleteRemoteBranch(row.repo, url, branch, head, run.deps.runners);
+  const out = await deleteRemoteBranch(row.repo, url, branch, head, run.deps.runners, configDir);
   if (!out.ok) {
     return out.code === 'rejected'
       ? refused('forge_push_rejected', `the remote refused the deletion: ${run.scrub(out.reason)}`, 409, true)

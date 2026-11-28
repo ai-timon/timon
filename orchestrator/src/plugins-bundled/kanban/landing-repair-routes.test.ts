@@ -96,6 +96,8 @@ const logsRead: string[] = [];
 const deps: RepairDeps = {
   forge: () => ({
     async login() { forgeCalls += 1; return { ok: true, login: 'ai-bot' }; },
+    async repositoryAccess() { return { ok: true, exists: true, canPush: true }; },
+    async forkRepository() { return { ok: true, fullName: 'bot/app' }; },
     async createPullRequest() { throw new Error('a repair never opens a pull request'); },
     async pullRequestChecks() { forgeCalls += 1; return { ok: true, view }; },
     async pullRequestReviewThreads() { forgeCalls += 1; return threads; },
