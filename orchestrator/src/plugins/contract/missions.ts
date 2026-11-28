@@ -104,6 +104,8 @@ export type PluginMissionEventKind =
   | 'mission_started'
   | 'turn_complete'
   | 'mission_title_changed'
+  | 'mission_archived'
+  | 'mission_unarchived'
   | 'event'
   | 'event_delta';
 
@@ -143,6 +145,21 @@ export type PluginMissionTitleChangedEvent = Readonly<{
   origin: MissionTitleOrigin;
 }>;
 
+/** The mission was archived: hidden from the default lists, its status untouched. `by` says who did it. */
+export type PluginMissionArchivedEvent = Readonly<{
+  kind: 'mission_archived';
+  missionId: string;
+  agent: string;
+  by: 'user' | 'auto' | 'agent';
+}>;
+
+/** An archived mission came back, by hand or because a new message (any `user` row, a delegation return included) arrived. */
+export type PluginMissionUnarchivedEvent = Readonly<{
+  kind: 'mission_unarchived';
+  missionId: string;
+  agent: string;
+}>;
+
 export type PluginMissionTranscriptEvent = Readonly<{
   kind: 'event';
   missionId: string;
@@ -163,12 +180,15 @@ export type PluginMissionTranscriptDeltaEvent = Readonly<{
 
 export type PluginMissionEvent =
   | PluginMissionStartedEvent | PluginMissionTurnCompleteEvent | PluginMissionTitleChangedEvent
+  | PluginMissionArchivedEvent | PluginMissionUnarchivedEvent
   | PluginMissionTranscriptEvent | PluginMissionTranscriptDeltaEvent;
 
 export type PluginMissionEventMap = {
   mission_started: PluginMissionStartedEvent;
   turn_complete: PluginMissionTurnCompleteEvent;
   mission_title_changed: PluginMissionTitleChangedEvent;
+  mission_archived: PluginMissionArchivedEvent;
+  mission_unarchived: PluginMissionUnarchivedEvent;
   event: PluginMissionTranscriptEvent;
   event_delta: PluginMissionTranscriptDeltaEvent;
 };

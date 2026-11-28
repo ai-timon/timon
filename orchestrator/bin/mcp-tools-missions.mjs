@@ -125,6 +125,20 @@ export const tools = [
     },
   },
   {
+    name: 'mission_propose_archive',
+    title: 'Propose archiving this conversation',
+    description:
+      'Proposes that the person archives THIS conversation (the one you are running in), which then shows an ' +
+      '"the agent suggests archiving" prompt with Archive and Dismiss buttons. Call it when the work you were ' +
+      'asked for is finished and no follow-up is expected. You never archive anything yourself: the person ' +
+      'decides, and a new message from them clears the proposal. Give a short `reason` (200 characters at most). ' +
+      'Refused with `already_archived` when the conversation is archived, and outside a mission.',
+    inputSchema: {
+      type: 'object',
+      properties: { reason: { type: 'string', maxLength: 200, description: 'One short sentence telling the person why this can be archived.' } },
+    },
+  },
+  {
     name: 'mission_egress',
     title: 'Read a mission\'s outbound connections',
     description:
@@ -243,6 +257,11 @@ export const handlers = {
   },
   async mission_summarize(args, { call }) {
     return await call('POST', `/api/missions/${enc(args.mission_id)}/summarize`, { force: args.force === true });
+  },
+  async mission_propose_archive(args, { call, env }) {
+    if (!env.missionId) throw new Error('mission_propose_archive only works inside a mission (TIMON_MISSION_ID is not set)');
+    const body = args.reason === undefined ? {} : { reason: args.reason };
+    return await call('POST', `/api/missions/${enc(env.missionId)}/archive-suggestion`, body);
   },
   async mission_fork(args, { call }) {
     const body = { agent: args.to };

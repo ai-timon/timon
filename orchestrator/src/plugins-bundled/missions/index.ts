@@ -26,6 +26,7 @@ import { startEgressProxy } from '../../egress/service.js';
 import { pruneEgressJournal } from '../../egress/journal.js';
 import { registerEgressRoutes } from '../../egress/routes.js';
 import { registerFenceGrantRoutes } from './fence-grant-routes.js';
+import { runAutoArchive } from './auto-archive.js';
 
 export const manifest: ModuleManifest = {
   name: '@timon/missions',
@@ -129,7 +130,7 @@ export function apply(ctx: Context): void {
   ctx.effect(() => startEgressProxy());
 
   ctx.effect(() => {
-    const purge = (): void => { purgeOnce(); purgeProviderSessions(); purgeMissionTmp(); pruneEgress(); };
+    const purge = (): void => { purgeOnce(); purgeProviderSessions(); purgeMissionTmp(); pruneEgress(); runAutoArchive(); };
     purge();
     const timer = setInterval(purge, PURGE_EVERY_MS);
     return () => clearInterval(timer);

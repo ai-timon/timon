@@ -3979,7 +3979,21 @@
     "kill": "Arrêter cette mission",
     "killConfirm": "Arrêter cette mission ? Son agent est interrompu en plein tour.",
     "noMissions": "Aucune mission. Le premier message en créera une.",
-    "emptyTitle": "(vide)"
+    "emptyTitle": "(vide)",
+    "archive": "Archiver",
+    "unarchive": "Désarchiver",
+    "archiveRunning": "Une mission en cours ne peut pas être archivée. Arrêtez-la d'abord.",
+    "archiveFailed": "La mission n'a pas pu être archivée ou restaurée.",
+    "includeArchived": "Inclure les archivées",
+    "archivedBadge": "Archivée",
+    "archivedHint": "Archivée : masquée des listes par défaut. Un nouveau message la restaure."
+  },
+  "archiveSuggestion": {
+    "label": "L'agent propose d'archiver cette conversation.",
+    "chip": "Archiver ?",
+    "archive": "Archiver",
+    "dismiss": "Ignorer",
+    "failed": "La suggestion n'a pas pu être traitée."
   },
   "setupChat": {
     "escape": {

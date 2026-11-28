@@ -27,11 +27,11 @@ test('the origin vocabulary is closed', () => {
 });
 
 test('"only mine" is stored with the rail display, off by default', () => {
-  assert.deepEqual(readMissionRailDisplay(undefined), { showAvatar: true, mineOnly: false, groupByOrchestrator: false, expandSubagents: false });
+  assert.deepEqual(readMissionRailDisplay(undefined), { showAvatar: true, mineOnly: false, groupByOrchestrator: false, expandSubagents: false, includeArchived: false });
   // A row written before grouping existed keeps its settings and gets the new defaults.
-  assert.deepEqual(readMissionRailDisplay({ v: 1, showAvatar: false, mineOnly: true }), { showAvatar: false, mineOnly: true, groupByOrchestrator: false, expandSubagents: false });
-  const stored = writeMissionRailDisplay({ showAvatar: false, mineOnly: true, groupByOrchestrator: true, expandSubagents: true });
-  assert.deepEqual(readMissionRailDisplay(stored), { showAvatar: false, mineOnly: true, groupByOrchestrator: true, expandSubagents: true });
+  assert.deepEqual(readMissionRailDisplay({ v: 1, showAvatar: false, mineOnly: true }), { showAvatar: false, mineOnly: true, groupByOrchestrator: false, expandSubagents: false, includeArchived: false });
+  const stored = writeMissionRailDisplay({ showAvatar: false, mineOnly: true, groupByOrchestrator: true, expandSubagents: true, includeArchived: false });
+  assert.deepEqual(readMissionRailDisplay(stored), { showAvatar: false, mineOnly: true, groupByOrchestrator: true, expandSubagents: true, includeArchived: false });
 });
 
 test('the filter button flags any setting that differs from the default', () => {
@@ -39,5 +39,5 @@ test('the filter button flags any setting that differs from the default', () => 
   assert.equal(missionRailDisplayChanged({ ...DEFAULT_MISSION_RAIL_DISPLAY, showAvatar: false }), true);
   assert.equal(missionRailDisplayChanged({ ...DEFAULT_MISSION_RAIL_DISPLAY, mineOnly: true }), true);
   assert.equal(missionRailDisplayChanged({ ...DEFAULT_MISSION_RAIL_DISPLAY, groupByOrchestrator: true }), true);
-  assert.equal(missionRailDisplayChanged({ ...DEFAULT_MISSION_RAIL_DISPLAY, expandSubagents: true }), true);
+  assert.equal(missionRailDisplayChanged({ ...DEFAULT_MISSION_RAIL_DISPLAY, expandSubagents: true, includeArchived: false }), true);
 });

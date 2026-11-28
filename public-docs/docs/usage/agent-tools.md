@@ -48,6 +48,7 @@ Whatever the `timon` command does in a terminal, a tool of the same name does fo
 | Create the demo project (a small sample repository to try the agents on) | `project_demo_create` |
 | Read or record the onboarding profile you chose (developer, automation, beginner) | `onboarding_profile_get`, `onboarding_profile_set` |
 | Follow a mission and write to it: `mission_send` never stops the running turn, `mission_steer` redirects it now ([Writing while the agent works](missions.md#writing-while-the-agent-works)) | `mission_wait`, `mission_status`, `mission_send`, `mission_steer`, `mission_kill`, `stop_scope`, `mission_summarize`, `mission_fork`, `mission_permission_mode_get`, `mission_permission_mode_set` |
+| Propose that the person archives the conversation you run in, once the work asked for is finished and no follow-up is expected: you only propose, the person archives or dismisses ([Archive conversations](missions.md#archiving-a-conversation)) | `mission_propose_archive` |
 | Start and stop the project's built-in browser | `browser_status`, `browser_start`, `browser_stop`, `browser_list` |
 | Read the browser recording a **Learn** mission was started for ([Teach an agent by recording a browser flow](browser-recording.md)) | `browser_recording_get` |
 | Read the annotations you sent from the built-in browser, and mark each one resolved or dismissed ([Point at a page and tell the agent what to change](browser-annotations.md)) | `browser_annotations_get`, `browser_annotations_resolve` |

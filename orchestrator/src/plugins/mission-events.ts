@@ -30,12 +30,12 @@ import type {
 import type { Assert, Equals } from '../type-equality.js';
 export type {
   PluginMissionEventKind, PluginMissionOrigin, PluginMissionStartedEvent,
-  PluginMissionTurnCompleteEvent, PluginMissionTitleChangedEvent, PluginMissionTranscriptEvent,
+  PluginMissionTurnCompleteEvent, PluginMissionTitleChangedEvent, PluginMissionArchivedEvent, PluginMissionUnarchivedEvent, PluginMissionTranscriptEvent,
   PluginMissionTranscriptDeltaEvent, PluginMissionEvent, PluginMissionEventMap,
   PluginMissionEventHandler,
 } from './contract/missions.js';
 
-export const PLUGIN_MISSION_EVENT_KINDS = Object.freeze(['mission_started', 'turn_complete', 'mission_title_changed', 'event', 'event_delta'] as const);
+export const PLUGIN_MISSION_EVENT_KINDS = Object.freeze(['mission_started', 'turn_complete', 'mission_title_changed', 'mission_archived', 'mission_unarchived', 'event', 'event_delta'] as const);
 /** `PluginMissionEventKind` spells this list out in the public contract; compilation fails if they part. */
 type _PluginMissionEventKindsMatchContract = Assert<Equals<(typeof PLUGIN_MISSION_EVENT_KINDS)[number], PluginMissionEventKind>>;
 
@@ -73,6 +73,10 @@ export function pluginMissionEventFromBus(ev: BusEvent, facts: MissionFacts): Pl
       return Object.freeze({ kind: 'turn_complete', missionId: ev.missionId, agent: facts.agent, outcome: ev.outcome === 'failed' || ev.outcome === 'cancelled' ? ev.outcome : 'completed' });
     case 'mission_title_changed':
       return Object.freeze({ kind: 'mission_title_changed', missionId: ev.missionId, agent: facts.agent, title: ev.title, source: ev.source, origin: ev.origin });
+    case 'mission_archived':
+      return Object.freeze({ kind: 'mission_archived', missionId: ev.missionId, agent: facts.agent, by: ev.by });
+    case 'mission_unarchived':
+      return Object.freeze({ kind: 'mission_unarchived', missionId: ev.missionId, agent: facts.agent });
     case 'event':
       return Object.freeze({ kind: 'event', missionId: ev.missionId, agent: facts.agent, type: ev.type, timestamp: ev.timestamp, payload: ev.payload });
     case 'event_delta':

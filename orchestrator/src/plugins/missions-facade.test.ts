@@ -332,6 +332,23 @@ test('mission events reach the plugin for the missions it may see, with their or
   await dispose();
 });
 
+test('archive events reach the plugin under missions:read, for the missions it may see', async () => {
+  dbApi.createMission('m-arch', 'timon.coder', 'work', undefined, ada.id);
+  const { plugin, dispose } = await pluginWith(A, ALL);
+  const seen: PluginMissionEvent[] = [];
+  for (const kind of ['mission_archived', 'mission_unarchived'] as const) plugin.events.on(kind, (ev) => { seen.push(ev as PluginMissionEvent); });
+  bus.publish({ kind: 'mission_archived', missionId: 'm-arch', by: 'user' });
+  bus.publish({ kind: 'mission_unarchived', missionId: 'm-arch' });
+  bus.publish({ kind: 'mission_archived', missionId: 'm-nobody', by: 'user' });
+  await settle();
+  assert.deepEqual(seen.map((e) => e.kind), ['mission_archived', 'mission_unarchived']);
+  assert.equal((seen[0] as { by: string }).by, 'user');
+  assert.equal((seen[0] as { agent: string }).agent, 'timon.coder');
+  const noRead = await pluginWith(A, ['events:subscribe']);
+  assert.throws(() => noRead.plugin.events.on('mission_archived', () => undefined), PluginPermissionError);
+  await noRead.dispose(); await dispose();
+});
+
 test('another plugin account\'s transcript never reaches a plugin that may not serve it', async () => {
   const dan = createTestAccount(dbApi, { id: randomUUID(), email: `dan-${randomUUID()}@example.test`, name: 'dan', passwordHash: 'unused' });
   dbApi.createMission('m-dan', 'timon.coder', 'work', undefined, dan.id);
