@@ -1,0 +1,160 @@
+{
+ "generated_at": 1762550000000,
+ "agents": [
+  {
+   "name": "Warden",
+   "role": "main",
+   "project": null,
+   "main": true
+  },
+  {
+   "name": "Retail",
+   "role": "main",
+   "project": null
+  },
+  {
+   "name": "On-Line",
+   "role": "main",
+   "project": null
+  },
+  {
+   "name": "bakery.main",
+   "role": "main",
+   "project": "bakery"
+  },
+  {
+   "name": "bakery.coder",
+   "role": "coder",
+   "project": "bakery"
+  },
+  {
+   "name": "bakery.reviewer",
+   "role": "reviewer",
+   "project": "bakery"
+  },
+  {
+   "name": "bakery.merger",
+   "role": "merger",
+   "project": "bakery"
+  },
+  {
+   "name": "portal.main",
+   "role": "main",
+   "project": "portal"
+  },
+  {
+   "name": "portal.coder",
+   "role": "coder",
+   "project": "portal"
+  },
+  {
+   "name": "portal.reviewer",
+   "role": "reviewer",
+   "project": "portal"
+  },
+  {
+   "name": "bikes.coder",
+   "role": "coder"
+  },
+  {
+   "name": "bikes.research",
+   "role": "research"
+  },
+  {
+   "name": "garden.main",
+   "role": "main",
+   "project": "garden"
+  },
+  {
+   "name": "garden.seo",
+   "role": "seo",
+   "project": "garden"
+  }
+ ],
+ "projects": [
+  {
+   "slug": "bakery",
+   "name": "Lemoine Bakery",
+   "color": "#d4883a",
+   "workspace": "Retail"
+  },
+  {
+   "slug": "portal",
+   "name": "Customer Portal",
+   "color": "#0f8b80",
+   "workspace": "On line"
+  },
+  {
+   "slug": "bikes",
+   "name": "Harbor Bikes",
+   "color": "#2f7fd0",
+   "workspace": "Retail"
+  },
+  {
+   "slug": "garden",
+   "name": "Green Garden Center",
+   "color": "#3f9a52"
+  },
+  {
+   "slug": "noworkspace",
+   "name": "Orphan Lab",
+   "color": "#475569"
+  }
+ ],
+ "missions": [
+  {
+   "id": "m1",
+   "agent_name": "bakery.coder",
+   "status": "running",
+   "title": "Fix the booking page test",
+   "started_at": 1762549400000,
+   "ended_at": null,
+   "turn_active": true
+  },
+  {
+   "id": "m2",
+   "agent_name": "bakery.main",
+   "status": "waiting",
+   "title": "Ship the new version",
+   "started_at": 1762549100000,
+   "ended_at": null,
+   "turn_active": false
+  },
+  {
+   "id": "m3",
+   "agent_name": "portal.reviewer",
+   "status": "waiting",
+   "title": "Waiting for the layout choice",
+   "started_at": 1762549700000,
+   "ended_at": null,
+   "turn_active": false
+  },
+  {
+   "id": "m4",
+   "agent_name": "bikes.coder",
+   "status": "failed",
+   "title": "Failing tests",
+   "started_at": 1762549000000,
+   "ended_at": 1762549880000,
+   "turn_active": false
+  },
+  {
+   "id": "m5",
+   "agent_name": "garden.seo",
+   "status": "completed",
+   "title": "Keyword study",
+   "started_at": 1762548000000,
+   "ended_at": 1762548500000,
+   "turn_active": false
+  }
+ ],
+ "questions": [
+  {
+   "id": "q1",
+   "agent_name": "bakery.main",
+   "mission_id": "m2",
+   "text": "Ship the fix to production?"
+  }
+ ],
+ "errors": []
+}

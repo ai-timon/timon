@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "jsx": "react",
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "typeRoots": ["../../orchestrator/node_modules/@types", "../../app/node_modules/@types"],
+    "baseUrl": ".",
+    "paths": {
+      "@timon-ai/sdk": ["../../packages/sdk/src/index.ts"],
+      "react": ["../../app/node_modules/@types/react"],
+      "react/jsx-runtime": ["../../app/node_modules/@types/react/jsx-runtime"]
+    }
+  },
+  "include": ["src/**/*", "../../packages/sdk/src/ui.d.ts"]
+}

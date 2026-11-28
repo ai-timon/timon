@@ -1,0 +1,56 @@
+{
+  "name": "@timon-ai/plugin-citadel",
+  "version": "0.1.0",
+  "description": "Citadel: a read-only 3D view of your Timon agents, who is working, who is waiting, by project.",
+  "license": "AGPL-3.0-only",
+  "private": true,
+  "author": "Timon",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "icon.svg",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --tsconfig-raw={} --outfile=lib/index.js && esbuild src/client.tsx --bundle --format=esm --external:react --external:@timon/ui --minify --legal-comments=none --define:process.env.NODE_ENV=\\\"production\\\" --outfile=lib/client.js",
+    "typecheck": "node ../../orchestrator/node_modules/typescript/bin/tsc -p tsconfig.json",
+    "test": "cd ../../orchestrator && npm test -- src/plugins/citadel*.test.ts"
+  },
+  "dependencies": {
+    "n8ao": "^1.10.0",
+    "postprocessing": "~6.36.7",
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.170.0",
+    "esbuild": "^0.25.0"
+  },
+  "timon": {
+    "id": "citadel",
+    "apiVersion": 15,
+    "kind": ["page"],
+    "route": "/citadel",
+    "label": "Citadel",
+    "description": "Read-only 3D view of your Timon agents as 3D Tims: who is working, who is waiting for you, by project.",
+    "author": "Timon",
+    "icon": "icon.svg",
+    "permissions": [
+      "agents:read",
+      "projects:read",
+      "missions:read",
+      "questions:read"
+    ],
+    "client": {
+      "slots": ["page", "nav.item"],
+      "external": ["react", "@timon/ui"],
+      "mode": "esm"
+    },
+    "license": { "required": false }
+  }
+}
