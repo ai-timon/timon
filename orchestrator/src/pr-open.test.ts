@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { after, beforeEach, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { dbApi } from './db.js';
-import type { Forge, GitTransport } from './host/forge.js';
+import type { Forge, GitTransport, RepositoryAccessOutcome } from './host/forge.js';
 import type { GhLoginOutcome } from './host/gh.js';
 import { leakProblems, openPullRequest, type PrOpenDeps, type PublicTreeOutcome } from './pr-open.js';
 import { withoutClosingKeywords } from './issue-closing.js';
@@ -76,25 +76,29 @@ function fixture(opts: { branch?: string; mode?: 'pr' | 'branch' | 'local' } = {
 }
 
 type Calls = {
-  login: number; push: string[]; created: Array<{ base: string; head: string; title: string; body: string; repo: string }>; fetched: string[];
-  opened: Array<{ id: string; recap: boolean }>;
+  login: number; push: string[]; created: Array<{ base: string; head: string; title: string; body: string; repo: string; headOwner?: string }>; fetched: string[];
+  opened: Array<{ id: string; recap: boolean }>; access: string[];
 };
 
 let login: GhLoginOutcome;
+let access: (repo: string) => RepositoryAccessOutcome;
 let remoteSha: string | null;
 let publicTree: PublicTreeOutcome;
 let calls: Calls;
 
 beforeEach(() => {
   login = { ok: true, login: 'AI-Bot' };
+  access = () => ({ ok: true, exists: true, canPush: true });
   remoteSha = null;
   publicTree = { ran: true, ok: true, summary: 'Blockers: 0' };
-  calls = { login: 0, push: [], created: [], fetched: [], opened: [] };
+  calls = { login: 0, push: [], created: [], fetched: [], opened: [], access: [] };
 });
 
 function deps(repo: string): PrOpenDeps {
   const forge: Forge = {
     async login() { calls.login += 1; return login; },
+    async repositoryAccess(repo) { calls.access.push(repo); return access(repo); },
+    async forkRepository() { return { ok: true, fullName: 'bot/app' }; },
     async createPullRequest(input) {
       calls.created.push(input);
       return { ok: true, pr: { number: 12, url: 'https://github.com/acme/app/pull/12' }, existing: false };
@@ -420,4 +424,96 @@ test('leak rules: ids, TODO numbers and attribution lines', () => {
   assert.deepEqual(leakProblems('fix: abcdef12 regression', ['abcdef12-0000-4000-8000-000000000000']), ['a task id']);
   assert.deepEqual(leakProblems('Co-Authored-By: x', [], { attribution: true }), ['an attribution line']);
   assert.deepEqual(leakProblems('Co-Authored-By: x', []), []);
+});
+
+// ─── Pushing through a fork ─────────────────────────────────────────────────
+
+const FORK_URL = 'git@github.com:ai-bot/app.git';
+
+function forkFixture(): Fixture {
+  const f = fixture();
+  updateProjectIntegration(f.slug, { push_remote_url: FORK_URL });
+  return f;
+}
+
+test('a fork: the branch goes to the fork, the pull request opens on the target from owner:branch', async () => {
+  const f = forkFixture();
+  const out = await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, deps(f.repo));
+  assert.ok(out.ok, JSON.stringify(out));
+  assert.equal(out.repository, 'acme/app');
+  assert.deepEqual(calls.access, ['ai-bot/app'], 'the rights are read on the fork, not on the target');
+  assert.deepEqual(calls.push, [`${FORK_URL} ${f.branch}`]);
+  assert.deepEqual(calls.created, [{ repo: 'acme/app', base: 'main', head: f.branch, headOwner: 'ai-bot', ...REQUEST }]);
+  assert.equal(dbApi.getIntegration(f.repo, f.branch)?.pr_number, 12);
+});
+
+test('a fork that does not exist: refused with the way out, nothing pushed', async () => {
+  const f = forkFixture();
+  access = () => ({ ok: true, exists: false });
+  const out = await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, deps(f.repo));
+  assert.deepEqual(failedChecks(out), ['push_access']);
+  assert.match(out.ok ? '' : out.reason, /fork ai-bot\/app does not exist/);
+  assert.deepEqual(calls.push, []);
+  assert.deepEqual(calls.created, []);
+});
+
+test('a fork the account cannot push to: refused', async () => {
+  const f = forkFixture();
+  access = () => ({ ok: true, exists: true, canPush: false });
+  assert.deepEqual(failedChecks(await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, deps(f.repo))), ['push_access']);
+  assert.deepEqual(calls.push, []);
+});
+
+test('no fork and no push right on the target: refused before any push, naming the setting', async () => {
+  const f = fixture();
+  access = () => ({ ok: true, exists: true, canPush: false });
+  const out = await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, deps(f.repo));
+  assert.deepEqual(failedChecks(out), ['push_access']);
+  assert.match(out.ok ? '' : out.reason, /push_remote_url/);
+  assert.deepEqual(calls.push, []);
+});
+
+test('a fork whose push the remote rejects: the pull request is not created', async () => {
+  const f = forkFixture();
+  const d = deps(f.repo);
+  d.transport = () => ({
+    async remoteBranchSha() { return { ok: true, sha: null }; },
+    async fetchBranch() { return { ok: true }; },
+    async pushBranch() { return { ok: false, code: 'rejected', reason: 'rejected' }; },
+  });
+  const out = await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, d);
+  assert.equal(out.ok ? '' : out.code, 'pr_push_failed');
+  assert.deepEqual(calls.created, []);
+});
+
+test('a pull request that already exists from the fork is reported as existing', async () => {
+  const f = forkFixture();
+  const d = deps(f.repo);
+  const base = d.forge!(null);
+  d.forge = () => ({
+    ...base,
+    async createPullRequest(input) {
+      calls.created.push(input);
+      return { ok: true, pr: { number: 7, url: 'https://github.com/acme/app/pull/7' }, existing: true };
+    },
+  });
+  const out = await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, d);
+  assert.ok(out.ok && out.existing);
+  assert.equal(dbApi.getIntegration(f.repo, f.branch)?.pr_number, 7);
+});
+
+test('a fork URL naming the target itself is no fork', async () => {
+  const f = fixture();
+  updateProjectIntegration(f.slug, { push_remote_url: REMOTE_URL });
+  const out = await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, deps(f.repo));
+  assert.ok(out.ok, JSON.stringify(out));
+  assert.deepEqual(calls.access, ['acme/app']);
+  assert.equal(calls.created[0]?.headOwner, undefined);
+});
+
+test('the local remote may point at the fork', async () => {
+  const f = forkFixture();
+  git(f.repo, 'remote', 'set-url', '--push', 'origin', FORK_URL);
+  const out = await openPullRequest({ target: 'task', id: f.taskId, ...REQUEST }, deps(f.repo));
+  assert.ok(out.ok, JSON.stringify(out));
 });

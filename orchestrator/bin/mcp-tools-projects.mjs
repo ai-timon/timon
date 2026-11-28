@@ -60,7 +60,8 @@ export const tools = [
       'Changes how a project\'s Kanban jobs land (CLI `timon project set-integration`): only the fields you pass change. ' +
       '`pr` needs `account`. `gh_config_dir` is an absolute folder inside the user\'s home that no agent can write; ' +
       '`remote_url` is the push URL the remote must have before a pull request is opened. ' +
-      '`null` clears it, `account` or `remote_url`. `reset: true` goes back to the local merge. Needs projects:manage.',
+      '`push_remote_url` is the push URL of a fork of the target, for an account that cannot push to it: the branch is pushed there and the pull request opens on the target from the fork. Creating the fork is a person\'s gesture in the app, never this tool. ' +
+      '`null` clears it, `account`, `remote_url` or `push_remote_url`. `reset: true` goes back to the local merge. Needs projects:manage.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -73,6 +74,7 @@ export const tools = [
         gh_config_dir: { type: ['string', 'null'], description: 'Absolute GH_CONFIG_DIR for this project.' },
         branch_prefix: { type: 'string', description: 'Prefix of integration branches, like feat/ or sec/.' },
         remote_url: { type: ['string', 'null'], description: 'Push URL the remote must have before `pr_open` pushes, like git@github.com:owner/repo.git.' },
+        push_remote_url: { type: ['string', 'null'], description: 'Push URL of the account\'s fork of the target, like git@github.com:me/repo.git. `pr_open` pushes there and opens the pull request from it. Null pushes to `remote_url`.' },
         reset: { type: 'boolean', description: 'Back to the local merge; no other field.' },
       },
       required: ['slug'],
@@ -174,7 +176,7 @@ export const handlers = {
     const path = `/api/projects/${enc(args.slug)}/integration`;
     if (args.reset) return await call('DELETE', path);
     const body = {};
-    for (const key of ['mode', 'remote', 'target', 'forge', 'account', 'gh_config_dir', 'branch_prefix', 'remote_url']) {
+    for (const key of ['mode', 'remote', 'target', 'forge', 'account', 'gh_config_dir', 'branch_prefix', 'remote_url', 'push_remote_url']) {
       if (args[key] !== undefined) body[key] = args[key];
     }
     return await call('PUT', path, body);

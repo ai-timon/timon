@@ -35,6 +35,7 @@ export const PR_CHECKS = [
   'branch_name',
   'account',
   'remote_url',
+  'push_access',
   'target',
   'commits',
   'commit_identity',
@@ -220,12 +221,43 @@ async function checkAccount(forge: Forge, account: string): Promise<PrCheck> {
     : { name: 'account', ok: false, detail: `gh signs in as ${out.login}, the project expects ${account}` };
 }
 
-async function checkRemoteUrl(repo: string, remote: string, expected: string): Promise<PrCheck> {
+/** The local remote may point at the target or, in a fork setup, at the fork:
+ *  the daemon never pushes through it, it pushes to the URL the setting names. */
+async function checkRemoteUrl(repo: string, remote: string, expected: readonly string[]): Promise<PrCheck> {
   const r = await gitRead(repo, ['remote', 'get-url', '--push', '--', remote]);
   if (r.code !== 0) return { name: 'remote_url', ok: false, detail: `the repository has no remote ${remote}` };
-  return sameUrl(r.stdout, expected)
+  return expected.some((url) => sameUrl(r.stdout, url))
     ? { name: 'remote_url', ok: true, detail: `${remote} pushes to the expected URL` }
     : { name: 'remote_url', ok: false, detail: `${remote} does not push to the URL the project expects` };
+}
+
+/**
+ * The account must be able to push to the repository the branch goes to: the
+ * target, or the fork when there is one. A missing fork is reported as such,
+ * with the way out, because creating it is a person's decision.
+ */
+async function checkPushAccess(forge: Forge, pushRepository: string, fork: boolean): Promise<PrCheck> {
+  const out = await forge.repositoryAccess(pushRepository);
+  if (!out.ok) return { name: 'push_access', ok: false, detail: `cannot read the rights on ${pushRepository}: ${out.reason}` };
+  if (!out.exists) {
+    return {
+      name: 'push_access',
+      ok: false,
+      detail: fork
+        ? `the fork ${pushRepository} does not exist: create it from the project's integration settings, or name another one (push_remote_url)`
+        : `${pushRepository} does not exist or the account cannot see it`,
+    };
+  }
+  if (!out.canPush) {
+    return {
+      name: 'push_access',
+      ok: false,
+      detail: fork
+        ? `the account cannot push to the fork ${pushRepository}`
+        : `the account cannot push to ${pushRepository}: set a fork to push to (push_remote_url) in the project's integration settings`,
+    };
+  }
+  return { name: 'push_access', ok: true, detail: `the account can push to ${pushRepository}${fork ? ' (the fork)' : ''}` };
 }
 
 async function repositoryIdentity(repo: string): Promise<{ name: string; email: string } | null> {
@@ -374,7 +406,13 @@ export type PrChecksInput = {
   row: IntegrationRow;
   /** Ids whose short form must not appear in a message (`leakProblems`). */
   chainIds: readonly string[];
+  /** The target repository's URL: the target branch is fetched from it. */
   remoteUrl: string;
+  /** Where the branch is pushed: the fork's URL, `remoteUrl` when there is none. */
+  pushUrl?: string;
+  /** `owner/name` the branch is pushed to. With `fork`, a repository other than the target. */
+  pushRepository?: string;
+  fork?: boolean;
   account: string;
   forge: Forge;
   transport: GitTransport;
@@ -400,6 +438,8 @@ export type PrChecksInput = {
 /** Runs every pre-check of a pull request, in order; nothing is pushed here. */
 export async function runPrChecks(input: PrChecksInput): Promise<{ checks: PrCheck[]; head: string | null }> {
   const { row, chainIds, remoteUrl, account, forge, transport } = input;
+  const pushUrl = input.pushUrl ?? remoteUrl;
+  const pushRepository = input.pushRepository ?? githubRepoFromUrl(pushUrl);
   const repo = row.repo;
   const branch = row.branch;
   const checks: PrCheck[] = [];
@@ -409,7 +449,10 @@ export async function runPrChecks(input: PrChecksInput): Promise<{ checks: PrChe
     ? { name: 'branch_name', ok: false, detail: nameProblem }
     : { name: 'branch_name', ok: true, detail: `${branch} is a public branch name` });
   checks.push(await checkAccount(forge, account));
-  checks.push(await checkRemoteUrl(repo, row.remote, remoteUrl));
+  checks.push(await checkRemoteUrl(repo, row.remote, pushUrl === remoteUrl ? [remoteUrl] : [remoteUrl, pushUrl]));
+  checks.push(pushRepository
+    ? await checkPushAccess(forge, pushRepository, input.fork === true)
+    : { name: 'push_access', ok: false, detail: 'the push URL names no GitHub repository (owner/name)' });
 
   const head = await refSha(repo, `refs/heads/${branch}`);
   const tracking = `refs/remotes/${row.remote}/${row.target}`;
@@ -452,7 +495,7 @@ export async function runPrChecks(input: PrChecksInput): Promise<{ checks: PrChe
     checks.push(input.dryRun
       ? { name: 'public_tree', ok: true, skipped: true, detail: 'runs a script of the repository: checked only when the pull request is opened' }
       : await checkPublicTree(repo, branch, input.publicTree));
-    checks.push(await checkRemoteBranch(repo, transport, remoteUrl, row.remote, branch, head, input.dryRun === true));
+    checks.push(await checkRemoteBranch(repo, transport, pushUrl, row.remote, branch, head, input.dryRun === true));
   }
   return { checks, head };
 }
@@ -475,9 +518,15 @@ function settingRefusal(setting: ProjectIntegration, row: IntegrationRow): strin
 export type PullRequestSetting = {
   setting: ProjectIntegration;
   remoteUrl: string;
+  /** Where the branch is pushed: the fork when the project names one. */
+  pushUrl: string;
   account: string;
-  /** `owner/name` on the forge. */
+  /** `owner/name` of the target repository on the forge, where the pull request lives. */
   repository: string;
+  /** `owner/name` the branch is pushed to: `repository`, or the fork. */
+  pushRepository: string;
+  /** The fork's owner, when the branch is pushed to a fork: the pull request's head is `owner:branch`. */
+  headOwner: string | null;
 };
 
 /** The project's setting, read again and held against the branch's row. */
@@ -495,7 +544,16 @@ export function pullRequestSetting(row: IntegrationRow, project: string | null):
   const account = setting.account!;
   const repository = githubRepoFromUrl(remoteUrl);
   if (!repository) return { refusal: 'the push URL names no GitHub repository (owner/name)' };
-  return { setting, remoteUrl, account, repository };
+  const pushUrl = setting.push_remote_url ?? remoteUrl;
+  const pushRepository = githubRepoFromUrl(pushUrl);
+  if (!pushRepository) return { refusal: 'the fork URL names no GitHub repository (owner/name)' };
+  // A fork URL that names the target itself is no fork.
+  const fork = pushRepository.toLowerCase() !== repository.toLowerCase();
+  return {
+    setting, remoteUrl, pushUrl: fork ? pushUrl : remoteUrl, account, repository,
+    pushRepository: fork ? pushRepository : repository,
+    headOwner: fork ? pushRepository.split('/')[0]! : null,
+  };
 }
 
 /**
@@ -530,7 +588,7 @@ export async function openPullRequest(request: PrOpenRequest, deps: PrOpenDeps =
   }
   const resolvedSetting = pullRequestSetting(row, project);
   if ('refusal' in resolvedSetting) return refuse(409, 'pr_refused', resolvedSetting.refusal);
-  const { setting, remoteUrl, account, repository } = resolvedSetting;
+  const { setting, remoteUrl, pushUrl, account, repository, pushRepository, headOwner } = resolvedSetting;
 
   const key = `${row.repo}\0${row.branch}`;
   if (busy.has(key)) return refuse(409, 'pr_open_busy', `a pull request is already being opened for ${row.branch}`);
@@ -539,9 +597,9 @@ export async function openPullRequest(request: PrOpenRequest, deps: PrOpenDeps =
     const repo = row.repo;
     const branch = row.branch;
     const forge = (deps.forge ?? ((dir) => githubForge(dir, deps.runners)))(setting.gh_config_dir);
-    const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners)))(repo);
+    const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners, setting.gh_config_dir)))(repo);
     const { checks, head } = await runPrChecks({
-      row, chainIds, remoteUrl, account, forge, transport,
+      row, chainIds, remoteUrl, pushUrl, pushRepository, fork: headOwner !== null, account, forge, transport,
       title: request.title, body: request.body, publicTree: deps.publicTree ?? runPublicTree,
     });
 
@@ -550,7 +608,7 @@ export async function openPullRequest(request: PrOpenRequest, deps: PrOpenDeps =
       return refuse(409, 'pr_precheck_failed', failed.map((c) => `${c.name}: ${c.detail}`).join('; '), checks);
     }
 
-    const pushed = await transport.pushBranch(remoteUrl, branch);
+    const pushed = await transport.pushBranch(pushUrl, branch);
     if (!pushed.ok) {
       return refuse(502, 'pr_push_failed', `${branch} was not pushed: ${pushed.reason}`, checks);
     }
@@ -559,6 +617,7 @@ export async function openPullRequest(request: PrOpenRequest, deps: PrOpenDeps =
     const issues = issueLines(jobIssueClosings(row));
     const created = await forge.createPullRequest({
       repo: repository, base: row.target, head: branch, title: request.title, body: pullRequestBody(request.body, issues),
+      ...(headOwner ? { headOwner } : {}),
     });
     if (!created.ok) {
       return refuse(502, 'pr_create_failed', `${branch} was pushed, the pull request was not created: ${created.reason}. Run the command again to retry.`, checks);
@@ -636,9 +695,10 @@ export async function pushIntegrationUpdate(row: IntegrationRow, chainIds: reado
   busy.add(key);
   try {
     const forge = (deps.forge ?? ((dir) => githubForge(dir, deps.runners)))(resolved.setting.gh_config_dir);
-    const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners)))(row.repo);
+    const transport = (deps.transport ?? ((r) => gitTransport(r, deps.runners, resolved.setting.gh_config_dir)))(row.repo);
     const { checks, head: checked } = await runPrChecks({
-      row, chainIds, remoteUrl: resolved.remoteUrl, account: resolved.account, forge, transport,
+      row, chainIds, remoteUrl: resolved.remoteUrl, pushUrl: resolved.pushUrl, pushRepository: resolved.pushRepository,
+      fork: resolved.headOwner !== null, account: resolved.account, forge, transport,
       title: '', body: '', keepText: true, publicTree: deps.publicTree ?? runPublicTree,
     });
     const failed = checks.filter((c) => !c.ok);
@@ -648,7 +708,7 @@ export async function pushIntegrationUpdate(row: IntegrationRow, chainIds: reado
         : `${row.branch} moved while it was checked`;
       return { ok: false, stage: 'precheck', reason, checks };
     }
-    const pushed = await transport.pushBranch(resolved.remoteUrl, row.branch);
+    const pushed = await transport.pushBranch(resolved.pushUrl, row.branch);
     if (!pushed.ok) return { ok: false, stage: 'push', reason: `${row.branch} was not pushed: ${pushed.reason}`, checks };
     dbApi.setIntegrationHead(row.id, head);
     return { ok: true, pushed: true, head_sha: head, checks };

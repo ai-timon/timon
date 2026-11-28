@@ -81,7 +81,22 @@ export type PullRequestInput = {
   head: string;
   title: string;
   body: string;
+  /** Login that owns the repository `head` was pushed to, when it is a fork
+   *  of `repo`: gh then takes `--head=<owner>:<branch>`. Absent for a branch
+   *  of `repo` itself. */
+  headOwner?: string;
 };
+
+/** What the signed-in account may do on a repository (one call to the forge). */
+export type RepositoryAccessOutcome =
+  | { ok: true; exists: true; canPush: boolean }
+  | { ok: true; exists: false }
+  | { ok: false; code: 'gh_missing' | 'gh_failed' | 'timed_out' | 'unexpected_answer'; reason: string };
+
+export type ForkRepositoryOutcome =
+  /** `fullName`: the `owner/name` the forge gave the fork, never guessed. */
+  | { ok: true; fullName: string }
+  | { ok: false; code: 'gh_missing' | 'gh_failed' | 'timed_out' | 'unexpected_answer'; reason: string };
 
 export interface Forge {
   /** The login the configured credentials answer for: one call to the forge. */
@@ -89,6 +104,11 @@ export interface Forge {
   /** Opens the pull request; one already open for the same branches is
    *  reported as such, not as a failure. */
   createPullRequest(input: PullRequestInput): Promise<CreatePullRequestOutcome>;
+  /** Whether `repo` exists and whether the signed-in account may push to it. */
+  repositoryAccess(repo: string): Promise<RepositoryAccessOutcome>;
+  /** Forks `repo` into the signed-in account, without cloning it. Only ever
+   *  called after a person confirmed it in the interface. */
+  forkRepository(repo: string): Promise<ForkRepositoryOutcome>;
 }
 
 export type PullRequestState = 'open' | 'closed' | 'merged';
@@ -1336,13 +1356,46 @@ export function githubForge(
         ? { ok: true, parents }
         : { ok: false, code: 'unexpected_answer', reason: 'gh did not answer the parents of a commit' };
     },
+    async repositoryAccess(repo) {
+      if (!plainRepo(repo)) return { ok: false, code: 'unexpected_answer', reason: 'not a GitHub repository (owner/name)' };
+      const out = await read(['api', `repos/${repo}`, '--jq=.permissions.push']); // portability: a GitHub API path and a jq filter, no file
+      if (!out.ok) return out;
+      if (out.result.code !== 0) {
+        // gh words a missing repository "HTTP 404": a repository the account
+        // cannot see is reported the same way by the forge.
+        if (/\b404\b|not found/i.test(out.result.stderr)) return { ok: true, exists: false };
+        return failed(out.result);
+      }
+      const answer = out.result.stdout.trim();
+      if (answer !== 'true' && answer !== 'false') {
+        return { ok: false, code: 'unexpected_answer', reason: 'gh did not answer the permissions on a repository' };
+      }
+      return { ok: true, exists: true, canPush: answer === 'true' };
+    },
+    async forkRepository(repo) {
+      if (!plainRepo(repo)) return { ok: false, code: 'unexpected_answer', reason: 'not a GitHub repository (owner/name)' };
+      // The forge's own answer names the fork (it may not carry the target's
+      // name); nothing is cloned or written on this machine. An existing fork
+      // answers the same way, so it is not a failure.
+      const out = await read(['api', '-X', 'POST', `repos/${repo}/forks`, '--jq', '.full_name']);
+      if (!out.ok) return out;
+      if (out.result.code !== 0) return failed(out.result);
+      const fullName = out.result.stdout.trim();
+      if (!GITHUB_REPO.test(fullName)) {
+        return { ok: false, code: 'unexpected_answer', reason: 'gh did not answer the name of the fork' };
+      }
+      return { ok: true, fullName };
+    },
     async createPullRequest(input) {
+      if (input.headOwner !== undefined && !COMMENT_AUTHOR.test(input.headOwner)) {
+        return { ok: false, code: 'unexpected_answer', reason: 'not a GitHub login' };
+      }
       // `--flag=value`: a title or a body starting with "-" stays a value.
       const args = [
         'pr', 'create',
         `--repo=${input.repo}`,
         `--base=${input.base}`,
-        `--head=${input.head}`,
+        `--head=${input.headOwner ? `${input.headOwner}:${input.head}` : input.head}`,
         `--title=${input.title}`,
         `--body=${input.body}`,
       ];
@@ -1414,8 +1467,15 @@ export function pushCommitArguments(url: string, sha: string, branch: string): s
 
 // No terminal behind the daemon: git must fail rather than wait for a
 // username or a passphrase nobody will type.
-function networkEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+function networkEnv(configDir: string | null = null): NodeJS.ProcessEnv {
+  return { ...ghEnv(configDir), GIT_TERMINAL_PROMPT: '0' };
+}
+
+/** `-c` pairs that make git ask the project's own `gh` account for an https
+ *  password, as the scratch repositories do: the global helper (a vault, the
+ *  keychain) may hold another account or none. Reset first, so only gh answers. */
+export function ghCredentialConfig(configDir: string | null): string[] {
+  return configDir ? ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential'] : [];
 }
 
 export type RemoteBranchOutcome =
@@ -1445,11 +1505,11 @@ function failure(result: ExecResult, what: string): Extract<GitNetworkOutcome, {
 }
 
 /** The remote side of git for the repository at `repo`. */
-export function gitTransport(repo: string, runners: ForgeRunners = {}): GitTransport {
+export function gitTransport(repo: string, runners: ForgeRunners = {}, ghConfigDir: string | null = null): GitTransport {
   const git = runners.git ?? hostGit;
   const run = async (args: string[]): Promise<ExecResult> => {
     try {
-      return await git(['-C', repo, ...args], { env: networkEnv(), timeout: NETWORK_TIMEOUT_MS, windowsHide: true });
+      return await git([...ghCredentialConfig(ghConfigDir), '-C', repo, ...args], { env: networkEnv(ghConfigDir), timeout: NETWORK_TIMEOUT_MS, windowsHide: true });
     } catch (err) {
       return { code: 1, stdout: '', stderr: (err as Error).message };
     }
@@ -1496,7 +1556,7 @@ export function deleteBranchArguments(url: string, branch: string, sha: string):
 
 /** Deletes `branch` on the remote at `url` while it still ends on `sha`. */
 export async function deleteRemoteBranch(
-  repo: string, url: string, branch: string, sha: string, runners: ForgeRunners = {},
+  repo: string, url: string, branch: string, sha: string, runners: ForgeRunners = {}, ghConfigDir: string | null = null,
 ): Promise<GitNetworkOutcome> {
   let args: string[];
   try { args = deleteBranchArguments(url, branch, sha); } catch (err) {
@@ -1505,7 +1565,7 @@ export async function deleteRemoteBranch(
   const git = runners.git ?? hostGit;
   let result: ExecResult;
   try {
-    result = await git(['-C', repo, 'push', ...args], { env: networkEnv(), timeout: NETWORK_TIMEOUT_MS, windowsHide: true });
+    result = await git([...ghCredentialConfig(ghConfigDir), '-C', repo, 'push', ...args], { env: networkEnv(ghConfigDir), timeout: NETWORK_TIMEOUT_MS, windowsHide: true });
   } catch (err) {
     result = { code: 1, stdout: '', stderr: (err as Error).message };
   }

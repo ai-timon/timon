@@ -97,6 +97,8 @@ let remoteHead: (branch: string) => string | null = () => null;
 const deps: RepairDeps = {
   forge: () => ({
     async login() { return { ok: true, login: 'ai-bot' }; },
+    async repositoryAccess() { return { ok: true, exists: true, canPush: true }; },
+    async forkRepository() { return { ok: true, fullName: 'bot/app' }; },
     async createPullRequest() { throw new Error('a repair never opens a pull request'); },
     async pullRequestChecks() { throw new Error('pushing reads no checks'); },
     async pullRequestReviewThreads() { throw new Error('pushing reads no threads'); },

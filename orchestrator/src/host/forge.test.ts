@@ -654,3 +654,54 @@ test('deleting a remote branch is leased on the commit it must end on, and names
   assert.throws(() => deleteBranchArguments('git@github.com:acme/app.git', 'a:b', HEAD), /unusual name/);
   assert.throws(() => deleteBranchArguments('git@github.com:acme/app.git', 'feat/x', 'HEAD'), /commit it must end on/);
 });
+
+test('a pull request from a fork names its head as owner:branch', async () => {
+  const run = recorder({ stdout: 'https://github.com/acme/app/pull/44\n' });
+  const forge = githubForge('/home/u/.config/gh-work', { gh: run.run });
+  const out = await forge.createPullRequest({ repo: 'acme/app', base: 'main', head: 'feat/x', title: 't', body: 'b', headOwner: 'bot-fork' });
+  assert.equal(out.ok, true);
+  assert.ok(run.calls[0]?.args.includes('--head=bot-fork:feat/x'));
+  assert.ok(run.calls[0]?.args.includes('--repo=acme/app'), 'the pull request lives on the target');
+  const bad = recorder({});
+  const refused = await githubForge(null, { gh: bad.run }).createPullRequest({ repo: 'acme/app', base: 'main', head: 'x', title: 't', body: '', headOwner: '--evil' });
+  assert.equal(refused.ok, false);
+  assert.equal(bad.calls.length, 0, 'a bad owner never reaches gh');
+});
+
+test('the rights on a repository: push allowed, push refused, repository missing, unreadable', async () => {
+  const yes = recorder({ stdout: 'true\n' });
+  assert.deepEqual(await githubForge('/home/u/.config/gh-work', { gh: yes.run }).repositoryAccess('acme/app'), { ok: true, exists: true, canPush: true });
+  assert.equal(yes.calls[0]?.args[0], 'api');
+  assert.equal(yes.calls[0]?.opts.env?.GH_CONFIG_DIR, '/home/u/.config/gh-work');
+  assert.deepEqual(await githubForge(null, { gh: recorder({ stdout: 'false\n' }).run }).repositoryAccess('acme/app'), { ok: true, exists: true, canPush: false });
+  assert.deepEqual(
+    await githubForge(null, { gh: recorder({ code: 1, stderr: 'gh: Not Found (HTTP 404)' }).run }).repositoryAccess('bot/app'),
+    { ok: true, exists: false },
+  );
+  assert.equal((await githubForge(null, { gh: recorder({ code: 1, stderr: 'boom' }).run }).repositoryAccess('acme/app')).ok, false);
+  assert.equal((await githubForge(null, { gh: recorder({ stdout: 'null' }).run }).repositoryAccess('acme/app')).ok, false);
+  assert.equal((await githubForge(null, { gh: recorder({}).run }).repositoryAccess('not a repo')).ok, false);
+});
+
+test('forking asks the forge to create the fork and reads the name it answers', async () => {
+  const run = recorder({ stdout: 'bot/app-1\n' });
+  assert.deepEqual(
+    await githubForge('/home/u/.config/gh-work', { gh: run.run }).forkRepository('acme/app'),
+    { ok: true, fullName: 'bot/app-1' },
+  );
+  assert.deepEqual(run.calls[0]?.args, ['api', '-X', 'POST', 'repos/acme/app/forks', '--jq', '.full_name']);
+  assert.equal((await githubForge(null, { gh: recorder({ code: 1, stderr: 'denied' }).run }).forkRepository('acme/app')).ok, false);
+  assert.equal((await githubForge(null, { gh: recorder({ stdout: 'null' }).run }).forkRepository('acme/app')).ok, false);
+});
+
+test('git network calls use the project gh account as credential helper, and only then', async () => {
+  const run = recorder({});
+  await gitTransport('/repo', { git: run.run }, '/home/u/.config/gh-work').pushBranch('https://github.com/bot/app.git', 'feat/x');
+  const args = run.calls[0]!.args;
+  assert.deepEqual(args.slice(0, 5), ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential', '-C']);
+  assert.equal(run.calls[0]?.opts.env?.GH_CONFIG_DIR, '/home/u/.config/gh-work');
+  assert.ok(!JSON.stringify(args).includes('ghp_'));
+  const plain = recorder({});
+  await gitTransport('/repo', { git: plain.run }).fetchBranch('u', 'main', 'refs/remotes/origin/main');
+  assert.ok(!plain.calls[0]?.args.includes('credential.helper='), 'no project account: git keeps its own helpers');
+});

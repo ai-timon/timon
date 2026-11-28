@@ -25,8 +25,8 @@ import type { GitRemoteEntry } from '@/lib/git-store';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import {
-  announceIntegrationChanged, checkIntegration, listRemotes, readIntegration, resetIntegration, saveIntegration,
-  type IntegrationCheck, type IntegrationPatch, type IntegrationRead,
+  announceIntegrationChanged, checkIntegration, createFork, listRemotes, readIntegration, resetIntegration, saveIntegration,
+  type IntegrationAccess, type IntegrationCheck, type IntegrationPatch, type IntegrationRead, type RepositoryRights,
 } from './project-integration-api';
 
 type Notice = { tone: 'ok' | 'warn'; text: string };
@@ -53,6 +53,31 @@ function NoticeLine({ notice, attr }: { notice: Notice; attr: string }): ReactEl
       {notice.text}
     </p>
   );
+}
+
+/** What the account may push to, in one sentence each, and whether a fork is
+ *  worth offering: the target refuses the account's push and no usable fork exists. */
+export function accessNotices(access: IntegrationAccess): { lines: Notice[]; offerFork: boolean } {
+  const lines: Notice[] = [];
+  const t0 = access.target;
+  if ('unreadable' in t0) return { lines: [{ tone: 'warn', text: t('prSetting.fork.unreadable', { repo: t0.repository }) }], offerFork: false };
+  if (t0.canPush) return { lines: [{ tone: 'ok', text: t('prSetting.fork.targetPush', { repo: t0.repository }) }], offerFork: false };
+  lines.push({ tone: 'warn', text: t('prSetting.fork.targetNoPush', { repo: t0.repository }) });
+  const f: RepositoryRights | null = access.fork;
+  if (f && 'unreadable' in f) {
+    lines.push({ tone: 'warn', text: t('prSetting.fork.unreadable', { repo: f.repository }) });
+    return { lines, offerFork: false };
+  }
+  if (f && f.exists && f.canPush) {
+    lines.push({ tone: 'ok', text: t('prSetting.fork.forkPush', { repo: f.repository }) });
+    return { lines, offerFork: false };
+  }
+  if (f && f.exists) {
+    lines.push({ tone: 'warn', text: t('prSetting.fork.forkNoPush', { repo: f.repository }) });
+    return { lines, offerFork: false };
+  }
+  if (f) lines.push({ tone: 'warn', text: t('prSetting.fork.forkMissing', { repo: f.repository }) });
+  return { lines, offerFork: true };
 }
 
 function Field({ label, children }: { label: string; children: ReactElement }): ReactElement {
@@ -84,6 +109,13 @@ export function PullRequestSetupDialog({ project, current, onClose, onSaved }: {
   const [remotes, setRemotes] = useState<GitRemoteEntry[] | null>(null);
   const [checking, setChecking] = useState(false);
   const [check, setCheck] = useState<Notice | null>(null);
+  const [forkUrl, setForkUrl] = useState(i.push_remote_url ?? '');
+  const [access, setAccess] = useState<IntegrationAccess | null>(null);
+  const [accessNote, setAccessNote] = useState<Notice | null>(null);
+  const [reading, setReading] = useState(false);
+  // The fork is created on GitHub: only after the person said so, here.
+  const [confirmingFork, setConfirmingFork] = useState(false);
+  const [forking, setForking] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,7 +145,43 @@ export function PullRequestSetupDialog({ project, current, onClose, onSaved }: {
     gh_config_dir: ghDir.trim() || null,
     branch_prefix: prefix.trim(),
     remote_url: remoteUrl.trim() || null,
+    push_remote_url: forkUrl.trim() || null,
   });
+
+  // The rights are read for the stored setting: save the account and the URL first.
+  const stored = current.configured && i.mode === 'pr' && !!i.remote_url && !!i.account;
+  // The rights are read for the stored setting, not for the form: while a field
+  // differs from what is stored, the check would answer for another setting.
+  const d = draft();
+  const dirty = d.remote !== i.remote || d.target !== i.target || d.account !== (i.account ?? null)
+    || d.gh_config_dir !== (i.gh_config_dir ?? null) || d.branch_prefix !== i.branch_prefix
+    || d.remote_url !== (i.remote_url ?? null) || d.push_remote_url !== (i.push_remote_url ?? null);
+
+  const readAccess = async () => {
+    setReading(true);
+    setAccess(null);
+    setAccessNote(null);
+    setConfirmingFork(false);
+    const out = await checkIntegration(project);
+    setReading(false);
+    if (!out.ok) setAccessNote({ tone: 'warn', text: out.message });
+    else if (out.value.access) setAccess(out.value.access);
+    else setAccessNote(checkNotice(out.value));
+  };
+
+  const makeFork = async () => {
+    setForking(true);
+    setError(null);
+    const out = await createFork(project);
+    setForking(false);
+    setConfirmingFork(false);
+    if (out.ok) {
+      setForkUrl(out.value.integration.push_remote_url ?? '');
+      setAccess(null);
+      setAccessNote({ tone: 'ok', text: t('prSetting.fork.created', { repo: out.value.fork }) });
+      announceIntegrationChanged(project);
+    } else setError(out.message);
+  };
 
   const runCheck = async () => {
     setChecking(true);
@@ -177,6 +245,18 @@ export function PullRequestSetupDialog({ project, current, onClose, onSaved }: {
             <Input data-pr-setting-prefix="" value={prefix} onChange={(e) => setPrefix(e.target.value)} />
           </Field>
           <div className="col-span-2">
+            <Field label={t('prSetting.field.forkUrl')}>
+              <Input
+                data-pr-setting-fork-url=""
+                value={forkUrl}
+                // i18n-exempt: sample remote URL, the same in every language
+                placeholder="git@github.com:you/repo.git"
+                onChange={(e) => setForkUrl(e.target.value)}
+              />
+            </Field>
+            <p className="mt-1 text-[11px] text-muted-foreground">{t('prSetting.field.forkUrlHint')}</p>
+          </div>
+          <div className="col-span-2">
             <Field label={t('prSetting.field.ghConfigDir')}>
               <Input
                 data-pr-setting-gh-dir=""
@@ -188,6 +268,41 @@ export function PullRequestSetupDialog({ project, current, onClose, onSaved }: {
           </div>
         </div>
         {check && <NoticeLine notice={check} attr="data-pr-setting-check" />}
+        {stored && (
+          <div data-pr-setting-fork="" className="flex flex-col gap-1.5 rounded-md bg-muted/40 px-2.5 py-2">
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 text-[11.5px] font-medium text-muted-foreground">{t('prSetting.fork.title')}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => { void readAccess(); }} disabled={reading || forking || dirty}
+                title={dirty ? t('prSetting.fork.checkSaveFirst') : undefined}>
+                <span data-pr-setting-access-run="">{reading ? t('prSetting.checking') : t('prSetting.fork.check')}</span>
+              </Button>
+            </div>
+            {access && accessNotices(access).lines.map((line, n) => <NoticeLine key={n} notice={line} attr="data-pr-setting-access" />)}
+            {accessNote && <NoticeLine notice={accessNote} attr="data-pr-setting-access-note" />}
+            {access && accessNotices(access).offerFork && !confirmingFork && (
+              <div>
+                <Button type="button" size="sm" onClick={() => setConfirmingFork(true)} disabled={forking}>
+                  <span data-pr-setting-fork-offer="">{t('prSetting.fork.offer')}</span>
+                </Button>
+              </div>
+            )}
+            {confirmingFork && (
+              <div data-pr-setting-fork-confirm="" className="flex flex-col gap-2">
+                <p className="text-[11.5px] text-foreground">
+                  {t('prSetting.fork.confirm', { account: i.account ?? '', repo: access?.target.repository ?? '' })}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button type="button" size="sm" onClick={() => { void makeFork(); }} disabled={forking}>
+                    <span data-pr-setting-fork-create="">{forking ? t('prSetting.fork.creating') : t('prSetting.fork.create')}</span>
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmingFork(false)} disabled={forking}>
+                    {t('prSetting.cancel')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         {error && <p data-pr-setting-error="" className="text-[11.5px] text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => { void runCheck(); }} disabled={checking}>

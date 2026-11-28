@@ -23,6 +23,8 @@ export type ProjectIntegrationView = {
   gh_config_dir: string | null;
   branch_prefix: string;
   remote_url: string | null;
+  /** Push URL of the account's fork of the target, when it cannot push to the target. */
+  push_remote_url?: string | null;
   contributor_conflicts?: string;
 };
 
@@ -47,6 +49,7 @@ export type IntegrationPatch = {
   gh_config_dir: string | null;
   branch_prefix: string;
   remote_url: string | null;
+  push_remote_url?: string | null;
 };
 
 export type GhCheckCode = 'gh_missing' | 'gh_failed' | 'timed_out' | 'unexpected_answer';
@@ -58,7 +61,13 @@ export type IntegrationCheck = {
   expected: string | null;
   code: GhCheckCode | null;
   reason: string | null;
+  /** The account's rights on the target and on the fork, when the daemon read them. */
+  access: IntegrationAccess | null;
 };
+
+/** What the account may push to: `canPush` is false for a repository that does not exist. */
+export type RepositoryRights = { repository: string; exists: boolean; canPush: boolean } | { repository: string; unreadable: true };
+export type IntegrationAccess = { target: RepositoryRights; fork: RepositoryRights | null };
 
 const base = (project: string) => `/api/ui/projects/${encodeURIComponent(project)}/integration`;
 
@@ -94,6 +103,7 @@ function readOf(body: unknown): IntegrationRead | undefined {
       gh_config_dir: str(i.gh_config_dir),
       branch_prefix: str(i.branch_prefix) ?? 'feat/',
       remote_url: str(i.remote_url),
+      push_remote_url: str(i.push_remote_url),
       ...(typeof i.contributor_conflicts === 'string' ? { contributor_conflicts: i.contributor_conflicts } : {}),
     },
     configured: b?.configured === true,
@@ -134,7 +144,30 @@ export function checkIntegration(
     const b = body as Record<string, unknown> | null;
     if (!b || typeof b.ok !== 'boolean') return undefined;
     const code = GH_CODES.find((c) => c === b.code) ?? null;
-    return { ok: b.ok, login: str(b.login), expected: str(b.expected), code, reason: str(b.reason) };
+    return { ok: b.ok, login: str(b.login), expected: str(b.expected), code, reason: str(b.reason), access: accessOf(b.access) };
+  }, fetchImpl);
+}
+
+function rightsOf(v: unknown): RepositoryRights | null {
+  const r = v as Record<string, unknown> | null;
+  if (!r || typeof r.repository !== 'string') return null;
+  if (r.unreadable === true) return { repository: r.repository, unreadable: true };
+  return { repository: r.repository, exists: r.exists === true, canPush: r.can_push === true };
+}
+
+function accessOf(v: unknown): IntegrationAccess | null {
+  const a = v as Record<string, unknown> | null;
+  const target = rightsOf(a?.target);
+  return target ? { target, fork: rightsOf(a?.fork) } : null;
+}
+
+/** Creates the account's fork of the target. Only a person's click calls it,
+ *  after the confirmation the dialog shows; the daemon refuses anything else. */
+export function createFork(project: string, fetchImpl: typeof fetch = fetch): Promise<Answer<IntegrationRead & { fork: string }>> {
+  return call(`${base(project)}/fork`, json('POST', { confirm: true }), (body) => {
+    const read = readOf(body);
+    const fork = (body as { fork?: unknown } | null)?.fork;
+    return read && typeof fork === 'string' ? { ...read, configured: true, fork } : undefined;
   }, fetchImpl);
 }
 

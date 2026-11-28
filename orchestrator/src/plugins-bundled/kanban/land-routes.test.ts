@@ -91,6 +91,8 @@ const told: string[] = [];
 const forgeCalls = { push: 0, created: 0 };
 const forge: Forge = {
   async login() { return { ok: true, login: 'ai-bot' }; },
+  async repositoryAccess() { return { ok: true, exists: true, canPush: true }; },
+  async forkRepository() { return { ok: true, fullName: 'bot/app' }; },
   async createPullRequest() {
     forgeCalls.created += 1;
     return { ok: true, pr: { number: 31, url: 'https://github.com/acme/app/pull/31' }, existing: false };
