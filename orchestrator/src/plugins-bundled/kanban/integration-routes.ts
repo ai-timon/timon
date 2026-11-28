@@ -301,9 +301,7 @@ export function registerIntegrationRoutes(app: Router, deps: IntegrationRouteDep
     }
     const body = ForkBody.safeParse(req.body ?? {});
     if (!body.success) {
-      res.status(400).json(apiError('fork_not_confirmed', 'creating a fork needs your explicit confirmation', {
-        detail: 'creating a fork needs your explicit confirmation',
-      }));
+      res.status(400).json(apiError('fork_not_confirmed', 'creating a fork needs your explicit confirmation'));
       return;
     }
     let read;
@@ -311,22 +309,18 @@ export function registerIntegrationRoutes(app: Router, deps: IntegrationRouteDep
     const { integration } = read;
     const target = integration.remote_url ? githubRepoFromUrl(integration.remote_url) : null;
     if (read.invalid || !integration.account || !target) {
-      res.status(409).json(apiError('fork_unavailable', 'name the account and the push URL of the target repository first', {
-        detail: 'name the account and the push URL of the target repository first',
-      }));
+      res.status(409).json(apiError('fork_unavailable', 'name the account and the push URL of the target repository first'));
       return;
     }
     const who = await login(integration.gh_config_dir);
     if (!who.ok || who.login.toLowerCase() !== integration.account.toLowerCase()) {
-      res.status(409).json(apiError('fork_account_mismatch', 'gh is not signed in as the project\'s account', {
-        detail: 'gh is not signed in as the project\'s account',
-      }));
+      res.status(409).json(apiError('fork_account_mismatch', 'gh is not signed in as the project\'s account'));
       return;
     }
     const forge = forgeFor(integration.gh_config_dir);
     const rights = await rightsOn(forge, target);
     if ('unreadable' in rights) {
-      res.status(502).json(apiError('fork_failed', 'the rights on the target repository could not be read'));
+      res.status(502).json(apiError('repo_fork_failed', 'the rights on the target repository could not be read'));
       return;
     }
     if (rights.can_push) {
@@ -341,7 +335,7 @@ export function registerIntegrationRoutes(app: Router, deps: IntegrationRouteDep
     const made = await forge.forkRepository(target);
     if (!made.ok) {
       console.error('[kanban] fork of the target repository failed:', made.code);
-      res.status(502).json(apiError('fork_failed', 'the fork could not be created'));
+      res.status(502).json(apiError('repo_fork_failed', 'the fork could not be created'));
       return;
     }
     // The name the forge answered: a fork does not always keep the target's.
