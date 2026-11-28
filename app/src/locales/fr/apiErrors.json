@@ -480,6 +480,8 @@
     "computer_args_invalid": "Arguments invalides pour cette commande d'ordinateur.",
     "computer_journal_people_only": "Le journal de computer-use est réservé aux personnes.",
     "computer_app_not_allowed": "{detail}",
+    "computer_proposal_all_apps_refused": "« Toutes les applications » et ses exclusions ne se proposent pas : seule une personne les règle, depuis les Permissions de l'agent. Proposez plutôt les applications dont vous avez besoin.",
+    "computer_app_excluded": "{detail}",
     "computer_background_only": "Cet agent travaille en arrière-plan : utilisez a11y_tree et a11y_action. L'écran, la souris, le clavier et la mise au premier plan d'une fenêtre sont refusés.",
     "computer_window_not_found": "Cette fenêtre n'existe plus. Listez de nouveau les fenêtres ouvertes.",
     "computer_proposal_mission_required": "Seule une mission d'agent peut proposer un accès computer-use : une personne modifie directement l'agent.",

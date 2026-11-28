@@ -480,6 +480,8 @@
     "computer_args_invalid": "Invalid arguments for this computer command.",
     "computer_journal_people_only": "The computer-use journal is reserved to people.",
     "computer_app_not_allowed": "{detail}",
+    "computer_proposal_all_apps_refused": "\"All applications\" and its exclusions are not proposed: only a person sets them, from the agent's Permissions. Propose the applications you need instead.",
+    "computer_app_excluded": "{detail}",
     "computer_background_only": "This agent works in the background: use a11y_tree and a11y_action. The screen, the mouse, the keyboard and focusing a window are refused.",
     "computer_window_not_found": "That window no longer exists. List the open windows again.",
     "computer_proposal_mission_required": "Only an agent mission can propose computer-use access: a person edits the agent directly.",
