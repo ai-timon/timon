@@ -386,7 +386,7 @@ Timon refuses a commit that your local copy of the repository has and that is no
 
 ## The pull or merge request of a task
 
-A task that opened a pull request (GitHub) or a merge request (GitLab) carries it. Its card shows a chip, **PR #12** or **MR !1875**, with the state in its colour: green while open, purple once merged, red when closed. The same chip sits in the task's detail, under the tabs. A click opens the request in a new tab and does not open the card.
+A task that opened a pull request (GitHub) or a merge request (GitLab) carries it. Its card shows a chip, **PR #12** or **MR !1875**, with the state in its colour: green while open, the theme's accent colour once merged, red when closed. The same chip sits in the task's detail, under the tabs. A click opens the request in a new tab and does not open the card.
 
 The daemon records the request by itself when it opens a pull request for a task (`timon pr open`). An agent that opens a request on its own, a merge request on GitLab for instance, records it with `--mr-url URL` on `timon task done`, `block`, `mark-as-done`, `mark-as-failed` or `update`, with `--mr-state open|merged|closed` and `--mr-pipeline LABEL` to say where it stands. The `kanban_update`, `kanban_mark_as_done` and `kanban_mark_as_failed` tools take the same `merge_request` object (`url`, and optionally `state` and `pipeline`). Only the URL is required: the forge and the number come from it, and a URL that is neither a GitHub pull request nor a GitLab merge request is refused.
 
