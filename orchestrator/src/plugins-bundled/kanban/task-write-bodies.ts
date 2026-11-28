@@ -9,6 +9,7 @@
  */
 import { z } from 'zod';
 import { parseStrictBody } from './task-update-body.js';
+import { MergeRequestInput } from '../../merge-request.js';
 
 type Parsed<S extends z.ZodTypeAny> = { ok: true; value: z.output<S> } | { ok: false; error: string };
 
@@ -29,6 +30,8 @@ export const parseTaskCloseBody = strictParser({
   verdict: z.unknown().optional(),
   /** Hex shape and base checked by the route. */
   merged_sha: z.unknown().optional(),
+  /** The pull / merge request the task opened, recorded with the closing (done or failed). */
+  merge_request: MergeRequestInput.optional(),
   /** Clamped or ignored by `parseSummary`: a closing never fails on its summary. */
   summary: z.unknown().optional(),
 });

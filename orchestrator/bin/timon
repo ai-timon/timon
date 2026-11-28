@@ -897,12 +897,14 @@ Tasks (Kanban backlog):
                    [--extra-skills s1,s2] [--extra-mcp mcp1,mcp2]
                    [--allow "Bash(timon:*),Read(/tmp/*)"]
   timon task done <id> [--comment TEXT | --comment-file PATH | --comment-stdin] [--merged-sha SHA] [--summary TEXT]
-  timon task block <id> --reason TEXT
+  timon task block <id> --reason TEXT [--mr-url URL]
   timon task mark-as-done [id] --comment TEXT|--comment-file PATH|--comment-stdin [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]
                                                closes THE current mission's task (no id to copy)
   timon task mark-merged <id> --sha SHA [--comment TEXT]
                                                branch merged outside Timon: records its merge commit
   timon task mark-as-failed [id] --reason TEXT closes it as BLOCKED
+  (done, block, mark-as-done, mark-as-failed, update: --mr-url URL [--mr-state open|merged|closed] [--mr-pipeline LABEL]
+   records the pull / merge request you opened; the board shows it as a chip)
   timon task attach <id> --series ID|current   attaches the task's chain (root, reviews, merge, doc)
                                                to a series and its pilot; current = this mission
   timon task update <id> [--status ...] [--priority N] [--title ...] [--agent ...] [--type ...]
@@ -2234,6 +2236,7 @@ async function cmdTaskDone(argv) {
   }
   const mergedSha = takeFlag(argv, 'merged-sha');
   const summary = takeFlag(argv, 'summary');
+  const mergeRequest = takeMergeRequest(argv);
   // If the merger agent performed a merge → record the sha BEFORE marking
   // DONE. The orchestrator's merge guard refuses a type='merge' task's DONE
   // transition without merged_commit_sha: the reverse order would make the
@@ -2245,6 +2248,7 @@ async function cmdTaskDone(argv) {
   }
   const update = { status: 'DONE', done_comment: comment };
   if (summary) update.done_summary = summary;
+  if (mergeRequest) update.merge_request = mergeRequest;
   await http('PUT', `/api/tasks/${id}`, update);
   process.stdout.write(`task ${id} → DONE\n`);
   if (comment) process.stdout.write(`comment: ${comment}\n`);
@@ -2286,6 +2290,18 @@ async function cmdTaskAttach(argv) {
   process.stdout.write(`${count} task(s) attached to series ${j.series_id} (pilot ${j.pilot_mission_id})\n`);
 }
 
+/** `--mr-url URL [--mr-state open|merged|closed] [--mr-pipeline LABEL]`: the pull / merge request the task opened. */
+function takeMergeRequest(argv) {
+  const url = takeFlag(argv, 'mr-url');
+  const state = takeFlag(argv, 'mr-state');
+  const pipeline = takeFlag(argv, 'mr-pipeline');
+  if (!url) {
+    if (state || pipeline) { process.stderr.write('timon: --mr-state and --mr-pipeline need --mr-url\n'); process.exit(64); }
+    return undefined;
+  }
+  return { url, ...(state ? { state } : {}), ...(pipeline ? { pipeline } : {}) };
+}
+
 /** Reads the closing comment: inline, from a file, or from redirected stdin.
  *  The last two avoid any shell-quoting truncation on a long comment. */
 async function readClosingComment(argv) {
@@ -2315,9 +2331,11 @@ async function cmdTaskMarkAsDone(argv) {
   const verdict = takeFlag(argv, 'verdict');
   const mergedSha = takeFlag(argv, 'merged-sha');
   const summary = takeFlag(argv, 'summary');
+  const mergeRequest = takeMergeRequest(argv);
   if (!comment) {
     process.stderr.write('usage: timon task mark-as-done [id] --comment TEXT | --comment-file PATH | --comment-stdin\n' +
-      '       [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]\n');
+      '       [--verdict pass|changes_requested] [--merged-sha SHA] [--summary TEXT]\n' +
+      '       [--mr-url URL [--mr-state open|merged|closed] [--mr-pipeline LABEL]]\n');
     process.exit(64);
   }
   const body = { outcome: 'done', comment };
@@ -2325,6 +2343,7 @@ async function cmdTaskMarkAsDone(argv) {
   if (verdict) body.verdict = verdict;
   if (mergedSha) body.merged_sha = mergedSha;
   if (summary) body.summary = summary;
+  if (mergeRequest) body.merge_request = mergeRequest;
   const j = await http('POST', '/api/tasks/close', body);
   process.stdout.write(`task ${j.task.id} → DONE\n`);
   if (j.task.merged_commit_sha) process.stdout.write(`merged sha: ${j.task.merged_commit_sha}\n`);
@@ -2333,8 +2352,10 @@ async function cmdTaskMarkAsDone(argv) {
 async function cmdTaskMarkAsFailed(argv) {
   const id = argv[0] && !argv[0].startsWith('--') ? argv.shift() : undefined;
   const reason = takeFlag(argv, 'reason');
-  if (!reason) { process.stderr.write('usage: timon task mark-as-failed [id] --reason TEXT\n'); process.exit(64); }
+  const mergeRequest = takeMergeRequest(argv);
+  if (!reason) { process.stderr.write('usage: timon task mark-as-failed [id] --reason TEXT [--mr-url URL [--mr-state STATE] [--mr-pipeline LABEL]]\n'); process.exit(64); }
   const body = { outcome: 'failed', reason };
+  if (mergeRequest) body.merge_request = mergeRequest;
   if (id) body.id = id;
   const j = await http('POST', '/api/tasks/close', body);
   process.stdout.write(`task ${j.task.id} → BLOCKED (${reason})\n`);
@@ -2345,7 +2366,8 @@ async function cmdTaskBlock(argv) {
   if (!id) { process.stderr.write('usage: timon task block <id> --reason ...\n'); process.exit(64); }
   const reason = takeFlag(argv, 'reason');
   if (!reason) { process.stderr.write('timon task block: --reason is required\n'); process.exit(64); }
-  await http('PUT', `/api/tasks/${id}`, { status: 'BLOCKED', blocked_reason: reason });
+  const mergeRequest = takeMergeRequest(argv);
+  await http('PUT', `/api/tasks/${id}`, { status: 'BLOCKED', blocked_reason: reason, ...(mergeRequest ? { merge_request: mergeRequest } : {}) });
   process.stdout.write(`task ${id} → BLOCKED (${reason})\n`);
 }
 
@@ -2374,6 +2396,7 @@ async function cmdTaskUpdate(argv) {
   const fallbackBackend = takeFlag(argv, 'fallback-backend');
   const fallbackModel = takeFlag(argv, 'fallback-model');
   const permission = takeFlag(argv, 'permission-mode');
+  const mergeRequest = takeMergeRequest(argv);
   await assertBackend('task update', backend);
   if (status) fields.status = status;
   if (priority) fields.priority = Number(priority);
@@ -2393,6 +2416,7 @@ async function cmdTaskUpdate(argv) {
   if (fallbackModel) fields.fallback_model_override = fallbackModel;
   if (permission) fields.permission_mode_override = permission;
   if (type) fields.type = type;
+  if (mergeRequest) fields.merge_request = mergeRequest;
   const j = await http('PUT', `/api/tasks/${id}`, fields);
   process.stdout.write(JSON.stringify(j.task, null, 2) + '\n');
 }
