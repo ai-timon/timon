@@ -408,13 +408,35 @@ const normalize = (value: string): string => value.trim().toLowerCase().replace(
 type AllowedEntry = string | { app: string; mode: 'foreground' | 'background' };
 
 /**
+ * "All applications", as the daemon sends it: every application is allowed, the unlisted ones in
+ * `mode`, except `excluded`, which always wins, an explicit entry included.
+ */
+export interface AllAppsScope { mode: 'foreground' | 'background'; excluded: readonly string[] }
+
+const namesOf = (app: AppIdentity): string[] => [app.bundle, app.name, app.exe].filter((name): name is string => !!name).map(normalize);
+
+/** Whether `excluded` names this application by any of its three names. */
+export function isAppExcluded(app: AppIdentity | null, excluded: readonly string[]): boolean {
+  if (!app) return false;
+  const names = namesOf(app);
+  return excluded.some((entry) => { const wanted = normalize(entry); return !!wanted && names.includes(wanted); });
+}
+
+/**
  * How the list allows this application: the mode of the entries that name it (any of its three names),
  * or null when none does. An empty or absent list allows nothing. When two entries name the same
  * application with different modes, the background one wins: the stricter reading.
+ *
+ * With `everything` ("All applications"), an excluded application is refused whatever the list says,
+ * a listed one keeps its mode and any other takes the scope's mode. An unreadable application is
+ * still refused.
  */
-export function appMode(app: AppIdentity | null, allowed: readonly AllowedEntry[], fallback: 'foreground' | 'background' = 'foreground'): 'foreground' | 'background' | null {
+export function appMode(
+  app: AppIdentity | null, allowed: readonly AllowedEntry[], fallback: 'foreground' | 'background' = 'foreground', everything: AllAppsScope | null = null,
+): 'foreground' | 'background' | null {
   if (!app) return null;
-  const names = [app.bundle, app.name, app.exe].filter((name): name is string => !!name).map(normalize);
+  if (everything && isAppExcluded(app, everything.excluded)) return null;
+  const names = namesOf(app);
   let found: 'foreground' | 'background' | null = null;
   for (const entry of allowed) {
     const { app: listed, mode } = typeof entry === 'string' ? { app: entry, mode: fallback } : entry;
@@ -423,12 +445,12 @@ export function appMode(app: AppIdentity | null, allowed: readonly AllowedEntry[
     if (mode === 'background') return 'background';
     found = 'foreground';
   }
-  return found;
+  return found ?? everything?.mode ?? null;
 }
 
 /** The list is explicit: an empty or absent one allows nothing. Any of the app's three names may be listed, in any mode. */
-export function isAppAllowed(app: AppIdentity | null, allowed: readonly AllowedEntry[]): boolean {
-  return appMode(app, allowed) !== null;
+export function isAppAllowed(app: AppIdentity | null, allowed: readonly AllowedEntry[], everything: AllAppsScope | null = null): boolean {
+  return appMode(app, allowed, 'foreground', everything) !== null;
 }
 
 /** How an application is named in a refusal: what the agent can read back into the list. */

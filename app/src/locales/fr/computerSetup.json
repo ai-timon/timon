@@ -35,6 +35,8 @@
     "journalEmpty": "Aucune action pour l'instant.",
     "journalUnreadable": "Impossible de lire le journal.",
     "journalResultOk": "OK",
-    "journalResultRefused": "Refusé : {code}"
+    "journalResultRefused": "Refusé : {code}",
+    "journalAllAppsOn": "Toutes les applications activées",
+    "journalAllAppsOff": "Toutes les applications désactivées"
   }
 }

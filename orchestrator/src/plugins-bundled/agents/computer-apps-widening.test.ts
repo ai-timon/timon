@@ -162,3 +162,66 @@ test("an agent's token cannot move an application from background to foreground,
   const bad = await call('PATCH', '/api/agents/apps.lead/config', { bearer: TOKEN, body: { computer_use_apps: [{ app: 'Notes', mode: 'sideways' }] } });
   assert.equal(bad.status, 400);
 });
+
+test('"All applications" is turned on by a person only: an agent\'s token and the daemon\'s are refused', async () => {
+  const agentToken = await call('PATCH', '/api/agents/apps.stranger/config', { bearer: leadToken, body: { computer_use_all_apps: true } });
+  assert.equal(agentToken.status, 403, JSON.stringify(agentToken.json));
+  assert.match(JSON.stringify(agentToken.json), /only a person turns it on/);
+  const daemonToken = await call('PATCH', '/api/agents/apps.stranger/config', { bearer: TOKEN, body: { computer_use_all_apps: true } });
+  assert.equal(daemonToken.status, 403, JSON.stringify(daemonToken.json));
+  const created = await call('POST', '/api/agents', { bearer: TOKEN, body: { name: 'apps.everything', system_prompt: 'witness', config: { cwd, role: 'coder', computer_use_all_apps: true } } });
+  assert.equal(created.status, 403, JSON.stringify(created.json));
+  assert.equal(stored('apps.stranger').computer_use_all_apps, undefined);
+  const ephemeral = await call('POST', '/api/agents/ephemeral', { bearer: TOKEN, body: { mission: 'm', system_prompt: 'p', config: { computer_use_all_apps: true } } });
+  assert.equal(ephemeral.status, 403, JSON.stringify(ephemeral.json));
+  const invalid = await call('PATCH', '/api/agents/apps.stranger/config', { cookie: manager.cookie, body: { computer_use_all_apps: 'yes' } });
+  assert.equal(invalid.status, 400, JSON.stringify(invalid.json));
+
+  const person = await call('PATCH', '/api/agents/apps.stranger/config', { cookie: manager.cookie, body: { computer_use_all_apps: true } });
+  assert.equal(person.status, 200, JSON.stringify(person.json));
+  assert.equal(stored('apps.stranger').computer_use_all_apps, true);
+  const view = person.json as { computer_use_all_apps: boolean; computer_use_excluded_apps: string[] };
+  assert.equal(view.computer_use_all_apps, true);
+  assert.ok(view.computer_use_excluded_apps.includes('KeePassXC'), 'the defaults are served while nobody edited the list');
+  assert.ok(view.computer_use_excluded_apps.includes('Timon'));
+
+  const unchanged = await call('PATCH', '/api/agents/apps.stranger/config', { bearer: leadToken, body: { computer_use_all_apps: true } });
+  assert.equal(unchanged.status, 200, 'sending it unchanged passes');
+  const journal = dbApi.listComputerJournal('apps.stranger', 10).map((row) => row.command);
+  assert.deepEqual(journal, ['all_apps_on'], 'the journal notes the activation once');
+
+  const off = await call('PATCH', '/api/agents/apps.stranger/config', { bearer: leadToken, body: { computer_use_all_apps: false } });
+  assert.equal(off.status, 200, 'an agent\'s token may turn it off');
+  assert.equal(stored('apps.stranger').computer_use_all_apps, false);
+  assert.deepEqual(dbApi.listComputerJournal('apps.stranger', 10).map((row) => row.command), ['all_apps_off', 'all_apps_on']);
+});
+
+test('the exclusions: a token may add one, never take one out; a person edits them freely', async () => {
+  const lifted = await call('PATCH', '/api/agents/apps.stranger/config', { bearer: leadToken, body: { computer_use_excluded_apps: ['Timon'] } });
+  assert.equal(lifted.status, 403, JSON.stringify(lifted.json));
+  assert.match(JSON.stringify(lifted.json), /lifts KeePassXC/);
+  const daemon = await call('PATCH', '/api/agents/apps.stranger/config', { bearer: TOKEN, body: { computer_use_excluded_apps: [] } });
+  assert.equal(daemon.status, 403, JSON.stringify(daemon.json));
+
+  const person = await call('PATCH', '/api/agents/apps.stranger/config', { cookie: manager.cookie, body: { computer_use_excluded_apps: ['KeePassXC', 'Terminal'] } });
+  assert.equal(person.status, 200, JSON.stringify(person.json));
+  assert.deepEqual(stored('apps.stranger').computer_use_excluded_apps, ['KeePassXC', 'Terminal']);
+  const narrowed = await call('PATCH', '/api/agents/apps.stranger/config', { bearer: leadToken, body: { computer_use_excluded_apps: ['keepassxc', 'Terminal', 'Slack'] } });
+  assert.equal(narrowed.status, 200, JSON.stringify(narrowed.json));
+  const bad = await call('PATCH', '/api/agents/apps.stranger/config', { cookie: manager.cookie, body: { computer_use_excluded_apps: ['ok', ''] } });
+  assert.equal(bad.status, 400, JSON.stringify(bad.json));
+});
+
+test('null restores the default exclusions, judged as that list: a token cannot drop what a person added through it', async () => {
+  const person = await call('PATCH', '/api/agents/apps.helper/config', { cookie: manager.cookie, body: { computer_use_excluded_apps: ['Slack'] } });
+  assert.equal(person.status, 200, JSON.stringify(person.json));
+  const reset = await call('PATCH', '/api/agents/apps.helper/config', { bearer: leadToken, body: { computer_use_excluded_apps: null } });
+  assert.equal(reset.status, 403, JSON.stringify(reset.json));
+  assert.match(JSON.stringify(reset.json), /lifts Slack/);
+  const back = await call('PATCH', '/api/agents/apps.helper/config', { cookie: manager.cookie, body: { computer_use_excluded_apps: null } });
+  assert.equal(back.status, 200, JSON.stringify(back.json));
+  assert.equal(stored('apps.helper').computer_use_excluded_apps, null);
+  assert.ok((back.json as { computer_use_excluded_apps: string[] }).computer_use_excluded_apps.includes('1Password'));
+  const same = await call('PATCH', '/api/agents/apps.helper/config', { bearer: leadToken, body: { computer_use_excluded_apps: null } });
+  assert.equal(same.status, 200, 'the defaults sent back over the defaults pass');
+});

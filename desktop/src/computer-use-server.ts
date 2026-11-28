@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage } from 'node:http';
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { authorizedBearer } from './native-browser-protocol.js';
-import { ComputerCommandError, parseAllowedApps, parseComputerActor, parseComputerCommand, parseComputerMode, type AllowedApp, type ComputerActor, type ComputerCommand, type ComputerUseMode } from './computer-use-protocol.js';
+import { ComputerCommandError, parseAllAppsScope, parseAllowedApps, parseComputerActor, parseComputerCommand, parseComputerMode, type AllAppsScope, type AllowedApp, type ComputerActor, type ComputerCommand, type ComputerUseMode } from './computer-use-protocol.js';
 import { pointerLabel } from './computer-use-pointer.js';
 
 export interface ComputerProviderDescriptor {
@@ -34,7 +34,7 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
 
 export async function startComputerServer(
   home: string,
-  handle: (actor: ComputerActor, command: ComputerCommand, allowedApps: AllowedApp[], mode: ComputerUseMode, agent: string | undefined) => Promise<unknown>,
+  handle: (actor: ComputerActor, command: ComputerCommand, allowedApps: AllowedApp[], mode: ComputerUseMode, everything: AllAppsScope | null, agent: string | undefined) => Promise<unknown>,
 ): Promise<{ descriptor: ComputerProviderDescriptor; close: () => Promise<void> }> {
   const token = randomBytes(32).toString('hex');
   const server = createServer(async (request, response) => {
@@ -51,8 +51,9 @@ export async function startComputerServer(
       }
       const body = await readBody(request);
       const command = parseComputerCommand(body.command, body.args);
+      const mode = parseComputerMode(body.mode);
       // The agent's name labels the ghost pointer and nothing else.
-      const result = await handle(parseComputerActor(body.actor), command, parseAllowedApps(body.allowedApps, parseComputerMode(body.mode)), parseComputerMode(body.mode), pointerLabel(body.agent));
+      const result = await handle(parseComputerActor(body.actor), command, parseAllowedApps(body.allowedApps, mode), mode, parseAllAppsScope(body.allApps, body.excludedApps, mode), pointerLabel(body.agent));
       response.end(JSON.stringify({ ok: true, result }));
     } catch (error) {
       const known = error instanceof ComputerCommandError;

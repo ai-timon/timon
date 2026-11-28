@@ -22,7 +22,7 @@ Computer use is **refused for everything except an explicit list of applications
 The foreground application is checked just before each action. A window change in the interval between the check and the action remains possible.
 
 - An entry can be the application's name, the name of its executable, or on macOS its bundle identifier (for example `TextEdit`, `notepad` or `com.apple.TextEdit`). The case does not matter, and a trailing `.exe` is ignored.
-- **An empty list means the agent cannot do anything with the computer.** The card warns you about it. Only listing the windows and waiting stay possible.
+- **An empty list means the agent cannot do anything with the computer**, unless [All applications](#allow-every-application) is on. The card warns you about it. Only listing the windows and waiting stay possible.
 - **Add from open windows** lists the applications that have a window open right now: click one to add it. Timon reads its accessibility tree first and pre-fills the mode (see below).
 - Only a person can edit the list. An agent cannot add to it, whatever its account holds; it can only remove entries, and it can **ask you** to add some, as the next section describes.
 
@@ -35,6 +35,18 @@ The agent can capture a single window instead of the whole screen: `computer_scr
 - The window's application must be allowed in the foreground mode, like the application in front, which every screenshot already needs. Otherwise the capture is refused with `computer_app_not_allowed` or `computer_background_only`.
 - Only the part of the window on the main screen is captured. A minimised window, or one on another screen, is refused with `window_not_visible`: the agent brings it forward with `computer_focus_window`, or captures the whole screen.
 - The coordinates of the next clicks, moves, drags and scrolls are pixels of that capture, and they stay inside the window. The next screenshot, of a window or of the screen, sets the frame again: the agent takes one after a window moves.
+
+### Allow every application
+
+Rather than listing applications one by one, you can let the agent use the whole screen. In the card **All applications**, turn on **Allow every application**:
+
+- Every application is allowed, **except the excluded applications**, which are always refused, even when they are also in the allowed list. The agent gets `computer_app_excluded` for them and is told not to work around it.
+- **Applications not in the list** run in the mode you pick on that row (foreground or background). An application of the allowed list keeps its own mode.
+- **Excluded applications** starts with a default list: password managers (KeePassXC, 1Password, Bitwarden and others, the macOS Keychain and Passwords apps), the usual terminals of macOS, Windows and Linux (a shell can run anything), and Timon itself. **Edit** opens the list: add or remove names, then **Save**. The **…** menu restores the default list. Names match like the allowed list: the application's name, its executable or its bundle identifier, case apart.
+- **Only you can turn it on**, from the agent's Permissions. An agent cannot, nor can the `timon` command line, a script using the daemon's token, or a proposal card: `computer_use_propose` refuses it. Taking an application out of the exclusions is refused to them the same way; turning the switch off or adding an exclusion is not.
+- The action journal notes when the switch is turned on or off.
+
+**Known limit:** a screenshot shows your whole screen, not only the allowed application in front of it. Close or hide whatever the agent must not see before you let it work.
 
 ## Choose a mode per application
 

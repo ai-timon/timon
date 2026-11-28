@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ComputerCommandError, parseAllowedApps, parseComputerCommand } from './computer-use-protocol.js';
+import { ComputerCommandError, parseAllAppsScope, parseAllowedApps, parseComputerCommand } from './computer-use-protocol.js';
 import type { SystemCommand } from './computer-use-input.js';
-import { appMode, findWindow, focusWindow, isAppAllowed, listWindows, readForegroundApp, windowApp, windowBounds } from './computer-use-windows.js';
+import { appMode, findWindow, focusWindow, isAppAllowed, isAppExcluded, listWindows, readForegroundApp, windowApp, windowBounds } from './computer-use-windows.js';
 
 test('the allow-list compares case-insensitively with the bundle id, the displayed name or the executable', () => {
   const app = { bundle: 'com.microsoft.VSCode', name: 'Visual Studio Code', exe: 'Code' };
@@ -215,4 +215,35 @@ test('Windows and macOS: the rectangle comes from the system in points; a bad an
   assert.deepEqual(await windowBounds('darwin', mac, notes!, 2), { x: 0, y: 25, width: 800, height: 600 });
   assert.equal(await windowBounds('darwin', mac, (await findWindow('darwin', mac, '10:2'))!, 2), null);
   assert.equal(await findWindow('darwin', mac, '99:1'), null);
+});
+
+test('"All applications": the unlisted take the scope\'s mode, a listed one keeps its own, an exclusion always wins', () => {
+  const notes = { bundle: 'com.apple.Notes', name: 'Notes', exe: 'Notes' };
+  const keepass = { name: 'KeePassXC', exe: 'keepassxc' };
+  const notepad = { name: 'Notepad', exe: 'notepad.exe' };
+  const everything = { mode: 'background' as const, excluded: ['KeePassXC', 'NOTEPAD'] };
+  assert.equal(appMode(notes, [], 'foreground', everything), 'background', 'unlisted: the default mode');
+  assert.equal(appMode(notes, [], 'foreground', { mode: 'foreground', excluded: [] }), 'foreground');
+  assert.equal(appMode(notes, [{ app: 'Notes', mode: 'foreground' }], 'foreground', everything), 'foreground', 'an explicit entry keeps its mode');
+  assert.equal(appMode(keepass, [], 'foreground', everything), null, 'excluded');
+  assert.equal(appMode(keepass, [{ app: 'keepassxc', mode: 'foreground' }], 'foreground', everything), null, 'the exclusion wins over an explicit entry');
+  assert.equal(appMode(notepad, [], 'foreground', everything), null, 'any name, case and .exe apart');
+  assert.equal(appMode(null, [], 'foreground', everything), null, 'an unreadable application stays refused');
+  assert.equal(appMode(keepass, [{ app: 'KeePassXC', mode: 'foreground' }]), 'foreground', 'the exclusions only apply with the switch on');
+  assert.equal(appMode(notes, []), null, 'off: an empty list allows nothing');
+  assert.equal(isAppAllowed(notes, [], everything), true);
+  assert.equal(isAppExcluded(keepass, ['  keepassxc '.trim()]), true);
+  assert.equal(isAppExcluded(keepass, ['', 'KeePass']), false, 'exact names only, an empty entry matches nothing');
+});
+
+test('"All applications" is parsed off by default and refused on without its exclusions', () => {
+  assert.equal(parseAllAppsScope(undefined, undefined, 'foreground'), null);
+  assert.equal(parseAllAppsScope(false, ['x'], 'foreground'), null);
+  assert.deepEqual(parseAllAppsScope(true, ['KeePassXC'], 'background'), { mode: 'background', excluded: ['KeePassXC'] });
+  assert.deepEqual(parseAllAppsScope(true, [], 'foreground'), { mode: 'foreground', excluded: [] }, 'an empty list a person chose is kept');
+  assert.throws(() => parseAllAppsScope(true, undefined, 'foreground'), ComputerCommandError);
+  assert.throws(() => parseAllAppsScope('yes', [], 'foreground'), ComputerCommandError);
+  assert.throws(() => parseAllAppsScope(true, [3], 'foreground'), ComputerCommandError);
+  assert.throws(() => parseAllAppsScope(true, Array.from({ length: 201 }, (_, i) => `a${i}`), 'foreground'), ComputerCommandError);
+
 });

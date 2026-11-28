@@ -411,7 +411,7 @@ test('the ghost pointer is told where the agent\'s pointer goes and clicks, with
     pointerMotionMs: () => 200, cursor: () => ({ x: 100, y: 100 }), onPointer: (event, agent) => drawn.push({ event, agent }),
     exec: async () => { if (failExec) throw new Error('boom'); return { stdout: 'true\n' }; },
   });
-  const run = (command: string, args: unknown, actor: 'agent' | 'human' = 'agent') => service.handle(actor, parseComputerCommand(command, args), ['TextEdit'], 'foreground', 'designer');
+  const run = (command: string, args: unknown, actor: 'agent' | 'human' = 'agent') => service.handle(actor, parseComputerCommand(command, args), ['TextEdit'], 'foreground', null, 'designer');
   await run('screenshot', { maxWidth: 1440 });
   await run('double_click', { x: 700, y: 300 });
   assert.deepEqual(drawn, [
@@ -439,5 +439,22 @@ test('the ghost pointer is told where the agent\'s pointer goes and clicks, with
 
 test('a drawing that throws never fails the action', async () => {
   const { service } = setup({ onPointer: () => { throw new Error('window gone'); } });
-  assert.deepEqual(await service.handle('agent', parseComputerCommand('click', { x: 1, y: 1 }), ['TextEdit'], 'foreground', 'designer'), {});
+  assert.deepEqual(await service.handle('agent', parseComputerCommand('click', { x: 1, y: 1 }), ['TextEdit'], 'foreground', null, 'designer'), {});
+});
+
+test('"All applications": an unlisted application is driven in the default mode, an excluded one is refused with its own code', async () => {
+  const service = new ComputerUseService({
+    platform: 'darwin', env: {}, display: () => display, cursor: () => ({ x: 0, y: 0 }), capture: async () => Buffer.from([0xff, 0xd8]),
+    screenPermission: () => 'granted', sleep: async () => {}, a11y: createFakeA11yBackend({}, 'unsupported'),
+    exec: async (command) => ({ stdout: isForegroundRead(command) ? JSON.stringify(FRONT) : 'true' }),
+  });
+  const click = parseComputerCommand('click', { x: 1, y: 1 });
+  await assert.rejects(service.handle('agent', click, [], 'foreground'), (e: ComputerCommandError) => e.code === 'computer_app_not_allowed', 'off: nothing listed, nothing allowed');
+  await service.handle('agent', click, [], 'foreground', { mode: 'foreground', excluded: ['Terminal'] });
+  await assert.rejects(service.handle('agent', click, [], 'background', { mode: 'background', excluded: [] }),
+    (e: ComputerCommandError) => e.code === 'computer_background_only', 'the default mode applies to an unlisted application');
+  await service.handle('agent', click, [{ app: 'TextEdit', mode: 'foreground' }], 'background', { mode: 'background', excluded: [] });
+  await assert.rejects(service.handle('agent', click, [{ app: 'TextEdit', mode: 'foreground' }], 'foreground', { mode: 'foreground', excluded: ['com.apple.textedit'] }),
+    (e: ComputerCommandError) => e.code === 'computer_app_excluded' && e.statusCode === 403 && /TextEdit/.test(e.message), 'an exclusion wins over an explicit entry');
+  await service.handle('human', click, [], 'foreground', { mode: 'foreground', excluded: ['TextEdit'] });
 });

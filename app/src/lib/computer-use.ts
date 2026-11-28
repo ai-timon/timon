@@ -146,6 +146,62 @@ export function normalizeAllowedApps(raw: unknown, fallback: ComputerAppMode = '
   return out;
 }
 
+/**
+ * What "All applications" leaves out until a person edits the list. A copy of the daemon's
+ * `DEFAULT_COMPUTER_USE_EXCLUDED_APPS` (orchestrator/src/agent-config.ts): the editor needs it for an
+ * agent not saved yet, and to tell whether a list is still the default one. `computer-use.test.ts`
+ * compares the two.
+ */
+export const DEFAULT_EXCLUDED_APPS: readonly string[] = Object.freeze([
+  // Password managers and key stores.
+  'KeePassXC', 'org.keepassxc.keepassxc', 'KeePass', 'KeeWeb',
+  '1Password', 'com.1password.1password', 'com.agilebits.onepassword7',
+  'Bitwarden', 'com.bitwarden.desktop',
+  'Dashlane', 'LastPass', 'Enpass', 'Proton Pass', 'ProtonPass', 'NordPass', 'RoboForm', 'Keeper Password Manager',
+  'Keychain Access', 'com.apple.keychainaccess', 'Passwords', 'com.apple.Passwords',
+  'Seahorse', 'org.gnome.seahorse.Application', 'kwalletmanager5', 'KWalletManager',
+  // Terminals.
+  'Terminal', 'com.apple.Terminal', 'iTerm2', 'com.googlecode.iterm2', 'Warp', 'dev.warp.Warp-Stable',
+  'Ghostty', 'com.mitchellh.ghostty', 'Alacritty', 'kitty', 'WezTerm', 'wezterm-gui', 'org.wezfurlong.wezterm',
+  'Hyper', 'Tabby',
+  'gnome-terminal', 'gnome-terminal-server', 'org.gnome.Terminal', 'kgx', 'org.gnome.Console', 'ptyxis', 'org.gnome.Ptyxis',
+  'konsole', 'xterm', 'uxterm', 'urxvt', 'rxvt', 'xfce4-terminal', 'tilix', 'terminator', 'mate-terminal', 'lxterminal',
+  'qterminal', 'foot', 'terminology', 'deepin-terminal', 'guake', 'yakuake', 'tilda', 'st',
+  'WindowsTerminal', 'Windows Terminal', 'wt', 'cmd', 'powershell', 'pwsh', 'Windows PowerShell', 'conhost', 'OpenConsole', 'mintty',
+  // Timon itself, packaged and run from the sources.
+  'Timon', 'com.timon.desktop', 'timon-desktop', 'timon-dev',
+]);
+
+/** The excluded applications as the daemon serves them; the defaults when absent. Blanks and repeats (case apart) are dropped. */
+export function normalizeExcludedApps(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [...DEFAULT_EXCLUDED_APPS];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const app = item.trim();
+    if (!app || seen.has(app.toLowerCase())) continue;
+    seen.add(app.toLowerCase());
+    out.push(app);
+  }
+  return out;
+}
+
+/** Whether a list names exactly the default applications, in any order and case. */
+export function isDefaultExcludedApps(list: readonly string[]): boolean {
+  const wanted = new Set(DEFAULT_EXCLUDED_APPS.map((app) => app.toLowerCase()));
+  const got = new Set(list.map((app) => app.trim().toLowerCase()));
+  return got.size === wanted.size && [...wanted].every((app) => got.has(app));
+}
+
+/**
+ * What a save sends: null while the list is the default one, so the agent keeps following the product's
+ * defaults (an absent key would keep a list stored earlier), the names otherwise.
+ */
+export function excludedAppsToSave(list: readonly string[]): string[] | null {
+  return isDefaultExcludedApps(list) ? null : [...list];
+}
+
 /** How rich an application's accessibility tree is: `rich` can be driven in the background. */
 export type AppVerdict = 'rich' | 'poor' | 'empty';
 

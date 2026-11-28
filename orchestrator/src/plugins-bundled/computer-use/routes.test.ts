@@ -33,6 +33,7 @@ const enabledToken = agentWith('computer-on', { computer_use: true });
 const disabledToken = agentWith('computer-off', {});
 
 const forwarded: ({ allowedApps: { app: string; mode: string }[] } | undefined)[] = [];
+const everything: ({ allApps?: boolean; excludedApps?: readonly string[] } | undefined)[] = [];
 const modes: (string | undefined)[] = [];
 const agents: (string | undefined)[] = [];
 const calls: { command: string; args: Record<string, unknown>; actor: string }[] = [];
@@ -45,6 +46,7 @@ registerComputerRoutes(app, {
     calls.push({ command, args, actor });
     modes.push(options?.mode);
     agents.push(options?.agent);
+    everything.push(options?.allApps === undefined ? undefined : { allApps: options.allApps, excludedApps: options.excludedApps });
     forwarded.push(options?.allowedApps === undefined ? undefined : { allowedApps: [...options.allowedApps] });
     if (desktop === 'down') throw new NativeComputerError(apiError('computer_unavailable', 'down'), 503);
     if (desktop === 'stopped') throw new NativeComputerError(apiError('computer_stopped', 'stopped'), 409);
@@ -401,17 +403,32 @@ test('the desktop\'s accessibility refusals keep their own codes', async () => {
   } finally { server.close(); }
 });
 
-test('the real provider sends the agent\'s name with an agent\'s command, and not with a person\'s', async () => {
-  const { createServer } = await import('node:http');
+test('"All applications" travels with an agent\'s commands with its exclusions, the defaults until a person edits them', async () => {
+  const all = agentWith('computer-all', { computer_use: true, computer_use_all_apps: true, computer_use_mode: 'background' });
+  const send = (token: string) => fetch(`${base}/a11y_tree`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: '{}' });
+  assert.equal((await send(all)).status, 200);
+  assert.equal(everything.at(-1)?.allApps, true);
+  assert.ok(everything.at(-1)?.excludedApps?.includes('KeePassXC'), 'the defaults travel while nobody edited the list');
+  assert.equal(modes.at(-1), 'background', 'the default mode of the unlisted applications');
+  const edited = agentWith('computer-all-edited', { computer_use: true, computer_use_all_apps: true, computer_use_excluded_apps: ['Slack', ' ', 'slack'] });
+  await send(edited);
+  assert.deepEqual(everything.at(-1), { allApps: true, excludedApps: ['Slack'] });
+  await post('a11y_tree', {}, 'enabled');
+  assert.equal(everything.at(-1), undefined, 'off: nothing about it is sent');
+  const stray = agentWith('computer-all-stray', { computer_use: true, computer_use_all_apps: 'yes' });
+  await send(stray);
+  assert.equal(everything.at(-1), undefined, 'only true turns it on');
+});
+
+test('the provider sends the agent\'s name and "All applications" only for an agent, and an excluded application keeps its own refusal', async () => {
   const bodies: Record<string, unknown>[] = [];
-  const server = createServer((req, res) => {
+  const server = (await import('node:http')).createServer(async (req, res) => {
     let raw = '';
-    req.on('data', (chunk: Buffer) => { raw += chunk.toString(); });
-    req.on('end', () => {
-      bodies.push(JSON.parse(raw) as Record<string, unknown>);
-      res.setHeader('content-type', 'application/json');
-      res.end(JSON.stringify({ ok: true, result: {} }));
-    });
+    for await (const chunk of req) raw += String(chunk);
+    bodies.push(JSON.parse(raw) as Record<string, unknown>);
+    res.statusCode = 403;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: false, code: 'computer_app_excluded', error: 'The foreground application is KeePassXC, which this agent\'s excluded applications name.' }));
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -422,9 +439,22 @@ test('the real provider sends the agent\'s name with an agent\'s command, and no
   mk(join(home, 'computer-native'));
   write(join(home, 'computer-native', 'provider.json'), JSON.stringify({ version: 1, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, token: 'x'.repeat(40), pid: 1 }));
   try {
-    await callNativeComputer('move', { x: 1, y: 1 }, 'agent', { home, allowedApps: [], agent: 'designer' });
-    await callNativeComputer('status', {}, 'human', { home, agent: 'designer' });
-    assert.equal(bodies[0]?.agent, 'designer');
-    assert.equal('agent' in bodies[1]!, false);
+    await assert.rejects(callNativeComputer('move', { x: 1, y: 1 }, 'agent', { home, allowedApps: [], agent: 'designer' }));
+    await assert.rejects(callNativeComputer('status', {}, 'human', { home, agent: 'designer' }));
+    assert.equal(bodies.at(-2)?.agent, 'designer');
+    assert.equal('agent' in bodies.at(-1)!, false);
+    await assert.rejects(callNativeComputer('click', { x: 1, y: 1 }, 'agent', { home, allowedApps: [], mode: 'background', allApps: true, excludedApps: ['KeePassXC'] }), (error: NativeComputerError) => {
+      assert.equal(error.status, 403);
+      assert.equal(error.body.code, 'computer_app_excluded');
+      assert.match(error.body.error, /KeePassXC/);
+      assert.match(error.body.error, /Do not work around it/);
+      return true;
+    });
+    assert.equal(bodies.at(-1)?.allApps, true);
+    assert.deepEqual(bodies.at(-1)?.excludedApps, ['KeePassXC']);
+    await assert.rejects(callNativeComputer('click', { x: 1, y: 1 }, 'agent', { home, allowedApps: [], mode: 'foreground' }));
+    assert.equal('allApps' in (bodies.at(-1) ?? {}), false, 'off: an older desktop reads the list alone');
+    await assert.rejects(callNativeComputer('list_windows', {}, 'human', { home, allApps: true, excludedApps: [] }));
+    assert.equal('allApps' in (bodies.at(-1) ?? {}), false, 'a person\'s command carries no scope');
   } finally { server.close(); }
 });

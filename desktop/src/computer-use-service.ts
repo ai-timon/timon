@@ -5,16 +5,19 @@
  * so the whole decision logic runs under test with simulated ones. This file imports no Electron.
  */
 import {
-  COMPUTER_DEFAULT_MAX_WIDTH, ComputerCommandError, FRONT_WINDOW, type AllowedApp, type ComputerActor, type ComputerUseMode, type ComputerCommand, type ComputerUnavailableReason,
+  COMPUTER_DEFAULT_MAX_WIDTH, ComputerCommandError, FRONT_WINDOW, type AllAppsScope, type AllowedApp, type ComputerActor, type ComputerUseMode, type ComputerCommand, type ComputerUnavailableReason,
 } from './computer-use-protocol.js';
 import { clipToDisplay, imageToPoints, pointsToImage, screenshotSize, type DisplayInfo, type Frame, type ImageSize, type Region } from './computer-use-geometry.js';
 import { A11Y_DEFAULT_MAX_DEPTH, A11Y_PROBE_MAX_NODES, A11yError, buildTree, parseElementId, probeVerdict, type A11yBackend, type A11yBounds } from './computer-use-a11y.js';
 import type { PointerEvent } from './computer-use-pointer.js';
 import { selectA11yBackend } from './computer-use-a11y-select.js';
-import { appMode, describeApp, findWindow, focusWindow, listWindows, readForegroundApp, windowApp, windowBounds } from './computer-use-windows.js';
+import { appMode, describeApp, findWindow, focusWindow, isAppExcluded, listWindows, readForegroundApp, windowApp, windowBounds } from './computer-use-windows.js';
 import {
   MAC_TRUST_SCRIPT, buildInputCommand, macCommand, type InputAction, type InputPlatform, type PointerMotion, type SystemCommand,
 } from './computer-use-input.js';
+
+/** What an agent may act in: its listed applications and, when on, "All applications" with its exclusions. */
+interface AppAccess { apps: readonly AllowedApp[]; everything: AllAppsScope | null }
 
 export interface ComputerUseDeps {
   platform: NodeJS.Platform;
@@ -266,20 +269,20 @@ export class ComputerUseService {
 
   /** One command at a time: two inputs interleaved would be worse than a short wait. */
   handle(
-    actor: ComputerActor, command: ComputerCommand, allowedApps: readonly (string | AllowedApp)[] = [], mode: ComputerUseMode = 'foreground', agent?: string,
+    actor: ComputerActor, command: ComputerCommand, allowedApps: readonly (string | AllowedApp)[] = [], mode: ComputerUseMode = 'foreground', everything: AllAppsScope | null = null, agent?: string,
   ): Promise<unknown> {
     // A bare name takes `mode`, the agent's default.
     const apps = allowedApps.map((entry): AllowedApp => (typeof entry === 'string' ? { app: entry, mode } : entry));
     const run = this.queue.then(() => {
       this.drawing = actor === 'agent';
       this.agent = this.drawing ? agent : undefined;
-      return this.dispatch(actor, command, apps);
+      return this.dispatch(actor, command, { apps, everything });
     });
     this.queue = run.catch(() => undefined);
     return run;
   }
 
-  private async dispatch(actor: ComputerActor, command: ComputerCommand, allowedApps: readonly AllowedApp[]): Promise<unknown> {
+  private async dispatch(actor: ComputerActor, command: ComputerCommand, access: AppAccess): Promise<unknown> {
     if (command.command === 'status') return this.status();
     if (command.command === 'request_permissions' || command.command === 'restart_app') {
       if (actor !== 'human') throw new ComputerCommandError('Only a person can change the computer permissions or restart Timon.', 403, 'forbidden');
@@ -310,16 +313,16 @@ export class ComputerUseService {
     // Everything is refused except an explicit list: what takes the screen, mouse or keyboard needs the
     // application in front allowed in the foreground mode, each application carrying its own mode.
     if (actor === 'agent' && FOREGROUND_GATED.has(command.command)) {
-      await this.requireForeground(await readForegroundApp(platform, this.deps.exec), allowedApps, 'The foreground application');
+      await this.requireForeground(await readForegroundApp(platform, this.deps.exec), access, 'The foreground application');
     }
     if (command.command === 'a11y_probe_app' && actor !== 'human') {
       throw new ComputerCommandError('Only a person can probe an application.', 403, 'forbidden');
     }
     switch (command.command) {
       case 'list_windows': return this.windows(platform);
-      case 'focus_window': return this.focus(actor, platform, command.id, allowedApps);
-      case 'a11y_tree': return this.a11yTree(actor, platform, display, command, allowedApps);
-      case 'a11y_action': return this.a11yAction(actor, platform, command, allowedApps, display);
+      case 'focus_window': return this.focus(actor, platform, command.id, access);
+      case 'a11y_tree': return this.a11yTree(actor, platform, display, command, access);
+      case 'a11y_action': return this.a11yAction(actor, platform, command, access, display);
       case 'a11y_probe_app': return this.probeApp(display, command.windowId);
       case 'screenshot': return this.screenshot(actor, platform, display, command, allowedApps);
       case 'cursor_position': {
@@ -333,22 +336,25 @@ export class ComputerUseService {
     }
   }
 
-  private notAllowed(app: Parameters<typeof describeApp>[0], allowedApps: readonly AllowedApp[], subject = 'The foreground application'): ComputerCommandError {
+  private notAllowed(app: Parameters<typeof describeApp>[0], access: AppAccess, subject = 'The foreground application'): ComputerCommandError {
     const where = app ? `${subject} is ${describeApp(app)}` : 'The foreground application could not be read';
-    const why = allowedApps.length === 0 ? 'this agent has no allowed applications' : 'it is not in this agent\'s allowed applications';
+    if (app && access.everything && isAppExcluded(app, access.everything.excluded)) {
+      return new ComputerCommandError(`${where}, which this agent's excluded applications name, so this action is refused even with all applications allowed. Only the user can lift the exclusion.`, 403, 'computer_app_excluded');
+    }
+    const why = access.apps.length === 0 ? 'this agent has no allowed applications' : 'it is not in this agent\'s allowed applications';
     return new ComputerCommandError(`${where}, and ${why}, so this action is refused.`, 403, 'computer_app_not_allowed');
   }
 
   /** The application must be allowed in any mode (reading and acting through accessibility). */
-  private requireAllowed(app: Parameters<typeof describeApp>[0], allowedApps: readonly AllowedApp[], subject: string): 'foreground' | 'background' {
-    const mode = appMode(app, allowedApps);
-    if (!mode) throw this.notAllowed(app, allowedApps, subject);
+  private requireAllowed(app: Parameters<typeof describeApp>[0], access: AppAccess, subject: string): 'foreground' | 'background' {
+    const mode = appMode(app, access.apps, 'foreground', access.everything);
+    if (!mode) throw this.notAllowed(app, access, subject);
     return mode;
   }
 
   /** The application must be allowed in the foreground mode: a background one is told to use accessibility. */
-  private async requireForeground(app: Parameters<typeof describeApp>[0], allowedApps: readonly AllowedApp[], subject: string): Promise<void> {
-    const mode = this.requireAllowed(app, allowedApps, subject);
+  private async requireForeground(app: Parameters<typeof describeApp>[0], access: AppAccess, subject: string): Promise<void> {
+    const mode = this.requireAllowed(app, access, subject);
     if (mode === 'background') {
       const name = app?.name || app?.exe || app?.bundle || 'This application';
       throw new ComputerCommandError(`${name} is allowed in the background only: use a11y_tree / a11y_action. Screenshots, the mouse and the keyboard are refused for it.`, 403, 'computer_background_only');
@@ -385,7 +391,7 @@ export class ComputerUseService {
   }
 
   private async a11yTree(
-    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, command: Extract<ComputerCommand, { command: 'a11y_tree' }>, allowedApps: readonly AllowedApp[],
+    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, command: Extract<ComputerCommand, { command: 'a11y_tree' }>, access: AppAccess,
   ): Promise<unknown> {
     await this.requireA11y();
     let windows;
@@ -396,7 +402,7 @@ export class ComputerUseService {
     let app;
     try { app = await windowApp(platform, this.deps.exec, info.id); }
     catch { throw new ComputerCommandError('Reading the windows failed.', 502, 'windows_failed'); }
-    if (actor === 'agent') this.requireAllowed(app, allowedApps, 'The application of that window');
+    if (actor === 'agent') this.requireAllowed(app, access, 'The application of that window');
     const query = command.query?.trim().toLowerCase();
     let raw;
     try { raw = await this.a11y.tree({ windowId: info.id, maxDepth: command.maxDepth, maxNodes: command.maxNodes, ...(query ? { query } : {}) }); }
@@ -406,7 +412,7 @@ export class ComputerUseService {
   }
 
   private async a11yAction(
-    actor: ComputerActor, platform: InputPlatform, command: Extract<ComputerCommand, { command: 'a11y_action' }>, allowedApps: readonly AllowedApp[],
+    actor: ComputerActor, platform: InputPlatform, command: Extract<ComputerCommand, { command: 'a11y_action' }>, access: AppAccess,
     display?: DisplayInfo,
   ): Promise<unknown> {
     await this.requireA11y();
@@ -417,7 +423,7 @@ export class ComputerUseService {
     catch { throw new ComputerCommandError('Reading the windows failed.', 502, 'windows_failed'); }
     if (!app) throw this.a11yFailure(new A11yError('stale', 'No such window.'), '');
     // An application driven in the background never gets the user's focus, mouse or keyboard.
-    const background = actor === 'agent' && this.requireAllowed(app, allowedApps, 'The application of that element') === 'background';
+    const background = actor === 'agent' && this.requireAllowed(app, access, 'The application of that element') === 'background';
     if (background && command.action === 'focus') {
       throw new ComputerCommandError('This application is allowed in the background only: use a11y_tree and a11y_action. Focusing an element would take the user\'s focus.', 403, 'computer_background_only');
     }
@@ -439,7 +445,7 @@ export class ComputerUseService {
       catch (focusError) { throw this.a11yFailure(focusError, 'The accessibility action failed.'); }
       await (this.deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(150);
       if (actor === 'agent') {
-        await this.requireForeground(await readForegroundApp(platform, this.deps.exec), allowedApps, 'The foreground application');
+        await this.requireForeground(await readForegroundApp(platform, this.deps.exec), access, 'The foreground application');
       }
       await this.input(display, { command: 'key', keys: platform === 'darwin' ? 'cmd+a' : 'ctrl+a' });
       if ((command.value ?? '') !== '') await this.input(display, { command: 'type', text: command.value ?? '' });
@@ -449,13 +455,13 @@ export class ComputerUseService {
     return { ok: true };
   }
 
-  private async focus(actor: ComputerActor, platform: InputPlatform, id: string, allowedApps: readonly AllowedApp[]): Promise<unknown> {
+  private async focus(actor: ComputerActor, platform: InputPlatform, id: string, access: AppAccess): Promise<unknown> {
     let app;
     try { app = await windowApp(platform, this.deps.exec, id); }
     catch { throw new ComputerCommandError('Reading the windows failed.', 502, 'windows_failed'); }
     if (!app) throw new ComputerCommandError('No open window has this id.', 404, 'window_not_found');
     // An agent only brings forward the windows of the applications it may drive in the foreground.
-    if (actor === 'agent') await this.requireForeground(app, allowedApps, 'The application of that window');
+    if (actor === 'agent') await this.requireForeground(app, access, 'The application of that window');
     let focused = false;
     try { focused = await focusWindow(platform, this.deps.exec, id); }
     catch { throw new ComputerCommandError('Bringing the window forward failed.', 502, 'windows_failed'); }

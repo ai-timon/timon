@@ -170,7 +170,7 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
   // A person can always stop, even when the agent has focus on another window.
   const registered = globalShortcut.register(COMPUTER_STOP_SHORTCUT, () => service.stop());
   if (!registered) console.warn('[computer-use] The global stop shortcut is taken by another application; the indicator button still stops.');
-  const provider = await startComputerServer(home, (actor, command, allowedApps, mode, agent) => service.handle(actor, command, allowedApps, mode, agent));
+  const provider = await startComputerServer(home, (actor, command, allowedApps, mode, everything, agent) => service.handle(actor, command, allowedApps, mode, everything, agent));
   return {
     service,
     close: async () => {

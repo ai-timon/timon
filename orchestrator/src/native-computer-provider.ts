@@ -83,6 +83,11 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
     const found = message ?? 'The foreground application is not in the agent\'s allowed list.';
     return new NativeComputerError(apiError('computer_app_not_allowed', `${found} Ask the user to add the application to the allowed applications in this agent's settings, or to bring an allowed one to the front.`, { detail: found }), 403);
   }
+  if (code === 'computer_app_excluded') {
+    // "All applications" is on, but the user excluded this one: asking to add it to the list changes nothing.
+    const found = message ?? 'The foreground application is excluded for this agent.';
+    return new NativeComputerError(apiError('computer_app_excluded', `${found} Do not work around it: bring another application to the front, or ask the user to do this step themselves.`, { detail: found }), 403);
+  }
   if (code === 'computer_background_only') {
     return new NativeComputerError(apiError('computer_background_only', 'This agent works in the background: use a11y_tree and a11y_action. Screenshots, the mouse, the keyboard and focusing a window are refused, so the user keeps their screen.'), 403);
   }
@@ -110,6 +115,13 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
   return new NativeComputerError(apiError('computer_command_failed', `Computer command failed: ${detail}`, { detail }), 502);
 }
 
+/** What the desktop needs to judge an agent's command: its applications, its default mode and, when on, "All applications". */
+function agentScope(options: Parameters<typeof callNativeComputer>[3]): Record<string, unknown> {
+  const scope: Record<string, unknown> = { allowedApps: options?.allowedApps ?? [], mode: options?.mode ?? 'foreground' };
+  if (options?.allApps === true) Object.assign(scope, { allApps: true, excludedApps: options.excludedApps ?? [] });
+  return scope;
+}
+
 /**
  * Sends one command to the desktop's computer-use server. `actor` is the
  * daemon's, derived from the authentication, never the caller's.
@@ -119,7 +131,13 @@ export async function callNativeComputer(
   args: Record<string, unknown>,
   actor: ComputerActor,
   options: {
-    home?: string; timeoutMs?: number; allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[]; mode?: 'foreground' | 'background';
+    home?: string;
+    timeoutMs?: number;
+    allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[];
+    mode?: 'foreground' | 'background';
+    /** Every application but `excludedApps`, the unlisted ones in `mode`. Sent only when on: a desktop that predates it then reads the list alone. */
+    allApps?: boolean;
+    excludedApps?: readonly string[];
     /** The agent behind the command, shown beside the pointer the desktop draws; never a permission. */
     agent?: string;
   } = {},
@@ -131,10 +149,7 @@ export async function callNativeComputer(
   try {
     response = await fetch(`${provider.origin}/command`, {
       method: 'POST', headers: { authorization: `Bearer ${provider.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        command, args, actor,
-        ...(actor === 'agent' ? { allowedApps: options.allowedApps ?? [], mode: options.mode ?? 'foreground', ...(options.agent ? { agent: options.agent } : {}) } : {}),
-      }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
+      body: JSON.stringify({ command, args, actor, ...(actor === 'agent' ? { ...agentScope(options), ...(options.agent ? { agent: options.agent } : {}) } : {}) }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
       redirect: 'error',
     });
   } catch {
