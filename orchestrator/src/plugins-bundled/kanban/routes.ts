@@ -490,7 +490,7 @@ export function closeTask(
   taskId: string,
   task: TaskRow,
   status: 'DONE' | 'BLOCKED',
-  opts: { doneComment?: string; blockedReason?: string; summary?: string; byPerson?: boolean },
+  opts: { doneComment?: string; blockedReason?: string; summary?: string; byPerson?: boolean; awaitingUser?: boolean },
 ): void {
   let doneComment = opts.doneComment;
   // Before the transition, like the merge sha: `task_done` builds the return
@@ -507,6 +507,7 @@ export function closeTask(
     blockedReason: opts.blockedReason,
     doneComment,
     byPerson: opts.byPerson,
+    awaitingUser: status === 'BLOCKED' && opts.awaitingUser === true,
   });
   // A dispatched task runs in a `persistentProcess` mission: after its
   // `result` the process keeps stdin open and stays idle indefinitely →
@@ -1394,7 +1395,11 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
         res.status(400).json(apiError('task_reason_required', 'reason is required to mark a task as failed'));
         return;
       }
-      closeTask(taskId, task, 'BLOCKED', { blockedReason: reason, byPerson: isPersonAuth(req.auth) });
+      closeTask(taskId, task, 'BLOCKED', {
+        blockedReason: reason,
+        byPerson: isPersonAuth(req.auth),
+        awaitingUser: body.awaiting_user === true,
+      });
       res.json({ task: scope.getTask(taskId) });
       return;
     }
@@ -1694,6 +1699,7 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
           closeTask(req.params.id, task, nextStatus, {
             doneComment: body.done_comment ?? undefined,
             blockedReason: body.blocked_reason ?? undefined,
+            awaitingUser: body.awaiting_user === true,
             summary: parseSummary(body.done_summary),
             // Only a browser session: an agent, the CLI or a plugin blocking a
             // task still hands it to the pilot.

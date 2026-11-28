@@ -26,6 +26,8 @@ export const parseTaskCloseBody = strictParser({
   comment: z.string().optional(),
   reason: z.string().optional(),
   blocked_reason: z.string().optional(),
+  /** With `outcome: failed`: the block waits for a person, not for a repair. */
+  awaiting_user: z.boolean().optional(),
   verdict: z.unknown().optional(),
   /** Hex shape and base checked by the route. */
   merged_sha: z.unknown().optional(),

@@ -2007,6 +2007,11 @@ if (!taskCols.includes('parent_task_id')) db.exec(`ALTER TABLE tasks ADD COLUMN 
 // (`daemon-message.ts`), for the webview to translate. The English columns stay
 // what every other reader shows; NULL = no code, which describes every earlier row.
 if (!taskCols.includes('blocked_reason_code')) db.exec(`ALTER TABLE tasks ADD COLUMN blocked_reason_code TEXT`);
+// A BLOCKED task that waits for a person (a pull request to merge, a go-ahead)
+// rather than for a repair. A column of its own: `blocked_reason_code` is reserved
+// for sentences the daemon wrote, and the agent's own reason must stay readable.
+// The status stays BLOCKED, so no dispatcher path picks the task up.
+if (!taskCols.includes('awaiting_user')) db.exec(`ALTER TABLE tasks ADD COLUMN awaiting_user INTEGER NOT NULL DEFAULT 0`);
 // How the chain lands (`docs/KANBAN-PR-PIPELINE.md` §2): NULL or 'local' keeps
 // the historical behaviour (the base is a local branch, taken as it is);
 // 'branch' and 'pr' make `base_branch` an integration branch cut from the
@@ -2231,6 +2236,15 @@ if (!notifCols.includes('message_code')) db.exec(`ALTER TABLE notifications ADD 
 // A writer that changes the reason without naming its code (an agent's own
 // reason, a statement written before the column) must not leave
 // the previous code behind: the webview would translate another sentence.
+// The wait ends with the block, whoever moves the task out of BLOCKED.
+db.exec(`
+CREATE TRIGGER IF NOT EXISTS tasks_awaiting_user_ends_with_block
+AFTER UPDATE OF status ON tasks
+WHEN NEW.status != 'BLOCKED' AND NEW.awaiting_user != 0
+BEGIN
+  UPDATE tasks SET awaiting_user = 0 WHERE id = NEW.id;
+END;
+`);
 db.exec(`
 CREATE TRIGGER IF NOT EXISTS tasks_blocked_reason_code_follows
 AFTER UPDATE OF blocked_reason ON tasks
@@ -2469,6 +2483,8 @@ export type TaskRow = {
   blocked_reason: string | null;
   /** JSON `{ code, params }` of a reason the daemon wrote (`daemon-message.ts`); null otherwise. */
   blocked_reason_code: string | null;
+  /** 1 when the BLOCKED task waits for a person, 0 otherwise; reset when the block ends. */
+  awaiting_user: number;
   done_comment: string | null;
   extra_skills: string | null;
   extra_mcp_servers: string | null;
@@ -3127,7 +3143,7 @@ const countInProgressStmt = db.prepare(
   `SELECT COUNT(*) as n FROM tasks WHERE status = 'IN_PROGRESS' AND mirror = 0`,
 );
 const updateTaskStatusStmt = db.prepare(
-  `UPDATE tasks SET status = ?, updated_at = ?, blocked_reason = ?, blocked_reason_code = ?, done_comment = ? WHERE id = ?`,
+  `UPDATE tasks SET status = ?, updated_at = ?, blocked_reason = ?, blocked_reason_code = ?, done_comment = ?, awaiting_user = ? WHERE id = ?`,
 );
 // interrupted_reason reset to NULL on
 // (re-)dispatch: the previous attempt's death cause
@@ -3144,7 +3160,7 @@ const assignTaskMissionStmt = db.prepare(
 // `blocked_reason` is overwritten only if empty —
 const setTaskInterruptedStmt = db.prepare(
   `UPDATE tasks SET status = 'BLOCKED', updated_at = ?, interrupted_reason = ?,
-                    quota_resets_at = ?,
+                    quota_resets_at = ?, awaiting_user = 0,
                     blocked_reason_code = CASE WHEN COALESCE(blocked_reason, '') = '' THEN ? ELSE blocked_reason_code END,
                     blocked_reason = COALESCE(NULLIF(blocked_reason, ''), ?)
    WHERE id = ?`,
@@ -3599,7 +3615,7 @@ function guardMergeDone(
  */
 const TASK_WATCHED_COLUMNS = [
   'title', 'description', 'agent_name', 'status', 'priority', 'deps', 'scheduled_at', 'type',
-  'blocked_reason', 'done_comment', 'extra_skills', 'extra_mcp_servers', 'extra_allowed_tools',
+  'blocked_reason', 'awaiting_user', 'done_comment', 'extra_skills', 'extra_mcp_servers', 'extra_allowed_tools',
   'backend_override', 'model_override', 'fallback_backend_override', 'fallback_model_override',
   'permission_mode_override', 'reasoning_effort',
 ] as const satisfies readonly (keyof TaskRow)[];
@@ -5580,6 +5596,8 @@ export const dbApi = {
       blockedReasonCode?: DaemonMessage | null;
       doneComment?: string | null;
       byPerson?: boolean;
+      /** The block waits for a person, not for a repair. Only kept for a BLOCKED outcome. */
+      awaitingUser?: boolean;
     } = {},
   ): void {
     const prev = getTaskStmt.get(id) as TaskRow | undefined;
@@ -5601,6 +5619,8 @@ export const dbApi = {
       g.blockedReason,
       g.blockedReason ? encodeDaemonMessage(g.blockedReasonCode, redactText) : null,
       opts.doneComment ?? null,
+      // The merge guard turns a refused DONE into a repair block, never a wait.
+      g.status === 'BLOCKED' && status === 'BLOCKED' && opts.awaitingUser ? 1 : 0,
       id,
     );
     // Sha extracted from the comment (merger fallback) → we persist it for audit. New
@@ -6057,7 +6077,8 @@ export const dbApi = {
       // statement — with the comment resolved above, never a clobber.
       updateTaskStatusStmt.run(
         g.status, Date.now(), g.blockedReason,
-        g.blockedReason ? encodeDaemonMessage(g.blockedReasonCode, redactText) : null, comment, id,
+        g.blockedReason ? encodeDaemonMessage(g.blockedReasonCode, redactText) : null, comment,
+        g.status === 'BLOCKED' ? prev?.awaiting_user ?? 0 : 0, id,
       );
     } else {
       setTaskStatusOnlyStmt.run(status, Date.now(), id);

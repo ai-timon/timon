@@ -871,7 +871,9 @@ confuse them** with your CLI's own todo tools (\`TaskCreate\`, \`TaskList\`…),
 
 - **Closing your task**: \`kanban_mark_as_done\` / \`mark_as_failed\` closes THE task of your mission
   (no id to copy). The comment is mandatory: it is all the orchestrator reads on return. A review
-  adds \`verdict\`, a merge adds \`merged_sha\`. Add \`summary\`: one or two plain sentences for the
+  adds \`verdict\`, a merge adds \`merged_sha\`. A task that waits only for the user (a merge request to
+  merge, a go-ahead) closes with \`kanban_mark_as_failed\` and \`awaiting_user: true\`: the board shows
+  "Waiting for you", not a failure. Add \`summary\`: one or two plain sentences for the
   user, shown on the return card in the chat while the comment stays folded (no ids, shas or JSON).
 - **An idea is not a task**: \`kanban_add\` is dispatched within the minute; \`project_todo_add\` only parks.
   An idea's files (screenshots, logs): \`project_todo_attachments_list\` gives a path to open.
