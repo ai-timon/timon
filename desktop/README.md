@@ -243,14 +243,17 @@ Coordinates are in the pixels of the last screenshot; the shell converts them to
   An agent's refused action answers `computer_unavailable` with what to ask the user (allow Timon under Privacy & Security,
   install `xdotool`, the desktop app must be running).
 - Accessibility tree (first choice, pixels are the last resort): `a11y_tree { windowId?, maxDepth? 1..15 (15), maxNodes? 1..1500 (400), query? }`
-  answers `{ window: { id, title, app }, truncated, nodes: [{ id, parent, depth, role, name, value?, enabled, focused?, bounds?, actions }] }`,
+  answers `{ window: { id, title, app }, truncated, timedOut?, nodes: [{ id, parent, depth, role, name, value?, enabled, focused?, bounds?, actions }] }`,
   and `a11y_action { id, action, value? }` (`press`, `focus`, `set_value`, `select`, `expand`, `collapse`, `show_menu`, `scroll_into_view`)
   answers `{ ok: true }` without moving the mouse or the keyboard. Roles are lower-case and shared by the three systems (`button`, `textfield`,
   `textarea`, `checkbox`, `radio`, `combobox`, `list`, `listitem`, `menu`, `menuitem`, `menubar`, `tab`, `tablist`, `link`, `image`, `text`,
   `group`, `window`, `toolbar`, `table`, `row`, `cell`, `slider`, `scrollbar`, `other`). An element id is `<window id>#<index path>`: opaque, and
   stable while the interface does not change; a stale one answers `a11y_element_stale` (409), an action the element does not offer
   `a11y_action_unsupported` (422, the message lists the possible ones). `bounds` are in the pixels of the last screenshot (the click conversion).
-  `query` keeps the elements whose name, value or role contains it (case-insensitive) and their ancestors. Same allowed applications as the keyboard and
+  `query` keeps the elements whose name, value or role contains it (case-insensitive) and their ancestors. `timedOut: true` means the
+  backend stopped at its deadline and answered what it had read; a tree it could not read at all answers `a11y_tree_too_large` (504).
+  The Linux reader walks breadth first, skips the children that are not both SHOWING and VISIBLE, and with a query counts only the
+  matches and their ancestors against `maxNodes` (at most 10 000 elements visited, 10 s). Same allowed applications as the keyboard and
   the mouse (`computer_app_not_allowed`, judged on the window's application), and `computer_stopped` applies. `status.checks.a11y` is `ok` | `missing` |
   `unsupported`; it never makes `available` false.
   - Backends: `interface A11yBackend { probe(); tree(args); act(args) }` in `computer-use-a11y.ts`, one file per system
