@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { DEFAULT_POINTER_MOTION_MS, MAX_POINTER_MOTION_MS, easeOut, pointerPath, resolvePointerSettings } from './computer-use-pointer.js';
+import { DEFAULT_POINTER_MOTION_MS, MAX_POINTER_LABEL, MAX_POINTER_MOTION_MS, easeOut, pointerLabel, pointerPath, resolvePointerSettings } from './computer-use-pointer.js';
 
 test('ease-out starts fast and settles on the target', () => {
   assert.equal(easeOut(0), 0);
@@ -40,13 +40,27 @@ test('no glide without a duration, next to the target, or on a coordinate that i
 });
 
 test('settings: environment, then the file, then the default; a bad value is ignored', () => {
-  assert.deepEqual(resolvePointerSettings({}, null), { motionMs: DEFAULT_POINTER_MOTION_MS });
-  assert.deepEqual(resolvePointerSettings({}, '{"motionMs":0}'), { motionMs: 0 });
-  assert.deepEqual(resolvePointerSettings({}, '{"motionMs":350.4}'), { motionMs: 350 });
-  assert.deepEqual(resolvePointerSettings({ TIMON_COMPUTER_POINTER_MS: '80' }, '{"motionMs":0}'), { motionMs: 80 });
-  assert.deepEqual(resolvePointerSettings({ TIMON_COMPUTER_POINTER_MS: 'fast' }, '{"motionMs":120}'), { motionMs: 120 });
-  assert.deepEqual(resolvePointerSettings({}, '{"motionMs":99999}'), { motionMs: MAX_POINTER_MOTION_MS });
+  assert.deepEqual(resolvePointerSettings({}, null), { motionMs: DEFAULT_POINTER_MOTION_MS, ghost: true });
+  assert.deepEqual(resolvePointerSettings({}, '{"motionMs":0}'), { motionMs: 0, ghost: true });
+  assert.deepEqual(resolvePointerSettings({}, '{"motionMs":350.4}'), { motionMs: 350, ghost: true });
+  assert.deepEqual(resolvePointerSettings({ TIMON_COMPUTER_POINTER_MS: '80' }, '{"motionMs":0}'), { motionMs: 80, ghost: true });
+  assert.deepEqual(resolvePointerSettings({ TIMON_COMPUTER_POINTER_MS: 'fast' }, '{"motionMs":120}'), { motionMs: 120, ghost: true });
+  assert.deepEqual(resolvePointerSettings({}, '{"motionMs":99999}'), { motionMs: MAX_POINTER_MOTION_MS, ghost: true });
   for (const text of ['{"motionMs":-1}', '{"motionMs":"slow"}', 'not json', '[1]', 'null']) {
-    assert.deepEqual(resolvePointerSettings({}, text), { motionMs: DEFAULT_POINTER_MOTION_MS }, text);
+    assert.deepEqual(resolvePointerSettings({}, text), { motionMs: DEFAULT_POINTER_MOTION_MS, ghost: true }, text);
   }
+});
+
+test('the ghost pointer is on unless the environment or the file turns it off', () => {
+  assert.equal(resolvePointerSettings({}, '{"ghost":false}').ghost, false);
+  assert.equal(resolvePointerSettings({ TIMON_COMPUTER_GHOST_POINTER: '1' }, '{"ghost":false}').ghost, true);
+  assert.equal(resolvePointerSettings({ TIMON_COMPUTER_GHOST_POINTER: '0' }, null).ghost, false);
+  assert.equal(resolvePointerSettings({ TIMON_COMPUTER_GHOST_POINTER: 'maybe' }, '{"ghost":"no"}').ghost, true);
+});
+
+test('the pointer label is one short line of the agent\'s name, or nothing', () => {
+  assert.equal(pointerLabel('designer'), 'designer');
+  assert.equal(pointerLabel('  two\nlines\u202e\u0000 '), 'two lines');
+  assert.equal([...pointerLabel('é'.repeat(200))!].length, MAX_POINTER_LABEL); // french-ok: a non-ASCII name is cut by code point
+  for (const nothing of [undefined, null, 42, '', ' \t ', '\u200e']) assert.equal(pointerLabel(nothing), undefined, String(nothing));
 });

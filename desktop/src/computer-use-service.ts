@@ -8,7 +8,8 @@ import {
   COMPUTER_DEFAULT_MAX_WIDTH, ComputerCommandError, type AllowedApp, type ComputerActor, type ComputerUseMode, type ComputerCommand, type ComputerUnavailableReason,
 } from './computer-use-protocol.js';
 import { imageToPoints, pointsToImage, screenshotSize, type DisplayInfo, type ImageSize } from './computer-use-geometry.js';
-import { A11Y_DEFAULT_MAX_DEPTH, A11Y_PROBE_MAX_NODES, A11yError, buildTree, parseElementId, probeVerdict, type A11yBackend } from './computer-use-a11y.js';
+import { A11Y_DEFAULT_MAX_DEPTH, A11Y_PROBE_MAX_NODES, A11yError, buildTree, parseElementId, probeVerdict, type A11yBackend, type A11yBounds } from './computer-use-a11y.js';
+import type { PointerEvent } from './computer-use-pointer.js';
 import { selectA11yBackend } from './computer-use-a11y-select.js';
 import { appMode, describeApp, focusWindow, listWindows, readForegroundApp, windowApp } from './computer-use-windows.js';
 import {
@@ -44,6 +45,8 @@ export interface ComputerUseDeps {
   /** How long an agent action keeps the indicator on. */
   activeMs?: number;
   onState?: (state: { active: boolean; stopped: boolean }) => void;
+  /** What the ghost pointer draws for an agent's action, with the agent's name when the daemon sent it. */
+  onPointer?: (event: PointerEvent, agent: string | undefined) => void;
 }
 
 /** One prerequisite as the setup card shows it. `unsupported`: nothing the person can do on this machine. */
@@ -89,6 +92,10 @@ const INPUT_TIMEOUT_NOTE = 'Input command failed.';
 // What takes the user's screen, mouse or keyboard: the application in front must be allowed in the foreground mode.
 // `focus_window` is judged on the window it targets, in `focus`.
 const FOREGROUND_GATED = new Set(['screenshot', 'cursor_position', 'click', 'double_click', 'move', 'drag', 'type', 'key', 'scroll']);
+/** Windows whose element bounds are kept for the ghost pointer's frame: the last trees an agent read. */
+const BOUNDS_WINDOWS = 8;
+/** The glide the ghost pointer draws for a drag, about as long as the drag itself. */
+const DRAG_GLIDE_MS = 180;
 
 export class ComputerUseService {
   private stopped = false;
@@ -100,6 +107,12 @@ export class ComputerUseService {
   private queue: Promise<unknown> = Promise.resolve();
   private reported = { active: false, stopped: false };
   private asked = new Map<string, number>();
+  /** The command being run is an agent's (commands run one at a time): only those are drawn. */
+  private drawing = false;
+  /** The agent behind it, for the pointer's label. */
+  private agent: string | undefined;
+  /** Screen bounds of the elements of the last trees read, by window then path: the frame of an a11y action. */
+  private bounds = new Map<string, Map<string, A11yBounds>>();
 
   private readonly a11y: A11yBackend;
 
@@ -237,10 +250,16 @@ export class ComputerUseService {
   }
 
   /** One command at a time: two inputs interleaved would be worse than a short wait. */
-  handle(actor: ComputerActor, command: ComputerCommand, allowedApps: readonly (string | AllowedApp)[] = [], mode: ComputerUseMode = 'foreground'): Promise<unknown> {
+  handle(
+    actor: ComputerActor, command: ComputerCommand, allowedApps: readonly (string | AllowedApp)[] = [], mode: ComputerUseMode = 'foreground', agent?: string,
+  ): Promise<unknown> {
     // A bare name takes `mode`, the agent's default.
     const apps = allowedApps.map((entry): AllowedApp => (typeof entry === 'string' ? { app: entry, mode } : entry));
-    const run = this.queue.then(() => this.dispatch(actor, command, apps));
+    const run = this.queue.then(() => {
+      this.drawing = actor === 'agent';
+      this.agent = this.drawing ? agent : undefined;
+      return this.dispatch(actor, command, apps);
+    });
     this.queue = run.catch(() => undefined);
     return run;
   }
@@ -362,6 +381,7 @@ export class ComputerUseService {
     let raw;
     try { raw = await this.a11y.tree({ windowId: info.id, maxDepth: command.maxDepth, maxNodes: command.maxNodes, ...(query ? { query } : {}) }); }
     catch (error) { throw this.a11yFailure(error, 'Reading the accessibility tree failed.'); }
+    this.keepBounds(info.id, raw.nodes);
     return buildTree({ id: info.id, title: info.title, app: info.app }, raw, { maxDepth: command.maxDepth, maxNodes: command.maxNodes, ...(query ? { query } : {}) }, display, this.currentFrame(display));
   }
 
@@ -381,6 +401,7 @@ export class ComputerUseService {
     if (background && command.action === 'focus') {
       throw new ComputerCommandError('This application is allowed in the background only: use a11y_tree and a11y_action. Focusing an element would take the user\'s focus.', 403, 'computer_background_only');
     }
+    if (display) this.frameElement(display, target.windowId, target.path);
     try {
       await this.a11y.act({ windowId: target.windowId, path: target.path, action: command.action, ...(command.value === undefined ? {} : { value: command.value }), ...(background ? { background: true } : {}) });
     } catch (error) {
@@ -461,6 +482,27 @@ export class ComputerUseService {
     return { mimeType, data: png.toString('base64'), width: size.width, height: size.height };
   }
 
+  private pointer(event: PointerEvent): void {
+    if (!this.drawing) return;
+    // Cosmetic: a failing drawing never fails the action it shows.
+    try { this.deps.onPointer?.(event, this.agent); } catch { /* nothing to draw on */ }
+  }
+
+  private keepBounds(windowId: string, nodes: ReadonlyArray<{ path: string; bounds?: A11yBounds }>): void {
+    const map = new Map<string, A11yBounds>();
+    for (const node of nodes) if (node.bounds) map.set(node.path, node.bounds);
+    this.bounds.delete(windowId);
+    this.bounds.set(windowId, map);
+    while (this.bounds.size > BOUNDS_WINDOWS) this.bounds.delete(this.bounds.keys().next().value!);
+  }
+
+  /** The frame of the element an action touches, when its last tree gave its bounds. */
+  private frameElement(display: DisplayInfo, windowId: string, path: string): void {
+    const bounds = this.bounds.get(windowId)?.get(path);
+    if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(Number.isFinite) || bounds.width <= 0 || bounds.height <= 0) return;
+    this.pointer({ t: 'frame', x: bounds.x - (display.originX ?? 0), y: bounds.y - (display.originY ?? 0), w: bounds.width, h: bounds.height });
+  }
+
   /** Where the glide starts: the real pointer, in points of the display, when it is on it. */
   private motion(display: DisplayInfo): PointerMotion | undefined {
     let durationMs = 0;
@@ -473,6 +515,21 @@ export class ComputerUseService {
     // On another display the glide would cross the screen edge from nowhere: the pointer jumps instead.
     if (!(fromX >= 0 && fromY >= 0 && fromX < display.width && fromY < display.height)) return undefined;
     return { fromX, fromY, durationMs };
+  }
+
+  private drawAction(action: InputAction, motion: PointerMotion | undefined): void {
+    const glide = (x: number, y: number): void => {
+      this.pointer({ t: 'move', fromX: motion?.fromX ?? x, fromY: motion?.fromY ?? y, x, y, ms: motion?.durationMs ?? 0 });
+    };
+    switch (action.kind) {
+      case 'move': case 'click': glide(action.x, action.y); break;
+      case 'scroll': this.pointer({ t: 'move', fromX: action.x, fromY: action.y, x: action.x, y: action.y, ms: 0 }); break;
+      case 'drag':
+        this.pointer({ t: 'move', fromX: action.fromX, fromY: action.fromY, x: action.fromX, y: action.fromY, ms: 0 });
+        this.pointer({ t: 'move', fromX: action.fromX, fromY: action.fromY, x: action.toX, y: action.toY, ms: DRAG_GLIDE_MS });
+        break;
+      default: break;
+    }
   }
 
   private async input(display: DisplayInfo, command: ComputerCommand): Promise<unknown> {
@@ -494,13 +551,17 @@ export class ComputerUseService {
       case 'scroll': action = { kind: 'scroll', ...point(command.x, command.y), deltaX: command.deltaX, deltaY: command.deltaY }; break;
       default: throw new ComputerCommandError('Unknown computer command.', 404, 'unknown_command');
     }
-    const system = buildInputCommand(this.deps.platform as InputPlatform, action, display, this.motion(display));
+    const motion = this.motion(display);
+    const system = buildInputCommand(this.deps.platform as InputPlatform, action, display, motion);
+    // The ghost pointer glides alongside the real one, from the same place and for the same time.
+    this.drawAction(action, motion);
     try {
       await this.deps.exec(system);
     } catch {
       // Never echo the error: for `type` it could carry the text.
       throw new ComputerCommandError(INPUT_TIMEOUT_NOTE, 502, 'input_failed');
     }
+    if (action.kind === 'click') this.pointer({ t: 'click', x: action.x, y: action.y, n: action.count });
     return {};
   }
 }

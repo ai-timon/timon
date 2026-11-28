@@ -1,6 +1,6 @@
 /**
- * The agent's pointer, made visible: the glide of the real pointer before a click or a move.
- * Pure: no Electron, no system command.
+ * The agent's pointer, made visible: the glide of the real pointer before a click or a move, and
+ * what the ghost pointer drawn over the screen is told. Pure: no Electron, no system command.
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -18,6 +18,8 @@ const MIN_DISTANCE = 3;
 export interface PointerSettings {
   /** Glide of the real pointer before click, double click and move; 0 = it jumps as before. */
   motionMs: number;
+  /** Whether the ghost pointer (the agent's name, its path, a halo on each click) is drawn over the screen. */
+  ghost: boolean;
 }
 
 /** A shell preference of this computer, like `dock-icon.json`: the daemon has no say in how the pointer looks. */
@@ -29,12 +31,19 @@ function motionValue(value: unknown): number | null {
   return Math.min(Math.round(number), MAX_POINTER_MOTION_MS);
 }
 
+function ghostValue(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (value === '1' || value === 'true') return true;
+  if (value === '0' || value === 'false') return false;
+  return null;
+}
+
 /**
- * Environment first (`TIMON_COMPUTER_POINTER_MS`), then the file,
+ * Environment first (`TIMON_COMPUTER_POINTER_MS`, `TIMON_COMPUTER_GHOST_POINTER`), then the file,
  * then the defaults. A value that cannot be read is ignored, never an error: the pointer is cosmetic.
  */
 export function resolvePointerSettings(env: NodeJS.ProcessEnv, fileText: string | null): PointerSettings {
-  let file: { motionMs?: unknown } = {};
+  let file: { motionMs?: unknown; ghost?: unknown } = {};
   if (fileText) {
     try {
       const parsed: unknown = JSON.parse(fileText);
@@ -43,6 +52,7 @@ export function resolvePointerSettings(env: NodeJS.ProcessEnv, fileText: string 
   }
   return {
     motionMs: motionValue(env.TIMON_COMPUTER_POINTER_MS) ?? motionValue(file.motionMs) ?? DEFAULT_POINTER_MOTION_MS,
+    ghost: ghostValue(env.TIMON_COMPUTER_GHOST_POINTER) ?? ghostValue(file.ghost) ?? true,
   };
 }
 
@@ -80,4 +90,27 @@ export function pointerPath(fromX: number, fromY: number, toX: number, toY: numb
     points.push({ x: fromX + (toX - fromX) * k, y: fromY + (toY - fromY) * k });
   }
   return { points, stepMs: Math.round(durationMs / steps) };
+}
+
+/**
+ * What the ghost pointer is told, in points of the primary display (origin at its top left).
+ * `move`: glide from `from` to the point in `ms`; `click`: a halo where the pointer pressed, `n`
+ * times; `frame`: the bounds of the accessibility element an action touched.
+ */
+export type PointerEvent =
+  | { t: 'move'; fromX: number; fromY: number; x: number; y: number; ms: number }
+  | { t: 'click'; x: number; y: number; n: number }
+  | { t: 'frame'; x: number; y: number; w: number; h: number };
+
+/** The longest agent name drawn beside the pointer. */
+export const MAX_POINTER_LABEL = 64;
+
+/**
+ * An agent name as the pointer shows it: one line, no control or direction mark, capped. The daemon
+ * sends the agent's identifier; anything else is dropped rather than refused, the label being cosmetic.
+ */
+export function pointerLabel(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const clean = value.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return clean ? [...clean].slice(0, MAX_POINTER_LABEL).join('') : undefined;
 }

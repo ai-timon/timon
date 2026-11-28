@@ -1,5 +1,6 @@
 /**
- * Electron half of computer use: screen capture, the global stop shortcut and the on-screen indicator.
+ * Electron half of computer use: screen capture, the global stop shortcut, the on-screen indicator
+ * and the agent's ghost pointer.
  * What can be decided without Electron lives in `computer-use-service.ts`; this file only wires it.
  */
 import { BrowserWindow, desktopCapturer, globalShortcut, screen, shell, systemPreferences } from 'electron';
@@ -8,6 +9,7 @@ import { startComputerServer } from './computer-use-server.js';
 import { createSystemExecutor } from './computer-use-exec.js';
 import type { DisplayInfo, ImageSize } from './computer-use-geometry.js';
 import { readPointerSettings } from './computer-use-pointer.js';
+import { GhostPointer } from './computer-use-overlay.js';
 
 export type ShellText = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -72,6 +74,11 @@ class Indicator {
     this.window = null;
   }
 
+  /** Back over the ghost pointer's sheet, which covers the display at the same level. */
+  raise(): void {
+    if (this.window && !this.window.isDestroyed()) this.window.moveTop();
+  }
+
   private page(): string {
     const escape = (value: string): string => value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
     const hint = this.t('computerUse.shortcutHint', { shortcut: COMPUTER_STOP_SHORTCUT_LABEL });
@@ -115,6 +122,7 @@ export interface ComputerUseDesktop { close: () => Promise<void>; service: Compu
 
 export async function startComputerUse(home: string, t: ShellText, restart?: () => void): Promise<ComputerUseDesktop> {
   let indicator: Indicator | null = null;
+  const ghost = new GhostPointer(() => screen.getPrimaryDisplay(), () => indicator?.raise());
   const executor = createSystemExecutor();
   const service: ComputerUseService = new ComputerUseService({
     platform: process.platform,
@@ -123,7 +131,7 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
     display: () => { try { return primaryDisplay(); } catch { return null; } },
     cursor: () => screen.getCursorScreenPoint(),
     pointerMotionMs: () => readPointerSettings(home).motionMs,
-    capture: capturePrimary,
+    capture: (size) => ghost.withoutGhost(() => capturePrimary(size)),
     screenPermission: () => {
       if (process.platform !== 'darwin') return 'granted';
       const status = systemPreferences.getMediaAccessStatus('screen');
@@ -131,13 +139,22 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
     },
     requestPermission: requestMacPermission,
     restart,
-    onState: ({ active }) => { if (active) indicator?.show(); else indicator?.hide(); },
+    onState: ({ active }) => {
+      if (active) { indicator?.show(); return; }
+      indicator?.hide();
+      ghost.hide();
+    },
+    // Read at each action: turning the ghost off applies to the next one.
+    onPointer: (event, agent) => {
+      if (!service.isActive) return;
+      if (readPointerSettings(home).ghost) ghost.draw(event, agent); else ghost.hide();
+    },
   });
   indicator = new Indicator(t, () => service.stop());
   // A person can always stop, even when the agent has focus on another window.
   const registered = globalShortcut.register(COMPUTER_STOP_SHORTCUT, () => service.stop());
   if (!registered) console.warn('[computer-use] The global stop shortcut is taken by another application; the indicator button still stops.');
-  const provider = await startComputerServer(home, (actor, command, allowedApps, mode) => service.handle(actor, command, allowedApps, mode));
+  const provider = await startComputerServer(home, (actor, command, allowedApps, mode, agent) => service.handle(actor, command, allowedApps, mode, agent));
   return {
     service,
     close: async () => {
@@ -145,6 +162,7 @@ export async function startComputerUse(home: string, t: ShellText, restart?: () 
       service.dispose();
       executor.dispose();
       indicator?.hide();
+      ghost.hide();
       await provider.close();
     },
   };
