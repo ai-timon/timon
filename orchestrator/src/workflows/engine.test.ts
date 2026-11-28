@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 
 process.env.TIMON_HOME = mkdtempSync(join(tmpdir(), 'timon-workflows-test-'));
 const { db, dbApi } = await import('../db.js');
-const { advance, cancelRun, completeWorkflowNode, completeWorkflowTurn, createRun, reconcile } = await import('./engine.js');
+const { advance, cancelRun, completeWorkflowNode, completeWorkflowTurn, createRun, failWorkflowMission, reconcile } = await import('./engine.js');
 const { evaluateExpr } = await import('./expr.js');
 const { interpolateTemplate } = await import('./template.js');
 const { parseWorkflowDefinition, parseWorkflowDraft } = await import('./schema.js');
@@ -110,6 +110,36 @@ function agentRun(definition: typeof definition, activeNode: string) {
   dbApi.createMission(missionId, 'workflow.witness', 'workflow turn', { channel: 'workflow' }, null, runId, { runId, nodeId: activeNode });
   return { runId, missionId };
 }
+
+test('only the current workflow attempt can report a result before or after its mission is bound', async () => {
+  const graph = { schemaVersion: 1 as const, nodes: [
+    { id: 'a', type: 'agent', config: { ref: 'witness' } },
+    { id: 'out', type: 'output', config: { template: '{{nodes.a.output.text}}' } },
+  ], edges: [{ id: 'edge', from: 'a', fromPort: 'done', to: 'out', toPort: 'in' }],
+  variables: [], settings: { maxParallel: 1, onError: 'fail' as const } };
+  const { runId, missionId: previous } = agentRun(graph, 'a');
+  dbApi.updateWorkflowRunNode(runId, 'a', { status: 'ok', ended_at: Date.now() });
+  const first = dbApi.listWorkflowRunNodes(runId).find((row) => row.node_id === 'a')!;
+  dbApi.insertWorkflowRunNode({ ...first, attempt: 2, status: 'running', mission_id: null, ended_at: null });
+  const current = randomUUID();
+  dbApi.createMission(current, 'workflow.witness', 'current turn', { channel: 'workflow', meta: {
+    workflow_run_id: runId, workflow_node_id: 'a', workflow_node_attempt: 2,
+  } }, null, runId, { runId, nodeId: 'a' });
+
+  failWorkflowMission(previous, 'late exit');
+  completeWorkflowTurn(previous, { result: 'late result' });
+  const second = () => dbApi.listWorkflowRunNodes(runId).find((row) => row.node_id === 'a' && row.attempt === 2)!;
+  assert.equal(second().status, 'running');
+  assert.equal(second().mission_id, null);
+
+  completeWorkflowTurn(current, { result: 'current result' });
+  failWorkflowMission(previous, 'late exit after binding');
+  await advance(runId);
+  assert.equal(second().mission_id, current);
+  assert.equal(second().status, 'ok');
+  assert.deepEqual(JSON.parse(second().output!), { text: 'current result' });
+  assert.equal(dbApi.getWorkflowRun(runId)?.status, 'completed');
+});
 
 test('a turn result routes structured output to the selected branch', async () => {
   const routed = { schemaVersion: 1 as const, nodes: [

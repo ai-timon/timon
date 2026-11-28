@@ -36,6 +36,24 @@ const publish = (runId: string, nodeId: string | undefined, status: string) => {
   }
 };
 const latestNodes = (rows: WorkflowRunNodeRow[]) => rows.filter((row) => !rows.some((other) => other.node_id === row.node_id && other.attempt > row.attempt));
+const currentNode = (runId: string, nodeId: string) => db.prepare(
+  'SELECT * FROM workflow_run_nodes WHERE run_id=? AND node_id=? ORDER BY attempt DESC LIMIT 1',
+).get(runId, nodeId) as WorkflowRunNodeRow | undefined;
+
+/** A provider may publish its first outcome before spawnWorkflowAgent returns. */
+function ownsCurrentAttempt(runId: string, nodeId: string, mission: { id: string; source_channel: string | null; source_meta: string | null }): boolean {
+  const row = currentNode(runId, nodeId);
+  if (!row) return false;
+  if (row.mission_id === mission.id) return true;
+  if (row.mission_id !== null || !['running', 'waiting'].includes(row.status) || mission.source_channel !== 'workflow') return false;
+  if (!['running', 'waiting'].includes(dbApi.getWorkflowRun(runId)?.status ?? '')) return false;
+  const source = parseJson(mission.source_meta, null) as {
+    workflow_run_id?: string; workflow_node_id?: string; workflow_node_attempt?: number;
+  } | null;
+  if (source?.workflow_run_id !== runId || source.workflow_node_id !== nodeId || source.workflow_node_attempt !== row.attempt) return false;
+  return db.prepare(`UPDATE workflow_run_nodes SET mission_id=? WHERE run_id=? AND node_id=? AND attempt=?
+    AND mission_id IS NULL AND status IN ('running','waiting')`).run(mission.id, runId, nodeId, row.attempt).changes === 1;
+}
 
 // The run page is the anchor: a card with neither mission nor task opens it on click.
 function runPageAnchor(runId: string): string | null {
@@ -512,15 +530,29 @@ async function runNode(runId: string, nodeId: string, definition: WorkflowDefini
       case 'agent': case 'skill': {
         const run = dbApi.getWorkflowRun(runId)!;
         const workflow = dbApi.getWorkflow(run.workflow_id)!;
+        const attempt = currentNode(runId, nodeId)?.attempt;
+        if (attempt === undefined) return;
+        db.prepare('UPDATE workflow_run_nodes SET input=? WHERE run_id=? AND node_id=? AND attempt=?')
+          .run(JSON.stringify(interpolateTemplate(String(node.config.input ?? ''), context)), runId, nodeId, attempt);
         // Every agent node is a sub-agent of the pilot (decision of 20/10/2026):
         // a precise task in its own mission, whose result reports to the pilot.
-        const missionId = await spawnWorkflowAgent({ parentMissionId: context.coordinatorMissionId, ownerUserId: run.owner_user_id, runId, nodeId, slug: workflow.slug, node, context: context as unknown as Record<string, unknown>, skillId: node.type === 'skill' ? String(node.config.skillId) : undefined, extraSkillIds: node.config.completion === 'explicit' ? ['timon-workflow'] : [] });
+        let missionId: string;
+        try {
+          missionId = await spawnWorkflowAgent({ parentMissionId: context.coordinatorMissionId, ownerUserId: run.owner_user_id, runId, nodeId, attempt, slug: workflow.slug, node, context: context as unknown as Record<string, unknown>, skillId: node.type === 'skill' ? String(node.config.skillId) : undefined, extraSkillIds: node.config.completion === 'explicit' ? ['timon-workflow'] : [] });
+        } catch (caught) {
+          const current = currentNode(runId, nodeId);
+          if (current?.attempt !== attempt || current.status !== 'running') return;
+          throw caught;
+        }
+        const current = currentNode(runId, nodeId);
         if (!['running', 'waiting'].includes(dbApi.getWorkflowRun(runId)?.status ?? '')) {
+          if (current?.attempt === attempt && current.mission_id === missionId && ['ok', 'error', 'timeout'].includes(current.status)) return;
           killAgent(missionId, { source: 'workflow: run no longer active', detail: `run ${runId}, node ${nodeId}` });
           return;
         }
-        dbApi.updateWorkflowRunNode(runId, nodeId, { input: JSON.stringify(interpolateTemplate(String(node.config.input ?? ''), context)), output: null, error: null });
-        db.prepare(`UPDATE workflow_run_nodes SET mission_id=? WHERE run_id=? AND node_id=? AND attempt=(SELECT MAX(attempt) FROM workflow_run_nodes WHERE run_id=? AND node_id=?)`).run(missionId, runId, nodeId, runId, nodeId);
+        if (current?.attempt !== attempt || current.status !== 'running') return;
+        db.prepare('UPDATE workflow_run_nodes SET mission_id=? WHERE run_id=? AND node_id=? AND attempt=?')
+          .run(missionId, runId, nodeId, attempt);
         return;
       }
       default:
@@ -582,10 +614,11 @@ export async function reconcile() {
   }
 }
 
-function finishAgentNode(runId: string, nodeId: string, status: 'ok' | 'error' | 'timeout', error: string | null, output: unknown = {}, port = 'failed') {
+function finishAgentNode(runId: string, nodeId: string, status: 'ok' | 'error' | 'timeout', error: string | null, output: unknown = {}, port = 'failed', missionId?: string) {
   const run = dbApi.getWorkflowRun(runId); if (!run || !['running', 'waiting'].includes(run.status)) return;
   const { definition, context } = load(runId); const row = latestNodes(dbApi.listWorkflowRunNodes(runId)).find((item) => item.node_id === nodeId);
   if (!row || !['running', 'waiting'].includes(row.status)) return;
+  if (missionId !== undefined && row.mission_id !== missionId) return;
   const config = definition.nodes.find((item) => item.id === nodeId)?.config as { retries?: unknown } | undefined;
   const retries = Number(config?.retries ?? 0);
   // Attempts count from the current loop pass: an earlier pass does not eat this one's retries.
@@ -613,11 +646,11 @@ export function completeWorkflowTurn(missionId: string, payload: unknown): void 
   }
   const { definition } = load(mission.workflow_run_id);
   const node = definition.nodes.find((item) => item.id === nodeId);
-  if (!node || node.config.completion === 'explicit') return;
-  if (resultFailed(payload)) finishAgentNode(mission.workflow_run_id, nodeId, 'error', resultFailureMessage(payload));
+  if (!node || node.config.completion === 'explicit' || !ownsCurrentAttempt(mission.workflow_run_id, nodeId, mission)) return;
+  if (resultFailed(payload)) finishAgentNode(mission.workflow_run_id, nodeId, 'error', resultFailureMessage(payload), {}, 'failed', missionId);
   else {
     const result = parseAgentOutput(payload);
-    finishAgentNode(mission.workflow_run_id, nodeId, 'ok', null, result.output, result.port);
+    finishAgentNode(mission.workflow_run_id, nodeId, 'ok', null, result.output, result.port, missionId);
   }
   aggregateRunUsage(mission.workflow_run_id);
 }
@@ -638,7 +671,9 @@ function resultFailureMessage(payload: unknown): string {
 export function failWorkflowMission(missionId: string, error: string): void {
   const mission = dbApi.getMission(missionId); if (!mission?.workflow_run_id) return;
   const nodeId = mission.workflow_node_id ?? missionNodeId(missionId, mission.workflow_run_id);
-  if (nodeId) finishAgentNode(mission.workflow_run_id, nodeId, 'error', error);
+  if (nodeId && ownsCurrentAttempt(mission.workflow_run_id, nodeId, mission)) {
+    finishAgentNode(mission.workflow_run_id, nodeId, 'error', error, {}, 'failed', missionId);
+  }
 }
 
 export function completeWorkflowNode(runId: string, nodeId: string, output: unknown, route = 'done'): boolean {
