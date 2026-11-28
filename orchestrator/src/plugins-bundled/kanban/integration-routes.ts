@@ -20,6 +20,13 @@
  * own audit row, so an agent that switches back to "ask" and repoints the
  * remote leaves a trail before a person turns "resolve" on again.
  *
+ * Forking the target repository (`POST …/integration/fork`) creates a
+ * repository in the account on the forge: never a default, never an agent's
+ * call. It needs a signed-in person who confirms it in the body, and it is
+ * offered only when the account cannot push to the target. The check route
+ * reads the account's rights on the target and on the fork, so the dialog can
+ * offer it.
+ *
  * One exception, `POST …/integration/branch`: the Kanban planner checks the
  * branch of a new job while the person types or picks it, a new one or one
  * the repository has (`kind`), in any project. It needs `kanban:write` (the
@@ -35,6 +42,7 @@
 import type { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { apiError } from '../../api-error.js';
+import { githubForge, githubRepoFromUrl, type Forge } from '../../host/forge.js';
 import { ghLogin, type GhLoginOutcome } from '../../host/gh.js';
 import { checkPlanBranch, landingSetting, MAX_PLAN_BRANCH_CHARS } from '../../plan-landing.js';
 import { announceProjectUpdated } from '../../project-service.js';
@@ -50,6 +58,8 @@ import { isPersonAuth, rejectIfDenied, requireAuth } from '../../users/identity.
 export type IntegrationRouteDeps = {
   /** Stands in for `gh api user` in tests: nothing here reaches GitHub. */
   ghLogin?: (configDir: string | null) => Promise<GhLoginOutcome>;
+  /** Stands in for `gh` against the forge in tests (rights, fork). */
+  forge?: (configDir: string | null) => Pick<Forge, 'repositoryAccess' | 'forkRepository'>;
   /** Stands in for the user's home in tests. */
   home?: string;
 };
@@ -112,6 +122,21 @@ function answerError(res: Response, err: unknown): void {
  *  the folder only, held to the same rules as a write. */
 const CheckDraftBody = ProjectIntegrationPatchSchema.pick({ account: true, gh_config_dir: true }).strict();
 
+/** The person's explicit go-ahead: a body without it creates nothing. */
+const ForkBody = z.object({ confirm: z.literal(true) }).strict();
+
+/** `url` with the owner of its repository replaced by `owner`, keeping its
+ *  scheme and host (an ssh alias included). Null when it names no repository. */
+export function forkUrlOf(url: string, owner: string): string | null {
+  const repository = githubRepoFromUrl(url);
+  if (!repository) return null;
+  const [current = '', name = ''] = repository.split('/');
+  const at = url.toLowerCase().lastIndexOf(`${current}/${name}`.toLowerCase());
+  return at < 0 ? null : `${url.slice(0, at)}${owner}/${url.slice(at + current.length + 1)}`;
+}
+
+type RepositoryRights = { repository: string; exists: boolean; can_push: boolean } | { repository: string; unreadable: true };
+
 const PlanBranchBody = z.object({
   branch: z.string().max(MAX_PLAN_BRANCH_CHARS),
   /** `new` (default) cuts a branch, `existing` starts from one the repository has. */
@@ -136,6 +161,12 @@ function plannerProject(req: Request, res: Response): string | null {
 
 export function registerIntegrationRoutes(app: Router, deps: IntegrationRouteDeps = {}): void {
   const login = deps.ghLogin ?? ((dir: string | null) => ghLogin(dir));
+  const forgeFor = deps.forge ?? ((dir: string | null) => githubForge(dir));
+  const rightsOn = async (forge: Pick<Forge, 'repositoryAccess'>, repository: string): Promise<RepositoryRights> => {
+    const out = await forge.repositoryAccess(repository);
+    if (!out.ok) return { repository, unreadable: true };
+    return { repository, exists: out.exists, can_push: out.exists && out.canPush };
+  };
 
   // `valid: false` when the stored setting no longer validates: the jobs then
   // land with the default, and the screen says so rather than "local".
@@ -236,7 +267,92 @@ export function registerIntegrationRoutes(app: Router, deps: IntegrationRouteDep
     }
     // GitHub logins ignore case.
     const matches = account !== null && out.login.toLowerCase() === account.toLowerCase();
-    res.json({ ok: matches, login: out.login, expected: account, matches });
+    // What the account may push to, so the dialog can offer a fork when it
+    // cannot push to the target. Only for the stored setting: a draft names
+    // no remote, and a login that is not the account's would answer for the
+    // wrong person.
+    let access: { target: RepositoryRights; fork: RepositoryRights | null } | null = null;
+    const targetUrl = read.integration.remote_url;
+    const target = targetUrl ? githubRepoFromUrl(targetUrl) : null;
+    if (matches && !drafted && target) {
+      const forge = forgeFor(configDir);
+      const forkUrl = read.integration.push_remote_url;
+      const fork = forkUrl ? githubRepoFromUrl(forkUrl) : null;
+      access = {
+        target: await rightsOn(forge, target),
+        fork: fork && fork.toLowerCase() !== target.toLowerCase() ? await rightsOn(forge, fork) : null,
+      };
+    }
+    res.json({ ok: matches, login: out.login, expected: account, matches, ...(access ? { access } : {}) });
+  });
+
+  // Creates the account's fork of the target, on a person's confirmation only,
+  // then records it as the repository the branches are pushed to. Refused for
+  // the daemon token and every mission: a repository is not created behind
+  // anyone's back.
+  app.post('/api/projects/:slug/integration/fork', async (req, res) => {
+    const slug = projectForRoute(req, res);
+    if (!slug) return;
+    if (!req.auth || !isPersonAuth(req.auth)) {
+      res.status(403).json(apiError('person_required', 'only a signed-in person creates a fork'));
+      return;
+    }
+    const body = ForkBody.safeParse(req.body ?? {});
+    if (!body.success) {
+      res.status(400).json(apiError('fork_not_confirmed', 'creating a fork needs your explicit confirmation', {
+        detail: 'creating a fork needs your explicit confirmation',
+      }));
+      return;
+    }
+    let read;
+    try { read = readProjectIntegration(slug); } catch (err) { answerError(res, err); return; }
+    const { integration } = read;
+    const target = integration.remote_url ? githubRepoFromUrl(integration.remote_url) : null;
+    if (read.invalid || !integration.account || !target) {
+      res.status(409).json(apiError('fork_unavailable', 'name the account and the push URL of the target repository first', {
+        detail: 'name the account and the push URL of the target repository first',
+      }));
+      return;
+    }
+    const who = await login(integration.gh_config_dir);
+    if (!who.ok || who.login.toLowerCase() !== integration.account.toLowerCase()) {
+      res.status(409).json(apiError('fork_account_mismatch', 'gh is not signed in as the project\'s account', {
+        detail: 'gh is not signed in as the project\'s account',
+      }));
+      return;
+    }
+    const forge = forgeFor(integration.gh_config_dir);
+    const rights = await rightsOn(forge, target);
+    if ('unreadable' in rights) {
+      res.status(502).json(apiError('fork_failed', 'the rights on the target repository could not be read'));
+      return;
+    }
+    if (rights.can_push) {
+      res.status(409).json(apiError('fork_not_needed', 'the account can push to the target repository: no fork is needed'));
+      return;
+    }
+    // Their own name, as gh creates it, so the check afterwards finds it.
+    const name = target.split('/')[1]!;
+    const fork = `${who.login}/${name}`;
+    const url = forkUrlOf(integration.remote_url!, who.login);
+    if (!url) {
+      res.status(409).json(apiError('fork_unavailable', 'the push URL does not allow the fork\'s URL to be derived'));
+      return;
+    }
+    // Not echoed: what gh says may name a folder or an account.
+    const made = await forge.forkRepository(target);
+    if (!made.ok) {
+      console.error('[kanban] fork of the target repository failed:', made.code);
+      res.status(502).json(apiError('fork_failed', 'the fork could not be created'));
+      return;
+    }
+    try {
+      const updated = updateProjectIntegration(slug, { push_remote_url: url }, deps.home ? { home: deps.home } : {});
+      auditRequest(req, 'project.fork_created', `${slug}:${fork}`);
+      auditRequest(req, 'project.push_target_changed', `${slug}:push_remote_url`);
+      announceProjectUpdated(slug, ['integration'], todoOriginFromRequest(req));
+      res.json({ ok: true, fork, integration: updated });
+    } catch (err) { answerError(res, err); }
   });
 
   // The planner's check: the same rules and numbering as the plan's answer
