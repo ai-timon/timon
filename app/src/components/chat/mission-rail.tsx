@@ -441,7 +441,7 @@ export function MissionRail({
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 {!showAvatar && state === 'thinking' && <WorkingDot />}
-                <span className={cn('truncate text-[12.5px] font-medium leading-snug', isArchived(m) && 'text-muted-foreground')}>
+                <span className="truncate text-[12.5px] font-medium leading-snug data-[archived]:text-muted-foreground" data-archived={isArchived(m) || undefined}>
                   {title.slice(0, 120)}
                 </span>
                 {hasArchiveSuggestion(m) && !answeredHere[m.id] && !m.running && (
