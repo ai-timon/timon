@@ -489,6 +489,7 @@
     "a11y_element_stale": "That element no longer exists: the window changed. Read the tree again.",
     "a11y_action_unsupported": "{detail}",
     "a11y_unavailable": "The accessibility tree is not available on this machine. Work from screenshots.",
+    "a11y_tree_too_large": "This window's accessibility tree is too large to read in time. Look for an element by name or role, or read a smaller window.",
     "browser_desktop_unavailable": "Open Timon desktop on the host machine to use this browser.",
     "browser_host_stopped": "The built-in browser of this server is not running. To repair it: {command}",
     "browser_host_starting": "The built-in browser of this server is starting. Wait a few seconds; if it lasts, its log says why: {command}",

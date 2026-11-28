@@ -489,6 +489,7 @@
     "a11y_element_stale": "Cet élément n'existe plus : la fenêtre a changé. Relisez l'arbre.",
     "a11y_action_unsupported": "{detail}",
     "a11y_unavailable": "L'arbre d'accessibilité n'est pas disponible sur cette machine. Travaillez à partir de captures d'écran.",
+    "a11y_tree_too_large": "L'arbre d'accessibilité de cette fenêtre est trop grand pour être lu à temps. Cherchez un élément par son nom ou son rôle, ou lisez une fenêtre plus petite.",
     "browser_desktop_unavailable": "Ouvrez Timon desktop sur la machine hôte pour utiliser ce navigateur.",
     "browser_host_stopped": "Le navigateur intégré de ce serveur ne tourne pas. Pour le réparer : {command}",
     "browser_host_starting": "Le navigateur intégré de ce serveur démarre. Attendez quelques secondes ; si ça dure, son journal dit pourquoi : {command}",
