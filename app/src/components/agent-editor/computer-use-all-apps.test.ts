@@ -52,15 +52,15 @@ test('off: one row with the switch; on: the unlisted mode and the exclusions, no
     });
     await render(false);
     assert.equal(doc.querySelector('[data-computer-use-all-apps]')?.getAttribute('data-computer-use-all-apps'), 'off');
-    assert.equal(doc.querySelector('[data-computer-use-unlisted-mode]'), null);
-    assert.equal(doc.querySelector('[data-computer-use-excluded]'), null);
+    assert.ok(!doc.querySelector('[data-computer-use-unlisted-mode]'));
+    assert.ok(!doc.querySelector('[data-computer-use-excluded]'));
     await React.act(async () => { (doc.querySelector('[data-computer-use-all-apps-switch]') as HTMLElement).click(); });
     assert.deepEqual(changes.at(-1), ['enabled', true]);
 
     await render(true, [...DEFAULT_EXCLUDED_APPS], 'background');
     assert.equal(doc.querySelector('[data-computer-use-unlisted-mode]')?.getAttribute('data-computer-use-unlisted-mode'), 'background');
     assert.equal(doc.querySelector('[data-computer-use-excluded]')?.getAttribute('data-computer-use-excluded'), 'default');
-    assert.equal(doc.querySelector('[data-computer-use-excluded-app]'), null, 'the list is not painted on the page');
+    assert.ok(!doc.querySelector('[data-computer-use-excluded-app]'), 'the list is not painted on the page');
     assert.match(doc.body.textContent ?? '', new RegExp(String(DEFAULT_EXCLUDED_APPS.length)));
     await React.act(async () => { (doc.querySelector('[data-computer-use-unlisted-option="foreground"]') as HTMLElement).click(); });
     assert.deepEqual(changes.at(-1), ['mode', 'foreground']);
