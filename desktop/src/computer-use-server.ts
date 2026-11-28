@@ -1,8 +1,9 @@
 /** Private daemon↔Electron transport of the computer-native service (same shape as the native browser's). */
 import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage } from 'node:http';
-import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { replaceFile } from './replace-file.js';
 import { authorizedBearer } from './native-browser-protocol.js';
 import { ComputerCommandError, parseAllAppsScope, parseAllowedApps, parseComputerActor, parseComputerCommand, parseComputerMode, type AllAppsScope, type AllowedApp, type ComputerActor, type ComputerCommand, type ComputerUseMode } from './computer-use-protocol.js';
 import { pointerLabel } from './computer-use-pointer.js';
@@ -82,7 +83,7 @@ export async function startComputerServer(
     await chmod(directory, 0o700);
     await writeFile(temporary, JSON.stringify(descriptor), { mode: 0o600 });
     await chmod(temporary, 0o600);
-    await rename(temporary, path);
+    await replaceFile(temporary, path);
   } catch (error) {
     server.close();
     await unlink(temporary).catch(() => {});
