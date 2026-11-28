@@ -651,7 +651,10 @@ export function personOnlyComputerRefusal(
     return "computer_use_all_apps lets the agent drive every application of the machine: only a person turns it on, "
       + "from the agent's Permissions in the app, never a token (an agent's, a mission's or the daemon's). Turning it off, or sending it unchanged, is accepted";
   }
-  const excluded = wanted.computer_use_excluded_apps;
+  // null restores the defaults: judged as that list, so it cannot drop what a person added.
+  const excluded = wanted.computer_use_excluded_apps === null
+    ? storedComputerUseExcludedApps({})
+    : wanted.computer_use_excluded_apps;
   if (Array.isArray(excluded)) {
     const kept = new Set(excluded.filter((entry): entry is string => typeof entry === 'string').map((entry) => entry.trim().toLowerCase()));
     for (const held of storedComputerUseExcludedApps(granted ?? {})) {

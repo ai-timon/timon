@@ -211,3 +211,17 @@ test('the exclusions: a token may add one, never take one out; a person edits th
   const bad = await call('PATCH', '/api/agents/apps.stranger/config', { cookie: manager.cookie, body: { computer_use_excluded_apps: ['ok', ''] } });
   assert.equal(bad.status, 400, JSON.stringify(bad.json));
 });
+
+test('null restores the default exclusions, judged as that list: a token cannot drop what a person added through it', async () => {
+  const person = await call('PATCH', '/api/agents/apps.helper/config', { cookie: manager.cookie, body: { computer_use_excluded_apps: ['Slack'] } });
+  assert.equal(person.status, 200, JSON.stringify(person.json));
+  const reset = await call('PATCH', '/api/agents/apps.helper/config', { bearer: leadToken, body: { computer_use_excluded_apps: null } });
+  assert.equal(reset.status, 403, JSON.stringify(reset.json));
+  assert.match(JSON.stringify(reset.json), /lifts Slack/);
+  const back = await call('PATCH', '/api/agents/apps.helper/config', { cookie: manager.cookie, body: { computer_use_excluded_apps: null } });
+  assert.equal(back.status, 200, JSON.stringify(back.json));
+  assert.equal(stored('apps.helper').computer_use_excluded_apps, null);
+  assert.ok((back.json as { computer_use_excluded_apps: string[] }).computer_use_excluded_apps.includes('1Password'));
+  const same = await call('PATCH', '/api/agents/apps.helper/config', { bearer: leadToken, body: { computer_use_excluded_apps: null } });
+  assert.equal(same.status, 200, 'the defaults sent back over the defaults pass');
+});

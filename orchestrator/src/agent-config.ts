@@ -51,8 +51,9 @@ export type AgentConfig = {
    *  a mission's and the daemon's token cannot (`personOnlyComputerRefusal`). */
   computer_use_all_apps?: boolean;
   /** The applications never driven while `computer_use_all_apps` is on, an explicit entry included.
-   *  Absent = `DEFAULT_COMPUTER_USE_EXCLUDED_APPS`. Removing an entry is a person's act, like turning the switch on. */
-  computer_use_excluded_apps?: string[];
+   *  Absent or null = `DEFAULT_COMPUTER_USE_EXCLUDED_APPS` (null is how a save restores them, since an absent key keeps
+   *  the stored list). Removing an entry is a person's act, like turning the switch on. */
+  computer_use_excluded_apps?: string[] | null;
   /** DEFAULT LLM backend of the agent. 'claude' (default) = long-lived Claude
    *  CLI; 'codex' = one-shot OpenAI Codex CLI on the ChatGPT subscription.
    *  The agent is AGNOSTIC: this field is only a default, overridable per
@@ -465,9 +466,10 @@ export function computerUseAllAppsRefusal(value: unknown): string | null {
   return typeof value === 'boolean' ? null : 'computer_use_all_apps must be a boolean';
 }
 
-/** Why a `computer_use_excluded_apps` value is not acceptable, or null. */
+/** Why a `computer_use_excluded_apps` value is not acceptable, or null. `null` restores the default list. */
 export function computerUseExcludedAppsRefusal(value: unknown): string | null {
-  const shape = `computer_use_excluded_apps must be an array of non-empty names of at most ${COMPUTER_USE_APP_MAX_LENGTH} characters`;
+  if (value === null) return null;
+  const shape = `computer_use_excluded_apps must be null (the default list) or an array of non-empty names of at most ${COMPUTER_USE_APP_MAX_LENGTH} characters`;
   if (!Array.isArray(value)) return shape;
   if (value.some((entry) => typeof entry !== 'string' || entry.trim() === '' || entry.length > COMPUTER_USE_APP_MAX_LENGTH)) return shape;
   if (value.length > COMPUTER_USE_EXCLUDED_APPS_MAX) return `computer_use_excluded_apps holds at most ${COMPUTER_USE_EXCLUDED_APPS_MAX} applications`;
