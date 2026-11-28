@@ -156,6 +156,8 @@ Tasks (Kanban backlog):
                                                closes THE current mission's task (no id to copy)
   timon task mark-merged <id> --sha SHA [--comment TEXT]
                                                branch merged outside Timon: records its merge commit
+  timon task push-branch <merge-task-id> <ticket-branch> [--source <task-id>] [--set-upstream]
+                                               a merger's ticket branch push, made by the daemon
   timon task mark-as-failed [id] --reason TEXT closes it as BLOCKED
   timon task attach <id> --series ID|current   attaches the task's chain (root, reviews, merge, doc)
                                                to a series and its pilot; current = this mission
@@ -743,6 +745,12 @@ usage: timon task done <id> [--comment TEXT | --comment-file PATH | --comment-st
 usage: timon task mark-merged <id> --sha SHA [--comment TEXT]
 ```
 
+### timon task push-branch merge-task-id ticket-branch [--source task-id] [--set-upstream]
+
+```text
+usage: timon task push-branch <merge-task-id> <ticket-branch> [--source <task-id>] [--set-upstream]
+```
+
 ### timon task attach id --series ID|current
 
 ```text
@@ -783,7 +791,7 @@ usage: timon task delete <id> [--chain]
 ### timon task …
 
 ```text
-usage: timon task <list|get|create|done|block|mark-as-done|mark-as-failed|mark-merged|attach|update|delete> …
+usage: timon task <list|get|create|done|block|mark-as-done|mark-as-failed|mark-merged|push-branch|attach|update|delete> …
 ```
 
 ### timon series fallback set --scope orchestrator|code|review|merge|doc|chore|* 

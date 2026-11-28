@@ -373,6 +373,20 @@ From a terminal, `timon task mark-merged TASK_ID --sha SHA [--comment TEXT]` doe
 
 Timon refuses a commit that your local copy of the repository has and that is not in the task's base branch. A commit it does not have yet (a pull request merged on GitHub and not fetched) is accepted and noted as not verified in the task's comment.
 
+## Push a ticket branch from a merge task
+
+A merger agent often has to publish the branch of a ticket (`SELP-123_short-description`) to the remote. The agent's own `git push` can be refused by the permission classifier of its CLI, which asks you for a card every time. Instead, the agent of a merge task asks the daemon: `timon task push-branch MERGE_TASK_ID TICKET_BRANCH [--source TASK_ID] [--set-upstream]`, or the `kanban_push_branch` tool. No card appears.
+
+The daemon pushes only when everything below holds, and refuses the request otherwise (the agent then keeps the usual path, with its card):
+
+- the caller is the mission running that merge task, and its agent has the **merger** role (the role set on the agent, not its name);
+- the remote is the project's configured remote (`origin` by default), never a URL or another remote;
+- the destination is a ticket branch, `PREFIX-<number>_<description>`. When the project's pole declares `ticket_prefixes` (timon-config writes them into the project's description as "ticket prefixes"), only those prefixes are accepted; otherwise any capitalised prefix is. `develop`, `main`, `master`, `production`, `release`, `release/*`, tags and any other ref are always refused;
+- the source is the `timon/task/<id>` branch of a task of the same project (by default the merge task's own);
+- the push is never forced, never deletes, and carries no push option, no second refspec and no `--tags`, `--all` or `--mirror`.
+
+Every push the daemon makes is recorded in the audit log.
+
 ## A task waiting on you
 
 When the agent of a running task asks for a permission or asks you a question, its card says **Waiting for a permission (Bash) for 3 min**, or **Waiting for an answer**, followed by the time left before the request is refused automatically (an unattended task does not wait forever). Hover the line to see whether other requests wait behind it. The task's detail shows the same line under its status. Both change as soon as a request is raised, answered or refused. The card names the tool only: the command itself, and the Allow and Deny buttons, are in the task's mission, which the card's open-mission button reaches.
