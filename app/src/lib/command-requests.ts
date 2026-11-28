@@ -28,12 +28,42 @@ export type CommandRequestView = {
   project: string | null;
   missionTitle: string;
   taskId: string | null;
-  /** The buttons, in this order; `allow` only while an agent can still run it. */
+  /** The buttons, in this order. */
   choices: CommandDecision[];
   status: CommandRequestStatus;
   createdAt: number;
   resolvedAt: number | null;
+  /** After Allow: how the daemon's run of the command ended; null while it runs. */
+  run: CommandRun | null;
+  /** Allow was clicked and the daemon's run has not ended. */
+  running: boolean;
 };
+
+/** Mirrors `RunReport` of the daemon. */
+export type CommandRun = {
+  /** Null when the command was stopped (time limit) or never started. */
+  exitCode: number | null;
+  timedOut: boolean;
+  /** Masked, the end of stdout and stderr. */
+  output: string;
+  durationMs: number;
+  /** The daemon refused or could not start it: `output` says why. */
+  notRun: boolean;
+};
+
+export function parseCommandRun(raw: unknown): CommandRun | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const p = raw as Record<string, unknown>;
+  const timedOut = p.timedOut === true;
+  const exitCode = typeof p.exitCode === 'number' ? p.exitCode : null;
+  return {
+    exitCode,
+    timedOut,
+    output: typeof p.output === 'string' ? p.output : '',
+    durationMs: typeof p.durationMs === 'number' ? p.durationMs : 0,
+    notRun: p.notRun === true || (exitCode === null && !timedOut),
+  };
+}
 
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARS = /[\u0000-\u001f\u007f\u0080-\u009f\u2028\u2029]/;
@@ -79,6 +109,8 @@ export function parseCommandRequest(raw: unknown): CommandRequestView | null {
     status: isStatus(p.status) ? p.status : 'pending',
     createdAt: typeof p.createdAt === 'number' ? p.createdAt : 0,
     resolvedAt: typeof p.resolvedAt === 'number' ? p.resolvedAt : null,
+    run: parseCommandRun(p.run),
+    running: p.running === true,
   };
 }
 
@@ -94,7 +126,13 @@ export function shellCardOf(raw: { shell_command?: unknown; choices?: unknown })
   return choices.includes('paste') ? { shell_command: command, choices } : null;
 }
 
-export type CommandResolution = { id: string; status: CommandDecision; resolvedAt: number | null };
+export type CommandResolution = {
+  id: string;
+  status: CommandDecision;
+  resolvedAt: number | null;
+  run: CommandRun | null;
+  running: boolean;
+};
 
 /** The payload of a `command_request_resolved` event, or null. */
 export function parseCommandResolution(raw: unknown): CommandResolution | null {
@@ -102,13 +140,26 @@ export function parseCommandResolution(raw: unknown): CommandResolution | null {
   const p = raw as Record<string, unknown>;
   const id = str(p.id);
   if (!id || !isDecision(p.status)) return null;
-  return { id, status: p.status, resolvedAt: typeof p.resolvedAt === 'number' ? p.resolvedAt : null };
+  return {
+    id, status: p.status, resolvedAt: typeof p.resolvedAt === 'number' ? p.resolvedAt : null,
+    run: parseCommandRun(p.run), running: p.running === true,
+  };
 }
 
-/** A decision is final: a late or replayed event never sends a card back to pending. */
+/**
+ * A decision is final: a late or replayed event never sends a card back to
+ * pending. The one thing that follows it is the daemon's run after Allow,
+ * which arrives in a second event of the same decision.
+ */
 export function applyResolution(request: CommandRequestView, resolution: CommandResolution): CommandRequestView {
-  if (request.id !== resolution.id || request.status !== 'pending') return request;
-  return { ...request, status: resolution.status, resolvedAt: resolution.resolvedAt };
+  if (request.id !== resolution.id) return request;
+  if (request.status === 'pending') {
+    return { ...request, status: resolution.status, resolvedAt: resolution.resolvedAt, run: resolution.run, running: resolution.running };
+  }
+  if (request.status === 'allow' && resolution.status === 'allow' && resolution.run && !request.run) {
+    return { ...request, run: resolution.run, running: false };
+  }
+  return request;
 }
 
 /**
@@ -118,7 +169,10 @@ export function applyResolution(request: CommandRequestView, resolution: Command
  */
 export function freshest(event: CommandRequestView, listed: CommandRequestView | null | undefined): CommandRequestView {
   if (!listed || listed.id !== event.id) return event;
-  if (event.status !== 'pending') return event;
+  if (event.status !== 'pending') {
+    // The run's end can be in the list before it reaches the event stream.
+    return event.status === 'allow' && !event.run && listed.run ? listed : event;
+  }
   return listed;
 }
 

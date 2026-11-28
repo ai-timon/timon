@@ -3,7 +3,7 @@
  *
  * The agent never writes to a shell. Its request becomes a card in its
  * mission's conversation (`command-requests.ts`); the owner allows it (the
- * agent runs it), pastes it (their browser types it into the project's
+ * daemon runs it, outside the mission's fence, and the agent reads the result), pastes it (their browser types it into the project's
  * terminal WITHOUT the final Enter, through their own WebSocket) or refuses
  * it. Every route a browser calls here is the owner's alone, from a human
  * browser session: the web terminal's rule (`access.ts`) holds for the cards
@@ -17,6 +17,7 @@ import type { PermissionModel } from '../../backends/types.js';
 import { dbApi, type MissionRow, type UserRow } from '../../db.js';
 import { auditRequest } from '../../users/audit-actor.js';
 import { forbidden, isPersonAuth } from '../../users/identity.js';
+import type { RunDeps } from './run-context.js';
 import { decideAccess, denialBody, denialStatus } from './access.js';
 import {
   COMMAND_DECISIONS,
@@ -31,6 +32,7 @@ import {
   PENDING_REPLY,
   proposalOrigin,
   type RequestOrigin,
+  runReportOf,
   resolveCommandRequest,
   UNATTENDED_REPLY,
   waitForDecision,
@@ -74,6 +76,8 @@ export type ProposalRouteOptions = {
   /** Tests stand in for a live mission's backend, and for the agent a late answer goes to. */
   permissionModel?: (missionId: string) => PermissionModel | null;
   deliverLate?: (missionId: string, text: string) => void;
+  /** Tests stand in for the shell the daemon runs an allowed command with. */
+  run?: RunDeps;
 };
 
 /** The owner's browser, or an answer already sent. */
@@ -122,7 +126,7 @@ export function raiseCommandRequest(
   const id = randomUUID();
   const model = permissionModel(mission.id);
   const created = createCommandRequest({
-    id, mission, owner, model,
+    id, mission, owner,
     command: parsed.data.command,
     note: parsed.data.note ?? null,
     sessionId: parsed.data.session_id?.toLowerCase() ?? null,
@@ -166,7 +170,7 @@ export function registerProposalRoute(app: Router, opts: ProposalRouteOptions = 
       res.status(202).json({ id, status: 'pending', choices, message: PENDING_REPLY });
       return;
     }
-    res.json({ id, status: decided.status, choices, message: commandReply(decided.status, decided.command) });
+    res.json({ id, status: decided.status, choices, message: commandReply(decided.status, decided.command, runReportOf(decided)) });
   });
 
   // The caller's requests, for one conversation or the whole account.
@@ -178,7 +182,7 @@ export function registerProposalRoute(app: Router, opts: ProposalRouteOptions = 
     const rows = dbApi.listCommandRequests({
       ownerUserId: user.id, missionId: q.data.mission_id, status: q.data.status, limit: q.data.limit,
     });
-    res.json({ requests: rows.map((row) => commandRequestView(row, offeredChoices(row, permissionModel))) });
+    res.json({ requests: rows.map((row) => commandRequestView(row, offeredChoices(row))) });
   });
 
   // The per-project badge: the caller's pending requests, by project slug.
@@ -204,13 +208,14 @@ export function registerProposalRoute(app: Router, opts: ProposalRouteOptions = 
       res.status(404).json(apiError('not_found', 'not_found'));
       return;
     }
-    if (body.data.decision === 'paste') {
-      // Pasting opens the owner's terminal: its own rule, checked again now.
+    if (body.data.decision !== 'deny') {
+      // Pasting opens the owner's terminal and allowing runs a command as the daemon's user:
+      // the terminal's own rule, checked again now.
       const access = decideAccess(req.auth);
       if ('denied' in access) { res.status(denialStatus(access.denied)).json(denialBody(access.denied)); return; }
     }
     const outcome = resolveCommandRequest(row.id, body.data.decision, body.data.origin ?? 'unknown', {
-      deliver: opts.deliverLate, permissionModel,
+      deliver: opts.deliverLate, run: opts.run,
     });
     if (!outcome.ok) {
       if (outcome.error === 'already_decided') res.status(409).json(apiError('command_request_decided', 'this command request was already answered'));
@@ -219,6 +224,7 @@ export function registerProposalRoute(app: Router, opts: ProposalRouteOptions = 
       return;
     }
     auditRequest(req, `terminal.request.${body.data.decision}`, row.id);
+    // The run is not waited for: the card follows it through its events.
     res.json({ ok: true, request: commandRequestView(outcome.row) });
   });
 }

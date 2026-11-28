@@ -40,9 +40,29 @@ test('replayed in order, the request and its outcome rebuild the card in its fin
   assert.equal(after.status, 'paste');
   assert.equal(after.resolvedAt, 5);
   // A late or duplicated event never changes a decision.
-  assert.equal(applyResolution(after, { id: 'r1', status: 'deny', resolvedAt: 9 }).status, 'paste');
-  assert.equal(applyResolution(request, { id: 'other', status: 'deny', resolvedAt: 9 }).status, 'pending');
+  assert.equal(applyResolution(after, { id: 'r1', status: 'deny', resolvedAt: 9, run: null, running: false }).status, 'paste');
+  assert.equal(applyResolution(request, { id: 'other', status: 'deny', resolvedAt: 9, run: null, running: false }).status, 'pending');
   assert.equal(parseCommandResolution({ id: 'r1', status: 'pending' }), null);
+});
+
+test('the run of an allowed command follows its decision in a second event', () => {
+  const request = parseCommandRequest(raw)!;
+  const first = applyResolution(request, parseCommandResolution({ id: 'r1', status: 'allow', resolvedAt: 5, running: true })!);
+  assert.equal(first.status, 'allow');
+  assert.equal(first.running, true);
+  assert.equal(first.run, null);
+  const second = applyResolution(first, parseCommandResolution({
+    id: 'r1', status: 'allow', resolvedAt: 5, running: false,
+    run: { exitCode: 3, timedOut: false, output: 'boom', durationMs: 1200, notRun: false },
+  })!);
+  assert.equal(second.running, false);
+  assert.equal(second.run?.exitCode, 3);
+  assert.equal(second.run?.output, 'boom');
+  // Replayed again, or a different decision: nothing moves.
+  assert.equal(applyResolution(second, { id: 'r1', status: 'allow', resolvedAt: 5, running: false, run: { ...second.run!, exitCode: 0 } }).run?.exitCode, 3);
+  assert.equal(applyResolution(second, { id: 'r1', status: 'deny', resolvedAt: 9, running: false, run: null }).status, 'allow');
+  // A row with no run (paste, dismiss, older daemon) reads as not running.
+  assert.deepEqual([parseCommandRequest(raw)!.run, parseCommandRequest(raw)!.running], [null, false]);
 });
 
 test('a pending card takes the buttons the daemon offers now; a decided one keeps its decision', () => {
