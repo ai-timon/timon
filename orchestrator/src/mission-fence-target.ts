@@ -204,7 +204,9 @@ export function leadFenceGrants(input: {
   fs?: GitDirsFs;
 }): LeadFenceGrants {
   const none: LeadFenceGrants = { worktrees: [], gitDirs: [], refused: [] };
-  if (!input.project || !integratesProject(input.role, input.taskType)) return none;
+  if (!integratesProject(input.role, input.taskType)) return none;
+  // An integrating mission that gets nothing must say why: a silent grant lost a `git fetch`.
+  if (!input.project) return { ...none, refused: ['the mission has no project, so no repository is known'] };
   const fs = input.fs ?? GIT_DIRS_FS;
   const root = join(resolve(input.timonHome), 'worktrees');
   const worktrees = new Set<string>();
@@ -219,6 +221,9 @@ export function leadFenceGrants(input: {
     const found = projectCommonGitDir(input.repoCwd, input.home, fs);
     if (found.dir) gitDirs.push(found.dir);
     if (found.refused) refused.push(found.refused);
+    else if (!found.dir) refused.push(`no .git found at or above ${input.repoCwd}`);
+  } else {
+    refused.push(`project "${input.project}" has no working directory`);
   }
   return { worktrees: [...worktrees], gitDirs, refused };
 }

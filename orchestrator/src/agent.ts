@@ -27,12 +27,12 @@ import { db, dbApi, type RenamedAgentTrigger, type Source, type MemoryRuleRow } 
 import { originFromSpawnSource, type UserEventOrigin } from './user-origin.js';
 import type { PromptPresentation } from './prompt-presentation.js';
 import { recordRequestDelivery } from './agent-request-replies.js';
-import { projectFromCwd } from './task-project.js';
+import { projectFromCwd, projectFromRegisteredCwd } from './task-project.js';
 import {
   dropAgentBrowserProfiles, holdAgentBrowserProfiles, resolveBrowserProfile, resolveMissionBrowserProfile,
   restoreAgentBrowserProfiles, revokeAgentBrowserGrants,
 } from './browser-profiles.js';
-import { projectOfTask, resolveBrowserProject, taskIdOfSource } from './browser-project.js';
+import { projectOfTask, registeredProjects, resolveBrowserProject, taskIdOfSource } from './browser-project.js';
 import { dropAgentMemory, holdAgentMemory, restoreAgentMemory } from './agent-memory-trash.js';
 import { listProjects, readRoles, writeRoles, readProjectMemory } from './projects.js';
 import { buildGlobalDigest } from './global-digest.js';
@@ -1939,14 +1939,22 @@ export function missionFenceTarget(input: {
   if (git.refused) console.warn(`[agent] mission ${input.missionId.slice(0, 8)}: git directory not opened to the fence: ${git.refused}`);
   // A lead, a merger or a merge task integrates the project's tasks: their
   // worktrees and the repository's git directory, for `git push/fetch/merge`.
+  const task = dbApi.getTaskByMission(input.missionId);
+  // `input.project` only knows the `.../projects/<slug>` layout: a project registered
+  // anywhere else (`/home/x/work/app`) reads as none there. For this grant alone the
+  // task's project, then the registry, say which project the mission works in.
+  const leadProject = input.project
+    || task?.project
+    || projectFromRegisteredCwd(input.cwd, registeredProjects())
+    || '';
   const lead = leadFenceGrants({
     role: input.role,
-    taskType: dbApi.getTaskByMission(input.missionId)?.type,
-    project: input.project,
+    taskType: task?.type,
+    project: leadProject,
     timonHome: TIMON_HOME,
     home: homedir(),
-    repoCwd: input.project ? dbApi.getProjectRow(input.project)?.cwd : null,
-    taskWorktrees: input.project ? dbApi.taskWorktreePathsOfProject(input.project) : [],
+    repoCwd: leadProject ? dbApi.getProjectRow(leadProject)?.cwd : null,
+    taskWorktrees: leadProject ? dbApi.taskWorktreePathsOfProject(leadProject) : [],
   });
   for (const why of lead.refused) console.warn(`[agent] mission ${input.missionId.slice(0, 8)}: project git directory not opened to the fence: ${why}`);
   const commandLines = input.mcpServers.flatMap((id) => {
