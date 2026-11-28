@@ -330,3 +330,56 @@ test('a11y_probe_app is a person\'s command and judges the tree', async () => {
   assert.deepEqual(await run('a11y_probe_app', { windowId: '30:1' }, 'human'), { nodes: 2, actionable: 1, verdict: 'poor' });
   await assert.rejects(run('a11y_probe_app', { windowId: '10:1' }), (e: ComputerCommandError) => e.code === 'forbidden');
 });
+
+test('a window screenshot captures only its rectangle, and later coordinates are pixels of that image', async () => {
+  const windows = [
+    { id: '10:1', title: 'Notes', app: 'TextEdit', bundle: 'com.apple.TextEdit', focused: true, bounds: { x: 100, y: 50, width: 400, height: 300 } },
+    { id: '20:1', title: 'Inbox', app: 'Mail', bundle: 'com.apple.mail', focused: false, bounds: { x: 0, y: 0, width: 800, height: 600 } },
+    { id: '30:1', title: 'Hidden', app: 'TextEdit', bundle: 'com.apple.TextEdit', focused: false, bounds: { x: 3000, y: 0, width: 800, height: 600 } },
+    { id: '40:1', title: 'No bounds', app: 'TextEdit', bundle: 'com.apple.TextEdit', focused: false },
+  ];
+  const captured: unknown[] = [];
+  const exec = async (command: SystemCommand) => {
+    if (command.args.some((arg) => arg.includes('kCGWindowListOptionOnScreenOnly'))) return { stdout: JSON.stringify(windows) };
+    return { stdout: 'true' };
+  };
+  const { run, calls } = setup({ exec, cursor: () => ({ x: 150, y: 100 }), capture: async (size, region) => { captured.push({ size, region }); return Buffer.from([0xff, 0xd8]); } });
+  const shot = await run('screenshot', { windowId: '10:1', maxWidth: 400 }) as { width: number; height: number; window: unknown };
+  assert.deepEqual([shot.width, shot.height], [400, 300]);
+  assert.deepEqual(shot.window, { id: '10:1', title: 'Notes', app: 'TextEdit' });
+  assert.deepEqual(captured.at(-1), { size: { width: 400, height: 300 }, region: { x: 100, y: 50, width: 400, height: 300 } });
+  calls.length = 0;
+  await run('click', { x: 200, y: 150 });
+  const moves = calls.map((call) => call.args.find((arg) => arg.includes('"t":"move"'))).filter(Boolean);
+  assert.deepEqual(JSON.parse(moves[0]!)[0], { t: 'move', x: 300, y: 200 }, 'the window origin is added back');
+  calls.length = 0;
+  await run('click', { x: 5000, y: 5000 });
+  const clamped = calls.map((call) => call.args.find((arg) => arg.includes('"t":"move"'))).filter(Boolean);
+  assert.deepEqual(JSON.parse(clamped[0]!)[0], { t: 'move', x: 499, y: 349 }, 'a stray coordinate stays inside the window');
+  assert.deepEqual(await run('cursor_position'), { x: 50, y: 50 });
+
+  // "front" is the window in front; a full screenshot afterwards restores the whole display.
+  await run('screenshot', { windowId: 'front', maxWidth: 400 });
+  assert.deepEqual((captured.at(-1) as { region: unknown }).region, { x: 100, y: 50, width: 400, height: 300 });
+  await run('screenshot', { maxWidth: 720 });
+  assert.equal((captured.at(-1) as { region?: unknown }).region, undefined);
+  assert.deepEqual(await run('cursor_position'), { x: 75, y: 50 });
+
+  // The window's own application must be allowed in the foreground mode.
+  await assert.rejects(run('screenshot', { windowId: '20:1' }), (e: ComputerCommandError) => e.code === 'computer_app_not_allowed' && /Mail/.test(e.message));
+  const background = setup({ exec }, [{ app: 'TextEdit', mode: 'foreground' }, { app: 'Mail', mode: 'background' }]);
+  await assert.rejects(background.run('screenshot', { windowId: '20:1' }), (e: ComputerCommandError) => e.code === 'computer_background_only');
+  await assert.rejects(run('screenshot', { windowId: '99:9' }), (e: ComputerCommandError) => e.code === 'window_not_found' && e.statusCode === 404);
+  for (const id of ['30:1', '40:1']) {
+    await assert.rejects(run('screenshot', { windowId: id }), (e: ComputerCommandError) => e.code === 'window_not_visible' && e.statusCode === 409, id);
+  }
+  assert.equal(captured.length, 3, 'a refused window capture captured nothing');
+});
+
+test('the screenshot windowId is a list_windows id or "front"', () => {
+  assert.deepEqual(parseComputerCommand('screenshot', { windowId: 'front' }), { command: 'screenshot', maxWidth: 1024, windowId: 'front' });
+  assert.deepEqual(parseComputerCommand('screenshot', { windowId: '10:1', maxWidth: 2048 }), { command: 'screenshot', maxWidth: 2048, windowId: '10:1' });
+  for (const windowId of ['', 'a b', '../x', 7, 'x'.repeat(65)]) {
+    assert.throws(() => parseComputerCommand('screenshot', { windowId }), ComputerCommandError, String(windowId));
+  }
+});

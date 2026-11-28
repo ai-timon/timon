@@ -235,7 +235,13 @@ function macSteps(action: InputAction): MacStep[] {
 // ── Windows: PowerShell + SendInput ────────────────────────────────────────
 
 /**
- * Fixed text, shared by the one-shot and the persistent forms. Compiling the C# helper is what costs
+ * Fixed text, shared by the one-shot and the persistent forms. Comments stay out of it: the worker
+ * form travels in an environment variable, capped at 32 767 characters.
+ *
+ * `Rect` gives a window as drawn (DWM extended frame bounds, without the invisible resize border that
+ * GetWindowRect counts; composition is always on since Windows 8, the oldest an Electron 45 app runs
+ * on), in physical pixels once the process is DPI-aware, divided by the system scale into the points
+ * Electron uses, as the accessibility bounds are; null for a minimised or gone window. Compiling the C# helper is what costs
  * (hundreds of milliseconds per `powershell.exe`), so the persistent form does it once.
  */
 const WINDOWS_INPUT_LIB = `
@@ -272,6 +278,10 @@ public static class TimonInput {
   [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr l);
   [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+  [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
+  [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+  [DllImport("user32.dll")] static extern uint GetDpiForSystem();
   public static long Foreground() { return GetForegroundWindow().ToInt64(); }
   public static uint Pid(long h) { uint pid; GetWindowThreadProcessId(new IntPtr(h), out pid); return pid; }
   public static string Title(long h) {
@@ -293,6 +303,13 @@ public static class TimonInput {
     keybd_event(0x12, 0, 0, UIntPtr.Zero); keybd_event(0x12, 0, 2, UIntPtr.Zero);
     SetForegroundWindow(h);
     return GetForegroundWindow() == h;
+  }
+  public static double[] Rect(long n) {
+    IntPtr h = new IntPtr(n); RECT r; double s = 1;
+    if (!IsWindow(h) || IsIconic(h)) return null;
+    try { SetProcessDPIAware(); s = GetDpiForSystem() / 96.0; } catch (Exception) { }
+    if (DwmGetWindowAttribute(h, 9, out r, 16) != 0) return null;
+    return new double[] { r.L / s, r.T / s, (r.R - r.L) / s, (r.B - r.T) / s };
   }
 }
 "@
@@ -333,6 +350,7 @@ function Invoke-TimonQuery($q) {
       $result = @(foreach ($h in [TimonInput]::Visible()) { $a = Get-TimonApp $h; @{ id = [string]$h; title = [TimonInput]::Title($h); app = $a.name; exe = $a.exe; focused = ($h -eq $fg) } })
     }
     'focus' { $result = @{ ok = [TimonInput]::Focus([long]$q.id) } }
+    'rect' { $r = [TimonInput]::Rect([long]$q.id); if ($r) { $result = @{ x = $r[0]; y = $r[1]; width = $r[2]; height = $r[3] } } }
     'a11y_probe' { try { Initialize-TimonUia; $result = @{ ok = $true } } catch { $result = @{ ok = $false } } }
     'a11y_tree' { $result = Invoke-TimonUiaTree $q }
     'a11y_act' { $result = Invoke-TimonUiaAct $q }
@@ -453,7 +471,7 @@ Write-Output (Invoke-TimonQuery ($env:TIMON_CU_QUERY | ConvertFrom-Json))
 `;
 
 export type WindowsQuery =
-  | { q: 'foreground' } | { q: 'windows' } | { q: 'focus'; id: string }
+  | { q: 'foreground' } | { q: 'windows' } | { q: 'focus'; id: string } | { q: 'rect'; id: string }
   | { q: 'a11y_probe' }
   | { q: 'a11y_tree'; id: string; maxDepth: number; maxNodes: number }
   | { q: 'a11y_act'; id: string; path: string; action: string; value?: string; background?: boolean };

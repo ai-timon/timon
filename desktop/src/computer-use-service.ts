@@ -5,12 +5,12 @@
  * so the whole decision logic runs under test with simulated ones. This file imports no Electron.
  */
 import {
-  COMPUTER_DEFAULT_MAX_WIDTH, ComputerCommandError, type AllowedApp, type ComputerActor, type ComputerUseMode, type ComputerCommand, type ComputerUnavailableReason,
+  COMPUTER_DEFAULT_MAX_WIDTH, ComputerCommandError, FRONT_WINDOW, type AllowedApp, type ComputerActor, type ComputerUseMode, type ComputerCommand, type ComputerUnavailableReason,
 } from './computer-use-protocol.js';
-import { imageToPoints, pointsToImage, screenshotSize, type DisplayInfo, type ImageSize } from './computer-use-geometry.js';
+import { clipToDisplay, imageToPoints, pointsToImage, screenshotSize, type DisplayInfo, type Frame, type ImageSize, type Region } from './computer-use-geometry.js';
 import { A11Y_DEFAULT_MAX_DEPTH, A11Y_PROBE_MAX_NODES, A11yError, buildTree, parseElementId, probeVerdict, type A11yBackend } from './computer-use-a11y.js';
 import { selectA11yBackend } from './computer-use-a11y-select.js';
-import { appMode, describeApp, focusWindow, listWindows, readForegroundApp, windowApp } from './computer-use-windows.js';
+import { appMode, describeApp, findWindow, focusWindow, listWindows, readForegroundApp, windowApp, windowBounds } from './computer-use-windows.js';
 import {
   MAC_TRUST_SCRIPT, buildInputCommand, macCommand, type InputAction, type InputPlatform, type SystemCommand,
 } from './computer-use-input.js';
@@ -24,8 +24,11 @@ export interface ComputerUseDeps {
   display: () => DisplayInfo | null;
   /** The pointer, in screen points. */
   cursor: () => { x: number; y: number };
-  /** A JPEG (PNG when JPEG encoding fails) of the primary display at exactly this size, or null when the system gave an empty frame. */
-  capture: (size: ImageSize) => Promise<Buffer | null>;
+  /**
+   * A JPEG (PNG when JPEG encoding fails) of the primary display, or of `region` of it, at exactly
+   * this size, or null when the system gave an empty frame.
+   */
+  capture: (size: ImageSize, region?: Region) => Promise<Buffer | null>;
   /** macOS Screen Recording grant. `not-determined`: never asked yet, so asking shows the system prompt. */
   screenPermission: () => 'granted' | 'denied' | 'not-determined' | 'unknown';
   /**
@@ -92,7 +95,7 @@ export class ComputerUseService {
   private stopped = false;
   private lastAgentAt = 0;
   private activeTimer: NodeJS.Timeout | null = null;
-  private frame: ImageSize | null = null;
+  private frame: Frame | null = null;
   private probe: ({ at: number } & Probe) | null = null;
   private screenWasMissing = false;
   private queue: Promise<unknown> = Promise.resolve();
@@ -285,7 +288,7 @@ export class ComputerUseService {
       case 'a11y_tree': return this.a11yTree(actor, platform, display, command, allowedApps);
       case 'a11y_action': return this.a11yAction(actor, platform, command, allowedApps, display);
       case 'a11y_probe_app': return this.probeApp(display, command.windowId);
-      case 'screenshot': return this.screenshot(display, command.maxWidth);
+      case 'screenshot': return this.screenshot(actor, platform, display, command, allowedApps);
       case 'cursor_position': {
         const point = this.deps.cursor();
         return pointsToImage(display, this.currentFrame(display), point.x, point.y);
@@ -444,19 +447,45 @@ export class ComputerUseService {
     try { await request(reason); } catch { /* A failed prompt leaves the refusal as it is. */ }
   }
 
-  private currentFrame(display: DisplayInfo): ImageSize {
+  private currentFrame(display: DisplayInfo): Frame {
     return this.frame ?? screenshotSize(display, COMPUTER_DEFAULT_MAX_WIDTH);
   }
 
-  private async screenshot(display: DisplayInfo, maxWidth: number): Promise<unknown> {
-    const size = screenshotSize(display, maxWidth);
-    const png = await this.deps.capture(size);
+  /**
+   * The rectangle of the display a window capture shows, and the window it is. The window's application
+   * must be allowed in the foreground mode, as for the screen: the capture is a crop of the screen.
+   */
+  private async captureWindow(
+    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, windowId: string, allowedApps: readonly AllowedApp[],
+  ): Promise<{ region: Region; window: { id: string; title: string; app: string } }> {
+    const front = windowId === FRONT_WINDOW;
+    let entry;
+    try { entry = await findWindow(platform, this.deps.exec, front ? null : windowId); }
+    catch { throw new ComputerCommandError('Listing the windows failed.', 502, 'windows_failed'); }
+    if (!entry) throw new ComputerCommandError(front ? 'No window is in front.' : 'No open window has this id.', 404, 'window_not_found');
+    if (actor === 'agent') await this.requireForeground(entry.identity, allowedApps, 'The application of that window');
+    let bounds;
+    try { bounds = await windowBounds(platform, this.deps.exec, entry, display.scaleFactor); }
+    catch { throw new ComputerCommandError('Reading the window\'s position failed.', 502, 'windows_failed'); }
+    const region = bounds ? clipToDisplay(display, bounds) : null;
+    if (!region) {
+      throw new ComputerCommandError('That window is minimised or not on the main screen: bring it forward with focus_window, or capture the whole screen.', 409, 'window_not_visible');
+    }
+    return { region, window: { id: entry.id, title: entry.title, app: entry.app } };
+  }
+
+  private async screenshot(
+    actor: ComputerActor, platform: InputPlatform, display: DisplayInfo, command: Extract<ComputerCommand, { command: 'screenshot' }>, allowedApps: readonly AllowedApp[],
+  ): Promise<unknown> {
+    const target = command.windowId ? await this.captureWindow(actor, platform, display, command.windowId, allowedApps) : null;
+    const size = screenshotSize(display, command.maxWidth, target?.region);
+    const png = await this.deps.capture(size, target?.region);
     if (!png || png.length === 0) throw new ComputerCommandError('Computer use is unavailable: permission-screen.', 503, 'computer_unavailable');
-    // Later coordinates are expressed in this image.
-    this.frame = size;
+    // Later coordinates are expressed in this image, and in the rectangle it shows.
+    this.frame = target ? { ...size, region: target.region } : size;
     // The capture is JPEG unless the encoder fell back to PNG: the bytes say which.
     const mimeType = png[0] === 0xff && png[1] === 0xd8 ? 'image/jpeg' : 'image/png';
-    return { mimeType, data: png.toString('base64'), width: size.width, height: size.height };
+    return { mimeType, data: png.toString('base64'), width: size.width, height: size.height, ...(target ? { window: target.window } : {}) };
   }
 
   private async input(display: DisplayInfo, command: ComputerCommand): Promise<unknown> {

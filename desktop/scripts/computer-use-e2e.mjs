@@ -5,7 +5,8 @@
  * textarea, then acts as the AGENT over the private HTTP transport: screenshot, click, type, shortcut,
  * and reads what really landed in the textarea. It then reads the window as an accessibility tree, finds
  * a field and a button by name, writes the field and presses the button without touching the mouse,
- * and reads the real values back (TIMON_E2E_REQUIRE_A11Y=1 makes a missing tree a failure; without it
+ * and reads the real values back. A window capture is checked too: its size, and a click and typed text
+ * through its own pixels (TIMON_E2E_REQUIRE_A11Y=1 makes a missing tree a failure; without it
  * the step is skipped with a note). It finishes by pressing the stop shortcut through the
  * service itself and checks that the next agent command is refused.
  *
@@ -13,7 +14,7 @@
  * On macOS without the Screen Recording / Accessibility grants it checks the clean refusal and passes
  * with "skipped: permissions".
  */
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, screen } from 'electron';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -246,6 +247,31 @@ async function main() {
   other.destroy();
   win.focus();
   await sleep(300);
+
+  log('window capture: only the test window, coordinates in its pixels');
+  const winShot = await agent('screenshot', { windowId: mine.id, maxWidth: 1280 }, 'screenshot (window)');
+  if (winShot.window?.id !== mine.id) throw fail(`The window capture names ${JSON.stringify(winShot.window)}, expected ${mine.id}.`);
+  // The system draws the window with its frame, which Electron's bounds may or may not count: a loose ratio.
+  const outer = win.getBounds();
+  const windowRatio = (winShot.width / winShot.height) / (outer.width / outer.height);
+  if (Math.abs(windowRatio - 1) > 0.2 || winShot.width >= shot.width) throw fail(`Window capture ${winShot.width}x${winShot.height} does not look like the window ${outer.width}x${outer.height} (screen capture ${shot.width}x${shot.height}).`);
+  log(`  window capture ${winShot.width}x${winShot.height} for a window of ${outer.width}x${outer.height} points`);
+  await agent('move', { x: Math.round(winShot.width / 2), y: Math.round(winShot.height / 2) }, 'move (window pixels)');
+  const pointer = screen.getCursorScreenPoint();
+  if (Math.abs(pointer.x - (outer.x + outer.width / 2)) > 40 || Math.abs(pointer.y - (outer.y + outer.height / 2)) > 40) {
+    throw fail(`The centre of the window capture led the pointer to ${pointer.x},${pointer.y}, not near the window centre (${JSON.stringify(outer)}).`);
+  }
+  const inWindow = {
+    x: Math.round((content.x + box.x - outer.x) * winShot.width / outer.width),
+    y: Math.round((content.y + box.y - outer.y) * winShot.height / outer.height),
+  };
+  await js('document.getElementById("t").value = ""');
+  await agent('click', inWindow, 'click (window pixels)');
+  await agent('type', { text: 'window' }, 'type');
+  await expectValue('window', 'a click in the window capture reached the textarea');
+  // Back to a capture of the whole screen and the text the rest of the test expects.
+  await agent('screenshot', { maxWidth: 256 }, 'screenshot (screen again)');
+  await js(`document.getElementById("t").value = ${JSON.stringify(TYPED)}`);
   }
 
   log('accessibility: find by name, set_value, press, no mouse');
