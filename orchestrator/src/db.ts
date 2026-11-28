@@ -3281,6 +3281,14 @@ const setTaskMergeRequestStmt = db.prepare(
   `UPDATE tasks SET mr_url = @url, mr_forge = @forge, mr_number = @number, mr_state = @state,
      mr_pipeline = @pipeline, updated_at = @now WHERE id = @id`,
 );
+// Only a request still open is watched (`merge-request-watch.ts`); an oldest-first
+// order with a cap keeps one pass bounded however many cards carry a request.
+const listOpenMergeRequestTasksStmt = db.prepare(
+  `SELECT * FROM tasks WHERE mr_url IS NOT NULL AND mr_state = 'open' ORDER BY updated_at ASC LIMIT ?`,
+);
+const setTaskMergeRequestStateStmt = db.prepare(
+  `UPDATE tasks SET mr_state = ?, updated_at = ? WHERE id = ? AND mr_url IS NOT NULL AND mr_state = 'open'`,
+);
 // Appended, never prepended: the first line of a review's comment is its verdict.
 const appendTaskDoneCommentStmt = db.prepare(
   `UPDATE tasks SET done_comment = CASE WHEN done_comment IS NULL OR done_comment = '' THEN @text
@@ -5956,6 +5964,15 @@ export const dbApi = {
    *  close guard must demand the one from the repair (see merge-integrity). */
   setTaskMergeRequest(id: string, ref: { url: string; forge: string; number: number; state: string; pipeline: string | null }): void {
     setTaskMergeRequestStmt.run({ ...ref, now: Date.now(), id });
+  },
+  /** Tasks whose pull / merge request is still open, oldest change first. */
+  listOpenMergeRequestTasks(limit: number): TaskRow[] {
+    return listOpenMergeRequestTasksStmt.all(limit) as TaskRow[];
+  },
+  /** Moves an open request to `merged` or `closed`; false when it was no longer open
+   *  (another pass got there first), so the caller acts once. */
+  setTaskMergeRequestState(id: string, state: 'merged' | 'closed'): boolean {
+    return setTaskMergeRequestStateStmt.run(state, Date.now(), id).changes > 0;
   },
   setTaskMergedSha(id: string, sha: string | null): void {
     setTaskMergedShaStmt.run(sha, Date.now(), id);
