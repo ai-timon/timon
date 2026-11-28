@@ -21,6 +21,7 @@ import { settingInt } from '../../settings.js';
 import { hostFiles, type HostFiles } from '../../terminal-host/protocol.js';
 import { nodePtySpawner } from '../../terminal-host/pty.js';
 import { TerminalSessions } from '../../terminal-host/sessions.js';
+import { interruptStaleRuns } from './command-requests.js';
 import { HostedSessions } from './hosted.js';
 import { createUpgradeHandler, registerRoutes } from './routes.js';
 import { localStore, type SessionStore } from './store.js';
@@ -91,6 +92,11 @@ export function apply(ctx: Context): void {
   } else {
     sessions = localStore(local());
   }
+  // An allowed command a previous daemon was running never recorded its end.
+  try {
+    const n = interruptStaleRuns();
+    if (n > 0) console.log(`[terminal-web] ${n} allowed command run(s) interrupted by the last stop were marked as such`);
+  } catch (err) { console.warn(`[terminal-web] could not close interrupted runs: ${(err as Error).message}`); }
   registerRoutes(ctx.http.router(), sessions);
   const upgrade = createUpgradeHandler(sessions);
   ctx.http.upgrade(upgrade);

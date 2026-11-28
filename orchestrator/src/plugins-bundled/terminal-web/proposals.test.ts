@@ -12,6 +12,9 @@ import { once } from 'node:events';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import express from 'express';
+import { mkdtempSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 await import('../../../tests/helpers/paid-license.js');
 delete process.env.TIMON_TERMINAL_WEB_ENABLED;
@@ -48,6 +51,22 @@ dbApi.setMissionLineage('m-task-closed', { taskId: 't-closed' });
 const SECRET_ID = '3f2a9c1e-7b4d-4e8a-9f60-1c2d3e4f5a6b';
 dbApi.createMission(SECRET_ID, 'acme.coder', 'deploy with TOKEN=sk-live-never-shown\nthen restart', undefined, owner.id);
 
+// Where the daemon runs an allowed command: a folder the missions own, so the checks pass.
+const WORK = realpathSync(mkdtempSync(join(tmpdir(), 'timon-allow-')));
+for (const id of ['m-task', 'm-claude', 'm-codex', 'm-late', 'm-task-live', 'm-task-closed', 'm-task-leaked']) {
+  if (dbApi.getMission(id)) dbApi.setMissionCwdOverride(id, WORK);
+}
+dbApi.upsertProject('project-onboarding', { cwd: WORK });
+dbApi.upsertProject('project-live', { cwd: WORK });
+type Ran = { command: string; cwd: string; env: Record<string, string> };
+const ran: Ran[] = [];
+let runResult = { exitCode: 3 as number | null, timedOut: false, output: 'boom: it failed\n', truncated: false, durationMs: 1200, failedToStart: false };
+const fakeRun = async (o: { command: string; cwd: string; env: Record<string, string> }): Promise<typeof runResult> => {
+  ran.push({ command: o.command, cwd: o.cwd, env: o.env });
+  await new Promise((r) => setTimeout(r, 20));
+  return runResult;
+};
+
 const MODELS: Record<string, PermissionModel> = {
   'm-claude': 'mcp-bridge', 'm-codex': 'sandbox', 'm-late': 'mcp-bridge',
   'm-task-live': 'mcp-bridge', 'm-task-closed': 'protocol',
@@ -76,6 +95,7 @@ registerProposalRoute(app, {
   waitMs: () => waitMs,
   permissionModel: (id) => MODELS[id] ?? null,
   deliverLate: (missionId, text) => { late.push({ missionId, text }); },
+  run: { run: fakeRun, env: () => ({ PATH: '/bin' }), timeoutMs: () => 5_000 },
 });
 const server = createServer(app);
 server.listen(0, '127.0.0.1');
@@ -151,7 +171,7 @@ test.describe('command requests', { concurrency: false }, () => {
     const body = await res.json() as { id: string; status: string; message: string; choices: string[] };
     assert.equal(body.status, 'pending');
     assert.equal(body.message, UNATTENDED_REPLY);
-    assert.deepEqual(body.choices, ['paste', 'deny'], 'no live backend: nothing could act on allow');
+    assert.deepEqual(body.choices, ['allow', 'paste', 'deny'], 'the daemon runs it: no backend is needed');
 
     const ev = seen.at(-1)!;
     assert.equal(ev.type, 'command_request');
@@ -202,10 +222,9 @@ test.describe('command requests', { concurrency: false }, () => {
     assert.equal(dbApi.getCommandRequest(id)!.status, 'pending');
   });
 
-  test('a sandbox backend is never offered allow; paste gives the agent an instructive refusal in its turn', async () => {
+  test('a sandbox backend is offered allow too; paste gives the agent an instructive refusal in its turn', async () => {
     const { id, reply } = await openCard('m-codex', 'sudo apt upgrade');
-    assert.deepEqual(seen.at(-1)!.payload.choices, ['paste', 'deny']);
-    assert.equal((await decide(id, ownerBrowser, { decision: 'allow' })).status, 400, 'allow is not offered');
+    assert.deepEqual(seen.at(-1)!.payload.choices, ['allow', 'paste', 'deny']);
 
     const res = await decide(id, ownerBrowser, { decision: 'paste', origin: 'ui_card_paste' });
     assert.equal(res.status, 200);
@@ -224,17 +243,85 @@ test.describe('command requests', { concurrency: false }, () => {
     assert.equal((await decide(id, ownerBrowser, { decision: 'deny' })).status, 409, 'decided once');
   });
 
-  test('a backend that asks mid-turn is offered allow; deny comes back as a refusal', async () => {
+  test('allow runs the command in the daemon and the answer to the agent carries its output and code', async () => {
+    ran.length = 0;
     const allowed = await openCard('m-claude', 'sudo make install');
     assert.deepEqual(seen.at(-1)!.payload.choices, ['allow', 'paste', 'deny']);
-    assert.equal((await decide(allowed.id, ownerBrowser, { decision: 'allow' })).status, 200);
-    assert.match(((await (await allowed.reply).json()) as { message: string }).message, /run it yourself now/);
+    const click = await decide(allowed.id, ownerBrowser, { decision: 'allow', origin: 'ui_card_allow' });
+    assert.equal(click.status, 200);
+    const agent = await (await allowed.reply).json() as { status: string; message: string };
+    assert.equal(agent.status, 'allow');
+    assert.match(agent.message, /exited with code 3 after 1\.2 s/);
+    assert.match(agent.message, /boom: it failed/);
+    assert.doesNotMatch(agent.message, /run it yourself/);
+    assert.equal(ran.length, 1);
+    assert.equal(ran[0]!.command, 'sudo make install');
+    assert.equal(ran[0]!.cwd, WORK);
+
+    const events = seen.filter((e) => e.type === 'command_request_resolved' && e.payload.id === allowed.id);
+    assert.equal(events.length, 2, 'one when the click is taken, one when the run ended');
+    assert.equal(events[0]!.payload.running, true);
+    assert.equal(events[1]!.payload.running, false);
+    assert.deepEqual((events[1]!.payload.run as { exitCode: number; output: string }).exitCode, 3);
+    const row = dbApi.getCommandRequest(allowed.id)!;
+    assert.equal(row.run_exit_code, 3);
+    assert.match(row.run_output ?? '', /boom/);
+    assert.equal(row.run_cwd, WORK);
+    assert.ok(row.run_finished_at);
 
     const denied = await openCard('m-claude', 'sudo rm -rf /opt/x');
     assert.equal((await decide(denied.id, ownerBrowser, { decision: 'deny' })).status, 200);
-    const agent = await (await denied.reply).json() as { status: string; message: string };
-    assert.equal(agent.status, 'deny');
-    assert.match(agent.message, /dismissed/);
+    const refusal = await (await denied.reply).json() as { status: string; message: string };
+    assert.equal(refusal.status, 'deny');
+    assert.match(refusal.message, /dismissed/);
+    assert.equal(ran.length, 1, 'a dismissal runs nothing');
+  });
+
+  test('a double click on allow runs the command once', async () => {
+    ran.length = 0;
+    const { id, reply } = await openCard('m-claude', 'npm run rebuild');
+    const [a, b] = await Promise.all([
+      decide(id, ownerBrowser, { decision: 'allow' }),
+      decide(id, ownerBrowser, { decision: 'allow' }),
+    ]);
+    assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+    await reply;
+    await new Promise((r) => setTimeout(r, 80));
+    assert.equal(ran.length, 1);
+  });
+
+  test('a command that could not start comes back as such, never as a success', async () => {
+    const saved = runResult;
+    runResult = { exitCode: null, timedOut: false, output: 'not run: the folder to run in is outside this project', truncated: false, durationMs: 0, failedToStart: true };
+    try {
+      const { id, reply } = await openCard('m-claude', 'git push');
+      assert.equal((await decide(id, ownerBrowser, { decision: 'allow' })).status, 200);
+      const agent = await (await reply).json() as { message: string };
+      assert.match(agent.message, /could not run it \(the folder to run in is outside this project\)/);
+      assert.equal(dbApi.getCommandRequest(id)!.run_exit_code, null);
+    } finally {
+      runResult = saved;
+    }
+  });
+
+  test('a secret the command printed is masked before it is stored and sent', async () => {
+    const saved = runResult;
+    runResult = { ...saved, exitCode: 0, output: 'token=ghp_a_vault_value_123456\n' };
+    const { setRedactionSource, invalidateRedactionCache } = await import('../../secrets/redact.js');
+    const previous = setRedactionSource(() => ['ghp_a_vault_value_123456']);
+    invalidateRedactionCache();
+    try {
+      const { id, reply } = await openCard('m-claude', 'env');
+      assert.equal((await decide(id, ownerBrowser, { decision: 'allow' })).status, 200);
+      const agent = await (await reply).json() as { message: string };
+      assert.ok(!agent.message.includes('ghp_a_vault_value_123456'));
+      assert.match(agent.message, /token=\*\*\*/);
+      assert.ok(!(dbApi.getCommandRequest(id)!.run_output ?? '').includes('ghp_a_vault_value_123456'));
+    } finally {
+      setRedactionSource(previous);
+      invalidateRedactionCache();
+      runResult = saved;
+    }
   });
 
   test('no answer in time: the agent is told so, and the late answer goes out as a message', async () => {
@@ -264,7 +351,7 @@ test.describe('command requests', { concurrency: false }, () => {
       assert.equal(res.status, 202);
       const body = await res.json() as { id: string; message: string; choices: string[] };
       assert.equal(body.message, UNATTENDED_REPLY);
-      assert.deepEqual(body.choices, ['allow', 'paste', 'deny'], 'a live mcp-bridge agent can run it');
+      assert.deepEqual(body.choices, ['allow', 'paste', 'deny']);
       ids[decision] = body.id;
     }
     const before = late.length;
@@ -272,48 +359,30 @@ test.describe('command requests', { concurrency: false }, () => {
       assert.equal((await decide(ids[decision]!, ownerBrowser, { decision })).status, 200, decision);
       assert.equal((await decide(ids[decision]!, ownerBrowser, { decision })).status, 409, `${decision}: decided once`);
     }
+    await new Promise((r) => setTimeout(r, 100));
     const sent = late.slice(before);
     assert.equal(sent.length, 2, 'one message per decision, never two — and none for a dismissal, which must not wake the agent');
     assert.ok(sent.every((m) => m.missionId === 'm-task-live'));
-    assert.match(sent[0]!.text, /^\[command request\] The user allowed `sudo allow-it`: run it yourself now/);
-    assert.match(sent[1]!.text, /^\[command request\] The user runs `sudo paste-it` themselves/);
+    const text = (re: RegExp): string | undefined => sent.find((m) => re.test(m.text))?.text;
+    assert.match(text(/allow-it/) ?? '', /^\[command request\] The user allowed `sudo allow-it`; Timon ran it for you .*exited with code 3/s);
+    assert.match(text(/paste-it/) ?? '', /^\[command request\] The user runs `sudo paste-it` themselves/);
   });
 
-  test('allow is neither offered nor accepted once no agent can run it', async () => {
-    const card = async (command: string): Promise<string> => {
-      const body = await (await propose(agentOf('m-task-closed'), { command })).json() as { id: string; choices: string[] };
-      assert.deepEqual(body.choices, ['allow', 'paste', 'deny']);
-      return body.id;
-    };
-    const listed = async (id: string): Promise<string[]> => {
-      const list = await (await send('GET', '?mission_id=m-task-closed&status=pending', ownerBrowser)).json() as
-        { requests: Array<{ id: string; choices: string[] }> };
-      return list.requests.find((r) => r.id === id)!.choices;
-    };
-    const gone = await card('sudo systemctl restart app');
-    const closed = await card('sudo make deploy');
-    assert.deepEqual(await listed(gone), ['allow', 'paste', 'deny']);
-
-    // The backend stopped serving the mission: nobody would run an allowed command.
-    delete MODELS['m-task-closed'];
-    assert.deepEqual(await listed(gone), ['paste', 'deny']);
-    assert.equal((await decide(gone, ownerBrowser, { decision: 'allow' })).status, 400);
-    assert.equal(dbApi.getCommandRequest(gone)!.status, 'pending');
-    MODELS['m-task-closed'] = 'protocol';
-
-    // The task is closed: its idle process is not woken, not even for paste.
-    dbApi.setTaskStatusOnly('t-closed', 'DONE', 'done');
-    assert.deepEqual(await listed(closed), ['paste', 'deny']);
-    assert.equal((await decide(closed, ownerBrowser, { decision: 'allow' })).status, 400);
+  test('allow still runs the command when no agent listens any more, and says nothing to a closed task', async () => {
+    ran.length = 0;
     const before = late.length;
-    assert.equal((await decide(closed, ownerBrowser, { decision: 'paste' })).status, 200);
-    assert.equal(late.length, before, 'a closed task is not woken');
-
-    // A mission that ended: same.
-    dbApi.setTaskStatusOnly('t-closed', 'IN_PROGRESS');
+    const body = await (await propose(agentOf('m-task-closed'), { command: 'sudo make deploy' })).json() as { id: string; choices: string[] };
+    assert.deepEqual(body.choices, ['allow', 'paste', 'deny']);
+    // The task is closed and its mission over: its idle process is not woken.
+    dbApi.setTaskStatusOnly('t-closed', 'DONE', 'done');
     dbApi.finishMission('m-task-closed', 'completed', 0);
-    assert.deepEqual(await listed(gone), ['paste', 'deny']);
-    assert.equal((await decide(gone, ownerBrowser, { decision: 'deny' })).status, 200);
+    const list = await (await send('GET', '?mission_id=m-task-closed&status=pending', ownerBrowser)).json() as
+      { requests: Array<{ id: string; choices: string[] }> };
+    assert.deepEqual(list.requests.find((r) => r.id === body.id)!.choices, ['allow', 'paste', 'deny']);
+    assert.equal((await decide(body.id, ownerBrowser, { decision: 'allow' })).status, 200);
+    await new Promise((r) => setTimeout(r, 100));
+    assert.equal(ran.length, 1, 'the daemon ran it');
+    assert.equal(dbApi.getCommandRequest(body.id)!.run_exit_code, 3, 'and the card keeps the result');
     assert.equal(late.length, before, 'a finished mission is not woken');
   });
 

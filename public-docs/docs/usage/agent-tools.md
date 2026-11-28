@@ -95,9 +95,28 @@ on a single line, shows as a card in the mission's conversation, with the agent,
 its project and its note, and a notification leads you to it from anywhere in
 the app. Choose:
 
-- **Allow**: the agent runs it itself. Offered only while the agent can still
-  act on your answer, and never on a backend that fixes its permissions when
-  the mission starts (Codex, Grok, Copilot).
+- **Allow**: Timon runs the command itself, as the user the daemon runs as,
+  outside the mission's sandbox, whatever the agent's backend. It starts in
+  the mission's own folder: its task's worktree when it has one, else its
+  working folder, and only if that folder exists and lies in the project, in a
+  worktree of the project or in the agent's own folder (a link or a `..` that
+  leads elsewhere is refused). A mission with no project and no working
+  folder of its own (the main conversation) runs in your home folder, never
+  inside the Timon home. A command that would restart or stop Timon itself
+  (a rebuild, a service restart or stop) is never run by Allow, since it would
+  cut itself off: the card says so, and you use **Paste into a terminal**. It gets Timon's own environment without the
+  internal `TIMON_*` variables, plus the git credentials from your vault, so a
+  `git push` works. It stops after 120 seconds by default (setting **Time limit
+  of an allowed command**, 5 to 600 seconds) and so does everything it
+  started. The card then shows *Executed, code N* with the end of the output
+  (last 20,000 characters, masked) under **Output**, and the agent gets the
+  same code and output, in its call or as a message. A second click never runs
+  it twice. Allowing needs an account allowed to open a terminal, and the run
+  is recorded in the audit log.
+  If Timon stops or restarts while the command runs, nobody sees it end: at
+  the next start the card says the run was interrupted and its result is
+  unknown, and an agent still listening is told so. The command may have run
+  partly or entirely, so check its effect before allowing it again.
 - **Paste into a terminal**: the command is typed, without Enter, in the
   terminal of the mission's project, also from a multichat cell. Read it,
   then press Enter yourself. The agent is told you run it, and gets no output
@@ -106,7 +125,8 @@ the app. Choose:
 
 The card keeps its answer, also after a reload, and a project with a command
 waiting for you shows a badge on the Projects page. Pasting needs an account
-allowed to open a terminal.
+allowed to open a terminal. A card raised by a third-party plugin offers only
+**Paste into a terminal** and **Refuse**.
 
 ### Rearranging your screen
 

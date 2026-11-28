@@ -2246,6 +2246,15 @@ if (!msgCols.includes('trace_id')) db.exec(`ALTER TABLE agent_messages ADD COLUM
 // Who raised a card in a conversation: the mission's agent (default) or a third-party
 // plugin (`ctx.layout`, `ctx.chat`, API 10). A plugin's card is never delivered to the
 // agent, and its `agent` column carries `plugin:<id>` instead of the agent's name.
+// What the daemon did once the owner allowed the command: it runs it itself, outside
+// the mission's fence (`command-requests.ts`), and the card shows how it ended.
+for (const [col, type] of [
+  ['run_finished_at', 'INTEGER'], ['run_exit_code', 'INTEGER'], ['run_timed_out', 'INTEGER'],
+  ['run_output', 'TEXT'], ['run_duration_ms', 'INTEGER'], ['run_cwd', 'TEXT'],
+] as const) {
+  const runCols = (db.prepare(`PRAGMA table_info(command_requests)`).all() as { name: string }[]).map((c) => c.name);
+  if (!runCols.includes(col)) db.exec(`ALTER TABLE command_requests ADD COLUMN ${col} ${type}`);
+}
 for (const table of ['layout_proposals', 'command_requests']) {
   const cardCols = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
   if (!cardCols.includes('origin_kind')) db.exec(`ALTER TABLE ${table} ADD COLUMN origin_kind TEXT NOT NULL DEFAULT 'agent'`);
@@ -2986,6 +2995,16 @@ export type CommandRequestRow = {
   status: CommandRequestStatus;
   created_at: number;
   resolved_at: number | null;
+  /** What the daemon did after `allow`: null until it finished (or for paste / deny). */
+  run_finished_at: number | null;
+  /** Null when killed (timeout) or never started. */
+  run_exit_code: number | null;
+  run_timed_out: number | null;
+  /** Masked, truncated to its last characters. */
+  run_output: string | null;
+  run_duration_ms: number | null;
+  /** The folder it ran in, absent when it never started. */
+  run_cwd: string | null;
 };
 
 export type ApprovalRuleScope = 'session' | 'always';
@@ -4372,6 +4391,13 @@ const insertCommandRequestStmt = db.prepare(
 const getCommandRequestStmt = db.prepare(`SELECT * FROM command_requests WHERE id = ?`);
 const settleCommandRequestStmt = db.prepare(
   `UPDATE command_requests SET status = ?, resolved_at = ? WHERE id = ? AND status = 'pending'`,
+);
+const completeCommandRunStmt = db.prepare(
+  `UPDATE command_requests SET run_finished_at = ?, run_exit_code = ?, run_timed_out = ?, run_output = ?, run_duration_ms = ?, run_cwd = ?
+   WHERE id = ? AND status = 'allow' AND run_finished_at IS NULL`,
+);
+const listUnfinishedCommandRunsStmt = db.prepare(
+  `SELECT * FROM command_requests WHERE status = 'allow' AND run_finished_at IS NULL AND resolved_at < ?`,
 );
 const countPendingCommandRequestsStmt = db.prepare(
   `SELECT project, COUNT(*) AS n FROM command_requests
@@ -8014,7 +8040,7 @@ export const dbApi = {
     ).run(now, ...owner.params).changes;
   },
   /** §7: the command and its note are masked before storage, like any event. */
-  insertCommandRequest(r: Omit<CommandRequestRow, 'status' | 'created_at' | 'resolved_at'>): CommandRequestRow {
+  insertCommandRequest(r: Omit<CommandRequestRow, 'status' | 'created_at' | 'resolved_at' | `run_${string}`>): CommandRequestRow {
     const now = Date.now();
     insertCommandRequestStmt.run(
       r.id, r.mission_id, r.owner_user_id, r.agent, redactText(r.command), redactNullable(r.note),
@@ -8209,6 +8235,16 @@ export const dbApi = {
   /** Pending → decided, once: false when it was already decided. */
   settleCommandRequest(id: string, status: Exclude<CommandRequestStatus, 'pending'>): boolean {
     return settleCommandRequestStmt.run(status, Date.now(), id).changes > 0;
+  },
+  /** The daemon's run of an allowed command; once only. The output is masked before storage. */
+  completeCommandRun(id: string, r: { exitCode: number | null; timedOut: boolean; output: string; durationMs: number; cwd: string | null }): boolean {
+    return completeCommandRunStmt.run(
+      Date.now(), r.exitCode, r.timedOut ? 1 : 0, redactText(r.output), r.durationMs, r.cwd, id,
+    ).changes > 0;
+  },
+  /** Allowed commands whose run never recorded an end and began before `before`: the daemon that ran them is gone. */
+  listUnfinishedCommandRuns(before: number): CommandRequestRow[] {
+    return listUnfinishedCommandRunsStmt.all(before) as CommandRequestRow[];
   },
   listCommandRequests(filter: { ownerUserId: string; missionId?: string; status?: CommandRequestStatus; limit?: number }): CommandRequestRow[] {
     const where = ['owner_user_id = ?'];

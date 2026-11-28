@@ -58,20 +58,25 @@
       "copied": "Command copied to the clipboard.",
       "hint": "Pasted without Enter: read it, then press Enter yourself.",
       "state": {
-        "allow": "Allowed: the agent runs it",
+        "allow": "Allowed: Timon runs it",
         "paste": "Pasted into a terminal",
-        "deny": "Dismissed"
+        "deny": "Dismissed",
+        "running": "Allowed: running…",
+        "ran": "Executed, code {code} ({seconds} s)",
+        "timedOut": "Executed, stopped after {seconds} s (time limit)",
+        "notRun": "Allowed, but it could not run"
       },
       "errors": {
         "forbidden": "Your account cannot open a terminal: nothing was pasted.",
         "not_found": "This request no longer exists.",
         "already_decided": "This request was already decided.",
-        "not_offered": "This choice is no longer offered: the agent cannot run the command now.",
+        "not_offered": "This choice is no longer offered for this command.",
         "failed": "Could not record your decision. Try again."
       },
       "windowRefused": "Decision recorded, but the terminal of {scope} is not on screen. Open a conversation of {scope} to paste it there; the command is in your clipboard.",
       "windowRefusedNoClipboard": "Decision recorded, but the terminal of {scope} is not on screen. Open a conversation of {scope}, then copy the command from the card.",
-      "pendingBadge": "{count, plural, one {# command} other {# commands}} waiting for your decision"
+      "pendingBadge": "{count, plural, one {# command} other {# commands}} waiting for your decision",
+      "output": "Output"
     }
   }
 }
