@@ -17,12 +17,15 @@
  * - **Fail closed.** No remote, a remote that cannot be reached, a target the
  *   remote does not have: the caller gets a refusal with a reason, never a
  *   branch quietly cut from the local base instead.
- * - **The shared checkout is never touched.** The branch is created with
- *   `git branch` (no checkout), the base moves with `git update-ref` guarded by
- *   its old value; the index, the working directory and the user's HEAD stay as
- *   they were, detached or not.
+ * - **The shared checkout is not touched, but for one case.** The branch is
+ *   created with `git branch` (no checkout), the base moves with `git
+ *   update-ref` guarded by its old value; the index, the working directory and
+ *   the user's HEAD stay as they were, detached or not. The exception is a base
+ *   checked out in the main working copy: `clone-follow.ts` fast-forwards it,
+ *   files included, only when that copy is clean.
  */
 import { execFileHost } from './host/index.js';
+import { followCheckedOutBranch } from './clone-follow.js';
 import { isPlausibleGitRef } from './task-git.js';
 
 const exec = execFileHost;
@@ -329,7 +332,14 @@ export async function checkedOutBranches(repo: string): Promise<Set<string>> {
 
 async function refreshLocalTarget(repo: string, remote: string, target: string): Promise<void> {
   try {
-    if ((await checkedOutBranches(repo)).has(target)) return; // the user's pull, not ours
+    if ((await checkedOutBranches(repo)).has(target)) {
+      // Checked out: `git fetch` refuses to move it, and the user's own pull is
+      // not ours. The daemon only follows the remote-tracking ref the caller
+      // just fetched, and only when the working copy is clean (clone-follow).
+      const tracking = await refSha(repo, `refs/remotes/${remote}/${target}`);
+      if (tracking) await followCheckedOutBranch(repo, target, tracking);
+      return;
+    }
     if (!(await localBranchSha(repo, target))) return;
     await exec('git', ['-C', repo, 'fetch', '--no-tags', '--', remote, `refs/heads/${target}:refs/heads/${target}`], {
       timeout: NETWORK_TIMEOUT_MS,
@@ -368,10 +378,22 @@ export async function advanceBaseByReference(
     return { ok: false, code: 'unknown_ref', reason: `${next ? base : source} does not exist in the repository` };
   }
   if ((await checkedOutBranches(repo)).has(base)) {
+    // The main working copy has it checked out: the ref and the files move
+    // together (clone-follow), or nothing moves. Another worktree having it
+    // keeps the refusal: its directory would be left behind the ref.
+    if (!(await gitOk(repo, ['merge-base', '--is-ancestor', previous, next]))) {
+      return { ok: false, code: 'not_fast_forward', reason: `${source} does not contain ${base}: bring ${base} into it first` };
+    }
+    const followed = await followCheckedOutBranch(repo, base, next, previous);
+    if (followed.status === 'followed') return { ok: true, sha: next, previous };
+    if (followed.status === 'unchanged') return { ok: true, sha: followed.sha, previous };
     return {
       ok: false,
       code: 'checked_out',
-      reason: `${base} is checked out in a worktree: moving its ref would leave that working directory behind it`,
+      reason:
+        followed.status === 'skipped'
+          ? `${base} is checked out and its working copy was not moved: ${followed.reason}`
+          : `${base} is checked out in a worktree: moving its ref would leave that working directory behind it`,
     };
   }
   if (!(await gitOk(repo, ['merge-base', '--is-ancestor', previous, next]))) {

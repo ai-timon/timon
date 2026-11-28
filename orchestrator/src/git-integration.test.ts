@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 // The bare remotes live under the system temporary folder, which the fence
 // lets missions write: the daemon's git refuses such a local remote unless no
@@ -109,14 +109,28 @@ test('creates the branch from the remote target, without touching the checkout',
   }
 });
 
-test('leaves the local target alone when it is checked out', async () => {
+test('a checked-out local target is left alone when its working copy is dirty', async () => {
   const { work, remoteMain, cleanup } = setup();
   try {
+    writeFileSync(join(work, 'a.txt'), 'edited\n');
     const localMain = git(work, 'rev-parse', 'main');
     const out = await ensureIntegrationBranch(work, { branch: 'feat/topic', baseRef: 'origin/main' });
     assert.equal(out.ok, true);
     assert.equal(git(work, 'rev-parse', 'feat/topic'), remoteMain);
     assert.equal(git(work, 'rev-parse', 'main'), localMain);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a checked-out local target with a clean working copy follows the remote', async () => {
+  const { work, remoteMain, cleanup } = setup();
+  try {
+    const out = await ensureIntegrationBranch(work, { branch: 'feat/topic', baseRef: 'origin/main' });
+    assert.equal(out.ok, true);
+    assert.equal(git(work, 'rev-parse', 'main'), remoteMain);
+    assert.equal(git(work, 'rev-parse', 'HEAD'), remoteMain);
+    assert.equal(git(work, 'status', '--porcelain'), '');
   } finally {
     cleanup();
   }
@@ -205,16 +219,20 @@ test('the base moves by reference: a detached HEAD stays where it is, the sha is
   }
 });
 
-test('the base is not moved when checked out, nor when the move is not a fast-forward', async () => {
+test('the base is not moved when another worktree has it, nor when the move is not a fast-forward', async () => {
   const { work, cleanup } = setup();
   try {
     git(work, 'checkout', '-q', '-b', 'side');
     commit(work, 'c.txt', 'three');
-    git(work, 'checkout', '-q', 'main');
+    git(work, 'checkout', '-q', '--detach');
+    const elsewhere = join(dirname(work), 'elsewhere');
+    git(work, 'worktree', 'add', '-q', elsewhere, 'main');
     const main = git(work, 'rev-parse', 'main');
     const checkedOut = await advanceBaseByReference(work, 'side', 'main');
     assert.equal(!checkedOut.ok && checkedOut.code, 'checked_out');
     assert.equal(git(work, 'rev-parse', 'main'), main);
+    git(work, 'worktree', 'remove', '--force', elsewhere);
+    git(work, 'checkout', '-q', 'main');
 
     git(work, 'branch', 'feat/topic');
     git(work, 'checkout', '-q', 'feat/topic');

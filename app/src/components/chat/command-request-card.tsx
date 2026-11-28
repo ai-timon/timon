@@ -5,8 +5,8 @@
  * in the mission's conversation — the popup terminal no longer shows it, so a
  * request never lands in the shell of a project the user is not looking at.
  *
- * Its buttons are the daemon's `choices`: Allow (only while an agent can still
- * run it), Paste into a terminal, Dismiss. Pasting records the decision, then
+ * Its buttons are the daemon's `choices`: Allow (the daemon runs the command
+ * and the card shows its exit code and output), Paste into a terminal, Dismiss. Pasting records the decision, then
  * types the command without Enter in the terminal of the request's own
  * project. The final state comes back with `command_request_resolved`, a
  * persisted event: a reload shows the card as it was left.
@@ -30,6 +30,31 @@ import { copyToClipboard } from '@/lib/clipboard';
 import { t } from '@/lib/i18n';
 import type { TerminalOpenRequest } from '@/lib/terminal-web';
 import { cn } from '@/lib/utils';
+
+type Settled = Pick<CommandRequestView, 'status' | 'run' | 'running'>;
+
+function runState(r: Settled): 'running' | 'ok' | 'failed' | 'timeout' | 'not_run' | 'none' {
+  if (r.status !== 'allow') return 'none';
+  if (r.running || !r.run) return 'running';
+  if (r.run.notRun) return 'not_run';
+  if (r.run.timedOut) return 'timeout';
+  return r.run.exitCode === 0 ? 'ok' : 'failed';
+}
+
+function runFailed(r: Settled): boolean {
+  const state = runState(r);
+  return state === 'failed' || state === 'timeout' || state === 'not_run';
+}
+
+function stateLabel(r: Settled): string {
+  const state = runState(r);
+  if (state === 'none') return t(`terminal.request.state.${r.status}`);
+  if (state === 'running') return t('terminal.request.state.running');
+  if (state === 'not_run') return t('terminal.request.state.notRun');
+  const seconds = ((r.run?.durationMs ?? 0) / 1000).toFixed(1);
+  if (state === 'timeout') return t('terminal.request.state.timedOut', { seconds });
+  return t('terminal.request.state.ran', { code: r.run?.exitCode ?? 0, seconds });
+}
 
 const ICONS: Record<CommandDecision, typeof Check> = { allow: Play, paste: ClipboardPaste, deny: X };
 
@@ -73,7 +98,7 @@ export function CommandRequestCard({
 
   const settle = useCallback((outcome: ResolveOutcome, decision: CommandDecision): boolean => {
     if (outcome.ok) {
-      setFresh(outcome.request ?? { ...shown, status: decision, resolvedAt: Date.now() });
+      setFresh(outcome.request ?? { ...shown, status: decision, resolvedAt: Date.now(), running: decision === 'allow' });
       return true;
     }
     toast.error(t(`terminal.request.errors.${outcome.error}`));
@@ -187,17 +212,29 @@ export function CommandRequestCard({
               )}
             </div>
           ) : (
-            <span
-              className={cn(
-                'flex w-fit items-center gap-1 rounded px-2 py-0.5 text-[11px]',
-                shown.status === 'deny'
-                  ? 'bg-muted text-muted-foreground'
-                  : 'bg-[hsl(var(--success)/0.08)] text-[hsl(var(--success))]',
+            <>
+              <span
+                className={cn(
+                  'flex w-fit items-center gap-1 rounded px-2 py-0.5 text-[11px]',
+                  shown.status === 'deny'
+                    ? 'bg-muted text-muted-foreground'
+                    : runFailed(shown)
+                      ? 'bg-[hsl(var(--warning)/0.1)] text-[hsl(var(--warning))]'
+                      : 'bg-[hsl(var(--success)/0.08)] text-[hsl(var(--success))]',
+                )}
+                data-run-state={runState(shown)}
+              >
+                {shown.status === 'deny' ? <X className="size-3" /> : <Check className="size-3" />}
+                {stateLabel(shown)}
+              </span>
+              {shown.run && shown.run.output.trim() && (
+                <details className="min-w-0 text-[12px]">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t('terminal.request.output')}</summary>
+                  {/* code-font: the command's own output, shown as it was printed. */}
+                  <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/50 px-2.5 py-1.5 font-mono text-[11.5px]">{shown.run.output}</pre>
+                </details>
               )}
-            >
-              {shown.status === 'deny' ? <X className="size-3" /> : <Check className="size-3" />}
-              {t(`terminal.request.state.${shown.status}`)}
-            </span>
+            </>
           )}
         </div>
       </div>
