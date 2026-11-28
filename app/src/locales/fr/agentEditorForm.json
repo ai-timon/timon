@@ -69,6 +69,24 @@
     "computerAppsVerdictRich": "Accessibilité riche : arrière-plan possible",
     "computerAppsVerdictPoor": "Accessibilité limitée : premier plan conseillé",
     "computerAppsVerdictEmpty": "Arbre vide : premier plan seulement",
-    "computerAppsVerdictUnchecked": "Non vérifié : ouvrez l'application et ajoutez-la depuis les fenêtres ouvertes pour la vérifier"
+    "computerAppsVerdictUnchecked": "Non vérifié : ouvrez l'application et ajoutez-la depuis les fenêtres ouvertes pour la vérifier",
+    "computerAllApps": "Toutes les applications",
+    "computerAllAppsToggle": "Autoriser toutes les applications",
+    "computerAllAppsOff": "Désactivé : seules les applications autorisées ci-dessous",
+    "computerAllAppsOn": "Activé : toutes les applications sauf les exclues",
+    "computerAllAppsUnlisted": "Applications hors de la liste",
+    "computerAllAppsUnlistedForeground": "Premier plan : écran, souris et clavier",
+    "computerAllAppsUnlistedBackground": "Arrière-plan : accessibilité seulement",
+    "computerAllAppsExcluded": "Applications exclues",
+    "computerAllAppsExcludedDefault": "Liste par défaut : {count, plural, one {# application} other {# applications}}",
+    "computerAllAppsExcludedCount": "{count, plural, =0 {Aucune} one {# application} other {# applications}}",
+    "computerAllAppsExcludedEdit": "Modifier",
+    "computerAllAppsExcludedMore": "Plus d'options sur les applications exclues",
+    "computerAllAppsExcludedReset": "Rétablir la liste par défaut",
+    "computerAllAppsExcludedDescription": "Jamais pilotées, même si elles figurent dans la liste autorisée.",
+    "computerAllAppsExcludedAdd": "Nom de l'application",
+    "computerAllAppsExcludedAddButton": "Ajouter",
+    "computerAllAppsExcludedCancel": "Annuler",
+    "computerAllAppsExcludedSave": "Enregistrer"
   }
 }

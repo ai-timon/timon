@@ -35,6 +35,8 @@
     "journalEmpty": "No action yet.",
     "journalUnreadable": "The journal could not be read.",
     "journalResultOk": "OK",
-    "journalResultRefused": "Refused: {code}"
+    "journalResultRefused": "Refused: {code}",
+    "journalAllAppsOn": "All applications turned on",
+    "journalAllAppsOff": "All applications turned off"
   }
 }
