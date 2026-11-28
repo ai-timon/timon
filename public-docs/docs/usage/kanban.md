@@ -14,7 +14,7 @@ The board uses four statuses:
 | `PENDING` | Waiting for dispatch, scheduling or dependencies |
 | `IN_PROGRESS` | Work is being executed |
 | `DONE` | A result has been recorded |
-| `BLOCKED` | A reason prevents completion or continuation |
+| `BLOCKED` | A reason prevents completion or continuation, or the task waits for you |
 
 A task stored with any other status (left by an older version, for example `CANCELLED`) is listed in the **Done** column; the stored value is not changed.
 
@@ -30,6 +30,17 @@ task belongs to the project it was created for (`--project`), otherwise to its
 agent's project. The TO DO column follows the project and the search; the Done column counts and
 loads only the matching tasks. The
 browser remembers your filters; **Reset filters** shows the whole board again.
+
+**My turn to act** keeps only the tasks that wait for you: those marked **Waiting for you** and the running ones
+stopped on a permission card.
+
+### Waiting for you, or blocked
+
+A blocked task is not always broken. When an agent has nothing left to do but wait for you (a merge request to
+merge, a plan to validate), it closes its task with `timon task block <id> --awaiting-user --reason "…"` (the
+`awaiting_user` field of the `kanban_mark_as_failed` tool does the same). The card then shows an amber **Waiting for
+you** badge and the reason says what to do, instead of the red **Blocked** of a real obstacle. The task stays
+blocked, so Timon never restarts it by itself; move it back to Pending, or finish it, once you have acted.
 
 ### Read a card
 
