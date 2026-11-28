@@ -109,6 +109,10 @@ the app. Choose:
   same code and output, in its call or as a message. A second click never runs
   it twice. Allowing needs an account allowed to open a terminal, and the run
   is recorded in the audit log.
+  If Timon stops or restarts while the command runs, nobody sees it end: at
+  the next start the card says the run was interrupted and its result is
+  unknown, and an agent still listening is told so. The command may have run
+  partly or entirely, so check its effect before allowing it again.
 - **Paste into a terminal**: the command is typed, without Enter, in the
   terminal of the mission's project, also from a multichat cell. Read it,
   then press Enter yourself. The agent is told you run it, and gets no output
