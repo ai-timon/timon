@@ -118,7 +118,11 @@ export async function callNativeComputer(
   command: string,
   args: Record<string, unknown>,
   actor: ComputerActor,
-  options: { home?: string; timeoutMs?: number; allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[]; mode?: 'foreground' | 'background' } = {},
+  options: {
+    home?: string; timeoutMs?: number; allowedApps?: readonly { app: string; mode: 'foreground' | 'background' }[]; mode?: 'foreground' | 'background';
+    /** The agent behind the command, shown beside the pointer the desktop draws; never a permission. */
+    agent?: string;
+  } = {},
 ): Promise<unknown> {
   const provider = readComputerProvider(options.home);
   if (!provider) throw new NativeComputerError(apiError('computer_unavailable', 'Computer use is unavailable: the Timon desktop app must be running on the host machine. Ask the user to open it.'), 503);
@@ -127,7 +131,10 @@ export async function callNativeComputer(
   try {
     response = await fetch(`${provider.origin}/command`, {
       method: 'POST', headers: { authorization: `Bearer ${provider.token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ command, args, actor, ...(actor === 'agent' ? { allowedApps: options.allowedApps ?? [], mode: options.mode ?? 'foreground' } : {}) }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
+      body: JSON.stringify({
+        command, args, actor,
+        ...(actor === 'agent' ? { allowedApps: options.allowedApps ?? [], mode: options.mode ?? 'foreground', ...(options.agent ? { agent: options.agent } : {}) } : {}),
+      }), signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
       redirect: 'error',
     });
   } catch {

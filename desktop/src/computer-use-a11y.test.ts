@@ -39,7 +39,7 @@ function setup(allowed: readonly string[] = ['TextEdit'], overrides: Partial<Com
     },
     ...overrides,
   });
-  const run = (command: string, args?: unknown, actor: 'agent' | 'human' = 'agent', mode: 'foreground' | 'background' = 'foreground') => service.handle(actor, parseComputerCommand(command, args), allowed, mode);
+  const run = (command: string, args?: unknown, actor: 'agent' | 'human' = 'agent', mode: 'foreground' | 'background' = 'foreground', agent?: string) => service.handle(actor, parseComputerCommand(command, args), allowed, mode, agent);
   return { backend, service, run, calls };
 }
 
@@ -266,4 +266,18 @@ test('a window list that runs out of time says so instead of a bare failure', as
   await assert.rejects(run('list_windows'), (e: ComputerCommandError) => e.code === 'windows_failed' && /timed out/.test(e.message));
   const { run: broken } = setup(['TextEdit'], { exec: failing(new Error('boom')) });
   await assert.rejects(broken('list_windows'), (e: ComputerCommandError) => e.code === 'windows_failed' && e.statusCode === 502 && e.message === 'Listing the windows failed.');
+});
+
+test('an accessibility action frames its element for the ghost pointer, in points of the display, when its bounds are known', async () => {
+  const drawn: Array<{ event: unknown; agent: string | undefined }> = [];
+  const { run } = setup(['TextEdit'], { display: () => ({ ...display, originX: 1440, originY: 0 }), onPointer: (event, agent) => drawn.push({ event, agent }) });
+  // No tree read yet: no bounds, no frame.
+  await run('a11y_action', { id: '10:1#0.0.0', action: 'set_value', value: 'x' }, 'agent', 'background', 'clerk');
+  assert.equal(drawn.length, 0);
+  await run('a11y_tree', undefined, 'agent', 'background', 'clerk');
+  await run('a11y_action', { id: '10:1#0.0.0', action: 'set_value', value: 'y' }, 'agent', 'background', 'clerk');
+  assert.deepEqual(drawn, [{ event: { t: 'frame', x: 120 - 1440, y: 70, w: 200, h: 20 }, agent: 'clerk' }]);
+  // An element read without bounds draws nothing.
+  await run('a11y_action', { id: '10:1#0.1', action: 'press' }, 'agent', 'background', 'clerk');
+  assert.equal(drawn.length, 1);
 });

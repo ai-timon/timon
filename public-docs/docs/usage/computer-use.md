@@ -118,6 +118,23 @@ Set every application to Background (or pick Background as the default mode) to 
 
 **Wayland is not supported**: under Wayland the system does not let an application inject mouse and keyboard events, so Computer use reports itself as unavailable. Log in to an X11 session instead. The same happens when `xdotool` is missing or when macOS permissions are not granted yet; the agent's settings tell you which.
 
+## Watch the agent's pointer
+
+You see where the agent goes. Before a click, a double-click or a move, the mouse pointer glides to its target in about 200 ms instead of jumping there. While the agent is in control, Timon also draws its pointer over the screen: an arrow with the agent's name, the path it just took and a ring on each click. When the agent acts on an element through accessibility (as it does in the background, without moving the mouse), a frame shows the element it touched, when the application gives its position.
+
+This drawing lets your clicks through, never takes the keyboard and is left out of the screenshots sent to the model. It disappears when the agent stops acting and when you press **Stop**.
+
+To change it, create `computer-pointer.json` in Timon's folder (`~/.timon` on macOS and Linux, `%USERPROFILE%\.timon` on Windows):
+
+```json
+{ "motionMs": 200, "ghost": true }
+```
+
+- `motionMs`: how long the pointer glides, in milliseconds, up to 2000. `0` makes it jump as before.
+- `ghost`: `false` hides the pointer Timon draws over the screen.
+
+Changes apply to the next action, without restarting Timon. On Linux, the drawing needs a desktop with compositing (GNOME, KDE Plasma, Cinnamon and most desktops have it); on a window manager without it, set `"ghost": false`.
+
 ## Stop it at any time
 
 While the agent is in control, a banner with a **Stop** button is visible in Timon, and a small always-on-top bar shows on the screen. You can also press **Control+Option+Command+Esc** (macOS) or **Ctrl+Alt+Shift+Esc** (Windows and Linux) from any application.

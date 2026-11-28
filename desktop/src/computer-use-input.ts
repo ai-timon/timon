@@ -9,6 +9,7 @@
 import { WINDOWS_UIA_LIB } from './computer-use-a11y-win32-script.js';
 import { ComputerCommandError, type MouseButton } from './computer-use-protocol.js';
 import type { DisplayInfo } from './computer-use-geometry.js';
+import { pointerPath, type PointerPath } from './computer-use-pointer.js';
 
 export interface SystemCommand {
   file: string;
@@ -30,6 +31,18 @@ export type InputAction =
   | { kind: 'type'; text: string }
   | { kind: 'key'; keys: string }
   | { kind: 'scroll'; x: number; y: number; deltaX: number; deltaY: number };
+
+/**
+ * Where the pointer is before a `move` or a `click` and how long it takes to reach the target, in
+ * the same points as the action. Absent: the pointer jumps, as it always did.
+ */
+export interface PointerMotion { fromX: number; fromY: number; durationMs: number }
+
+/** The glide of an action, or nothing for the actions that do not take one. */
+function glideOf(action: InputAction, motion: PointerMotion | undefined): PointerPath {
+  if (!motion || (action.kind !== 'move' && action.kind !== 'click')) return { points: [], stepMs: 0 };
+  return pointerPath(motion.fromX, motion.fromY, action.x, action.y, motion.durationMs);
+}
 
 // ── Key names ──────────────────────────────────────────────────────────────
 
@@ -186,7 +199,12 @@ function splitText(text: string): Array<{ text: string } | { control: 'enter' | 
   return out;
 }
 
-function macSteps(action: InputAction): MacStep[] {
+function macSteps(action: InputAction, glide: PointerPath): MacStep[] {
+  const approach = glide.points.flatMap((point): MacStep[] => [{ t: 'move', x: point.x, y: point.y }, { t: 'sleep', ms: glide.stepMs }]);
+  return [...approach, ...macActionSteps(action)];
+}
+
+function macActionSteps(action: InputAction): MacStep[] {
   switch (action.kind) {
     case 'move': return [{ t: 'move', x: action.x, y: action.y }];
     case 'click': {
@@ -416,8 +434,13 @@ const normalize = (value: number, points: number, scaleFactor: number): number =
   return Math.min(65535, Math.ceil(pixel * 65536 / physical));
 };
 
-function windowsSteps(action: InputAction, display: DisplayInfo): WinStep[] {
+function windowsSteps(action: InputAction, display: DisplayInfo, glide: PointerPath): WinStep[] {
   const at = (x: number, y: number): WinStep => ({ t: 'move', x: normalize(x, display.width, display.scaleFactor), y: normalize(y, display.height, display.scaleFactor) });
+  const approach = glide.points.flatMap((point): WinStep[] => [at(point.x, point.y), { t: 'sleep', ms: glide.stepMs }]);
+  return [...approach, ...windowsActionSteps(action, at)];
+}
+
+function windowsActionSteps(action: InputAction, at: (x: number, y: number) => WinStep): WinStep[] {
   switch (action.kind) {
     case 'move': return [at(action.x, action.y)];
     case 'click': {
@@ -511,11 +534,15 @@ function windowsCommand(steps: WinStep[]): SystemCommand {
 
 // ── Linux: xdotool under X11 ───────────────────────────────────────────────
 
-function linuxCommand(action: InputAction, display: DisplayInfo): SystemCommand {
+function linuxCommand(action: InputAction, display: DisplayInfo, glide: PointerPath): SystemCommand {
   const px = (value: number, origin: number | undefined): string => String(Math.round(((origin ?? 0) + value) * display.scaleFactor));
   const px2 = (x: number, y: number): string[] => [px(x, display.originX), px(y, display.originY)];
   const button = (name: MouseButton): string => name === 'left' ? '1' : name === 'middle' ? '2' : '3';
   const args: string[] = [];
+  // xdotool chains its commands in one process; its `sleep` takes seconds, read with the C locale's dot
+  // (libxdo only sets LC_CTYPE, so a French session does not turn "0.017" into 0).
+  const pause = (glide.stepMs / 1000).toFixed(3);
+  for (const point of glide.points) args.push('mousemove', ...px2(point.x, point.y), 'sleep', pause);
   switch (action.kind) {
     case 'move': args.push('mousemove', ...px2(action.x, action.y)); break;
     case 'click':
@@ -543,10 +570,11 @@ function linuxCommand(action: InputAction, display: DisplayInfo): SystemCommand 
 }
 
 /** The single entry point: one action → the one command that performs it on this platform. */
-export function buildInputCommand(platform: InputPlatform, action: InputAction, display: DisplayInfo): SystemCommand {
+export function buildInputCommand(platform: InputPlatform, action: InputAction, display: DisplayInfo, motion?: PointerMotion): SystemCommand {
+  const glide = glideOf(action, motion);
   switch (platform) {
-    case 'darwin': return macCommand(MAC_INPUT_SCRIPT, macSteps(action));
-    case 'win32': return windowsCommand(windowsSteps(action, display));
-    case 'linux': return linuxCommand(action, display);
+    case 'darwin': return macCommand(MAC_INPUT_SCRIPT, macSteps(action, glide));
+    case 'win32': return windowsCommand(windowsSteps(action, display, glide));
+    case 'linux': return linuxCommand(action, display, glide);
   }
 }

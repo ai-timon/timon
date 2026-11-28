@@ -34,6 +34,7 @@ const disabledToken = agentWith('computer-off', {});
 
 const forwarded: ({ allowedApps: { app: string; mode: string }[] } | undefined)[] = [];
 const modes: (string | undefined)[] = [];
+const agents: (string | undefined)[] = [];
 const calls: { command: string; args: Record<string, unknown>; actor: string }[] = [];
 let desktop: 'up' | 'down' | 'stopped' | 'echo' = 'up';
 const app = express();
@@ -43,6 +44,7 @@ registerComputerRoutes(app, {
   call: async (command, args, actor, options) => {
     calls.push({ command, args, actor });
     modes.push(options?.mode);
+    agents.push(options?.agent);
     forwarded.push(options?.allowedApps === undefined ? undefined : { allowedApps: [...options.allowedApps] });
     if (desktop === 'down') throw new NativeComputerError(apiError('computer_unavailable', 'down'), 503);
     if (desktop === 'stopped') throw new NativeComputerError(apiError('computer_stopped', 'stopped'), 409);
@@ -100,6 +102,13 @@ test('the actor comes from the authentication, never the body', async () => {
   assert.deepEqual(calls.at(-1), { command: 'click', args: { x: 1, y: 2, button: 'right' }, actor: 'agent' });
   await post('stop', {}, 'user');
   assert.equal(calls.at(-1)?.actor, 'human');
+});
+
+test('the agent\'s name travels with its commands, to label the pointer, and never with a person\'s', async () => {
+  await post('move', { x: 1, y: 2 });
+  assert.equal(agents.at(-1), 'computer-on');
+  await post('status', {}, 'user');
+  assert.equal(agents.at(-1), undefined);
 });
 
 test('stop and resume are reserved to people, who can do nothing else', async () => {
@@ -389,5 +398,33 @@ test('the desktop\'s accessibility refusals keep their own codes', async () => {
         return true;
       });
     }
+  } finally { server.close(); }
+});
+
+test('the real provider sends the agent\'s name with an agent\'s command, and not with a person\'s', async () => {
+  const { createServer } = await import('node:http');
+  const bodies: Record<string, unknown>[] = [];
+  const server = createServer((req, res) => {
+    let raw = '';
+    req.on('data', (chunk: Buffer) => { raw += chunk.toString(); });
+    req.on('end', () => {
+      bodies.push(JSON.parse(raw) as Record<string, unknown>);
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ ok: true, result: {} }));
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { mkdtempSync, mkdirSync: mk, writeFileSync: write } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const home = mkdtempSync(join(tmpdir(), 'computer-home-'));
+  mk(join(home, 'computer-native'));
+  write(join(home, 'computer-native', 'provider.json'), JSON.stringify({ version: 1, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, token: 'x'.repeat(40), pid: 1 }));
+  try {
+    await callNativeComputer('move', { x: 1, y: 1 }, 'agent', { home, allowedApps: [], agent: 'designer' });
+    await callNativeComputer('status', {}, 'human', { home, agent: 'designer' });
+    assert.equal(bodies[0]?.agent, 'designer');
+    assert.equal('agent' in bodies[1]!, false);
   } finally { server.close(); }
 });

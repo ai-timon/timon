@@ -67,7 +67,7 @@ function refuse(error: ReturnType<typeof apiError>, status: number): never {
 }
 
 /** Who the desktop sees behind a command: the daemon's reading of the authentication, never the caller's. */
-function actorOf(req: Request, command: ComputerCommand): { actor: ComputerActor; allowedApps?: ComputerUseApp[]; mode?: ComputerUseMode } {
+function actorOf(req: Request, command: ComputerCommand): { actor: ComputerActor; allowedApps?: ComputerUseApp[]; mode?: ComputerUseMode; agent?: string } {
   if (isPersonAuth(req.auth)) {
     if (!personCommands.has(command)) refuse(apiError('computer_mission_token_required', 'A mission-bound token is required to control the computer.'), 403);
     return { actor: 'human' };
@@ -88,7 +88,8 @@ function actorOf(req: Request, command: ComputerCommand): { actor: ComputerActor
   if (!enabled) refuse(apiError('computer_use_disabled', 'Computer use is turned off for this agent.'), 403);
   // Read here, from the agent's own config, and handed to the desktop with every command: the desktop refuses what is not listed.
   // The mode travels the same way: the desktop enforces it, the caller cannot choose it.
-  return { actor: 'agent', allowedApps, mode };
+  // The agent's name only labels the pointer the desktop draws over the screen: it grants nothing.
+  return { actor: 'agent', allowedApps, mode, ...(mission ? { agent: mission.agent_name } : {}) };
 }
 
 /** The agent and mission behind an agent's command, for the journal; null for a person or an unbound token. */
@@ -156,7 +157,7 @@ export function registerComputerRoutes(app: Router, deps: { call?: typeof callNa
       if (!isCommand(command)) refuse(apiError('computer_command_unknown', 'Unknown computer command.'), 400);
       known = command;
       ctx = journalContext(req);
-      const { actor, allowedApps, mode } = actorOf(req, command);
+      const { actor, allowedApps, mode, agent } = actorOf(req, command);
       // `actor` and every other key a caller adds are refused: the schema is strict, the body is only the arguments.
       const parsed = SCHEMAS[command].safeParse(req.body ?? {});
       if (!parsed.success) refuse(apiError('computer_args_invalid', 'Invalid arguments for this computer command.'), 400);
@@ -166,7 +167,7 @@ export function registerComputerRoutes(app: Router, deps: { call?: typeof callNa
         res.json({ ok: true, result: { waited: args.ms } });
         return;
       }
-      res.json({ ok: true, result: await call(command, args, actor, allowedApps ? { allowedApps, ...(mode ? { mode } : {}) } : {}) });
+      res.json({ ok: true, result: await call(command, args, actor, allowedApps ? { allowedApps, ...(mode ? { mode } : {}), ...(agent ? { agent } : {}) } : {}) });
     } catch (error) {
       result = computerErrorBody(error).code;
       res.status(error instanceof NativeComputerError ? error.status : 400).json(computerErrorBody(error));

@@ -383,3 +383,61 @@ test('the screenshot windowId is a list_windows id or "front"', () => {
     assert.throws(() => parseComputerCommand('screenshot', { windowId }), ComputerCommandError, String(windowId));
   }
 });
+
+test('the real pointer glides from where it is, in points of the display, unless the motion is off', async () => {
+  let motionMs = 200;
+  let cursor = { x: 100, y: 100 };
+  const { run, calls } = setup({ pointerMotionMs: () => motionMs, cursor: () => cursor });
+  const moves = () => (JSON.parse(calls.at(-1)!.args[4]!) as Array<{ t: string; x?: number }>).filter((s) => s.t === 'move');
+  await run('screenshot', { maxWidth: 1440 });
+  await run('click', { x: 700, y: 100 });
+  assert.equal(moves().length, 13);
+  assert.ok(moves()[0]!.x! > 100 && moves()[0]!.x! < 700, 'the glide starts next to the real pointer');
+  // Off: one move, straight to the target, as before.
+  motionMs = 0;
+  await run('double_click', { x: 10, y: 10 });
+  assert.equal(moves().length, 1);
+  // A pointer on another display does not glide in from outside the screen.
+  motionMs = 200;
+  cursor = { x: -300, y: 100 };
+  await run('move', { x: 10, y: 10 });
+  assert.equal(moves().length, 1);
+});
+
+test('the ghost pointer is told where the agent\'s pointer goes and clicks, with its name; a person draws nothing', async () => {
+  const drawn: Array<{ event: { t: string }; agent: string | undefined }> = [];
+  let failExec = false;
+  const { service } = setup({
+    pointerMotionMs: () => 200, cursor: () => ({ x: 100, y: 100 }), onPointer: (event, agent) => drawn.push({ event, agent }),
+    exec: async () => { if (failExec) throw new Error('boom'); return { stdout: 'true\n' }; },
+  });
+  const run = (command: string, args: unknown, actor: 'agent' | 'human' = 'agent') => service.handle(actor, parseComputerCommand(command, args), ['TextEdit'], 'foreground', 'designer');
+  await run('screenshot', { maxWidth: 1440 });
+  await run('double_click', { x: 700, y: 300 });
+  assert.deepEqual(drawn, [
+    { event: { t: 'move', fromX: 100, fromY: 100, x: 700, y: 300, ms: 200 }, agent: 'designer' },
+    { event: { t: 'click', x: 700, y: 300, n: 2 }, agent: 'designer' },
+  ]);
+  drawn.length = 0;
+  await run('drag', { fromX: 10, fromY: 10, toX: 50, toY: 60 });
+  assert.deepEqual(drawn.map((d) => d.event), [
+    { t: 'move', fromX: 10, fromY: 10, x: 10, y: 10, ms: 0 }, { t: 'move', fromX: 10, fromY: 10, x: 50, y: 60, ms: 180 },
+  ]);
+  drawn.length = 0;
+  await run('type', { text: 'secret' });
+  await run('key', { keys: 'enter' });
+  assert.equal(drawn.length, 0, 'typing moves no pointer');
+  // A click that failed draws its glide but no halo.
+  failExec = true;
+  await assert.rejects(run('click', { x: 5, y: 5 }));
+  assert.deepEqual(drawn.map((d) => d.event.t), ['move']);
+  failExec = false;
+  drawn.length = 0;
+  await run('click', { x: 5, y: 5 }, 'human');
+  assert.equal(drawn.length, 0, 'a person\'s command is not the agent\'s pointer');
+});
+
+test('a drawing that throws never fails the action', async () => {
+  const { service } = setup({ onPointer: () => { throw new Error('window gone'); } });
+  assert.deepEqual(await service.handle('agent', parseComputerCommand('click', { x: 1, y: 1 }), ['TextEdit'], 'foreground', 'designer'), {});
+});
