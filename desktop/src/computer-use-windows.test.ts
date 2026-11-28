@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ComputerCommandError, parseAllowedApps, parseComputerCommand } from './computer-use-protocol.js';
 import type { SystemCommand } from './computer-use-input.js';
-import { appMode, focusWindow, isAppAllowed, listWindows, readForegroundApp, windowApp } from './computer-use-windows.js';
+import { appMode, findWindow, focusWindow, isAppAllowed, listWindows, readForegroundApp, windowApp, windowBounds } from './computer-use-windows.js';
 
 test('the allow-list compares case-insensitively with the bundle id, the displayed name or the executable', () => {
   const app = { bundle: 'com.microsoft.VSCode', name: 'Visual Studio Code', exe: 'Code' };
@@ -151,4 +151,68 @@ test('the new commands and the allowed list are validated', () => {
   assert.throws(() => parseAllowedApps([{ mode: 'background' }]), ComputerCommandError);
   assert.throws(() => parseAllowedApps('Notepad'), ComputerCommandError);
   assert.throws(() => parseAllowedApps([1]), ComputerCommandError);
+});
+
+const XWININFO = `
+xwininfo: Window id: 0x4a00003 "Docs - Firefox"
+
+  Absolute upper-left X:  1290
+  Absolute upper-left Y:  37
+  Relative upper-left X:  0
+  Relative upper-left Y:  0
+  Width: 2540
+  Height: 1403
+  Depth: 24
+  Map State: IsViewable
+`;
+
+test('Linux: a window\'s rectangle comes from xwininfo, frame included, in points', async () => {
+  const exec = async (command: SystemCommand) => {
+    if (command.file === 'xwininfo') return { stdout: XWININFO };
+    if (command.file === 'xprop') return { stdout: '_NET_FRAME_EXTENTS(CARDINAL) = 10, 10, 37, 10\n' };
+    throw new Error(`unexpected ${command.file}`);
+  };
+  const entry = { id: '4242', title: 'Docs', app: 'Firefox', focused: true, identity: { name: 'Firefox' } };
+  assert.deepEqual(await windowBounds('linux', exec, entry, 1), { x: 1280, y: 0, width: 2560, height: 1450 });
+  assert.deepEqual(await windowBounds('linux', exec, entry, 2), { x: 640, y: 0, width: 1280, height: 725 }, 'X11 pixels are turned into points');
+  const unmapped = async (command: SystemCommand) => ({ stdout: command.file === 'xwininfo' ? XWININFO.replace('IsViewable', 'IsUnMapped') : '' });
+  assert.equal(await windowBounds('linux', unmapped, entry, 1), null, 'a minimised window has no rectangle');
+});
+
+test('Linux: without xwininfo, xdotool getwindowgeometry gives the rectangle', async () => {
+  const calls: string[] = [];
+  const exec = async (command: SystemCommand) => {
+    calls.push(command.file);
+    if (command.file === 'xwininfo' || command.file === 'xprop') throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    if (command.args[0] === 'getwindowgeometry') return { stdout: 'WINDOW=4242\nX=10\nY=20\nWIDTH=640\nHEIGHT=480\nSCREEN=0\n' };
+    return { stdout: '' };
+  };
+  const entry = { id: '4242', title: '', app: 'x', focused: false, identity: { name: 'x' } };
+  assert.deepEqual(await windowBounds('linux', exec, entry, 1), { x: 10, y: 20, width: 640, height: 480 });
+  await windowBounds('linux', exec, entry, 1);
+  assert.equal(calls.filter((file) => file === 'xwininfo').length, 1, 'the missing tool is asked once');
+});
+
+test('Windows and macOS: the rectangle comes from the system in points; a bad answer gives none', async () => {
+  const seen: unknown[] = [];
+  const win = async (command: SystemCommand) => {
+    const query = JSON.parse(command.worker!.input) as { q: string };
+    seen.push(query);
+    if (query.q === 'rect') return { stdout: '{"x":-8,"y":0,"width":1296.5,"height":1040}' };
+    return { stdout: '[{"id":"197284","title":"a.txt - Notepad","app":"Notepad","exe":"notepad","focused":true}]' };
+  };
+  const notepad = await findWindow('win32', win, null);
+  assert.equal(notepad?.id, '197284');
+  assert.deepEqual(await windowBounds('win32', win, notepad!, 1.5), { x: -8, y: 0, width: 1296.5, height: 1040 });
+  assert.deepEqual(seen.at(-1), { q: 'rect', id: '197284' });
+  assert.equal(await windowBounds('win32', async () => ({ stdout: 'null' }), notepad!, 1), null);
+
+  const mac = async () => ({ stdout: JSON.stringify([
+    { id: '10:1', title: 'Notes', app: 'TextEdit', focused: true, bounds: { x: 0, y: 25, width: 800, height: 600 } },
+    { id: '10:2', title: 'Bad', app: 'TextEdit', focused: false, bounds: { x: 'a', y: 0, width: 800, height: 600 } },
+  ]) });
+  const notes = await findWindow('darwin', mac, '10:1');
+  assert.deepEqual(await windowBounds('darwin', mac, notes!, 2), { x: 0, y: 25, width: 800, height: 600 });
+  assert.equal(await windowBounds('darwin', mac, (await findWindow('darwin', mac, '10:2'))!, 2), null);
+  assert.equal(await findWindow('darwin', mac, '99:1'), null);
 });

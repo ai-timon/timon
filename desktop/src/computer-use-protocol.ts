@@ -9,6 +9,9 @@ export const COMPUTER_MAX_WAIT_MS = 10_000;
  * the 512 px tiles some models bill by. Wide enough to read ordinary text; an agent asks for more when needed.
  */
 export const COMPUTER_DEFAULT_MAX_WIDTH = 1024;
+/** The `windowId` of a screenshot that means the window in front, whichever it is. */
+export const FRONT_WINDOW = 'front';
+const WINDOW_ID = /^[A-Za-z0-9:_.-]{1,64}$/;
 
 export type ComputerActor = 'agent' | 'human';
 export type ComputerUnavailableReason =
@@ -23,7 +26,7 @@ export class ComputerCommandError extends Error {
 
 export type ComputerCommand =
   | { command: 'status' }
-  | { command: 'screenshot'; maxWidth: number }
+  | { command: 'screenshot'; maxWidth: number; windowId?: string }
   | { command: 'cursor_position' }
   | { command: 'move'; x: number; y: number }
   | { command: 'click'; x: number; y: number; button: MouseButton }
@@ -104,10 +107,15 @@ export function parseComputerCommand(name: unknown, rawArgs: unknown): ComputerC
   const args = (rawArgs ?? {}) as Record<string, unknown>;
   switch (name) {
     case 'screenshot': {
-      if (args.maxWidth === undefined) return { command: 'screenshot', maxWidth: COMPUTER_DEFAULT_MAX_WIDTH };
-      const maxWidth = coordinate(args, 'maxWidth');
-      if (!Number.isInteger(maxWidth) || maxWidth < 64 || maxWidth > 8192) throw new ComputerCommandError('"maxWidth" must be an integer between 64 and 8192.');
-      return { command: 'screenshot', maxWidth };
+      let maxWidth = COMPUTER_DEFAULT_MAX_WIDTH;
+      if (args.maxWidth !== undefined) {
+        maxWidth = coordinate(args, 'maxWidth');
+        if (!Number.isInteger(maxWidth) || maxWidth < 64 || maxWidth > 8192) throw new ComputerCommandError('"maxWidth" must be an integer between 64 and 8192.');
+      }
+      if (args.windowId === undefined) return { command: 'screenshot', maxWidth };
+      // A window id from list_windows, or "front" for the window in front: only that rectangle is captured.
+      if (typeof args.windowId !== 'string' || !WINDOW_ID.test(args.windowId)) throw new ComputerCommandError(`"windowId" must be a window id returned by list_windows, or "${FRONT_WINDOW}".`);
+      return { command: 'screenshot', maxWidth, windowId: args.windowId };
     }
     case 'move': return { command: 'move', x: coordinate(args, 'x'), y: coordinate(args, 'y') };
     case 'click': {

@@ -20,6 +20,9 @@ const NO_FOCUS = ' Prefer acting by windowId with computer_a11y_tree and compute
 // The order to work in: the tree first, pixels only for what the tree does not show.
 const A11Y_FIRST = ' Read the window first with computer_a11y_tree and act by element. Take a screenshot and click in pixels only if the element is missing from the tree.' + NO_FOCUS;
 const MAX_STEPS = 20;
+// A wide screen (32:9) shrunk to 1024 px is unreadable: one window keeps its text at the same cost.
+const ONE_WINDOW = ' Pass windowId (an id from computer_list_windows, or "front" for the window in front) to capture only that window: on a wide screen it stays readable at 1024 px. Its application must be allowed in the foreground mode, and the coordinates of the next actions are pixels of that capture.';
+const WINDOW_ID = { type: 'string', minLength: 1, maxLength: 64, description: 'An id from computer_list_windows, or "front".' };
 const tools = [
   { name: 'computer_a11y_tree', description: `Read a window as a tree of elements (buttons, fields, menus...), with no screenshot. One line per element, indented by depth: #id role "name" = value [actions] @x,y. The id is what follows the first "#". Without windowId it reads the window in front. Use query to find an element by part of its name, value or role (case does not matter): the answer keeps the matches and the elements that contain them. Roles: button, textfield, textarea, checkbox, radio, combobox, list, listitem, menu, menuitem, menubar, tab, tablist, link, image, text, group, window, toolbar, table, row, cell, slider, scrollbar, other. Ids last as long as the interface does not change: an a11y_element_stale error means read the tree again. Set withBounds only if you need the positions (in screenshot pixels); an element whose position the system cannot give has no @x,y.${A11Y_FIRST}`, inputSchema: schema({
     windowId: { type: 'string', minLength: 1, maxLength: 64 }, query: { type: 'string', maxLength: 200 },
@@ -28,10 +31,10 @@ const tools = [
   { name: 'computer_a11y_action', description: `Act on one element by the id computer_a11y_tree returned, without moving the mouse or the keyboard. action: ${A11Y_ACTIONS.join(', ')}. press clicks a button or link, set_value writes the value into a field (at most 2000 characters, never log a password: ask the user to do it), select picks a list item or tab, expand and collapse open or close a group, show_menu opens the context menu, scroll_into_view brings the element into sight. An element only accepts the actions in its [brackets]; otherwise the error lists the possible ones.${A11Y_FIRST}${NO_PASSWORD}`, inputSchema: schema({
     id: { type: 'string', minLength: 1, maxLength: 120 }, action: { type: 'string', enum: A11Y_ACTIONS }, value: { type: 'string', maxLength: 2000 },
   }, ['id', 'action']) },
-  { name: 'computer_screenshot', description: `Capture the main screen as a JPEG, 1024 px wide by default. Ask for a larger maxWidth only to read small text, a smaller one (768) for a quick look.${THRIFT}`, inputSchema: schema({ maxWidth: { type: 'integer', minimum: 64, maximum: 4096 } }) },
-  { name: 'computer_actions', description: `Run several steps in a row, then return one screenshot (unless screenshot is false). Each step is an object with an "action" (click, double_click, move, drag, type, key, scroll, wait, focus_window, a11y_action) and that action's arguments (an a11y_action step names the element action as \"do\": {\"action\":\"a11y_action\",\"id\":\"...\",\"do\":\"press\"}), for example [{"action":"key","keys":"cmd+space"},{"action":"type","text":"TextEdit"},{"action":"key","keys":"Enter"},{"action":"wait","ms":1500}]. Stops at the first failing step and says which.${A11Y_FIRST}${SEE_FIRST}${NO_PASSWORD}`, inputSchema: schema({
+  { name: 'computer_screenshot', description: `Capture the main screen as a JPEG, 1024 px wide by default. Ask for a larger maxWidth only to read small text, a smaller one (768) for a quick look.${ONE_WINDOW}${THRIFT}`, inputSchema: schema({ maxWidth: { type: 'integer', minimum: 64, maximum: 4096 }, windowId: WINDOW_ID }) },
+  { name: 'computer_actions', description: `Run several steps in a row, then return one screenshot (unless screenshot is false; windowId limits it to one window, as for computer_screenshot). Each step is an object with an "action" (click, double_click, move, drag, type, key, scroll, wait, focus_window, a11y_action) and that action's arguments (an a11y_action step names the element action as \"do\": {\"action\":\"a11y_action\",\"id\":\"...\",\"do\":\"press\"}), for example [{"action":"key","keys":"cmd+space"},{"action":"type","text":"TextEdit"},{"action":"key","keys":"Enter"},{"action":"wait","ms":1500}]. Stops at the first failing step and says which.${A11Y_FIRST}${SEE_FIRST}${NO_PASSWORD}`, inputSchema: schema({
     steps: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'object', properties: { action: { type: 'string', enum: [...BATCH_ACTIONS] } }, required: ['action'] } },
-    screenshot: { type: 'boolean' }, maxWidth: { type: 'integer', minimum: 64, maximum: 4096 },
+    screenshot: { type: 'boolean' }, maxWidth: { type: 'integer', minimum: 64, maximum: 4096 }, windowId: WINDOW_ID,
   }, ['steps']) },
   { name: 'computer_click', description: `Click at a point of the screen.${SEE_FIRST}`, inputSchema: schema({ x: num, y: num, button: { type: 'string', enum: ['left', 'right', 'middle'] } }, ['x', 'y']) },
   { name: 'computer_double_click', description: `Double-click at a point of the screen.${SEE_FIRST}`, inputSchema: schema({ x: num, y: num }, ['x', 'y']) },
@@ -81,7 +84,8 @@ async function runActions(args) {
   }
   if (args.screenshot === false) return { steps: done };
   let shot;
-  try { shot = await command('screenshot', args.maxWidth === undefined ? {} : { maxWidth: args.maxWidth }); } catch (error) {
+  const shotArgs = { ...(args.maxWidth === undefined ? {} : { maxWidth: args.maxWidth }), ...(args.windowId === undefined ? {} : { windowId: args.windowId }) };
+  try { shot = await command('screenshot', shotArgs); } catch (error) {
     // A background agent never gets a capture of the user's screen: the steps are done, so say so.
     if (error.code === 'computer_background_only') return { steps: done, note: error.message };
     throw error;
@@ -137,7 +141,7 @@ lines.on('line', async line => {
       result = { content: typeof value?.text === 'string' && Object.keys(value).length === 1 ? [{ type: 'text', text: value.text }]
         : typeof value?.data === 'string'
         ? [{ type: 'image', data: value.data, mimeType: value.mimeType || 'image/jpeg' },
-          { type: 'text', text: JSON.stringify({ width: value.width, height: value.height, ...(value.steps === undefined ? {} : { steps: value.steps }) }) }]
+          { type: 'text', text: JSON.stringify({ width: value.width, height: value.height, ...(value.window?.id === undefined ? {} : { windowId: value.window.id }), ...(value.steps === undefined ? {} : { steps: value.steps }) }) }]
         : [{ type: 'text', text: JSON.stringify(value) }] };
     } else return send({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } });
     send({ jsonrpc: '2.0', id: msg.id, result });

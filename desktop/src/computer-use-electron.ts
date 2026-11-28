@@ -6,7 +6,7 @@ import { BrowserWindow, desktopCapturer, globalShortcut, screen, shell, systemPr
 import { ComputerUseService } from './computer-use-service.js';
 import { startComputerServer } from './computer-use-server.js';
 import { createSystemExecutor } from './computer-use-exec.js';
-import type { DisplayInfo, ImageSize } from './computer-use-geometry.js';
+import type { DisplayInfo, ImageSize, Region } from './computer-use-geometry.js';
 
 export type ShellText = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -22,7 +22,7 @@ function primaryDisplay(): DisplayInfo {
   return { width: display.bounds.width, height: display.bounds.height, scaleFactor: display.scaleFactor, originX: display.bounds.x, originY: display.bounds.y };
 }
 
-async function capturePrimary(size: ImageSize): Promise<Buffer | null> {
+async function capturePrimary(size: ImageSize, region?: Region): Promise<Buffer | null> {
   const display = screen.getPrimaryDisplay();
   // Asked at the physical size, then resized once with the best filter: the thumbnail is the only capture API.
   const sources = await desktopCapturer.getSources({
@@ -31,9 +31,25 @@ async function capturePrimary(size: ImageSize): Promise<Buffer | null> {
   });
   const source = sources.find((candidate) => candidate.display_id === String(display.id)) ?? sources[0];
   if (!source || source.thumbnail.isEmpty()) return null;
+  let shot = source.thumbnail;
+  if (region) {
+    // A window capture is a crop of the screen in its pixels: the thumbnail's own size gives the
+    // scale, in case the system answered smaller than asked.
+    const full = shot.getSize();
+    const sx = full.width / display.bounds.width;
+    const sy = full.height / display.bounds.height;
+    const x = Math.min(Math.max(0, Math.round(region.x * sx)), full.width - 1);
+    const y = Math.min(Math.max(0, Math.round(region.y * sy)), full.height - 1);
+    const rect = { x, y, width: Math.max(1, Math.min(full.width - x, Math.round(region.width * sx))), height: Math.max(1, Math.min(full.height - y, Math.round(region.height * sy))) };
+    let cropped = shot.crop(rect);
+    // The same lazy macOS bitmap as below: a copy at full size has one to crop from.
+    if (cropped.isEmpty()) cropped = shot.resize({ width: full.width, height: full.height }).crop(rect);
+    if (cropped.isEmpty()) return null;
+    shot = cropped;
+  }
   // Always through resize, even at the same size: on macOS a capture's thumbnail has no bitmap of its
   // own yet and its toJPEG came back empty on the CI runner, while the resized copy encodes.
-  const image = source.thumbnail.resize({ width: size.width, height: size.height, quality: 'best' });
+  const image = shot.resize({ width: size.width, height: size.height, quality: 'best' });
   // JPEG: five to ten times lighter than PNG for a screen, so faster to send and to store in the
   // conversation; quality 75 keeps small text readable. PNG remains when an encoder gives nothing.
   const jpeg = image.toJPEG(75);

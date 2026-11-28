@@ -7,7 +7,7 @@
  * Nothing here is spliced into a script. A backend runs through the injected executor (no shell,
  * its arguments travel as JSON), so nothing the agent sends can be interpreted as code.
  */
-import type { DisplayInfo, ImageSize } from './computer-use-geometry.js';
+import { frameTransform, type DisplayInfo, type Frame } from './computer-use-geometry.js';
 import type { Exec } from './computer-use-windows.js';
 
 /** The roles every OS maps its own onto: anything else is `other`. */
@@ -148,12 +148,11 @@ export function filterByQuery(nodes: readonly A11yRawNode[], query: string | und
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
 /** Screen points → pixels of the last capture: the conversion the clicks use, the other way round. */
-function toFrame(bounds: A11yBounds | undefined, display: DisplayInfo, frame: ImageSize): A11yBounds | undefined {
+function toFrame(bounds: A11yBounds | undefined, display: DisplayInfo, frame: Frame): A11yBounds | undefined {
   if (!bounds || ![bounds.x, bounds.y, bounds.width, bounds.height].every(finite)) return undefined;
-  const sx = frame.width / display.width;
-  const sy = frame.height / display.height;
+  const { x, y, sx, sy } = frameTransform(display, frame);
   return {
-    x: Math.round((bounds.x - (display.originX ?? 0)) * sx), y: Math.round((bounds.y - (display.originY ?? 0)) * sy),
+    x: Math.round((bounds.x - x) * sx), y: Math.round((bounds.y - y) * sy),
     width: Math.round(bounds.width * sx), height: Math.round(bounds.height * sy),
   };
 }
@@ -165,7 +164,7 @@ function toFrame(bounds: A11yBounds | undefined, display: DisplayInfo, frame: Im
  */
 export function buildTree(
   window: A11yTree['window'], raw: A11yRawTree, args: Pick<A11yTreeArgs, 'maxDepth' | 'maxNodes' | 'query'>,
-  display: DisplayInfo, frame: ImageSize,
+  display: DisplayInfo, frame: Frame,
 ): A11yTree {
   let truncated = raw.truncated;
   const present = new Set<string>();

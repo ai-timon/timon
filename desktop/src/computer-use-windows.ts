@@ -21,7 +21,13 @@ export interface AppIdentity {
 }
 
 export interface WindowInfo { id: string; title: string; app: string; focused: boolean }
-interface WindowEntry extends WindowInfo { identity: AppIdentity }
+/** A window's rectangle in points of the virtual desktop, the coordinates Electron gives the displays in. */
+export interface WindowBounds { x: number; y: number; width: number; height: number }
+export interface WindowEntry extends WindowInfo {
+  identity: AppIdentity;
+  /** Read with the list where it costs nothing (macOS); elsewhere `windowBounds` asks for it. */
+  bounds?: WindowBounds;
+}
 
 const MAX_WINDOWS = 60;
 
@@ -114,7 +120,9 @@ function run() {
     // The window list is ordered front to back: the first window of the front application is the focused one.
     const focused = pid === frontPid && !frontSeen;
     if (focused) frontSeen = true;
-    out.push({ id: pid + ':' + info.kCGWindowNumber, title: info.kCGWindowName || '', app: info.kCGWindowOwnerName || '', bundle, focused });
+    const b = info.kCGWindowBounds;
+    const bounds = b ? { x: b.X, y: b.Y, width: b.Width, height: b.Height } : null;
+    out.push({ id: pid + ':' + info.kCGWindowNumber, title: info.kCGWindowName || '', app: info.kCGWindowOwnerName || '', bundle, focused, bounds });
     if (out.length >= ${MAX_WINDOWS}) break;
   }
   return JSON.stringify(out);
@@ -146,6 +154,16 @@ function parseJson(stdout: string): unknown {
 
 const str = (value: unknown): string => typeof value === 'string' ? value : '';
 
+/** A rectangle as a script printed it: four finite numbers and a size of at least one point, or nothing. */
+function boundsOf(value: unknown): WindowBounds | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const { x, y, width, height } = value as Record<string, unknown>;
+  const all = [x, y, width, height];
+  if (!all.every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 1_000_000)) return undefined;
+  if ((width as number) < 1 || (height as number) < 1) return undefined;
+  return { x: x as number, y: y as number, width: width as number, height: height as number };
+}
+
 function identityOf(value: unknown): AppIdentity | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
@@ -165,7 +183,10 @@ function entriesOf(value: unknown): WindowEntry[] {
     if (!/^[A-Za-z0-9:_.-]{1,64}$/.test(id)) continue;
     const identity = identityOf({ name: raw.app, bundle: raw.bundle, exe: raw.exe });
     if (!identity) continue;
-    out.push({ id, title: str(raw.title), app: identity.name || identity.exe || identity.bundle || '', focused: raw.focused === true, identity });
+    const entry: WindowEntry = { id, title: str(raw.title), app: identity.name || identity.exe || identity.bundle || '', focused: raw.focused === true, identity };
+    const bounds = boundsOf(raw.bounds);
+    if (bounds) entry.bounds = bounds;
+    out.push(entry);
   }
   return out;
 }
@@ -268,6 +289,45 @@ async function linuxFocus(exec: Exec, id: string): Promise<boolean> {
   throw new Error('The window did not become active.');
 }
 
+const numberAfter = (text: string, label: RegExp): number | null => {
+  const match = text.match(label);
+  return match ? Number(match[1]) : null;
+};
+
+/**
+ * The window's rectangle in X11 pixels, frame included. xwininfo gives the absolute position of the
+ * client area (xdotool getwindowgeometry adds the frame's offset twice under a reparenting window
+ * manager, so it is only the fallback); _NET_FRAME_EXTENTS adds the title bar and the borders the
+ * window manager draws around it. An unmapped (minimised) window has no rectangle.
+ */
+async function linuxBounds(exec: Exec, id: string): Promise<WindowBounds | null> {
+  let rect: WindowBounds | null = null;
+  const info = await tryTool(exec, { file: 'xwininfo', args: ['-id', id] });
+  if (info !== null) {
+    if (/Map State:\s*Is(UnMapped|Unviewable)/.test(info)) return null;
+    const x = numberAfter(info, /Absolute upper-left X:\s*(-?\d+)/);
+    const y = numberAfter(info, /Absolute upper-left Y:\s*(-?\d+)/);
+    const width = numberAfter(info, /\n\s*Width:\s*(\d+)/);
+    const height = numberAfter(info, /\n\s*Height:\s*(\d+)/);
+    if (x !== null && y !== null && width !== null && height !== null) rect = { x, y, width, height };
+  }
+  if (!rect) {
+    const shell = await tryTool(exec, xdotool('getwindowgeometry', '--shell', id));
+    if (shell === null) return null;
+    const read = (name: string) => numberAfter(shell, new RegExp(`^${name}=(-?\\d+)$`, 'm'));
+    const [x, y, width, height] = [read('X'), read('Y'), read('WIDTH'), read('HEIGHT')];
+    if (x === null || y === null || width === null || height === null) return null;
+    rect = { x, y, width, height };
+  }
+  const extents = await tryTool(exec, { file: 'xprop', args: ['-id', id, '_NET_FRAME_EXTENTS'] });
+  const sides = extents?.match(/=\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)/);
+  if (sides) {
+    const [left, right, top, bottom] = sides.slice(1, 5).map(Number) as [number, number, number, number];
+    rect = { x: rect.x - left, y: rect.y - top, width: rect.width + left + right, height: rect.height + top + bottom };
+  }
+  return boundsOf(rect) ?? null;
+}
+
 // ── Per-OS entry points ────────────────────────────────────────────────────
 
 /** The application in front, or null when the system cannot tell. */
@@ -300,6 +360,25 @@ async function entries(platform: InputPlatform, exec: Exec): Promise<WindowEntry
 /** The open windows, front to back as far as the system says. */
 export async function listWindows(platform: InputPlatform, exec: Exec): Promise<WindowInfo[]> {
   return (await entries(platform, exec)).map(({ id, title, app, focused }) => ({ id, title, app, focused }));
+}
+
+/** Window `id`, or the window in front when `id` is null; null when there is no such window. */
+export async function findWindow(platform: InputPlatform, exec: Exec, id: string | null): Promise<WindowEntry | null> {
+  const all = await entries(platform, exec);
+  return (id === null ? all.find((entry) => entry.focused) : all.find((entry) => entry.id === id)) ?? null;
+}
+
+/**
+ * The window's rectangle in points of the virtual desktop, or null when the system has none to give
+ * (minimised, gone). `scaleFactor` turns the X11 pixels of Linux into points; macOS and Windows answer in points.
+ */
+export async function windowBounds(platform: InputPlatform, exec: Exec, entry: WindowEntry, scaleFactor: number): Promise<WindowBounds | null> {
+  if (platform === 'darwin') return entry.bounds ?? null;
+  if (platform === 'win32') return boundsOf(parseJson((await exec(windowsQueryCommand({ q: 'rect', id: entry.id }))).stdout)) ?? null;
+  const pixels = await linuxBounds(exec, entry.id);
+  if (!pixels) return null;
+  const scale = scaleFactor > 0 ? scaleFactor : 1;
+  return { x: pixels.x / scale, y: pixels.y / scale, width: pixels.width / scale, height: pixels.height / scale };
 }
 
 /** The application owning window `id`, or null when no such window is open. */

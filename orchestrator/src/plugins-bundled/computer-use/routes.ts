@@ -16,7 +16,8 @@ const point = z.object({ x: coord, y: coord }).strict();
 /** The closed list of commands, each with the only arguments it accepts. */
 const SCHEMAS = {
   status: empty,
-  screenshot: z.object({ maxWidth: z.number().int().min(64).max(4096).optional() }).strict(),
+  // `windowId`: an id from list_windows, or "front" for the window in front; only its rectangle is captured.
+  screenshot: z.object({ maxWidth: z.number().int().min(64).max(4096).optional(), windowId: z.string().regex(/^[A-Za-z0-9:_.-]{1,64}$/).optional() }).strict(),
   cursor_position: empty,
   move: point,
   click: z.object({ x: coord, y: coord, button: z.enum(['left', 'right', 'middle']).optional() }).strict(),
