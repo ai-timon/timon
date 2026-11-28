@@ -5,11 +5,12 @@
  *
  * Routes extracted verbatim from `index.ts` (step 1.4).
  */
-import express, { type Router } from 'express';
+import express, { type Response, type Router } from 'express';
 import { z } from 'zod';
 import { AgentConfig, killAgent, listAgents } from '../../agent.js';
 import { backendIdForModel, catalogClaimsModel } from '../../backends/catalog.js';
 import { asBackendName } from '../../backends/index.js';
+import { mergeRequestOf, resolveMergeRequest, type MergeRequestInputT } from '../../merge-request.js';
 import { codeCloseRefusal, effectiveMergeSha, evaluateCodeDone, inspectGitBranch, mergeCloseRefusal, pullRequestCloseRefusal, shaInBase, taskRepo } from '../../code-gate.js';
 export { codeCloseRefusal, effectiveMergeSha, mergeCloseRefusal, pullRequestCloseRefusal } from '../../code-gate.js';
 import { config } from '../../config/load.js';
@@ -452,6 +453,24 @@ function parseSummary(raw: unknown): string | undefined {
 }
 
 /**
+ * Validates the optional `merge_request` of a write. Answers `undefined` when
+ * the body carries none, the reference to store, or sends the 400 itself.
+ */
+function mergeRequestToStore(
+  res: Response,
+  task: Parameters<typeof mergeRequestOf>[0],
+  input: MergeRequestInputT | undefined,
+): ReturnType<typeof mergeRequestOf> | undefined | 'refused' {
+  if (input === undefined) return undefined;
+  const out = resolveMergeRequest(input, mergeRequestOf(task));
+  if (!out.ok) {
+    res.status(400).json(apiError('merge_request_invalid', out.error, { detail: out.error }));
+    return 'refused';
+  }
+  return out.ref;
+}
+
+/**
  * Closing of a task: code gate, status transition, process stop.
  *
  * Shared by `PUT /api/tasks/:id` and `POST /api/tasks/close`, so that both
@@ -490,7 +509,7 @@ export function closeTask(
   taskId: string,
   task: TaskRow,
   status: 'DONE' | 'BLOCKED',
-  opts: { doneComment?: string; blockedReason?: string; summary?: string; byPerson?: boolean },
+  opts: { doneComment?: string; blockedReason?: string; summary?: string; byPerson?: boolean; awaitingUser?: boolean },
 ): void {
   let doneComment = opts.doneComment;
   // Before the transition, like the merge sha: `task_done` builds the return
@@ -507,6 +526,7 @@ export function closeTask(
     blockedReason: opts.blockedReason,
     doneComment,
     byPerson: opts.byPerson,
+    awaitingUser: status === 'BLOCKED' && opts.awaitingUser === true,
   });
   // A dispatched task runs in a `persistentProcess` mission: after its
   // `result` the process keeps stdin open and stays idle indefinitely →
@@ -1394,7 +1414,14 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
         res.status(400).json(apiError('task_reason_required', 'reason is required to mark a task as failed'));
         return;
       }
-      closeTask(taskId, task, 'BLOCKED', { blockedReason: reason, byPerson: isPersonAuth(req.auth) });
+      const failedMr = mergeRequestToStore(res, task, body.merge_request);
+      if (failedMr === 'refused') return;
+      if (failedMr) dbApi.setTaskMergeRequest(taskId, failedMr);
+      closeTask(taskId, task, 'BLOCKED', {
+        blockedReason: reason,
+        byPerson: isPersonAuth(req.auth),
+        awaitingUser: body.awaiting_user === true,
+      });
       res.json({ task: scope.getTask(taskId) });
       return;
     }
@@ -1422,6 +1449,9 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
     }
     const declaredSha = typeof body.merged_sha === 'string' ? body.merged_sha : null;
     if (rejectUnprovenClose(res, task, effectiveMergeSha(task, declaredSha, comment))) return;
+    const doneMr = mergeRequestToStore(res, task, body.merge_request);
+    if (doneMr === 'refused') return;
+    if (doneMr) dbApi.setTaskMergeRequest(taskId, doneMr);
     if (body.merged_sha !== undefined) {
       // Set BEFORE the status: the merge guard refuses DONE on a
       // type='merge' task without a sha, and the reverse order degrades the transition into BLOCKED.
@@ -1669,6 +1699,8 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
       }
       type = body.type;
     }
+    const putMr = mergeRequestToStore(res, task, body.merge_request);
+    if (putMr === 'refused') return;
     const schedWarning = checkScheduledAtPlausibility(sched.value, Date.now());
     if (schedWarning) console.warn(`[tasks] ${schedWarning}`);
 
@@ -1685,6 +1717,7 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
       // Written before the status: a task linked and closed in the same call must
       // already carry its idea when `task_done` fires.
       if (todo.value !== undefined) dbApi.setTaskTodoId(req.params.id, todo.value);
+      if (putMr) dbApi.setTaskMergeRequest(req.params.id, putMr);
       const nextStatus = normalizeTaskStatusInput(body.status);
       if (nextStatus && nextStatus !== task.status) {
         // Terminal status: exactly the same path as `POST /api/tasks/close`
@@ -1694,6 +1727,7 @@ export function registerRoutes(app: Router, deps: KanbanRouteDeps = {}): void {
           closeTask(req.params.id, task, nextStatus, {
             doneComment: body.done_comment ?? undefined,
             blockedReason: body.blocked_reason ?? undefined,
+            awaitingUser: body.awaiting_user === true,
             summary: parseSummary(body.done_summary),
             // Only a browser session: an agent, the CLI or a plugin blocking a
             // task still hands it to the pilot.

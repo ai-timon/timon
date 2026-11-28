@@ -17,7 +17,7 @@
 export const PRODUCT_SKILLS: ReadonlyArray<{ id: string; content: string; version?: number }> = [
   {
     id: 'timon-task',
-    version: 3,
+    version: 4,
     content: `---
 allowed_tools: ["Bash(timon:*)"]
 ---
@@ -453,6 +453,36 @@ timon task block <TASK_ID> --reason "Precise reason"
 Use BLOCKED when you cannot go on without a human, or when an external
 dependency is not met.
 
+**Waiting only for a person is not a failure.** When the single thing missing
+is an action of the user (a merge request or pull request to merge, a
+validation, a decision), add \`--awaiting-user\` and say in the reason exactly
+what they must do. The board then shows an amber "Waiting for you" badge
+instead of a red "Blocked", and the user can filter on it. The task stays
+BLOCKED, so the dispatcher never restarts it. A real obstacle (a conflict, a
+failing check, a missing dependency) stays a plain block.
+\`\`\`bash
+timon task block <TASK_ID> --awaiting-user --reason "Merge request !42 is ready: merge it, then reopen this task"
+\`\`\`
+The MCP tool \`kanban_mark_as_failed\` takes the same switch as
+\`awaiting_user: true\`.
+
+## Recording the pull / merge request you opened
+
+A pull request (GitHub) or merge request (GitLab) you open is recorded on the
+task as data, so its card shows a chip (\`MR !1875\`, \`PR #12\`) that opens it.
+Do not leave its URL in free text only. Pass it when you close or block the
+task, or in a \`timon task update\`:
+
+\`\`\`bash
+timon task block <TASK_ID> --reason "MR open, waiting for a person to merge it" --mr-url <url>
+timon task mark-as-done --comment "…" --mr-url <url> [--mr-state open|merged|closed] [--mr-pipeline success]
+\`\`\`
+
+The MCP tools \`kanban_update\`, \`kanban_mark_as_done\` and
+\`kanban_mark_as_failed\` take the same \`merge_request\` object
+(\`{ url, state?, pipeline? }\`). Only the URL is required: the forge and the
+number come from it. \`timon pr open\` records it by itself.
+
 ## Updating metadata
 \`\`\`bash
 timon task update <TASK_ID> --priority 5 --title "New title"
@@ -471,7 +501,7 @@ timon task update <TASK_ID> --priority 5 --title "New title"
   },
   {
     id: 'timon-worktree',
-    version: 1,
+    version: 2,
     content: `---
 allowed_tools: ["Bash(timon:*)", "Bash(git:*)"]
 ---
@@ -587,7 +617,8 @@ request. Your brief gives the exact commands:
    \`Fixes #n\` for now.
 4. \`timon pr open <TASK_ID> --title "…" --body-file <file>\`. The daemon checks,
    pushes and opens; a refusal lists the failed checks. Fix what you can with
-   new commits (never rewrite one), or block the task with the checks.
+   new commits (never rewrite one), or block the task with the checks. The
+   daemon records the pull request on the task by itself.
 5. \`timon task done <TASK_ID> --merged-sha <full sha of the base> --comment "pull request <url> opened"\`.
 
 ## Hard rules

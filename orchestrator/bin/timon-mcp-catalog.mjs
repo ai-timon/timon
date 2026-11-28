@@ -119,6 +119,20 @@ const KANBAN_LIST_MAX = 500;
 const KANBAN_LIST_FULL_DEFAULT = 20;
 const KANBAN_LIST_FULL_MAX = 50;
 
+const MERGE_REQUEST_SCHEMA = {
+  type: 'object',
+  description:
+    'The pull request (GitHub) or merge request (GitLab) you opened, recorded on the task so its card shows a chip. ' +
+    'Only `url` is needed: the forge and the number come from it. Send it when you open the request, and again ' +
+    'with the new `state` (open | merged | closed) or `pipeline` when they change.',
+  properties: {
+    url: { type: 'string', description: 'https URL of the pull / merge request.' },
+    state: { type: 'string', enum: ['open', 'merged', 'closed'] },
+    pipeline: { type: ['string', 'null'], description: 'Short pipeline status (success, running, failed…), null to clear.' },
+  },
+  required: ['url'],
+};
+
 const TOOLS = [
   {
     name: 'agent_list',
@@ -312,11 +326,16 @@ const TOOLS = [
           description: 'true = clears scheduling (resets scheduled_at to NULL). Only way to unschedule a task.',
         },
         blocked_reason: { type: 'string' },
+        awaiting_user: {
+          type: 'boolean',
+          description: 'With status BLOCKED: the task waits only for a person (shown as "Waiting for you" on the board).',
+        },
         done_comment: { type: 'string' },
         merged_commit_sha: {
           type: 'string',
           description: "Merge commit SHA (7-40 hex). Required to close a type='merge' task as DONE: the merge guard refuses DONE without this sha.",
         },
+        merge_request: MERGE_REQUEST_SCHEMA,
         type: {
           type: 'string',
           enum: ['code', 'review', 'merge', 'research', 'doc', 'chore'],
@@ -380,6 +399,7 @@ const TOOLS = [
             'Mandatory to close a `merge` task and a `code-self` pipeline: without it ' +
             'the guard sends the task back to BLOCKED.',
         },
+        merge_request: MERGE_REQUEST_SCHEMA,
         id: {
           type: 'string',
           description:
@@ -397,7 +417,9 @@ const TOOLS = [
       'Closes the task you are running as BLOCKED: you cannot continue without ' +
       'a human decision or an unmet external dependency. Resolved from your ' +
       'current mission, no id to copy. `reason` is mandatory and is what the ' +
-      'orchestrator reads to decide what comes next.',
+      'orchestrator reads to decide what comes next. Set `awaiting_user` when ' +
+      'the only thing missing is a person (a pull request to merge, a go-ahead): ' +
+      'the board then shows "Waiting for you" instead of a failure.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -405,6 +427,13 @@ const TOOLS = [
           type: 'string',
           description: 'Precise reason for the blockage (what is missing, what was tried).',
         },
+        awaiting_user: {
+          type: 'boolean',
+          description:
+            'True when the task waits only for a person to act (merge a pull request, ' +
+            'validate, decide); the reason then says exactly what to do. False or unset: a real blockage.',
+        },
+        merge_request: MERGE_REQUEST_SCHEMA,
         id: {
           type: 'string',
           description: 'Only to block a task OTHER than yours. Leave unset.',
@@ -1532,12 +1561,15 @@ async function runTool(rawName, args, ctx) {
       if (args.verdict !== undefined) body.verdict = args.verdict;
       if (args.merged_sha !== undefined) body.merged_sha = args.merged_sha;
       if (args.summary !== undefined) body.summary = args.summary;
+      if (args.merge_request !== undefined) body.merge_request = args.merge_request;
       if (args.id !== undefined) body.id = args.id;
       const r = await call('POST', '/api/tasks/close', body);
       return r.task;
     }
     case 'kanban_mark_as_failed': {
       const body = { outcome: 'failed', reason: args.reason };
+      if (args.awaiting_user !== undefined) body.awaiting_user = args.awaiting_user === true;
+      if (args.merge_request !== undefined) body.merge_request = args.merge_request;
       if (args.id !== undefined) body.id = args.id;
       const r = await call('POST', '/api/tasks/close', body);
       return r.task;

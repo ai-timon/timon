@@ -1582,6 +1582,9 @@
     "filterSearch": "Search",
     "filterSearchPlaceholder": "Search tasks…",
     "resetFilters": "Reset filters",
+    "filterMine": "My turn to act",
+    "filterMineTitle": "Only the tasks that wait for you: a step to take or a permission to answer",
+    "awaitingUser": "Waiting for you",
     "modelChange": "Change the model (now {model})",
     "modelSaveFailed": "Could not change the model: {error}",
     "title": "Kanban",
@@ -1601,6 +1604,16 @@
       "doneEmpty": "Nothing completed yet",
       "blocked": "Blocked",
       "blockedEmpty": "Nothing blocked"
+    },
+    "mergeRequest": {
+      "label": "Pull / merge request",
+      "open": "Open {label} in a new tab",
+      "pipeline": "pipeline {status}",
+      "state": {
+        "open": "open",
+        "merged": "merged",
+        "closed": "closed"
+      }
     },
     "card": {
       "running": "Running",

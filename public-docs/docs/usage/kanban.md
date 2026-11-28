@@ -14,7 +14,7 @@ The board uses four statuses:
 | `PENDING` | Waiting for dispatch, scheduling or dependencies |
 | `IN_PROGRESS` | Work is being executed |
 | `DONE` | A result has been recorded |
-| `BLOCKED` | A reason prevents completion or continuation |
+| `BLOCKED` | A reason prevents completion or continuation, or the task waits for you |
 
 A task stored with any other status (left by an older version, for example `CANCELLED`) is listed in the **Done** column; the stored value is not changed.
 
@@ -30,6 +30,17 @@ task belongs to the project it was created for (`--project`), otherwise to its
 agent's project. The TO DO column follows the project and the search; the Done column counts and
 loads only the matching tasks. The
 browser remembers your filters; **Reset filters** shows the whole board again.
+
+**My turn to act** keeps only the tasks that wait for you: those marked **Waiting for you** and the running ones
+stopped on a permission card.
+
+### Waiting for you, or blocked
+
+A blocked task is not always broken. When an agent has nothing left to do but wait for you (a merge request to
+merge, a plan to validate), it closes its task with `timon task block <id> --awaiting-user --reason "…"` (the
+`awaiting_user` field of the `kanban_mark_as_failed` tool does the same). The card then shows an amber **Waiting for
+you** badge and the reason says what to do, instead of the red **Blocked** of a real obstacle. The task stays
+blocked, so Timon never restarts it by itself; move it back to Pending, or finish it, once you have acted.
 
 ### Read a card
 
@@ -372,6 +383,12 @@ A `code` task can also be **Done** without its merge: its review or its merge ne
 From a terminal, `timon task mark-merged TASK_ID --sha SHA [--comment TEXT]` does the same for a blocked task or a done one.
 
 Timon refuses a commit that your local copy of the repository has and that is not in the task's base branch. A commit it does not have yet (a pull request merged on GitHub and not fetched) is accepted and noted as not verified in the task's comment.
+
+## The pull or merge request of a task
+
+A task that opened a pull request (GitHub) or a merge request (GitLab) carries it. Its card shows a chip, **PR #12** or **MR !1875**, with the state in its colour: green while open, purple once merged, red when closed. The same chip sits in the task's detail, under the tabs. A click opens the request in a new tab and does not open the card.
+
+The daemon records the request by itself when it opens a pull request for a task (`timon pr open`). An agent that opens a request on its own, a merge request on GitLab for instance, records it with `--mr-url URL` on `timon task done`, `block`, `mark-as-done`, `mark-as-failed` or `update`, with `--mr-state open|merged|closed` and `--mr-pipeline LABEL` to say where it stands. The `kanban_update`, `kanban_mark_as_done` and `kanban_mark_as_failed` tools take the same `merge_request` object (`url`, and optionally `state` and `pipeline`). Only the URL is required: the forge and the number come from it, and a URL that is neither a GitHub pull request nor a GitLab merge request is refused.
 
 ## A task waiting on you
 

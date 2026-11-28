@@ -53,22 +53,22 @@ test('no filter keeps every task', () => {
 });
 
 test('the project filter alone keeps that project\'s tasks, explicit project included', () => {
-  const filters = { agent: ALL_FILTER, project: 'alpha', q: '' };
+  const filters = { agent: ALL_FILTER, project: 'alpha', q: '', mine: false };
   assert.deepEqual(ids(filterBoardTasks(tasks, filters, projectByAgent)), ['a1', 'a2', 'pinned']);
-  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: ALL_FILTER, project: 'beta', q: '' }, projectByAgent)), ['b1']);
+  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: ALL_FILTER, project: 'beta', q: '', mine: false }, projectByAgent)), ['b1']);
 });
 
 test('agent and project combine', () => {
-  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: 'alpha.coder', project: 'alpha', q: '' }, projectByAgent)), ['a1']);
-  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: 'beta.coder', project: 'alpha', q: '' }, projectByAgent)), ['pinned']);
-  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: 'beta.coder', project: ALL_FILTER, q: '' }, projectByAgent)), ['b1', 'pinned']);
+  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: 'alpha.coder', project: 'alpha', q: '', mine: false }, projectByAgent)), ['a1']);
+  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: 'beta.coder', project: 'alpha', q: '', mine: false }, projectByAgent)), ['pinned']);
+  assert.deepEqual(ids(filterBoardTasks(tasks, { agent: 'beta.coder', project: ALL_FILTER, q: '', mine: false }, projectByAgent)), ['b1', 'pinned']);
 });
 
 test('the query asks the daemon for the same DONE window', () => {
   assert.equal(boardTaskQuery(20, DEFAULT_KANBAN_FILTERS), 'done_limit=20');
-  assert.equal(boardTaskQuery(40, { agent: ALL_FILTER, project: 'alpha', q: '' }), 'done_limit=40&done_project=alpha');
+  assert.equal(boardTaskQuery(40, { agent: ALL_FILTER, project: 'alpha', q: '', mine: false }), 'done_limit=40&done_project=alpha');
   assert.equal(
-    boardTaskQuery(20, { agent: 'alpha.coder', project: 'alpha', q: '' }),
+    boardTaskQuery(20, { agent: 'alpha.coder', project: 'alpha', q: '', mine: false }),
     'done_limit=20&done_agent=alpha.coder&done_project=alpha',
   );
 });
@@ -76,25 +76,25 @@ test('the query asks the daemon for the same DONE window', () => {
 test('options: projects of agents and tasks, agents of the chosen project, current choice kept', () => {
   assert.deepEqual(projectOptions(agents, tasks, DEFAULT_KANBAN_FILTERS), ['alpha', 'beta']);
   assert.deepEqual(
-    projectOptions(agents, [{ agent_name: 'loose', project: 'gamma' }], { agent: ALL_FILTER, project: 'retired', q: '' }),
+    projectOptions(agents, [{ agent_name: 'loose', project: 'gamma' }], { agent: ALL_FILTER, project: 'retired', q: '', mine: false }),
     ['alpha', 'beta', 'gamma', 'retired'],
   );
   assert.deepEqual(agentOptions(agents, DEFAULT_KANBAN_FILTERS), agents.map((a) => a.name));
-  assert.deepEqual(agentOptions(agents, { agent: ALL_FILTER, project: 'alpha', q: '' }), ['alpha.coder', 'alpha.reviewer']);
-  assert.deepEqual(agentOptions(agents, { agent: 'deleted.agent', project: 'alpha', q: '' }), ['alpha.coder', 'alpha.reviewer', 'deleted.agent']);
+  assert.deepEqual(agentOptions(agents, { agent: ALL_FILTER, project: 'alpha', q: '', mine: false }), ['alpha.coder', 'alpha.reviewer']);
+  assert.deepEqual(agentOptions(agents, { agent: 'deleted.agent', project: 'alpha', q: '', mine: false }), ['alpha.coder', 'alpha.reviewer', 'deleted.agent']);
 });
 
 test('choosing a project keeps an agent of that project and drops another', () => {
-  assert.deepEqual(withProject({ agent: 'alpha.coder', project: ALL_FILTER, q: '' }, 'alpha', agents), { agent: 'alpha.coder', project: 'alpha', q: '' });
-  assert.deepEqual(withProject({ agent: 'beta.coder', project: ALL_FILTER, q: '' }, 'alpha', agents), { agent: ALL_FILTER, project: 'alpha', q: '' });
-  assert.deepEqual(withProject({ agent: 'beta.coder', project: 'alpha', q: '' }, ALL_FILTER, agents), { agent: 'beta.coder', project: ALL_FILTER, q: '' });
+  assert.deepEqual(withProject({ agent: 'alpha.coder', project: ALL_FILTER, q: '', mine: false }, 'alpha', agents), { agent: 'alpha.coder', project: 'alpha', q: '', mine: false });
+  assert.deepEqual(withProject({ agent: 'beta.coder', project: ALL_FILTER, q: '', mine: false }, 'alpha', agents), { agent: ALL_FILTER, project: 'alpha', q: '', mine: false });
+  assert.deepEqual(withProject({ agent: 'beta.coder', project: 'alpha', q: '', mine: false }, ALL_FILTER, agents), { agent: 'beta.coder', project: ALL_FILTER, q: '', mine: false });
 });
 
 test('the choice persists, and a reset clears it', () => {
   const storage = new MemoryStorage();
   assert.deepEqual(readKanbanFilters(storage), DEFAULT_KANBAN_FILTERS);
-  writeKanbanFilters(storage, { agent: 'alpha.coder', project: 'alpha', q: '' });
-  assert.deepEqual(readKanbanFilters(storage), { agent: 'alpha.coder', project: 'alpha', q: '' });
+  writeKanbanFilters(storage, { agent: 'alpha.coder', project: 'alpha', q: '', mine: false });
+  assert.deepEqual(readKanbanFilters(storage), { agent: 'alpha.coder', project: 'alpha', q: '', mine: false });
 
   writeKanbanFilters(storage, DEFAULT_KANBAN_FILTERS);
   assert.equal(storage.getItem(KANBAN_FILTERS_KEY), null, 'a reset leaves nothing behind');
@@ -113,7 +113,7 @@ test('a corrupt or refused storage means no filter', () => {
     removeItem(): void { throw new Error('SecurityError'); },
   };
   assert.deepEqual(readKanbanFilters(refusing), DEFAULT_KANBAN_FILTERS);
-  assert.doesNotThrow(() => writeKanbanFilters(refusing, { agent: ALL_FILTER, project: 'alpha', q: '' }));
+  assert.doesNotThrow(() => writeKanbanFilters(refusing, { agent: ALL_FILTER, project: 'alpha', q: '', mine: false }));
   assert.deepEqual(readKanbanFilters(null), DEFAULT_KANBAN_FILTERS);
 });
 
@@ -146,4 +146,26 @@ test('the TO DO column follows the project and keyword filters, not the agent', 
   assert.deepEqual(tid(filterTodoItems(ideas, { ...DEFAULT_KANBAN_FILTERS, agent: 'beta.coder' })), [1, 2, 3]);
   assert.deepEqual(tid(filterTodoItems(ideas, { ...DEFAULT_KANBAN_FILTERS, q: 'csv' })), [2]);
   assert.deepEqual(tid(filterTodoItems(ideas, { ...DEFAULT_KANBAN_FILTERS, q: '#3' })), [3]);
+});
+
+test('the "my turn" filter keeps the tasks flagged as waiting for the person, or stopped on a permission', () => {
+  const board = [
+    { id: 'x1', agent_name: 'alpha.coder', awaiting_user: 1 },
+    { id: 'x2', agent_name: 'alpha.coder', awaiting_user: 0 },
+    { id: 'x3', agent_name: 'alpha.coder', pending_permission: { tool_name: 'Bash' } },
+    { id: 'x4', agent_name: 'alpha.coder' },
+  ];
+  const mine = { ...DEFAULT_KANBAN_FILTERS, mine: true };
+  assert.equal(isFiltered(mine), true);
+  assert.deepEqual(filterBoardTasks(board, mine, projectByAgent).map((t) => t.id), ['x1', 'x3']);
+  assert.equal(filterBoardTasks(board, DEFAULT_KANBAN_FILTERS, projectByAgent).length, 4);
+});
+
+test('the "my turn" choice survives a reload, and an older stored value reads as off', () => {
+  const store = new Map<string, string>();
+  writeKanbanFilters({ setItem: (k, v) => void store.set(k, v), removeItem: (k) => void store.delete(k) }, { ...DEFAULT_KANBAN_FILTERS, mine: true });
+  const read = () => readKanbanFilters({ getItem: (k) => store.get(k) ?? null });
+  assert.equal(read().mine, true);
+  store.set(KANBAN_FILTERS_KEY, JSON.stringify({ agent: ALL_FILTER, project: ALL_FILTER, q: 'x' }));
+  assert.equal(read().mine, false);
 });

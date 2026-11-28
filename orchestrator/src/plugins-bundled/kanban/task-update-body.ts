@@ -14,6 +14,7 @@
  * `TASK_UPDATE_FIELDS`.
  */
 import { z } from 'zod';
+import { MergeRequestInput } from '../../merge-request.js';
 
 /** Free text a client may send as `null`: the route reads `null` as "unchanged". */
 const text = z.string().nullable();
@@ -35,6 +36,8 @@ export const TASK_UPDATE_FIELDS = {
   /** Sentinel clearing the scheduling: `scheduled_at: null` is a deliberate no-op. */
   clear_scheduled_at: z.boolean(),
   blocked_reason: text,
+  /** With `status: BLOCKED`: the block waits for a person, not for a repair. */
+  awaiting_user: z.boolean(),
   done_comment: text,
   extra_skills: names,
   extra_mcp_servers: names,
@@ -51,6 +54,8 @@ export const TASK_UPDATE_FIELDS = {
   merged_commit_sha: z.string(),
   /** A TO DO idea (number) to attach, `null` to detach; checked against the caller's scope. */
   todo_id: z.unknown(),
+  /** The pull / merge request the task opened; the forge and number come from its URL. */
+  merge_request: MergeRequestInput,
   /** Human summary, read only when this call closes the task as DONE. */
   done_summary: z.string().nullable(),
 } as const;
@@ -90,7 +95,7 @@ export function parseTaskUpdateBody(raw: unknown): { ok: true; value: TaskUpdate
 }
 
 /** What closing a task carries: `timon task done` / `timon task block` send nothing else. */
-const CLOSING_FIELDS: ReadonlySet<string> = new Set(['status', 'done_comment', 'blocked_reason', 'done_summary', 'merged_commit_sha']);
+const CLOSING_FIELDS: ReadonlySet<string> = new Set(['status', 'done_comment', 'blocked_reason', 'awaiting_user', 'done_summary', 'merged_commit_sha', 'merge_request']);
 
 /**
  * A body that only closes the task (DONE or BLOCKED, with its note). The one
