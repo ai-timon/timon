@@ -241,7 +241,7 @@ export type {
  * `extraMcp`, `allow` (`PluginMissionSpawnOverrides`); `ctx.traces.get` reads a
  * causal trace (`missions:read`). `ctx.missions.rename` sets a title by hand
  * (`manual`, `missions:control`). The events `mission_started`, `turn_complete`,
- * `mission_title_changed` (`missions:read`) and the transcript stream `event` / `event_delta`
+ * `mission_title_changed`, `mission_archived`, `mission_unarchived` (`missions:read`) and the transcript stream `event` / `event_delta`
  * (`missions:transcript`) are filtered by the mission's owner. Errors carry a
  * `PluginMissionErrorCode`.
  */
@@ -251,6 +251,7 @@ export type {
   PluginMissionSearchResult, PluginMissionSendResult, PluginMissionSpawnOverrides,
   PluginMissionStartedEvent, PluginMissionSummary, PluginMissionTranscriptDeltaEvent,
   PluginMissionTranscriptEvent, PluginMissionTurnCompleteEvent, PluginMissionTitleChangedEvent,
+  PluginMissionArchivedEvent, PluginMissionUnarchivedEvent,
   PluginStopReport, PluginStopScope, PluginTraceOptions,
 } from '../../../orchestrator/src/plugins/contract/missions.js';
 

@@ -25,7 +25,7 @@ Every kind needs `events:subscribe`. Most also need the read permission of what 
 | `notifications_changed` | nothing | `ownerUserId`, `notificationId` (on a creation only) | yes | [below](#signals) |
 | `workflow_run` | nothing | `runId`, `nodeId`, `status` | yes | [below](#signals) |
 | `workflow_proposal` | nothing | `workflowId`, `missionId` | yes | [below](#signals) |
-| `mission_started`, `turn_complete`, `mission_title_changed` | `missions:read` | the mission and the `origin` of the change | yes | [Controlling missions](missions-control.md#events) |
+| `mission_started`, `turn_complete`, `mission_title_changed`, `mission_archived`, `mission_unarchived` | `missions:read` | the mission and the `origin` of the change | yes | [Controlling missions](missions-control.md#events) |
 | `event`, `event_delta` | `missions:transcript` | a transcript row; a live fragment of an answer | `event` only | [Controlling missions](missions-control.md#events) |
 | `task_created`, `task_updated`, `task_assigned`, `task_deleted`, `task_unblocked` | `kanban:read` | the task, `changed` and `previous` for an update, `origin` | no | [Kanban sync](kanban-sync.md#hear-the-changes) |
 | `todo_done`, `todo_resolved`, `todo_deleted` | `todos:read` | the idea, `origin` | no | [Permissions](permissions.md#keeping-a-to-do-idea-and-a-ticket-in-step) |

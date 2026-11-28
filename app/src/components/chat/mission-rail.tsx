@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import { AlertCircle, Check, ChevronDown, Columns2, Copy, ListFilter, Pencil, Square, SquarePen, TerminalSquare } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Archive, ArchiveRestore, Check, ChevronDown, Columns2, Copy, ListFilter, Pencil, Square, SquarePen, TerminalSquare } from 'lucide-react';
 import * as Dropdown from '@radix-ui/react-dropdown-menu';
 import { toast } from 'sonner';
 
@@ -14,6 +14,8 @@ import { ActiveAgentAvatar, useAgentIdentities } from '@/components/agent-avatar
 import { useWidgetEditing } from '@/components/widget-host/widget-host';
 import { useStoredLayout } from '@/hooks/use-stored-layout';
 import { MISSION_RAIL_DISPLAY_SCOPE, missionRailDisplayChanged, readMissionRailDisplay, writeMissionRailDisplay, type MissionRailDisplay } from '@/lib/mission-rail-display';
+import { answerArchiveSuggestion, applyMissionArchiveChange, canArchive, filterArchived, hasArchiveSuggestion, isArchived } from '@/lib/mission-archive';
+import { ArchiveSuggestionChip } from './archive-suggestion';
 import { buildMissionRail } from '@/lib/mission-rail-groups';
 import { STATE_VISUALS, type ActiveState } from '@/lib/agent-state';
 import { agentRoleKey, resolveRole } from '@/lib/roles';
@@ -76,7 +78,7 @@ export function MissionRail({
   const viewer = actingUser(me);
   const displayStore = useStoredLayout(MISSION_RAIL_DISPLAY_SCOPE);
   const display = readMissionRailDisplay(displayStore.raw);
-  const { showAvatar, mineOnly, groupByOrchestrator, expandSubagents } = display;
+  const { showAvatar, mineOnly, groupByOrchestrator, expandSubagents, includeArchived } = display;
   // A patch on the row as it stands when written: replayed after another
   // window's write (TODO #647), it keeps that window's other setting.
   const setDisplay = (patch: Partial<MissionRailDisplay>) => {
@@ -88,6 +90,8 @@ export function MissionRail({
   const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null);
   /** Names just typed, shown until the next poll brings the stored one. */
   const [renamed, setRenamed] = useState<Record<string, string | null>>({});
+  /** Archive flags just set from here, shown until the stream or the poll brings the stored ones. */
+  const [archivedHere, setArchivedHere] = useState<Record<string, boolean>>({});
   /** Role filter, client-side and per window: the roles present vary from one
    *  project to the next, so a stored "coder" would empty another project's
    *  list behind a filter nobody remembers setting. */
@@ -110,15 +114,33 @@ export function MissionRail({
   );
   // "Automated missions" off = the historical `mineOnly` (TODO #284): an origin
   // filter, not an owner one (TIM-0118).
+  // Once the list itself agrees with a local flag it has done its job: keeping
+  // it would mask the next change made elsewhere (a message unarchives).
+  useEffect(() => {
+    setArchivedHere((prev) => {
+      const pending = Object.entries(prev).filter(([id, archived]) => {
+        const row = missions.find((m) => m.id === id);
+        return row !== undefined && isArchived(row) !== archived;
+      });
+      return pending.length === Object.keys(prev).length ? prev : Object.fromEntries(pending);
+    });
+  }, [missions]);
+  const visible = useMemo(() => {
+    const flagged = Object.entries(archivedHere).reduce(
+      (list, [missionId, archived]) => applyMissionArchiveChange(list, { missionId, archived }, Date.now()),
+      missions,
+    );
+    return filterArchived(flagged, includeArchived);
+  }, [missions, archivedHere, includeArchived]);
   const rail = useMemo(
-    () => buildMissionRail(missions, {
+    () => buildMissionRail(visible, {
       group: groupByOrchestrator,
       hideAutomated: mineOnly,
       openMissionId: currentMissionId,
       roleOf,
       role: roleFilter,
     }),
-    [missions, groupByOrchestrator, mineOnly, currentMissionId, roleOf, roleFilter],
+    [visible, groupByOrchestrator, mineOnly, currentMissionId, roleOf, roleFilter],
   );
   const { activeRole } = rail;
   const roleLabel = (role: string) => (role === OTHER_ROLE ? i18n('missionRail.otherRole') : resolveRole(role)?.label ?? role);
@@ -161,6 +183,34 @@ export function MissionRail({
     }
   }
 
+  /** Proposals answered from here, hidden until the poll brings the stored state. */
+  const [answeredHere, setAnsweredHere] = useState<Record<string, boolean>>({});
+  async function answerSuggestion(id: string, answer: 'archive' | 'dismiss') {
+    setAnsweredHere((prev) => ({ ...prev, [id]: true }));
+    if (answer === 'archive') setArchivedHere((prev) => ({ ...prev, [id]: true }));
+    const ok = await answerArchiveSuggestion(id, answer);
+    if (ok) return;
+    setAnsweredHere((prev) => { const { [id]: _done, ...rest } = prev; return rest; });
+    setArchivedHere((prev) => { const { [id]: _done, ...rest } = prev; return rest; });
+    toast.error(i18n(answer === 'archive' ? 'missionRail.archiveFailed' : 'archiveSuggestion.failed'));
+  }
+
+  /** Archive or restore a mission. The daemon refuses a running one (409): the
+   *  optimistic flag is then dropped and the user told. */
+  async function setArchived(id: string, archived: boolean) {
+    setArchivedHere((prev) => ({ ...prev, [id]: archived }));
+    const forget = () => setArchivedHere((prev) => { const { [id]: _done, ...rest } = prev; return rest; });
+    try {
+      const r = await fetch(`/api/ui/missions/${encodeURIComponent(id)}/${archived ? 'archive' : 'unarchive'}`, { method: 'POST' });
+      if (r.ok) return; // The stream or the next poll carries the stored flag; `forget` waits for it.
+      forget();
+      toast.error(i18n(r.status === 409 ? 'missionRail.archiveRunning' : 'missionRail.archiveFailed'));
+    } catch {
+      forget();
+      toast.error(i18n('missionRail.archiveFailed'));
+    }
+  }
+
   /** Name shown for a mission (`lib/mission-title.ts`): the stored title —
    *  typed here, set by the launcher or generated —, else the Kanban task
    *  title, else the prompt without its `TASK_ID: <uuid>` preamble. A name just
@@ -173,7 +223,7 @@ export function MissionRail({
   // not while the layout is edited, where the card itself is what moves.
   const bus = useIslandBus();
   const draggableRows = canDragToIsland(bus) && !editing;
-  const menuMission = menu ? missions.find((m) => m.id === menu.id) : undefined;
+  const menuMission = menu ? visible.find((m) => m.id === menu.id) : undefined;
   // Absent until the CLI has reported its session (or from an older daemon).
   const menuSessionId = menuMission?.session_id ?? null;
   const menuItems: FileMenuItem[] = menuMission
@@ -184,6 +234,22 @@ export function MissionRail({
           icon: <Pencil className="size-3.5" />,
           onSelect: () => setRenaming({ id: menuMission.id, value: titleOf(menuMission) }),
         },
+        isArchived(menuMission)
+          ? {
+              key: 'unarchive',
+              label: i18n('missionRail.unarchive'),
+              icon: <ArchiveRestore className="size-3.5" />,
+              onSelect: () => { void setArchived(menuMission.id, false); },
+            }
+          : {
+              key: 'archive',
+              label: i18n('missionRail.archive'),
+              icon: <Archive className="size-3.5" />,
+              // The tooltip says why: a mission at work is still being written.
+              disabled: !canArchive(menuMission),
+              title: canArchive(menuMission) ? undefined : i18n('missionRail.archiveRunning'),
+              onSelect: () => { void setArchived(menuMission.id, true); },
+            },
         {
           key: 'copy-id',
           label: i18n('chatPage.copyMissionId'),
@@ -324,9 +390,22 @@ export function MissionRail({
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex items-center gap-1.5">
                 {!showAvatar && state === 'thinking' && <WorkingDot />}
-                <span className="truncate text-[12.5px] font-medium leading-snug">
+                <span className="truncate text-[12.5px] font-medium leading-snug data-[archived]:text-muted-foreground" data-archived={isArchived(m) || undefined}>
                   {title.slice(0, 120)}
                 </span>
+                {hasArchiveSuggestion(m) && !answeredHere[m.id] && !m.running && (
+                  <ArchiveSuggestionChip
+                    reason={m.archive_suggest_reason}
+                    onArchive={() => { void answerSuggestion(m.id, 'archive'); }}
+                    onDismiss={() => { void answerSuggestion(m.id, 'dismiss'); }}
+                  />
+                )}
+                {isArchived(m) && (
+                  <span data-mission-archived className="inline-flex shrink-0 items-center gap-0.5 rounded bg-muted px-1 text-[9.5px] text-muted-foreground" title={i18n('missionRail.archivedHint')}>
+                    <Archive className="size-2.5" aria-hidden />
+                    {i18n('missionRail.archivedBadge')}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5 text-[10px] tabular-nums text-muted-foreground/75">
                 {foreignOwner && (
@@ -393,6 +472,17 @@ export function MissionRail({
           )}
           <Slot name="mission.card.action" />
         </div>
+        {isArchived(m) && (
+          <button
+            type="button"
+            title={i18n('missionRail.unarchive')}
+            aria-label={i18n('missionRail.unarchive')}
+            onClick={(e) => { e.stopPropagation(); void setArchived(m.id, false); }}
+            className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <ArchiveRestore className="size-3" />
+          </button>
+        )}
         {onKill && m.running && (
           <button
             type="button"
@@ -415,6 +505,7 @@ export function MissionRail({
     { key: 'groupByOrchestrator', label: i18n('missionRail.groupByOrchestrator'), checked: groupByOrchestrator, set: (v) => ({ groupByOrchestrator: v }) },
     // Only groups fold: without them the choice has nothing to act on.
     { key: 'expandSubagents', label: i18n('missionRail.expandSubagents'), checked: expandSubagents, set: (v) => ({ expandSubagents: v }), disabled: !groupByOrchestrator },
+    { key: 'includeArchived', label: i18n('missionRail.includeArchived'), checked: includeArchived, set: (v) => ({ includeArchived: v }) },
     { key: 'showAvatar', label: i18n('missionRail.avatar'), checked: showAvatar, set: (v) => ({ showAvatar: v }) },
   ];
 

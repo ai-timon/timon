@@ -10,6 +10,8 @@ export const PLUGIN_EVENT_KINDS = Object.freeze([
   'mission_started',
   'turn_complete',
   'mission_title_changed',
+  'mission_archived',
+  'mission_unarchived',
   'task_done',
   'task_blocked',
   'notifications_changed',
