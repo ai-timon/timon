@@ -301,7 +301,7 @@ test('cancelling the confirmation creates no fork; a target the account can push
     await m.click(configure());
     await m.click(document.querySelector('[data-pr-setting-access-run]'));
     await m.click(document.querySelector('[data-pr-setting-fork-offer]'));
-    const cancel = [...document.querySelectorAll('[data-pr-setting-fork-confirm] button')].find((b) => b.textContent === 'Cancel');
+    const cancel = Array.from(document.querySelectorAll('[data-pr-setting-fork-confirm] button')).find((b) => b.textContent === 'Cancel');
     await m.click(cancel ?? null);
     assert.ok(!document.querySelector('[data-pr-setting-fork-confirm]'));
     assert.ok(!m.calls.some((c) => c.url.endsWith('/integration/fork')));
