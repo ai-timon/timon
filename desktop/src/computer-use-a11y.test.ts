@@ -39,7 +39,7 @@ function setup(allowed: readonly string[] = ['TextEdit'], overrides: Partial<Com
     },
     ...overrides,
   });
-  const run = (command: string, args?: unknown, actor: 'agent' | 'human' = 'agent', mode: 'foreground' | 'background' = 'foreground', agent?: string) => service.handle(actor, parseComputerCommand(command, args), allowed, mode, agent);
+  const run = (command: string, args?: unknown, actor: 'agent' | 'human' = 'agent', mode: 'foreground' | 'background' = 'foreground', agent?: string) => service.handle(actor, parseComputerCommand(command, args), allowed, mode, null, agent);
   return { backend, service, run, calls };
 }
 
