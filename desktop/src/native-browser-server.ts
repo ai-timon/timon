@@ -1,8 +1,9 @@
 /** Private daemon↔Electron transport. There is deliberately no browser/CDP listener. */
 import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage } from 'node:http';
-import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { replaceFile } from './replace-file.js';
 import { authorizedBearer, BrowserCommandError, objectOf } from './native-browser-protocol.js';
 
 export interface NativeBrowserProviderDescriptor {
@@ -89,7 +90,7 @@ export async function startNativeBrowserServer(
     await chmod(directory, 0o700);
     await writeFile(temporary, JSON.stringify(descriptor), { mode: 0o600 });
     await chmod(temporary, 0o600);
-    await rename(temporary, path);
+    await replaceFile(temporary, path);
   } catch (error) {
     server.close();
     await unlink(temporary).catch(() => {});
