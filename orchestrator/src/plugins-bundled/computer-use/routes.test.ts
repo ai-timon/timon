@@ -400,3 +400,38 @@ test('"All applications" travels with an agent\'s commands with its exclusions, 
   await send(stray);
   assert.equal(everything.at(-1), undefined, 'only true turns it on');
 });
+
+test('the provider sends "All applications" only when on, and an excluded application keeps its own refusal', async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const server = (await import('node:http')).createServer(async (req, res) => {
+    let raw = '';
+    for await (const chunk of req) raw += String(chunk);
+    bodies.push(JSON.parse(raw) as Record<string, unknown>);
+    res.statusCode = 403;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ ok: false, code: 'computer_app_excluded', error: 'The foreground application is KeePassXC, which this agent\'s excluded applications name.' }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const { mkdtempSync, mkdirSync: mk, writeFileSync: write } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const home = mkdtempSync(join(tmpdir(), 'computer-home-'));
+  mk(join(home, 'computer-native'));
+  write(join(home, 'computer-native', 'provider.json'), JSON.stringify({ version: 1, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, token: 'x'.repeat(40), pid: 1 }));
+  try {
+    await assert.rejects(callNativeComputer('click', { x: 1, y: 1 }, 'agent', { home, allowedApps: [], mode: 'background', allApps: true, excludedApps: ['KeePassXC'] }), (error: NativeComputerError) => {
+      assert.equal(error.status, 403);
+      assert.equal(error.body.code, 'computer_app_excluded');
+      assert.match(error.body.error, /KeePassXC/);
+      assert.match(error.body.error, /Do not work around it/);
+      return true;
+    });
+    assert.equal(bodies.at(-1)?.allApps, true);
+    assert.deepEqual(bodies.at(-1)?.excludedApps, ['KeePassXC']);
+    await assert.rejects(callNativeComputer('click', { x: 1, y: 1 }, 'agent', { home, allowedApps: [], mode: 'foreground' }));
+    assert.equal('allApps' in (bodies.at(-1) ?? {}), false, 'off: an older desktop reads the list alone');
+    await assert.rejects(callNativeComputer('list_windows', {}, 'human', { home, allApps: true, excludedApps: [] }));
+    assert.equal('allApps' in (bodies.at(-1) ?? {}), false, 'a person\'s command carries no scope');
+  } finally { server.close(); }
+});

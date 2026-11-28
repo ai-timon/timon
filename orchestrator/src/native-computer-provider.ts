@@ -83,6 +83,11 @@ function desktopRefusal(body: { error?: unknown; code?: unknown }, status: numbe
     const found = message ?? 'The foreground application is not in the agent\'s allowed list.';
     return new NativeComputerError(apiError('computer_app_not_allowed', `${found} Ask the user to add the application to the allowed applications in this agent's settings, or to bring an allowed one to the front.`, { detail: found }), 403);
   }
+  if (code === 'computer_app_excluded') {
+    // "All applications" is on, but the user excluded this one: asking to add it to the list changes nothing.
+    const found = message ?? 'The foreground application is excluded for this agent.';
+    return new NativeComputerError(apiError('computer_app_excluded', `${found} Do not work around it: bring another application to the front, or ask the user to do this step themselves.`, { detail: found }), 403);
+  }
   if (code === 'computer_background_only') {
     return new NativeComputerError(apiError('computer_background_only', 'This agent works in the background: use a11y_tree and a11y_action. Screenshots, the mouse, the keyboard and focusing a window are refused, so the user keeps their screen.'), 403);
   }
