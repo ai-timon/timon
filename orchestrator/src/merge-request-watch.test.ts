@@ -9,7 +9,8 @@ import './test-home.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { dbApi } from './db.js';
+import { CHAIN_DONE, dbApi, db } from './db.js';
+import { evaluateDeps } from './merge-gate.js';
 import { gitlabReader, watchMergeRequests, watchTask, type MergeRequestReader, type WatchDeps } from './merge-request-watch.js';
 import { mergeRequestOf } from './merge-request.js';
 await import('../tests/helpers/claude-provider.js');
@@ -47,8 +48,43 @@ test('a merged request closes the waiting task, records the commit and the chip'
 
 test('a dependant task is freed by the automatic close', async () => {
   const id = seed();
+  const dependant = randomUUID();
+  dbApi.createTask(dependant, 'Dependant', 'witness', { type: 'chore', deps: [id] });
+  const gate = () => evaluateDeps(dbApi.getTask(dependant)!, (d) => dbApi.getTask(d));
+  assert.equal(gate().ok, false, 'waits while its dependency is open');
   await watchTask(dbApi.getTask(id)!, deps(async () => ({ ok: true, state: 'merged', mergeSha: null })));
   assert.equal(dbApi.getTask(id)!.status, 'DONE');
+  assert.equal(gate().ok, true);
+  assert.ok(dbApi.listPendingReady().some((t) => t.id === dependant), 'the dependant is dispatchable');
+});
+
+test('the forge close settles the chain so no review or merge follows', async () => {
+  const id = seed({ status: 'IN_PROGRESS' });
+  await watchTask(dbApi.getTask(id)!, deps(async () => ({ ok: true, state: 'merged', mergeSha: null })));
+  const row = dbApi.getTask(id)!;
+  assert.equal(row.status, 'DONE');
+  assert.equal(row.chain_ran, CHAIN_DONE);
+});
+
+test('a task that is neither waiting nor done is not brought back to life', async () => {
+  const id = seed();
+  // The board has no FAILED status today; the write stands for one.
+  db.prepare("UPDATE tasks SET status = 'FAILED' WHERE id = ?").run(id);
+  const notices: string[] = [];
+  const out = await watchTask(dbApi.getTask(id)!, deps(async () => ({ ok: true, state: 'merged', mergeSha: SHA }), notices));
+  assert.equal(out, 'merged');
+  const row = dbApi.getTask(id)!;
+  assert.equal(row.status as string, 'FAILED');
+  assert.equal(mergeRequestOf(row)!.state, 'merged');
+  assert.equal(notices.length, 1);
+});
+
+test('a lost race writes nothing, not even the commit', async () => {
+  const id = seed();
+  const stale = dbApi.getTask(id)!;
+  dbApi.setTaskMergeRequestState(id, 'closed');
+  assert.equal(await watchTask(stale, deps(async () => ({ ok: true, state: 'merged', mergeSha: SHA }))), 'open');
+  assert.equal(dbApi.getTask(id)!.merged_commit_sha, null);
 });
 
 test('a merge task without a known commit is left alone rather than blocked', async () => {
